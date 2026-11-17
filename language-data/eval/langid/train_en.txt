@@ -1,0 +1,5 @@
+# SYNTHETIC seed words (English), hand-written by the engineering team. DRAFT.
+hello how are you thank thanks very much house water food time person child mother father brother sister school work market car coffee today tomorrow yesterday
+is not there no please sorry good bad big small all many from to on in and but or about why when where who what
+i you he she we they this that went came ate drank slept worked saw liked wanted goes comes book paper city road country people
+monday tuesday wednesday now day night morning evening hour week month year friend meeting message phone keyboard language the with for have will can would

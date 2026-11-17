@@ -1,0 +1,14 @@
+# C1.8 language-ID eval results (DRAFT seed model, SYNTHETIC eval set)
+# Regenerate: QAL_LANGID_WRITE_RESULTS=1 cargo test --test langid_eval
+# Caveat: tiny, hand-written, not native-speaker reviewed. Regression tripwire only;
+# real accuracy needs the native-speaker corpus (human gate G0).
+# top1 = highest-ranked candidate is the gold label; in_cands = gold is among the
+# returned candidates (the product contract: ambiguity gives several candidates).
+lang	tokens	top1	top1_pct	in_cands	in_cands_pct	avg_cands
+am	36	33	91.7	36	100.0	1.50
+ti	36	28	77.8	33	91.7	1.39
+om	42	36	85.7	40	95.2	1.19
+en	53	35	66.0	44	83.0	1.60
+am-latn	29	24	82.8	28	96.6	1.52
+ti-latn	30	25	83.3	30	100.0	1.57
+overall	226	181	80.1	211	93.4	1.46
