@@ -68,7 +68,7 @@
 | Phase | Name | Steps | 🟩 Done | 🟦 In progress | 🟥 Blocked | ⬜ Todo | % |
 |---|---|---|---|---|---|---|---|
 | Phase 0 | Foundations (M0) | 6 | 6 | 0 | 0 | 0 | 100% |
-| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 10 | 0 | 0 | 12 | 45% |
+| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 11 | 0 | 0 | 11 | 50% |
 | Phase 2 | Backend + P0 AI (M2) | 39 | 2 | 0 | 0 | 37 | 5% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
 | Phase 4 | Monetisation (M4) | 10 | 0 | 0 | 0 | 10 | 0% |
