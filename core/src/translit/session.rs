@@ -41,6 +41,9 @@ pub struct PhoneticSession {
     /// First character of a possible two-character punctuation sequence, shown as composing.
     pending: Option<char>,
     candidates: Vec<String>,
+    /// All transliteration alternatives of the current composition (not capped at
+    /// `max_candidates`), in C1.4 order; the lexicon merge (A1.3, ADR 0004 U6) ranks them.
+    alternatives: Vec<String>,
     max_candidates: usize,
 }
 
@@ -51,6 +54,7 @@ impl PhoneticSession {
             raw: String::new(),
             pending: None,
             candidates: Vec::new(),
+            alternatives: Vec::new(),
             max_candidates,
         }
     }
@@ -63,6 +67,7 @@ impl PhoneticSession {
         self.raw.clear();
         self.pending = None;
         self.candidates.clear();
+        self.alternatives.clear();
     }
 
     pub fn on_key(&mut self, event: KeyEvent) -> EditorUpdate {
@@ -112,32 +117,33 @@ impl PhoneticSession {
         }
     }
 
-    /// Appends lexicon candidates (A1.3) after the transliteration alternatives, so that
-    /// [`select`](Self::select) resolves the merged strip the host shows. Texts already present
-    /// are skipped and the list stays capped at `max_candidates`. Returns the texts added, in
-    /// order.
-    pub fn extend_candidates(&mut self, extra: impl IntoIterator<Item = String>) -> Vec<String> {
-        let mut added = Vec::new();
-        for text in extra {
-            if self.candidates.len() >= self.max_candidates {
-                break;
-            }
-            if !text.is_empty() && !self.candidates.contains(&text) {
-                self.candidates.push(text.clone());
-                added.push(text);
-            }
+    /// Every transliteration alternative of the current composition (after index 0), in the
+    /// order the rules produce them; not capped at `max_candidates`.
+    pub fn alternatives(&self) -> Vec<String> {
+        self.alternatives.clone()
+    }
+
+    /// Replaces the strip with the merged list (A1.3 / U6) so that [`select`](Self::select)
+    /// resolves exactly what the host shows. Index 0 must stay the default composition;
+    /// anything else is ignored. The list is capped at `max_candidates`.
+    pub fn set_candidates(&mut self, mut list: Vec<String>) {
+        if list.first() != self.candidates.first() {
+            return;
         }
-        added
+        list.truncate(self.max_candidates);
+        self.candidates = list;
     }
 
     /// Builds the update for the host from the current buffer.
     fn view(&mut self, commit: String) -> EditorUpdate {
         let (composing, mut cands) = if self.raw.is_empty() {
+            self.alternatives.clear();
             (self.pending.map(String::from).unwrap_or_default(), vec![])
         } else {
             let (primary, alts) = self.render();
             let mut all = vec![primary.clone()];
-            all.extend(alts);
+            all.extend(alts.iter().cloned());
+            self.alternatives = alts;
             (primary, all)
         };
         cands.truncate(self.max_candidates);

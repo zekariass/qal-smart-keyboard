@@ -36,9 +36,12 @@ content, nor put it in error messages. Tests use synthetic text only.
   homophone alternatives, at most `max_candidates`); `select_candidate(i)` commits candidate `i`.
 - Dictionary candidates (A1.3, ADR 0004): `DICTIONARY` ("QLX1" lexicon) and `FREQUENCY_LIST`
   ("QBG1" bigrams) packs per language build a lexicon + ranker inside the engine. In PhoneticLatin the
-  strip is the composition, then the transliteration alternatives (unchanged order, kind
-  `Transliteration`), then the ranker's candidates for the composition (`Completion`, or `Correction`
-  for one-edit corrections), de-duplicated and capped at `max_candidates`. Nothing is applied
+  strip is the composition (index 0, the literal rule output), then the transliteration alternatives
+  (kind `Transliteration`) sorted by dictionary frequency (most frequent first; words absent from the
+  lexicon keep their C1.4 order after the known ones; ties keep C1.4 order), then the ranker's candidates
+  for the composition (`Completion`, or `Correction` for one-edit corrections), de-duplicated and capped
+  at `max_candidates`. At least two slots are reserved for completions whenever the lexicon offers any
+  (ADR 0004 U6 amendment). Without a dictionary the strip is exactly C1.4's. Nothing is applied
   automatically. The last committed word is kept in memory (cleared by `reset`, `set_input_mode`,
   deletions and sentence punctuation) as bigram context. A verified `DICTIONARY` / `FREQUENCY_LIST` pack whose
   payload does not parse (A1.6) is still activated (it counts for rollback protection) and returned with
