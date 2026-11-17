@@ -1,0 +1,21 @@
+{
+  "format": "qal-bench-baseline-v1",
+  "statistic": "minimum over runs of per-label p50 (ms)",
+  "recorded": "2026-11-17",
+  "runs": 5,
+  "machine": "Windows AMD64 (Intel64 Family 6 Model 170 Stepping 4, GenuineIntel)",
+  "note": "Machine specific. Re-record on the CI runner class (see core/README.md, Benchmark gate).",
+  "p50_ms": {
+    "lexicon/10k-word user overlay, mixed": 0.006,
+    "lexicon/base only, 1-char prefix": 0.0342,
+    "lexicon/base only, 2-char prefix": 0.0083,
+    "lexicon/base only, 3-char prefix": 0.0019,
+    "lexicon/base only, 6-char prefix": 0.0012,
+    "lexicon/base only, mixed 1-6 chars": 0.0022,
+    "ranker/autocorrect, typos": 0.3805,
+    "ranker/next_words": 0.0907,
+    "ranker/rank, one-swap typos": 0.2086,
+    "ranker/rank, prefixes": 0.0901,
+    "ranker/rank, unknown (worst case)": 1.0845
+  }
+}
