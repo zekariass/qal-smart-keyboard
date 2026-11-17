@@ -45,6 +45,21 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun current(): KeyboardSettings = settings.first()
 
+    /**
+     * Whether the companion onboarding (A1.7) was completed or skipped. Kept outside [KeyboardSettings]
+     * on purpose: it is not a user preference, is not synced, and "Reset to defaults" must not
+     * bring the welcome flow back. Additive key, so `schema_version` stays 1 and older/newer files
+     * decode fine (a missing key means "not completed").
+     */
+    val onboardingCompleted: Flow<Boolean> = store.data
+        .catch { if (it is IOException) emit(androidx.datastore.preferences.core.emptyPreferences()) else throw it }
+        .map { it[ONBOARDING_COMPLETED] ?: false }
+        .distinctUntilChanged()
+
+    suspend fun setOnboardingCompleted(completed: Boolean) {
+        store.edit { it[ONBOARDING_COMPLETED] = completed }
+    }
+
     /** Applies [transform] to the current settings atomically; the result is sanitised before it is saved. */
     suspend fun update(transform: (KeyboardSettings) -> KeyboardSettings) {
         store.edit { prefs -> encode(transform(decode(prefs)).sanitized(), prefs) }
@@ -95,6 +110,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val HAPTICS = booleanPreferencesKey("haptics_enabled")
         private val KEY_HEIGHT = intPreferencesKey("key_height_percent")
         private val LAST_MODES = stringPreferencesKey("last_modes")
+        private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
 
         private const val FIELD = "|"
         private const val LINE = "\n"

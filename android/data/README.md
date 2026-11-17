@@ -18,6 +18,9 @@ Defaults (ADR 0007): am, ti, om, en all enabled in that order; am and ti start o
 
 Validation: at least one language enabled; unknown or duplicate languages dropped; missing known languages appended disabled; an input mode the language cannot use resets to its default; profile codes kept only in phonetic mode and only when well formed; key height clamped. Schema versioned by `schema_version` (1).
 
+### Onboarding flag (A1.7)
+`SettingsRepository.onboardingCompleted` / `setOnboardingCompleted` store whether the companion onboarding was completed or skipped (preferences key `onboarding_completed`). It is deliberately not part of `KeyboardSettings`: it is not a preference, is never synced, and "Reset to defaults" must not restart the welcome flow. It is an additive key, so `schema_version` stays 1; a missing key reads as `false`.
+
 ### F14
 `ProfileResolver.resolve` replaces a profile code that is not among the active profiles of its language with the newest active one (or null if none) and reports a `ProfileChange`; `SettingsRepository.applyProfileFallback` persists it. Order and enabled flags are never touched and reordering never looks at profiles, so a retired profile cannot block the user. If the catalog does not know the language yet (packs loading) nothing changes. No catalog is wired yet: A1.6 (pack manager) should supply a `ProfileCatalog` from installed packs and call `applyProfileFallback`.
 
