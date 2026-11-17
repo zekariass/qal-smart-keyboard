@@ -28,9 +28,18 @@ class KeyboardControllerTest {
      * A stand-in for the core in phonetic mode: letters compose upper-cased, candidates are the
      * composition and the composition + "!", Space/Commit commit. Records mode switches.
      */
-    private class FakeComposer(private val draft: Boolean = true) : Composer {
+    private class FakeComposer(
+        private val draft: Boolean = true,
+        private val supported: Set<TypingMode> = setOf(
+            TypingMode("am", LayoutKind.PHONETIC),
+            TypingMode("ti", LayoutKind.PHONETIC),
+            TypingMode("om", LayoutKind.QUBEE),
+            TypingMode("en", LayoutKind.ENGLISH),
+        ),
+        private val grid: FidelGrid? = null,
+    ) : Composer {
         val calls = ArrayList<String>()
-        var mode = TypingMode.ABC
+        var mode = TypingMode.abc("en")
         private var buf = ""
         private val cands get() = if (buf.isEmpty()) emptyList() else listOf(
             Suggestion(buf.uppercase(), SuggestionKind.TRANSLITERATION),
@@ -41,12 +50,13 @@ class KeyboardControllerTest {
         private fun flush(): String = buf.uppercase().also { buf = "" }
 
         override fun onKey(key: ComposerKey): ComposerUpdate {
-            if (mode == TypingMode.ABC) return PassthroughComposer().onKey(key)
+            if (!mode.phonetic) return PassthroughComposer().onKey(key)
             return when (key) {
                 is ComposerKey.Text -> { buf += key.text; view() }
                 ComposerKey.Space -> view(flush() + " ")
                 ComposerKey.Enter -> view(flush() + "\n")
                 ComposerKey.Commit -> view(flush())
+                is ComposerKey.FidelConsonant, is ComposerKey.FidelVowel -> view()
                 ComposerKey.Backspace -> if (buf.isEmpty()) ComposerUpdate(deleteBefore = 1) else { buf = buf.dropLast(1); view() }
             }
         }
@@ -62,10 +72,11 @@ class KeyboardControllerTest {
             calls += "setMode $mode"
             buf = ""
             this.mode = mode
-            return mode in availableModes
+            return supports(mode)
         }
-        override val availableModes = listOf(TypingMode.ABC, TypingMode.AM_PHONETIC)
+        override fun supports(mode: TypingMode) = mode.isAbc || mode in supported
         override fun isDraft(mode: TypingMode) = draft && mode.phonetic
+        override fun fidelGrid(language: String) = grid
     }
 
     private fun setup(type: Int = T.TYPE_CLASS_TEXT, opts: Int = 0, f: Fake = Fake()): Pair<KeyboardController, Fake> {
@@ -183,23 +194,26 @@ class KeyboardControllerTest {
 
     // ------------------------------------------------------------------ A1.3 composer + strip
 
-    @Test fun modeKeyCyclesLoadedModesAndCommitsFirst() {
+    private val amAbc = TypingMode.abc("am")
+    private val amPhonetic = TypingMode("am", LayoutKind.PHONETIC)
+
+    @Test fun abcToggleSwitchesToNativeAndBackCommittingFirst() {
         val (c, f, fc) = phonetic()
-        assertEquals(TypingMode.ABC, c.effectiveMode)
-        c.tapKind(KeyKind.MODE)
-        assertEquals(TypingMode.AM_PHONETIC, c.effectiveMode)
+        assertEquals(amAbc, c.effectiveMode) // fidel is not loaded: falls back to ABC, language kept
+        c.tapKind(KeyKind.ABC_TOGGLE)
+        assertEquals(amPhonetic, c.effectiveMode)
         c.tap("s"); c.tap("e")
         assertEquals("SE", f.composing)
-        c.tapKind(KeyKind.MODE) // back to ABC: the composition is committed, not lost
-        assertEquals(TypingMode.ABC, c.effectiveMode)
+        c.tapKind(KeyKind.ABC_TOGGLE) // back to ABC: the composition is committed, not lost
+        assertEquals(amAbc, c.effectiveMode)
         assertEquals("SE", f.out.toString())
         assertEquals("", f.composing)
-        assertEquals("setMode ABC", fc.calls.last())
+        assertEquals("setMode $amAbc", fc.calls.last())
     }
 
     @Test fun phoneticCompositionCommitsOnSpaceAndShowsCandidates() {
         val (c, f, _) = phonetic()
-        c.tapKind(KeyKind.MODE)
+        c.tapKind(KeyKind.ABC_TOGGLE)
         c.tap("a"); c.tap("b")
         assertTrue(c.showCandidateStrip)
         assertTrue(c.candidatesAreDraft)
@@ -211,7 +225,7 @@ class KeyboardControllerTest {
 
     @Test fun candidateTapCommitsIt() {
         val (c, f, _) = phonetic()
-        c.tapKind(KeyKind.MODE)
+        c.tapKind(KeyKind.ABC_TOGGLE)
         c.tap("a")
         c.selectCandidate(1)
         assertEquals("A!", f.out.toString())
@@ -225,13 +239,13 @@ class KeyboardControllerTest {
         val (c, _) = setup(T.TYPE_CLASS_TEXT or T.TYPE_TEXT_FLAG_CAP_SENTENCES, f = f)
         c.composer = FakeComposer()
         assertEquals(ShiftState.ONCE, c.shift)
-        c.tapKind(KeyKind.MODE)
+        c.tapKind(KeyKind.ABC_TOGGLE)
         assertEquals(ShiftState.OFF, c.shift)
     }
 
     @Test fun nonTextFieldsStayAbcAndKeepTheChoiceForTextFields() {
         val (c, _, fc) = phonetic()
-        c.tapKind(KeyKind.MODE)
+        c.tapKind(KeyKind.ABC_TOGGLE)
         for (type in listOf(
             T.TYPE_CLASS_TEXT or T.TYPE_TEXT_VARIATION_PASSWORD,
             T.TYPE_CLASS_TEXT or T.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
@@ -240,19 +254,19 @@ class KeyboardControllerTest {
             T.TYPE_CLASS_PHONE,
         )) {
             c.startField(InputProfile.from(type, 0, false, 0))
-            assertEquals(TypingMode.ABC, c.effectiveMode)
-            assertEquals("setMode ABC", fc.calls.last())
+            assertEquals(amAbc, c.effectiveMode)
+            assertEquals("setMode $amAbc", fc.calls.last())
             assertFalse(c.showCandidateStrip)
-            assertFalse(c.hasKind(KeyKind.MODE))
+            assertFalse(c.hasKind(KeyKind.GLOBE))
         }
         c.startField(InputProfile.from(T.TYPE_CLASS_TEXT, 0, false, 0))
-        assertEquals(TypingMode.AM_PHONETIC, c.effectiveMode)
-        assertTrue(c.hasKind(KeyKind.MODE))
+        assertEquals(amPhonetic, c.effectiveMode)
+        assertTrue(c.hasKind(KeyKind.GLOBE))
     }
 
     @Test fun passwordFieldHidesTheStripAndTypesLatin() {
         val (c, f, _) = phonetic()
-        c.tapKind(KeyKind.MODE)
+        c.tapKind(KeyKind.ABC_TOGGLE)
         c.startField(InputProfile.from(T.TYPE_CLASS_TEXT or T.TYPE_TEXT_VARIATION_PASSWORD, 0, false, 0))
         c.tap("a")
         assertEquals("a", f.out.toString())
@@ -262,7 +276,7 @@ class KeyboardControllerTest {
 
     @Test fun abandonedCompositionResetsTheComposer() {
         val (c, f, fc) = phonetic()
-        c.tapKind(KeyKind.MODE)
+        c.tapKind(KeyKind.ABC_TOGGLE)
         c.tap("a")
         c.onCompositionAbandoned()
         assertEquals("reset", fc.calls.last())
@@ -274,7 +288,7 @@ class KeyboardControllerTest {
     @Test fun editorActionCommitsTheCompositionFirst() {
         val (c, f) = setup(T.TYPE_CLASS_TEXT, E.IME_ACTION_SEND)
         c.composer = FakeComposer()
-        c.tapKind(KeyKind.MODE)
+        c.tapKind(KeyKind.ABC_TOGGLE)
         c.tap("h"); c.tap("i")
         c.tapKind(KeyKind.ENTER)
         assertEquals("HI", f.out.toString())
@@ -283,8 +297,64 @@ class KeyboardControllerTest {
 
     @Test fun modeKeyDoesNothingUntilPhoneticModesAreLoaded() {
         val (c, _) = setup()
-        c.tapKind(KeyKind.MODE)
-        assertEquals(TypingMode.ABC, c.effectiveMode)
+        c.tapKind(KeyKind.ABC_TOGGLE)
+        assertEquals(amAbc, c.effectiveMode)
         assertFalse(c.showCandidateStrip)
+    }
+
+    // ------------------------------------------------------------------ A1.4 switching (fake composer)
+
+    @Test fun enabledLanguagesComeFromTheInterface() {
+        val f = Fake()
+        val c = KeyboardController(f, EnabledLanguages { listOf("om", "en") }) {}
+        c.startField(InputProfile.from(T.TYPE_CLASS_TEXT, 0, false, 0))
+        c.composer = FakeComposer()
+        assertEquals("om", c.language)
+        assertEquals(listOf("om", "en"), c.availableLanguages())
+        c.tapKind(KeyKind.GLOBE)
+        assertEquals("en", c.language)
+        c.tapKind(KeyKind.GLOBE)
+        assertEquals("om", c.language)
+        assertEquals(listOf("Afaan Oromoo", "English"), c.layout.rows.flatten().first { it.kind == KeyKind.SPACE }.popup.map { it.label })
+    }
+
+    @Test fun nothingSwitchesWhileTheCoreIsNotLoaded() {
+        val (c, f) = setup()
+        assertTrue(c.availableLanguages().isEmpty())
+        c.tapKind(KeyKind.GLOBE); c.tapKind(KeyKind.ABC_TOGGLE)
+        c.onLongPress(c.layout.rows.flatten().first { it.kind == KeyKind.GLOBE })
+        assertEquals(TypingMode.abc("am"), c.effectiveMode)
+        c.tap("a")
+        assertEquals("a", f.out.toString())
+    }
+
+    @Test fun layoutLoadedLaterIsPickedUpWithoutLosingTheChoice() {
+        val (c, _) = setup()
+        assertEquals(TypingMode.abc("am"), c.effectiveMode)
+        c.composer = FakeComposer(supported = setOf(TypingMode("am", LayoutKind.FIDEL)))
+        assertEquals(TypingMode("am", LayoutKind.FIDEL), c.effectiveMode)
+    }
+
+    @Test fun switchingFinishesTheCompositionBeforeTheModeChanges() {
+        val (c, f, fc) = phonetic()
+        c.tapKind(KeyKind.ABC_TOGGLE)
+        c.tap("a"); c.tap("b")
+        c.tapKind(KeyKind.GLOBE) // -> ti
+        assertEquals("AB", f.out.toString())
+        assertEquals("", f.composing)
+        assertEquals("setMode ${TypingMode("ti", LayoutKind.PHONETIC)}", fc.calls.last())
+    }
+
+    @Test fun autoCapitalAppliesToQubeeAndEnglishButNotPhonetic() {
+        val f = Fake().also { it.autoCaps = true }
+        val c = KeyboardController(f) {}
+        c.startField(InputProfile.from(T.TYPE_CLASS_TEXT or T.TYPE_TEXT_FLAG_CAP_SENTENCES, 0, false, 0))
+        c.composer = FakeComposer()
+        c.switchLanguage("om")
+        assertEquals(ShiftState.ONCE, c.shift)
+        c.switchLanguage("en")
+        assertEquals(ShiftState.ONCE, c.shift)
+        c.switchLanguage("am")
+        assertEquals(ShiftState.OFF, c.shift)
     }
 }

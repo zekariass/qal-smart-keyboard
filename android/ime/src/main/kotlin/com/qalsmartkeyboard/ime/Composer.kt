@@ -29,18 +29,14 @@ sealed interface ComposerKey {
     data object Space : ComposerKey
     data object Enter : ComposerKey
 
+    /** Direct Fidel, two-key entry: a consonant key (`FidelKey.series_id`). */
+    data class FidelConsonant(val seriesId: String) : ComposerKey
+
+    /** Direct Fidel, two-key entry: a vowel-order key (1..9). */
+    data class FidelVowel(val order: Int) : ComposerKey
+
     /** Commit any composition as it is (before an editor action, a mode switch, ...). */
     data object Commit : ComposerKey
-}
-
-/**
- * TEMPORARY (A1.3) typing modes, cycled by the mode key so Amharic/Tigrinya phonetic input can be
- * exercised before A1.4 (layouts, language switching) and A1.5 (saved per-language mode) exist.
- */
-enum class TypingMode(val label: String, val languageCode: String, val phonetic: Boolean) {
-    ABC("ABC", "en", false),
-    AM_PHONETIC("አማ", "am", true),
-    TI_PHONETIC("ትግ", "ti", true),
 }
 
 /**
@@ -58,11 +54,14 @@ interface Composer {
     /** Switches mode, dropping any composition (commit it first). False if [mode] is unavailable. */
     fun setMode(mode: TypingMode): Boolean
 
-    /** Modes whose data is loaded, in toggle order; always starts with [TypingMode.ABC]. */
-    val availableModes: List<TypingMode>
+    /** True when [mode]'s data is loaded (ABC is always supported). */
+    fun supports(mode: TypingMode): Boolean
 
-    /** True when [mode]'s transliteration profile is not native-speaker approved (rule N9). */
+    /** True when [mode]'s data (layout or profile) is not native-speaker approved (rule N9). */
     fun isDraft(mode: TypingMode): Boolean
+
+    /** The direct-Fidel layout data of [language] (also source of punctuation and numerals), if loaded. */
+    fun fidelGrid(language: String): FidelGrid?
 }
 
 /** ABC-only composer used until the core and its packs are loaded: text is committed as typed. */
@@ -73,11 +72,13 @@ class PassthroughComposer : Composer {
         ComposerKey.Enter -> ComposerUpdate(commit = "\n")
         ComposerKey.Backspace -> ComposerUpdate(deleteBefore = 1)
         ComposerKey.Commit -> ComposerUpdate.NONE
+        is ComposerKey.FidelConsonant, is ComposerKey.FidelVowel -> ComposerUpdate.NONE
     }
 
     override fun selectCandidate(index: Int) = ComposerUpdate.NONE
     override fun reset() {}
-    override fun setMode(mode: TypingMode) = mode == TypingMode.ABC
-    override val availableModes = listOf(TypingMode.ABC)
+    override fun setMode(mode: TypingMode) = supports(mode)
+    override fun supports(mode: TypingMode) = mode.kind == LayoutKind.ABC
     override fun isDraft(mode: TypingMode) = false
+    override fun fidelGrid(language: String): FidelGrid? = null
 }

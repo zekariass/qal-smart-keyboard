@@ -1,36 +1,94 @@
 package com.qalsmartkeyboard.ime
 
-/** What a key does when pressed. [MODE] is the TEMPORARY A1.3 typing-mode toggle (A1.4 replaces it). */
-enum class KeyKind { CHAR, SHIFT, BACKSPACE, SPACE, ENTER, MODE, TO_SYMBOLS, TO_SYMBOLS_2, TO_LETTERS }
+/**
+ * What a key does when pressed. [GLOBE] switches language (tap: next, long-press: cycle layouts),
+ * [ABC_TOGGLE] is the one-tap ABC <-> native switch (SD 7.1), [FIDEL_CONSONANT] / [FIDEL_VOWEL] are
+ * the two-key direct-Fidel entry (SD 7.2).
+ */
+enum class KeyKind {
+    CHAR, SHIFT, BACKSPACE, SPACE, ENTER, GLOBE, ABC_TOGGLE, TO_SYMBOLS, TO_SYMBOLS_2, TO_LETTERS,
+    FIDEL_CONSONANT, FIDEL_VOWEL,
+}
 
 /**
- * One key. [text] is what a CHAR key commits (lower-case for letters; shift upper-cases it).
- * [weight] is the relative width inside its row. A CHAR key with empty [text] is a layout spacer.
+ * One long-press choice. [text] is committed as a `Char`; when [language] is set the choice is a
+ * language of the picker instead.
  */
-data class Key(val kind: KeyKind, val label: String, val text: String = "", val weight: Float = 1f) {
+data class PopupItem(
+    val label: String,
+    val text: String = label,
+    val language: String? = null,
+    val description: String = label,
+    val selected: Boolean = false,
+)
+
+/**
+ * One key. [text] is what a CHAR key commits (lower-case for letters; shift upper-cases it); for
+ * [KeyKind.FIDEL_CONSONANT] it is the core series id. [weight] is the relative width inside its row.
+ * A CHAR key with empty [text] is a layout spacer. [popup] opens on long-press ([popupColumns]
+ * wide); [longAction] fires on long-press instead (globe). [hint] is a small corner label showing
+ * the first alternative. [order] is the vowel order of a FIDEL_VOWEL key.
+ */
+data class Key(
+    val kind: KeyKind,
+    val label: String,
+    val text: String = "",
+    val weight: Float = 1f,
+    val popup: List<PopupItem> = emptyList(),
+    val popupColumns: Int = 5,
+    val longAction: Boolean = false,
+    val hint: String = "",
+    val order: Int = 0,
+    val description: String = "",
+    val draftBadge: Boolean = false,
+) {
     val isLetter: Boolean get() = kind == KeyKind.CHAR && text.length == 1 && text[0].isLetter()
     val isSpacer: Boolean get() = kind == KeyKind.CHAR && text.isEmpty()
+
+    /** What an accessibility service should say for this key. */
+    val spoken: String get() = description.ifEmpty { label }
+
+    /** Acts on release (so a long-press can take over) instead of on press. */
+    val actsOnRelease: Boolean get() = popup.isNotEmpty() || longAction
 }
 
 enum class Page { LETTERS, SYMBOLS, SYMBOLS_2, NUMBER }
 
-class KeyboardLayout(val page: Page, val rows: List<List<Key>>)
+class KeyboardLayout(val page: Page, val rows: List<List<Key>>, val rowHeightDp: Float = 50f)
 
-/** ASCII QWERTY layouts (plan A1.2). Other scripts and language layouts arrive with A1.4. */
+/** What the layout builder needs to know about the current typing state. */
+data class LayoutContext(
+    /** The mode in force for this field (already ABC where transliteration is not allowed). */
+    val mode: TypingMode,
+    /** Direct-Fidel data for [TypingMode.language], when loaded. */
+    val grid: FidelGrid? = null,
+    /** The indicator text for the space bar (SD 7.1). */
+    val indicator: String = "",
+    /** The enabled languages for the space-bar picker. */
+    val picker: List<PopupItem> = emptyList(),
+    val draft: Boolean = false,
+) {
+    /** Ethiopic punctuation and numerals are offered while an Ethiopic language is typed natively. */
+    val ethiopic: Boolean get() = LanguageCatalog.isEthiopic(mode.language) && !mode.isAbc && grid != null
+
+    companion object {
+        val DEFAULT = LayoutContext(TypingMode.abc("en"))
+    }
+}
+
+/** Layouts: ASCII QWERTY (A1.2), Qubee, phonetic and the Fidel grid from core data (A1.4). */
 object Layouts {
     private fun ch(c: String, w: Float = 1f) = Key(KeyKind.CHAR, c, c, w)
     private fun chars(s: String) = s.map { ch(it.toString()) }
     private fun spacer(w: Float) = Key(KeyKind.CHAR, "", "", w)
-    private fun space(w: Float) = Key(KeyKind.SPACE, " ", " ", w)
-    private fun backspace(w: Float = 1.5f) = Key(KeyKind.BACKSPACE, "⌫", weight = w)
+    private fun backspace(w: Float = 1.5f) = Key(KeyKind.BACKSPACE, "⌫", weight = w, description = "Delete")
     private fun enter(w: Float = 1.5f) = Key(KeyKind.ENTER, "", weight = w)
+    private fun plainSpace(w: Float) = Key(KeyKind.SPACE, " ", " ", w, description = "Space")
 
-    private val digits = chars("1234567890")
-
-    fun forPage(page: Page, profile: InputProfile): KeyboardLayout = when (page) {
-        Page.LETTERS -> letters(profile)
-        Page.SYMBOLS -> symbols1()
-        Page.SYMBOLS_2 -> symbols2()
+    fun forPage(page: Page, profile: InputProfile, ctx: LayoutContext = LayoutContext.DEFAULT): KeyboardLayout = when (page) {
+        Page.LETTERS -> letters(profile, ctx)
+        Page.SYMBOLS -> symbols1(ctx)
+        Page.SYMBOLS_2 -> symbols2(ctx)
         Page.NUMBER -> number(profile)
     }
 
@@ -40,49 +98,135 @@ object Layouts {
         else -> Page.LETTERS
     }
 
-    private fun letters(profile: InputProfile): KeyboardLayout {
-        val toSym = Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.5f)
+    private fun digitRow(ctx: LayoutContext): List<Key> = "1234567890".map { d ->
+        val alts = if (ctx.ethiopic) ctx.grid?.digits?.get(d.toString()).orEmpty() else emptyList()
+        Key(
+            KeyKind.CHAR, d.toString(), d.toString(),
+            popup = alts.map { PopupItem(it, description = "Ethiopic numeral $it") },
+            hint = alts.firstOrNull().orEmpty(),
+        )
+    }
+
+    private fun spaceKey(w: Float, ctx: LayoutContext) = Key(
+        KeyKind.SPACE, ctx.indicator, " ", w,
+        popup = ctx.picker, popupColumns = 1,
+        description = "Space, ${LanguageCatalog.spokenName(ctx.mode.language)} ${LanguageCatalog.spokenKind(ctx.mode.kind)}",
+        draftBadge = ctx.draft,
+    )
+
+    private fun marks(ctx: LayoutContext, only: Set<String>? = null): List<PopupItem> =
+        if (!ctx.ethiopic) emptyList()
+        else ctx.grid?.punctuation.orEmpty().filter { only == null || it in only }
+            .map { PopupItem(it, description = "Ethiopic punctuation $it") }
+
+    private fun periodKey(ctx: LayoutContext): Key {
+        val m = marks(ctx)
+        return Key(KeyKind.CHAR, ".", ".", 0.75f, popup = m, popupColumns = 4, hint = m.firstOrNull()?.label.orEmpty())
+    }
+
+    private fun commaKey(ctx: LayoutContext): Key {
+        val m = marks(ctx, setOf("፣", "፤"))
+        return Key(KeyKind.CHAR, ",", ",", 0.75f, popup = m, popupColumns = 2, hint = m.firstOrNull()?.label.orEmpty())
+    }
+
+    private fun toggleKey(ctx: LayoutContext): Key? {
+        val lang = ctx.mode.language
+        if (lang == "en") return null // ABC and English are both plain Latin passthrough
+        return if (ctx.mode.isAbc) {
+            Key(KeyKind.ABC_TOGGLE, LanguageCatalog.nativeGlyph(lang), description = "Switch to ${LanguageCatalog.spokenName(lang)} keys")
+        } else {
+            Key(KeyKind.ABC_TOGGLE, "ABC", description = "Switch to ABC Latin keys")
+        }
+    }
+
+    private fun letters(profile: InputProfile, ctx: LayoutContext): KeyboardLayout {
+        val toSym = Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.25f, description = "Numbers and symbols")
         val bottom = when (profile.kind) {
-            FieldKind.EMAIL -> listOf(toSym, ch("@"), ch(","), space(3f), ch("."), enter())
-            FieldKind.URI -> listOf(toSym, ch("/"), space(2f), ch("."), Key(KeyKind.CHAR, ".com", ".com", 1.5f), enter())
-            // Plain text: the mode key (ABC / አማ / ትግ) sits next to ?123; its label is drawn live.
-            FieldKind.TEXT -> listOf(toSym, Key(KeyKind.MODE, "ABC", weight = 1.25f), ch(","), space(3.75f), ch("."), enter())
-            else -> listOf(toSym, ch(","), space(4f), ch("."), enter())
+            FieldKind.EMAIL -> listOf(toSym, ch("@"), ch(","), plainSpace(3f), ch("."), enter())
+            FieldKind.URI -> listOf(toSym, ch("/"), plainSpace(2f), ch("."), Key(KeyKind.CHAR, ".com", ".com", 1.5f), enter())
+            FieldKind.TEXT -> listOfNotNull(
+                toSym,
+                Key(KeyKind.GLOBE, "🌐", weight = 1f, longAction = true, description = "Switch language"),
+                toggleKey(ctx),
+                commaKey(ctx),
+                spaceKey(3f, ctx),
+                periodKey(ctx),
+                enter(),
+            )
+            else -> listOf(toSym, ch(","), plainSpace(4f), ch("."), enter())
+        }
+        if (ctx.mode.kind == LayoutKind.FIDEL && ctx.grid != null && profile.kind == FieldKind.TEXT) {
+            return fidel(ctx.grid, bottom)
+        }
+        val shiftRow = if (ctx.mode.kind == LayoutKind.QUBEE) {
+            // The apostrophe (hudhaa) is part of Oromo words, so it lives on the primary layer (SD 7.3).
+            listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.25f, description = "Shift")) + chars("zxcvbnm") +
+                Key(KeyKind.CHAR, "'", "'", description = "Apostrophe, hudhaa") + backspace(1.25f)
+        } else {
+            listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.5f, description = "Shift")) + chars("zxcvbnm") + backspace()
         }
         return KeyboardLayout(
             Page.LETTERS,
             listOf(
-                digits,
+                digitRow(ctx),
                 chars("qwertyuiop"),
                 listOf(spacer(0.5f)) + chars("asdfghjkl") + listOf(spacer(0.5f)),
-                listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.5f)) + chars("zxcvbnm") + listOf(backspace()),
+                shiftRow,
                 bottom,
             ),
         )
     }
 
+    /**
+     * The direct Fidel grid built from the core's layout data: consonant keys (tap = two-key
+     * consonant, or the default form in LONG_PRESS-only layouts; long-press = the orders and the
+     * labialised forms), a vowel-order row for TWO_KEY, then the bottom row.
+     */
+    private fun fidel(grid: FidelGrid, bottom: List<Key>): KeyboardLayout {
+        val rows = grid.rows.map { row ->
+            row.map { k ->
+                val popup = if (grid.longPress) k.forms.map { PopupItem(it.label, it.text) } else emptyList()
+                if (grid.twoKey) {
+                    Key(KeyKind.FIDEL_CONSONANT, k.label, k.seriesId, popup = popup, description = k.label)
+                } else {
+                    Key(KeyKind.CHAR, k.label, k.tapText, popup = popup, description = k.label)
+                }
+            }
+        }.toMutableList()
+        rows[rows.lastIndex] = rows.last() + backspace(1f)
+        if (grid.twoKey && grid.vowelKeys.isNotEmpty()) {
+            rows += listOf(grid.vowelKeys.map { Key(KeyKind.FIDEL_VOWEL, it.label, order = it.order, description = "Vowel order ${it.order} ${it.label}") })
+        }
+        rows += listOf(bottom)
+        return KeyboardLayout(Page.LETTERS, rows, rowHeightDp = 42f)
+    }
+
     private fun bottomSymbols() = listOf(
-        Key(KeyKind.TO_LETTERS, "ABC", weight = 1.5f), ch(","), space(4f), ch("."), enter(),
+        Key(KeyKind.TO_LETTERS, "ABC", weight = 1.5f, description = "Letters"), ch(","), plainSpace(4f), ch("."), enter(),
     )
 
-    private fun symbols1() = KeyboardLayout(
-        Page.SYMBOLS,
-        listOf(
-            digits,
-            chars("@#$%&-+()/"),
-            chars("*\"':;!?~`|"),
-            listOf(Key(KeyKind.TO_SYMBOLS_2, "=\\<", weight = 1.5f)) + chars(",._") + listOf(backspace()),
-            bottomSymbols(),
-        ),
-    )
+    private fun symbols1(ctx: LayoutContext): KeyboardLayout {
+        val marks = if (ctx.ethiopic) ctx.grid?.punctuation.orEmpty() else emptyList()
+        val rows = buildList {
+            add(digitRow(ctx))
+            if (marks.isNotEmpty()) {
+                add(marks.map { Key(KeyKind.CHAR, it, it, description = "Ethiopic punctuation $it") })
+            }
+            add(chars("@#$%&-+()/"))
+            add(chars("*\"':;!?~`|"))
+            add(listOf(Key(KeyKind.TO_SYMBOLS_2, "=\\<", weight = 1.5f, description = "More symbols")) + chars(",._") + listOf(backspace()))
+            add(bottomSymbols())
+        }
+        return KeyboardLayout(Page.SYMBOLS, rows, if (rows.size > 5) 44f else 50f)
+    }
 
-    private fun symbols2() = KeyboardLayout(
+    private fun symbols2(ctx: LayoutContext) = KeyboardLayout(
         Page.SYMBOLS_2,
         listOf(
-            digits,
+            digitRow(ctx),
             chars("~`|^{}[]<>"),
             chars("=\\£€¥°©®™•"),
-            listOf(Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.5f)) + chars(",._;:") + listOf(backspace()),
+            listOf(Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.5f, description = "Numbers and symbols")) + chars(",._;:") + listOf(backspace()),
             bottomSymbols(),
         ),
     )
@@ -98,7 +242,7 @@ object Layouts {
                 chars("789") + ch(if (phone) ")" else ":"),
                 if (phone) listOf(ch("+"), ch("0"), ch("#"), backspace(1f))
                 else listOf(ch("."), ch("0"), ch("-"), backspace(1f)),
-                listOf(space(3f), enter(1f)),
+                listOf(plainSpace(3f), enter(1f)),
             ),
         )
     }
