@@ -14,6 +14,37 @@ See docs/Ethiopian_AI_Keyboard_Implementation_Plan_v2_0.md for the steps that po
   `X-Correlation-Id` (1-100 chars of `A-Za-z0-9._:-`) or generates a UUID, sets MDC key `correlationId`, echoes the header on every
   response and uses it as `correlationId` in Problems. Read it with `CorrelationId.current()`.
 
+## Outbox (B1.4)
+
+Modules publish domain events through the `platform` named interface `outbox`
+(`com.qalsmartkeyboard.platform.outbox`); persistence, dispatcher and scheduler wiring are package-private.
+
+```java
+@Transactional
+void activate(...) {
+    // domain change ...
+    outboxPublisher.publish("subscription", subscriptionId, "subscription.activated", Map.of("subscriptionId", subscriptionId));
+}
+```
+
+- `OutboxPublisher.publish` throws `IllegalStateException` outside a transaction, so the event exists iff the domain change commits.
+  Ids are UUIDv7. **Payloads and `aggregateId` carry ids/metadata only, never user text** (keystrokes, drafts, transcripts, prompts, names).
+- Consume by declaring an `OutboxEventHandler` bean (`consumerName()`, `eventType()`, `handle(event)`).
+- Dispatch: a db-scheduler recurring task (`outbox-dispatcher`, core library; its Spring Boot starter targets Boot 3) claims due rows with
+  `FOR UPDATE SKIP LOCKED`, marks them PROCESSING with a lease, runs the handlers, then PUBLISHED. Safe on several instances.
+  There is no ordering guarantee between events.
+- Failure: `attempts` increments on every claim (a crash counts), the error class name (never the message) is stored in `last_error`,
+  `available_at` moves by exponential backoff with equal jitter (`base-backoff` doubling, capped by `max-backoff`), and the event is DEAD at `max_attempts` (default 10).
+  A PROCESSING row whose `locked_until` has passed is reclaimed.
+- **Idempotent consumers:** delivery is at-least-once, but before calling a handler the dispatcher inserts `(consumerName, eventId)` into
+  `processed_events` in the same transaction as the handler's writes; a redelivery is skipped and a handler failure rolls both back.
+  Writes through the Spring-managed transaction are therefore applied once per event id. External side effects must use `event.id()` as an
+  idempotency key. Keep `consumerName` stable. `processed_events` purge belongs to B6.3.
+- Config (`qal.outbox.*`): `dispatcher-enabled` (true), `poll-interval` (1s), `batch-size` (20), `lease` (60s; must exceed handler time), `base-backoff` (5s), `max-backoff` (1h).
+- Metrics: `qal.outbox.attempts{outcome=published|failed|dead|lease_reclaimed}`, `qal.outbox.duplicates.skipped`, gauges `qal.outbox.pending`, `qal.outbox.dead`.
+  Logs carry event id and type only.
+- Schema: `V2__outbox_scheduler.sql` adds db-scheduler's `scheduled_tasks` and `processed_events`.
+
 ## Contract tests
 
 Controller tests validate every response against `contracts/openapi.yaml` (OpenAPI 3.1) by adding one annotation:
