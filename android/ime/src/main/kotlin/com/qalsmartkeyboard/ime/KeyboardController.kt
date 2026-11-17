@@ -16,6 +16,8 @@ class KeyboardController(
     private val sink: TextSink,
     /** The languages the user enabled, in switching order (A1.5's settings store supplies this). */
     private val languages: EnabledLanguages = DefaultEnabledLanguages,
+    /** Remembered layouts, numeral style, haptics, key height (A1.5). */
+    val prefs: ModePreferences = InMemoryModePreferences(),
     private val onChanged: () -> Unit,
 ) {
     var profile: InputProfile = InputProfile.DEFAULT
@@ -35,15 +37,13 @@ class KeyboardController(
             onChanged()
         }
 
-    /** The language being typed (kept in memory; A1.5 persists it). */
+    /** The language being typed (first run: the first enabled language). */
     var language: String = languages.enabled().firstOrNull() ?: "en"
         private set
 
     /** The layout the user picked inside [language]; ABC is the one-tap toggle. */
-    private var kind: LayoutKind = LanguageCatalog.nativeKinds(language).firstOrNull() ?: LayoutKind.ABC
-
-    /** Last native layout per language, so the ABC toggle and language switches return to it (in memory). */
-    private val lastNative = HashMap<String, LayoutKind>()
+    private var kind: LayoutKind =
+        prefs.lastNative(language) ?: prefs.preferredKind(language) ?: LanguageCatalog.nativeKinds(language).firstOrNull() ?: LayoutKind.ABC
 
     /**
      * The user's mode, falling back to ABC while its data is not loaded (before the core is ready,
@@ -66,7 +66,7 @@ class KeyboardController(
 
     /** The strip is shown for phonetic modes only, and never in password fields. */
     val showCandidateStrip: Boolean
-        get() = effectiveMode.phonetic && profile.kind != FieldKind.PASSWORD
+        get() = effectiveMode.phonetic && profile.kind != FieldKind.PASSWORD && prefs.showCandidates(language)
 
     /** The active profile or layout is DRAFT: the UI must say it is not verified (rule N9). */
     val candidatesAreDraft: Boolean
@@ -83,22 +83,54 @@ class KeyboardController(
             return LanguageCatalog.indicator(m, if (m.isAbc) nativeToReturnTo() else null)
         }
 
+    /**
+     * The settings changed (A1.5): drop cached layouts, and if the current language was disabled
+     * move to the first available one. Safe to call at any time.
+     */
+    private var settled = false
+
+    fun onPreferencesChanged() {
+        cachedLayout = null
+        val all = availableLanguages()
+        val first = languages.enabled().firstOrNull()
+        // The first settings load decides the starting language; later edits only move away from a disabled one.
+        val moveToFirst = !settled && first != null && first != language
+        settled = true
+        if (moveToFirst && first != null) {
+            send(ComposerKey.Commit)
+            language = first
+            kind = prefs.lastNative(first) ?: prefs.preferredKind(first) ?: LanguageCatalog.nativeKinds(first).firstOrNull() ?: LayoutKind.ABC
+            afterSwitch()
+        } else if (all.isNotEmpty() && language !in all && language !in languages.enabled()) {
+            send(ComposerKey.Commit)
+            language = all.first()
+            kind = nativeToReturnTo(language) ?: LayoutKind.ABC
+            afterSwitch()
+        }
+        onChanged()
+    }
+
     private val gridCache = HashMap<String, FidelGrid?>()
 
     private fun grid(lang: String): FidelGrid? =
         if (gridCache.containsKey(lang)) gridCache[lang] else composer.fidelGrid(lang).also { gridCache[lang] = it }
 
-    private data class LayoutKey(val page: Page, val profile: InputProfile, val mode: TypingMode, val langs: List<String>)
+    private data class LayoutKey(
+        val page: Page, val profile: InputProfile, val mode: TypingMode, val langs: List<String>,
+        val ethiopicNumerals: Boolean, val heightScale: Float,
+    )
 
     private var cachedLayout: Pair<LayoutKey, KeyboardLayout>? = null
 
     val layout: KeyboardLayout
         get() {
             val m = effectiveMode
-            val key = LayoutKey(page, profile, m, availableLanguages())
+            val key = LayoutKey(page, profile, m, availableLanguages(), prefs.ethiopicNumerals, prefs.keyHeightScale)
             cachedLayout?.takeIf { it.first == key }?.let { return it.second }
-            val ctx = LayoutContext(m, grid(m.language), indicator, languagePicker(), composer.isDraft(m))
-            return Layouts.forPage(page, profile, ctx).also { cachedLayout = key to it }
+            val ctx = LayoutContext(m, grid(m.language), indicator, languagePicker(), composer.isDraft(m), prefs.ethiopicNumerals)
+            val base = Layouts.forPage(page, profile, ctx)
+            val scaled = KeyboardLayout(base.page, base.rows, base.rowHeightDp * prefs.keyHeightScale)
+            return scaled.also { cachedLayout = key to it }
         }
 
     fun startField(newProfile: InputProfile) {
@@ -189,7 +221,8 @@ class KeyboardController(
     }
 
     private fun nativeToReturnTo(lang: String = language): LayoutKind? =
-        lastNative[lang]?.takeIf { composer.supports(TypingMode(lang, it)) }
+        prefs.lastNative(lang)?.takeIf { composer.supports(TypingMode(lang, it)) }
+            ?: prefs.preferredKind(lang)?.takeIf { composer.supports(TypingMode(lang, it)) }
             ?: LanguageCatalog.nativeKinds(lang).firstOrNull { composer.supports(TypingMode(lang, it)) }
 
     /** Ends the open composition (committed as it is) before the mode changes: nothing is lost or typed twice. */
@@ -199,7 +232,7 @@ class KeyboardController(
 
     private fun setKind(newKind: LayoutKind) {
         kind = newKind
-        if (newKind != LayoutKind.ABC) lastNative[language] = newKind
+        if (newKind != LayoutKind.ABC) prefs.setLastNative(language, newKind)
     }
 
     private fun afterSwitch() {

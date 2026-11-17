@@ -23,3 +23,17 @@ qal:
       kek: ${QAL_LOCAL_KMS_KEK:}
     cloud-kms:
       key-name: ${QAL_CLOUD_KMS_KEY_NAME:}
+  # Phone OTP (B2.1, ADR 0006). Startup fails without a secret (base64 of >= 32 random bytes).
+  identity:
+    otp:
+      secret-key: ${QAL_OTP_SECRET_KEY:}
+    # Access tokens (B2.4, ADR 0006): ES256 key pair as PEM. Startup fails without it.
+    tokens:
+      signing-key:
+        key-id: ${QAL_JWT_KEY_ID:qal-1}
+        private-key: ${QAL_JWT_PRIVATE_KEY:}
+        public-key: ${QAL_JWT_PUBLIC_KEY:}
+  # SMS provider (B2.1). No default: 'log' (development only, refused under prod/production/staging).
+  notifications:
+    sms:
+      provider: ${QAL_SMS_PROVIDER:}

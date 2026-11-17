@@ -48,7 +48,10 @@ class ProblemDetailsContractTest {
 			return ProbeContract.validator();
 		}
 
-		/** Authentication is B2's concern; the probe endpoints are open. */
+		/**
+		 * Web slice: the probe paths are test-only and outside the contract's allow-list, so this test opens them instead
+		 * of loading the application's security chain (identity, B2.4).
+		 */
 		@Bean
 		SecurityFilterChain openChain(HttpSecurity http) throws Exception {
 			return http.authorizeHttpRequests(a -> a.anyRequest().permitAll()).csrf(c -> c.disable()).build();
@@ -176,6 +179,25 @@ class ProblemDetailsContractTest {
 		mvc.perform(get("/probe/quota")).andExpect(status().isTooManyRequests())
 				.andExpect(jsonPath("$.code").value("QUOTA_EXCEEDED"))
 				.andExpect(jsonPath("$.featureCode").value("TRANSLATE")).andExpect(jsonPath("$.creditBalance").value(0));
+	}
+
+	/** B2.1: ApiException carries response headers (Retry-After, RateLimit-*) next to the Problem body. */
+	@Test
+	void problemCarriesModuleSuppliedHeaders() throws Exception {
+		mvc.perform(get("/probe/rate-limited").header("X-Correlation-Id", "rl-1")).andExpect(status().isTooManyRequests())
+				.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+				.andExpect(header().string("Retry-After", "42")).andExpect(header().string("RateLimit-Limit", "5"))
+				.andExpect(header().string("RateLimit-Remaining", "0")).andExpect(header().string("RateLimit-Reset", "42"))
+				.andExpect(header().string("X-Correlation-Id", "rl-1")).andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+	}
+
+	@Test
+	void platformOwnedHeadersCannotBeOverriddenByModules() {
+		for (String reserved : new String[] { "Content-Type", "x-correlation-id", "Content-Length" }) {
+			assertThatThrownBy(() -> new ApiException(ApiErrorCode.RATE_LIMITED,
+					org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, null, java.util.List.of(), java.util.Map.of(),
+					java.util.Map.of(reserved, "x"))).isInstanceOf(IllegalArgumentException.class);
+		}
 	}
 
 	@Test

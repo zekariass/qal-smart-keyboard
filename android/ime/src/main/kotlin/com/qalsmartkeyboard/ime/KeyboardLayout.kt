@@ -67,9 +67,14 @@ data class LayoutContext(
     /** The enabled languages for the space-bar picker. */
     val picker: List<PopupItem> = emptyList(),
     val draft: Boolean = false,
+    /** numeralStyle ETHIOPIC: Ethiopic numerals are offered as alternatives for typed digits (SD 7.2). */
+    val ethiopicNumerals: Boolean = false,
 ) {
     /** Ethiopic punctuation and numerals are offered while an Ethiopic language is typed natively. */
     val ethiopic: Boolean get() = LanguageCatalog.isEthiopic(mode.language) && !mode.isAbc && grid != null
+
+    /** The Fidel grid layout: `.` and `,` tap the Ethiopic full stop and comma (ADR 0007). */
+    val fidelPunctuation: Boolean get() = mode.kind == LayoutKind.FIDEL && grid != null
 
     companion object {
         val DEFAULT = LayoutContext(TypingMode.abc("en"))
@@ -78,6 +83,8 @@ data class LayoutContext(
 
 /** Layouts: ASCII QWERTY (A1.2), Qubee, phonetic and the Fidel grid from core data (A1.4). */
 object Layouts {
+    private const val FULL_STOP = "።"
+    private const val ETHIOPIC_COMMA = "፣"
     private fun ch(c: String, w: Float = 1f) = Key(KeyKind.CHAR, c, c, w)
     private fun chars(s: String) = s.map { ch(it.toString()) }
     private fun spacer(w: Float) = Key(KeyKind.CHAR, "", "", w)
@@ -99,7 +106,7 @@ object Layouts {
     }
 
     private fun digitRow(ctx: LayoutContext): List<Key> = "1234567890".map { d ->
-        val alts = if (ctx.ethiopic) ctx.grid?.digits?.get(d.toString()).orEmpty() else emptyList()
+        val alts = if (ctx.ethiopicNumerals && ctx.ethiopic) ctx.grid?.digits?.get(d.toString()).orEmpty() else emptyList()
         Key(
             KeyKind.CHAR, d.toString(), d.toString(),
             popup = alts.map { PopupItem(it, description = "Ethiopic numeral $it") },
@@ -121,11 +128,28 @@ object Layouts {
 
     private fun periodKey(ctx: LayoutContext): Key {
         val m = marks(ctx)
+        if (ctx.fidelPunctuation) {
+            // Fidel grid only (ADR 0007): tap = ። ; ASCII "." leads the popup, then the other marks.
+            val others = m.filter { it.label != FULL_STOP }
+            return Key(
+                KeyKind.CHAR, FULL_STOP, FULL_STOP, 0.75f,
+                popup = listOf(PopupItem(".", description = "Period")) + others, popupColumns = 4,
+                hint = ".", description = "Ethiopic full stop",
+            )
+        }
         return Key(KeyKind.CHAR, ".", ".", 0.75f, popup = m, popupColumns = 4, hint = m.firstOrNull()?.label.orEmpty())
     }
 
     private fun commaKey(ctx: LayoutContext): Key {
         val m = marks(ctx, setOf("፣", "፤"))
+        if (ctx.fidelPunctuation) {
+            val others = m.filter { it.label != ETHIOPIC_COMMA }
+            return Key(
+                KeyKind.CHAR, ETHIOPIC_COMMA, ETHIOPIC_COMMA, 0.75f,
+                popup = listOf(PopupItem(",", description = "Comma")) + others, popupColumns = 2,
+                hint = ",", description = "Ethiopic comma",
+            )
+        }
         return Key(KeyKind.CHAR, ",", ",", 0.75f, popup = m, popupColumns = 2, hint = m.firstOrNull()?.label.orEmpty())
     }
 

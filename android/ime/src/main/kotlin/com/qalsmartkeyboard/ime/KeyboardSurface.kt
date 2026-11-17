@@ -210,7 +210,7 @@ class KeyboardSurface(context: Context) : View(context) {
         val c = controller ?: return
         if (pressed[lpPointer] != p) return
         lpFired = true
-        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        if (c.prefs.hapticsEnabled) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         if (p.key.popup.isNotEmpty()) showPopup(p) else if (p.key.longAction) c.onLongPress(p.key)
     }
 
@@ -271,7 +271,7 @@ class KeyboardSurface(context: Context) : View(context) {
                 val id = e.getPointerId(i)
                 val p = hit(e.getX(i), e.getY(i)) ?: return true
                 pressed[id] = p
-                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                if (c.prefs.hapticsEnabled) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 if (p.key.actsOnRelease) {
                     // A new press while a popup is open cancels it.
                     if (popupOpen) dismissPopup()

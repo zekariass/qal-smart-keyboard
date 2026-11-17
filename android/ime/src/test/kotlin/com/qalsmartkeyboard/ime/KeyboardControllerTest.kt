@@ -8,6 +8,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class KeyboardControllerTest {
+    /** These tests start am on the Fidel grid (not loaded in the fake: ABC fallback), as before ADR 0007. */
+    private class FidelFirst : InMemoryModePreferences() {
+        override fun preferredKind(language: String) = if (LanguageCatalog.isEthiopic(language)) LayoutKind.FIDEL else null
+    }
+
     /** Applies updates to a plain string (one char per deleted cluster: tests use BMP text). */
     private class Fake : TextSink {
         val out = StringBuilder()
@@ -80,7 +85,7 @@ class KeyboardControllerTest {
     }
 
     private fun setup(type: Int = T.TYPE_CLASS_TEXT, opts: Int = 0, f: Fake = Fake()): Pair<KeyboardController, Fake> {
-        val c = KeyboardController(f) {}
+        val c = KeyboardController(f, prefs = FidelFirst()) {}
         c.startField(InputProfile.from(type, opts, false, 0))
         return c to f
     }
@@ -306,7 +311,7 @@ class KeyboardControllerTest {
 
     @Test fun enabledLanguagesComeFromTheInterface() {
         val f = Fake()
-        val c = KeyboardController(f, EnabledLanguages { listOf("om", "en") }) {}
+        val c = KeyboardController(f, EnabledLanguages { listOf("om", "en") }, FidelFirst()) {}
         c.startField(InputProfile.from(T.TYPE_CLASS_TEXT, 0, false, 0))
         c.composer = FakeComposer()
         assertEquals("om", c.language)
@@ -347,7 +352,7 @@ class KeyboardControllerTest {
 
     @Test fun autoCapitalAppliesToQubeeAndEnglishButNotPhonetic() {
         val f = Fake().also { it.autoCaps = true }
-        val c = KeyboardController(f) {}
+        val c = KeyboardController(f, prefs = FidelFirst()) {}
         c.startField(InputProfile.from(T.TYPE_CLASS_TEXT or T.TYPE_TEXT_FLAG_CAP_SENTENCES, 0, false, 0))
         c.composer = FakeComposer()
         c.switchLanguage("om")

@@ -120,6 +120,7 @@ tasks.withType<Test>().configureEach {
 
 dependencies {
     implementation(project(":core-bindings"))
+    implementation(project(":data"))
     implementation(libs.androidx.core.ktx)
     testImplementation(libs.junit)
     testImplementation(libs.jna.jvm)

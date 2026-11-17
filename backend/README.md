@@ -100,9 +100,114 @@ snapshot keeps being served.
   The headers are client-asserted: this is a compatibility gate, not a security control.
 - **Version comparison** is SemVer precedence (`1.10.0 > 1.9.0`); `2.1` means `2.1.0`; a pre-release is below its release
   (`2.0.0-beta.1 < 2.0.0`); build metadata (`+...`) is ignored. See `AppVersion`.
-- Until B2.4 adds a `SecurityFilterChain`, Spring Boot's default security answers 401 before any of this runs for anonymous
-  callers (the contract allows anonymous `/config`); the tests use a permit-all chain.
+- `/config` is anonymous in the security chain (B2.4). Protected endpoints authenticate first, so an anonymous call
+  to one gets 401 before the version gate runs.
 - `/config` never fails on bad client headers (the contract declares no 400 for it): they count as unknown.
+
+## Identity: phone OTP (B2.1, ADR 0006)
+
+Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST /api/v1/auth/otp/verify` (200
+`AuthSession`). Rules from SD 9.2:
+
+- **Numbers:** strict E.164 (contract pattern); `+251` numbers must be mobile (`+2519…`/`+2517…`, 9 digits), else 400
+  `VALIDATION_FAILED` (`INVALID_PHONE_NUMBER`).
+- **Codes:** 6 digits from `SecureRandom`, valid `qal.identity.otp.code-ttl` (5m). Stored only as a keyed hash bound to
+  the challenge id; the number only as a keyed hash plus an AES-GCM sealed copy (V3, needed to create the account on
+  verify). At most 5 wrong codes per challenge (`OTP_TOO_MANY_ATTEMPTS`, the challenge is then locked). A used,
+  superseded (a newer challenge exists for the number) or unknown challenge is `OTP_INVALID`; an expired one
+  `OTP_EXPIRED`. New accounts need `ageConfirmed: true` (400 otherwise; the code stays usable).
+- **Resend cooldown:** `qal.identity.otp.resend-cooldown` (60s) per number, enforced in PostgreSQL: 429 `RATE_LIMITED`
+  with `Retry-After`.
+- **Secret (required):** `qal.identity.otp.secret-key` / env `QAL_OTP_SECRET_KEY` = base64 of at least 32 random bytes
+  (`openssl rand -base64 32`). Without it startup fails. Tests use `qal.identity.otp.allow-ephemeral-secret-key=true`
+  (dev/test only, refused under `prod`/`production`/`staging`).
+- **Rate limits** (`qal.identity.otp.limits.<name>.capacity|period`, PROVISIONAL): `start-per-ip` 30/1h,
+  `start-per-phone` 5/1h, `start-per-phone-daily` 10/24h, `verify-per-ip` 60/1h, `verify-per-device` 20/1h (device =
+  `device.installationId` of the verify request). 429 `RATE_LIMITED` with `Retry-After` and `RateLimit-*`; a successful
+  start returns the caller's per-IP `RateLimit-*`.
+- **Client IP** is `request.getRemoteAddr()`. Behind a load balancer set `server.forward-headers-strategy` so the
+  container resolves `X-Forwarded-For` from the trusted proxy; never parse it in code.
+- **Metrics:** `qal.identity.otp.started{outcome,destination}`, `qal.identity.otp.verified{outcome}`,
+  `qal.identity.otp.lockouts`, `qal.ratelimit.rejected{policy}`.
+- **Logs:** never the code, the number (only masked by the SMS mock) or tokens; `PhoneOtpIT` captures all log events
+  of a flow and checks.
+
+## Identity: sessions and tokens (B2.4, ADR 0006)
+
+- **Access token:** ES256 JWT (`typ: at+jwt`, `kid`), lifetime `qal.identity.tokens.access-token-ttl` (15m, at most
+  15m). Claims: `iss` (`qal-smart-keyboard`), `aud` (`qal-api`), `sub` (user id), `sid` (session = refresh-token
+  family), `did` (device, once B2.5 registers devices), `accountType` (`REGISTERED`/`GUEST`), `iat`, `exp`, `jti`. No
+  personal data. Verification is stateless, so a revoked session's access token works until it expires (at most 15 min).
+- **Signing key (required):** `QAL_JWT_PRIVATE_KEY` (PKCS#8 PEM), `QAL_JWT_PUBLIC_KEY` (SPKI PEM), `QAL_JWT_KEY_ID`.
+  The pair must be P-256 and must match, otherwise startup fails:
+  ```sh
+  openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt -out jwt-private.pem
+  openssl ec -in jwt-private.pem -pubout -out jwt-public.pem
+  ```
+  Rotation: list retired public keys under `qal.identity.tokens.previous-keys[n].key-id|public-key` until their
+  tokens have expired. Tests use `qal.identity.tokens.signing-key.allow-ephemeral=true` (dev/test only, refused under
+  `prod`/`production`/`staging`).
+- **Refresh token:** opaque, 256 random bits (43 base64url characters). Only its SHA-256 is stored, as
+  `user_sessions.refresh_token_hash`. Lifetime `qal.identity.tokens.refresh-token-ttl` (60d), sliding: each rotation
+  starts a new period. `POST /api/v1/auth/refresh` rotates on every use. A new row is created in the same
+  `token_family_id`, and the old row becomes `ROTATED` with `replaced_by_session_id`.
+- **Reuse detection:** presenting a `ROTATED` token gives 401 `REFRESH_TOKEN_REUSED`. Every `ACTIVE` row of the family
+  is revoked (`TOKEN_REUSE`), `reuse_detected_at` is set, and the outbox event `identity.refresh_token.reuse_detected`
+  is published (`userId`, `tokenFamilyId`; notifications will tell the user). Two concurrent refreshes of one token are
+  serialised by a row lock. The second one sees a rotated token and is handled as reuse (SD 9.3), so a race can never
+  leave two valid successors.
+- Other refresh failures: expired gives `TOKEN_EXPIRED`. Unknown, revoked or a deleted/merged account gives
+  `UNAUTHENTICATED`. Suspended gives 403 `ACCOUNT_SUSPENDED`.
+- **Logout:** `POST /api/v1/auth/logout` (bearer) revokes the caller's family, or every family of the user with
+  `{"allDevices": true}`.
+- **Principal:** controllers take `@AuthenticationPrincipal com.qalsmartkeyboard.identity.AuthenticatedUser`
+  (`userId`, `sessionId`, `deviceId`, `accountType`).
+- **Metrics:** `qal.identity.sessions{event=issued|rotated|reuse_detected|expired|logout|logout_all}`.
+
+## Security chain (B2.4, OI-P11)
+
+`identity.security.ApiSecurityConfiguration` is the only `SecurityFilterChain`. It is stateless (no session, no CSRF,
+no form/basic login) and works as a resource server for the access tokens above.
+
+- **Anonymous**, from each operation's `security` in the contract:
+  - **Bearer optional** (`[{}, bearerAuth]`): `POST /auth/attestation-nonces`, `/auth/otp/start`, `/auth/otp/verify`,
+    `/auth/oauth/{provider}`, `/auth/email/register`, `/auth/email/login`; `GET /config`, `/ai/capabilities`,
+    `/languages`, `/languages/{code}/transliteration-profiles`, `/language-resources`, `/language-resources/{id}`,
+    `/resource-signing-keys`. A bearer token sent there must be valid (otherwise 401).
+  - **No bearer** (`[{}]` / `[]`): `POST /auth/password/forgot`, `/auth/password/reset`, `/auth/refresh`,
+    `/auth/guest`, `/billing/webhooks/{provider}/{account}`, `/billing/store-notifications/{provider}`, and
+    `/actuator/health`. The `Authorization` header is ignored there.
+  - `/partner/v1/**` is closed (401 `API_KEY_INVALID`) until partner API keys exist. User tokens are never accepted
+    there.
+- **Everything else**, unknown paths included, needs a valid access token. 401 is a contract Problem with correlation
+  id: `TOKEN_EXPIRED` for a correctly signed but expired token, otherwise `UNAUTHENTICATED`, with
+  `WWW-Authenticate: Bearer`. 403 is a `FORBIDDEN` Problem. Both are written by `platform.ProblemResponseWriter`.
+- New anonymous operations must be added to `identity.security.ApiPaths` together with the contract change.
+- Web-slice tests that need open paths can still declare their own permit-all chain (as `ConfigWebTest` and
+  `ProblemDetailsContractTest` do). To test with the real chain, `@Import({ApiSecurityConfiguration.class,
+  ServletProblemResponseWriter.class})` (see `OtpControllerTest`, `ApiSecurityWebTest`).
+
+## Rate limiting (platform, B2.1)
+
+`com.qalsmartkeyboard.platform.ratelimit` (named interface `ratelimit`):
+
+```java
+RateLimitPolicy perIp = new RateLimitPolicy("otp.start.ip", 30, Duration.ofHours(1));
+limiter.tryConsume(perIp, clientIp).orThrow(); // 429 RATE_LIMITED with Retry-After + RateLimit-* headers
+```
+
+Fixed window per key (Bucket4j `refillIntervally`), buckets in a bounded Caffeine cache per policy
+(`qal.ratelimit.local.max-keys-per-policy`, 100000). **In memory, per instance:** with N instances a client can get
+N times the limit. Replace with a distributed store (Bucket4j on PostgreSQL per SD 8.1, later Redis/Valkey) before
+running more than one instance. Use hashed or opaque keys, never raw personal data. `ApiException` can now carry
+response headers (`new ApiException(code, status, detail, errors, extensions, headers)`).
+
+## Notifications: SMS (B2.1)
+
+`notifications.OtpSender` delivers OTP messages through an `SmsProvider`. **Required:** `qal.notifications.sms.provider`
+/ env `QAL_SMS_PROVIDER`. Only `log` exists (development and tests; refused under `prod`/`production`/`staging`): it
+sends nothing and logs a masked number. To see codes locally set `qal.notifications.sms.log.include-message=true`
+(DEV ONLY). The real aggregator adapter comes with OI-11 (WireMock stub: `infra/compose/wiremock`, `/sms/v1/messages`).
 
 ## Contract tests
 
@@ -134,4 +239,6 @@ Android and iOS client generation are added with their own steps (A2.1, I-steps)
 
 `./mvnw verify` (CI: Java 25; locally `-Djava.version=21` on JDK 21). `QalSmartKeyboardApplicationTests` needs PostgreSQL at
 `DB_URL` (default `localhost:5434`); `*IT` classes use Testcontainers and need Docker. Running the application
-(`./mvnw spring-boot:run`) also needs the KMS settings above.
+(`./mvnw spring-boot:run`) also needs the KMS, OTP secret, SMS provider and access-token key settings above, e.g.
+`QAL_KMS_PROVIDER=local QAL_LOCAL_KMS_KEK=$(openssl rand -base64 32) QAL_OTP_SECRET_KEY=$(openssl rand -base64 32) QAL_SMS_PROVIDER=log`
+plus `QAL_JWT_PRIVATE_KEY`/`QAL_JWT_PUBLIC_KEY` from the openssl commands in "Identity: sessions and tokens".
