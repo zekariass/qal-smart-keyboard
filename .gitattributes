@@ -8,3 +8,5 @@ mvnw      text eol=lf
 *.png     binary
 *.webp    binary
 core/tests/vectors/** text eol=lf
+language-data/generated/** text eol=lf
+core/src/composer/fidel_table.rs text eol=lf
