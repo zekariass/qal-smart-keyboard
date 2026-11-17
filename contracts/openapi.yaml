@@ -3598,9 +3598,9 @@ components:
           enum: [SHARED, ANDROID, IOS]
         channel: { $ref: '#/components/schemas/ReleaseChannel' }
         artifactUrl: { type: string, format: uri, description: HTTPS CDN URL. }
-        sha256: { type: string, pattern: '^[0-9a-f]{64}$', description: SHA-256 of the artifact inside the container; equals the signed manifest value. }
-        sizeBytes: { type: integer, format: int64, minimum: 0, description: Artifact size inside the container; equals the signed manifest value. }
-        containerSizeBytes: { type: integer, format: int64, minimum: 0, description: Size of the whole container file, for download planning. }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$', description: "SHA-256 of the artifact inside the container; equals the signed manifest value." }
+        sizeBytes: { type: integer, format: int64, minimum: 0, description: "Artifact size inside the container; equals the signed manifest value." }
+        containerSizeBytes: { type: integer, format: int64, minimum: 0, description: "Size of the whole container file, for download planning." }
         baseResourceId: { type: string, format: uuid, description: Present for delta artifacts; apply only on top of this installed resource. }
         signatureKeyId: { type: string }
         minAppVersion: { type: string }
