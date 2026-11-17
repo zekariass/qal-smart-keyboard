@@ -73,7 +73,7 @@ class OtpSecretsTest {
 
 	static OtpProperties props(String key, boolean ephemeral) {
 		return new OtpProperties(key, ephemeral, Duration.ofMinutes(5), Duration.ofSeconds(60), 5,
-				new OtpProperties.Limits(null, null, null, null, null));
+				new OtpProperties.Limits(null, null, null, null, null, null));
 	}
 
 	@Test
@@ -109,7 +109,7 @@ class OtpSecretsTest {
 	@Test
 	void maxAttemptsIsCappedAtFive() {
 		assertThatThrownBy(() -> new OtpProperties(null, true, Duration.ofMinutes(5), Duration.ofSeconds(60), 6,
-				new OtpProperties.Limits(null, null, null, null, null))).isInstanceOf(IllegalArgumentException.class);
+				new OtpProperties.Limits(null, null, null, null, null, null))).isInstanceOf(IllegalArgumentException.class);
 	}
 
 	@Test

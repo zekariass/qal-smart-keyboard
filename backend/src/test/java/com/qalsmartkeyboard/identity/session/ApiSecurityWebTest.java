@@ -54,9 +54,9 @@ import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 
 /**
- * B2.4 / OI-P11: the real security chain in a web slice. Every response is validated against the contract; the
- * test-only operation {@value #PROTECTED} and a 401 on the optional-bearer operation {@code listResourceSigningKeys}
- * (not declared there: contract gap) are added in memory.
+ * B2.4 / OI-P11: the real security chain in a web slice. Every response is validated against the contract; only the
+ * test-only operation {@value #PROTECTED} is added in memory. The 401 of an optional-bearer operation and the 400/403
+ * of {@code refreshSession} are declared by the contract itself (ADR 0007 D9).
  */
 @WebMvcTest(AuthSessionController.class)
 @ContractValidated
@@ -107,8 +107,6 @@ class ApiSecurityWebTest {
 				PathItem item = new PathItem();
 				item.setGet(new Operation().responses(responses));
 				api.getPaths().addPathItem(PROTECTED, item);
-				api.getPaths().get("/api/v1/resource-signing-keys").getGet().getResponses()
-						.addApiResponse("401", shared.get("Unauthorized"));
 			});
 		}
 	}
@@ -224,6 +222,21 @@ class ApiSecurityWebTest {
 		mvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"refreshToken\":\"t\"}")).andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.code").value("TOKEN_EXPIRED"));
+	}
+
+	/** ADR 0007 D9 (2), (4): a suspended account is 403 and a malformed body is 400, both declared by the contract. */
+	@Test
+	void refreshSuspendedIs403AndMalformedIs400() throws Exception {
+		when(sessions.refresh(any(), any()))
+				.thenThrow(new ApiException(ApiErrorCode.ACCOUNT_SUSPENDED, HttpStatus.FORBIDDEN, null));
+		mvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"refreshToken\":\"t\"}")).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("ACCOUNT_SUSPENDED"));
+		for (String body : new String[] { "{\"refreshToken\":\"\"}", "{}", "{\"refreshToken\":\"" + "x".repeat(513) + "\"}",
+				"not json" }) {
+			mvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(body))
+					.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+		}
 	}
 
 	@Test

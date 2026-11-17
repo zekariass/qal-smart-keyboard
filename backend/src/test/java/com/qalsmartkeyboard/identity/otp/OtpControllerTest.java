@@ -64,7 +64,7 @@ class OtpControllerTest {
 	@Test
 	void startReturns202ChallengeWithCallerRateLimitHeaders() throws Exception {
 		UUID id = UUID.randomUUID();
-		when(service.start(eq("+251911234567"), any(), eq("am-ET"))).thenReturn(new StartedChallenge(id,
+		when(service.start(eq("+251911234567"), any(), isNull(), eq("am-ET"))).thenReturn(new StartedChallenge(id,
 				Instant.parse("2026-11-17T10:05:00Z"), Instant.parse("2026-11-17T10:01:00Z"), 6,
 				new RateLimitDecision(IP_POLICY, true, 29, Duration.ZERO, Duration.ofMinutes(60))));
 		mvc.perform(post(START).contentType(MediaType.APPLICATION_JSON).header("Accept-Language", "am-ET,en;q=0.5")
@@ -75,7 +75,7 @@ class OtpControllerTest {
 				.andExpect(jsonPath("$.codeLength").value(6)).andExpect(header().string("RateLimit-Limit", "30"))
 				.andExpect(header().string("RateLimit-Remaining", "29")).andExpect(header().exists("X-Correlation-Id"))
 				.andExpect(content().string(not(containsString("911234567"))));
-		verify(service).start(eq("+251911234567"), eq("127.0.0.1"), eq("am-ET"));
+		verify(service).start(eq("+251911234567"), eq("127.0.0.1"), isNull(), eq("am-ET"));
 	}
 
 	@Test
@@ -91,7 +91,7 @@ class OtpControllerTest {
 
 	@Test
 	void startRateLimitedIs429ProblemWithRetryAfterAndRateLimitHeaders() throws Exception {
-		when(service.start(any(), any(), any())).thenThrow(
+		when(service.start(any(), any(), any(), any())).thenThrow(
 				new RateLimitDecision(IP_POLICY, false, 0, Duration.ofSeconds(90), Duration.ofSeconds(90)).toProblem());
 		mvc.perform(post(START).contentType(MediaType.APPLICATION_JSON).content("{\"phoneNumber\":\"+251911234567\"}"))
 				.andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("RATE_LIMITED"))
@@ -102,11 +102,47 @@ class OtpControllerTest {
 
 	@Test
 	void startEthiopianLandlineIs400() throws Exception {
-		when(service.start(eq("+251111234567"), any(), any())).thenThrow(new ApiException(
+		when(service.start(eq("+251111234567"), any(), any(), any())).thenThrow(new ApiException(
 				ApiErrorCode.VALIDATION_FAILED, HttpStatus.BAD_REQUEST, null,
 				List.of(new ApiFieldError("phoneNumber", "INVALID_PHONE_NUMBER", "Must be a mobile number.")), Map.of()));
 		mvc.perform(post(START).contentType(MediaType.APPLICATION_JSON).content("{\"phoneNumber\":\"+251111234567\"}"))
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].code").value("INVALID_PHONE_NUMBER"));
+	}
+
+	/** ADR 0007 D9 (1): the optional {@code installationId} keys the per-device start limit. */
+	@Test
+	void startPassesTheInstallationIdAsTheDeviceKey() throws Exception {
+		UUID installation = UUID.randomUUID();
+		when(service.start(any(), any(), any(), any())).thenReturn(new StartedChallenge(UUID.randomUUID(),
+				Instant.parse("2026-11-17T10:05:00Z"), Instant.parse("2026-11-17T10:01:00Z"), 6,
+				new RateLimitDecision(IP_POLICY, true, 29, Duration.ZERO, Duration.ofMinutes(60))));
+		mvc.perform(post(START).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"phoneNumber\":\"+251911234567\",\"installationId\":\"" + installation + "\"}"))
+				.andExpect(status().isAccepted());
+		verify(service).start(eq("+251911234567"), eq("127.0.0.1"), eq(installation.toString()), isNull());
+
+		mvc.perform(post(START).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"phoneNumber\":\"+251911234567\",\"installationId\":\"not-a-uuid\"}"))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+				.andExpect(content().string(not(containsString("not-a-uuid"))));
+	}
+
+	/** ADR 0007 D9 (3): an invalid bearer on an optional-bearer operation stays a 401 (now declared). */
+	@Test
+	void startWithAnInvalidBearerTokenIs401() throws Exception {
+		mvc.perform(post(START).header("Authorization", "Bearer garbage").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"phoneNumber\":\"+251911234567\"}")).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+	}
+
+	/** ADR 0007 D9 (2): verify declares 403 for a suspended account. */
+	@Test
+	void verifySuspendedAccountIs403() throws Exception {
+		when(service.verify(any(), any(), anyBoolean(), any(), isNull(), any()))
+				.thenThrow(new ApiException(ApiErrorCode.ACCOUNT_SUSPENDED, HttpStatus.FORBIDDEN, null));
+		mvc.perform(post(VERIFY).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"challengeId\":\"" + UUID.randomUUID() + "\",\"code\":\"123456\"}"))
+				.andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCOUNT_SUSPENDED"));
 	}
 
 	@Test

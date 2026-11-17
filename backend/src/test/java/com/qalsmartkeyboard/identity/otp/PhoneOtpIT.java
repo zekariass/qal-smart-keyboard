@@ -43,6 +43,7 @@ import com.qalsmartkeyboard.testsupport.logging.CapturedLogs;
  */
 @SpringBootTest(properties = { "qal.outbox.dispatcher-enabled=false",
 		"qal.identity.otp.limits.start-per-ip.capacity=4", "qal.identity.otp.limits.start-per-ip.period=1h",
+		"qal.identity.otp.limits.start-per-device.capacity=3", "qal.identity.otp.limits.start-per-device.period=1h",
 		"qal.identity.otp.limits.start-per-phone.capacity=3", "qal.identity.otp.limits.start-per-phone.period=1h",
 		"qal.identity.otp.limits.verify-per-ip.capacity=12", "qal.identity.otp.limits.verify-per-ip.period=1h",
 		"qal.identity.otp.limits.verify-per-device.capacity=3", "qal.identity.otp.limits.verify-per-device.period=1h" })
@@ -291,6 +292,28 @@ class PhoneOtpIT {
 		verifyCode(UUID.randomUUID(), "123456", newIp(), true, installation).andExpect(status().isTooManyRequests())
 				.andExpect(jsonPath("$.code").value("RATE_LIMITED")).andExpect(header().string("RateLimit-Limit", "3"));
 		verifyCode(UUID.randomUUID(), "123456", newIp(), true, UUID.randomUUID()).andExpect(status().isUnauthorized());
+	}
+
+	/** ADR 0007 D9 (1): with an {@code installationId}, start is also limited per device, across numbers and IPs. */
+	@Test
+	void perDeviceStartLimit() throws Exception {
+		UUID installation = UUID.randomUUID();
+		for (int i = 0; i < 3; i++) {
+			startWithDevice(newPhone(), newIp(), installation).andExpect(status().isAccepted());
+		}
+		String phone = newPhone();
+		startWithDevice(phone, newIp(), installation).andExpect(status().isTooManyRequests())
+				.andExpect(jsonPath("$.code").value("RATE_LIMITED")).andExpect(header().string("RateLimit-Limit", "3"));
+		// another installation (or none) is not affected, and the rejected start did not touch the number
+		startWithDevice(phone, newIp(), UUID.randomUUID()).andExpect(status().isAccepted());
+	}
+
+	ResultActions startWithDevice(String phone, String ip, UUID installation) throws Exception {
+		return mvc.perform(post("/api/v1/auth/otp/start").with(r -> {
+			r.setRemoteAddr(ip);
+			return r;
+		}).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"phoneNumber\":\"" + phone + "\",\"installationId\":\"" + installation + "\"}"));
 	}
 
 	@Test
