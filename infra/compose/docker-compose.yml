@@ -1,0 +1,14 @@
+# Local dev stack. Plan step F0.4 will add MinIO and WireMock mock providers.
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: qal
+      POSTGRES_USER: qal
+      POSTGRES_PASSWORD: qal_dev_only
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+volumes:
+  pgdata:

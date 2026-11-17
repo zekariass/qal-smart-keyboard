@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: qal-smart-keyboard
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5434/qal}
+    username: ${DB_USER:qal}
+    password: ${DB_PASSWORD:qal_dev_only}
+  jpa:
+    hibernate:
+      ddl-auto: none   # schema is owned by Flyway (V1__baseline.sql)
+    open-in-view: false
+  flyway:
+    enabled: true
