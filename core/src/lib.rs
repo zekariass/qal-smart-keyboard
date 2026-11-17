@@ -23,6 +23,7 @@ pub mod translit;
 pub use composer::{FidelDigit, FidelForm, FidelKey, FidelLayout, FidelVowelKey};
 pub use engine::{
     Candidate, CandidateKind, EditorUpdate, EngineConfig, InputMode, KeyEvent, KeyboardEngine,
+    TranslitProfileInfo, TranslitProfileStatus,
 };
 pub use error::CoreError;
 pub use pack::{

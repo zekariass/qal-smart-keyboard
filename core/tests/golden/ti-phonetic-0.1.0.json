@@ -1,0 +1,119 @@
+{
+  "profile": "ti-phonetic",
+  "profile_version": "0.1.0",
+  "status": "DRAFT",
+  "profile_source": "language-data/profiles/ti-phonetic-draft.json",
+  "notation": "same as am-phonetic-0.1.0.json (see tests/golden/README.md)",
+  "vectors": [
+    {
+      "name": "tigray",
+      "keystrokes": ["t", "i", "g", "r", "a", "y"],
+      "composing": "ቲግራይ",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "selam-with-homophone-alternative",
+      "keystrokes": ["s", "e", "l", "a", "m", "Space"],
+      "steps": [{ "after": 5, "composing": "ሰላም", "commit": "", "alternatives": ["ሠላም"] }],
+      "composing": "",
+      "alternatives": [],
+      "committed": "ሰላም "
+    },
+    {
+      "name": "qhe-series-is-distinct-from-qe",
+      "keystrokes": ["q", "h", "e"],
+      "steps": [
+        { "after": 1, "composing": "ቅ", "commit": "", "alternatives": ["ቕ"] },
+        { "after": 2, "composing": "ቕ", "commit": "", "alternatives": ["ቅ"] }
+      ],
+      "composing": "ቐ",
+      "alternatives": ["ቀ"],
+      "committed": ""
+    },
+    {
+      "name": "qe-offers-qhe",
+      "keystrokes": ["q", "e"],
+      "composing": "ቀ",
+      "alternatives": ["ቐ"],
+      "committed": ""
+    },
+    {
+      "name": "xe-and-kha-are-the-xe-series",
+      "keystrokes": ["x", "e", "Space", "k", "h", "a"],
+      "steps": [{ "after": 3, "composing": "", "commit": "ኸ " }],
+      "composing": "ኻ",
+      "alternatives": [],
+      "committed": "ኸ "
+    },
+    {
+      "name": "labialised-qwe-and-qhwa",
+      "keystrokes": ["q", "W", "e", "Space", "q", "h", "W", "a"],
+      "steps": [{ "after": 4, "composing": "", "commit": "ቈ " }],
+      "composing": "ቛ",
+      "alternatives": ["ቋ"],
+      "committed": "ቈ "
+    },
+    {
+      "name": "labialised-gwa-kwa",
+      "keystrokes": ["g", "W", "a", "Space", "k", "W", "a"],
+      "composing": "ኳ",
+      "alternatives": [],
+      "committed": "ጓ "
+    },
+    {
+      "name": "initial-vowels-and-gemination",
+      "keystrokes": ["e", "t", "t", "a"],
+      "composing": "እታ",
+      "alternatives": ["አታ", "ዕታ"],
+      "committed": ""
+    },
+    {
+      "name": "digraphs-sh-ch-ny",
+      "keystrokes": ["s", "h", "e", "Space", "c", "h", "e", "Space", "n", "y", "e"],
+      "composing": "ኘ",
+      "alternatives": [],
+      "committed": "ሸ ቸ "
+    },
+    {
+      "name": "ejectives",
+      "keystrokes": ["t", "'", "a", "Space", "t", "s", "'", "o"],
+      "composing": "ጾ",
+      "alternatives": ["ፆ"],
+      "committed": "ጣ "
+    },
+    {
+      "name": "punctuation-full-stop-and-comma",
+      "keystrokes": ["h", "a", ",", ",", "a", ".", "."],
+      "composing": "",
+      "alternatives": [],
+      "committed": "ሃ፣አ።"
+    },
+    {
+      "name": "backspace-recomputes-digraph-and-series",
+      "keystrokes": ["q", "h", "e", "Backspace", "Backspace", "Backspace"],
+      "steps": [
+        { "after": 4, "composing": "ቕ", "commit": "" },
+        { "after": 5, "composing": "ቅ", "commit": "" },
+        { "after": 6, "composing": "", "commit": "" }
+      ],
+      "composing": "",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "protected-email",
+      "keystrokes": ["a", "@", "b", "Space"],
+      "composing": "",
+      "alternatives": [],
+      "committed": "a@b "
+    },
+    {
+      "name": "select-qhe-alternative",
+      "keystrokes": ["q", "e", "Select:1"],
+      "composing": "",
+      "alternatives": [],
+      "committed": "ቐ"
+    }
+  ]
+}

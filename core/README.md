@@ -26,8 +26,14 @@ content, nor put it in error messages. Tests use synthetic text only.
   `InvalidConfig` on a bad trusted key or limits), `load_pack(Vec<u8>) -> Result<PackInfo, CoreError>`,
   `loaded_packs() -> Vec<PackInfo>`, `set_input_mode(language_code, InputMode)`,
   `fidel_layout(language_code) -> Result<FidelLayout, CoreError>`,
+  `translit_profile(language_code) -> Result<TranslitProfileInfo, CoreError>` (profile id, version,
+  DRAFT or APPROVED, so hosts can honour N9),
   `on_key(KeyEvent) -> EditorUpdate`, `select_candidate(u32) -> EditorUpdate`,
   `reset() -> EditorUpdate`, `version() -> String`.
+- Phonetic input (C1.4): load a signed `TRANSLITERATION_RULES` pack (artifact =
+  `language-data/profiles/*-phonetic-draft.json`), then `set_input_mode(lang, PhoneticLatin)`. Every
+  `on_key` returns the composing text and `candidates` (index 0 is the composing text, the rest are
+  homophone alternatives, at most `max_candidates`); `select_candidate(i)` commits candidate `i`.
 - `EngineConfig { max_candidates, trusted_keys: Vec<TrustedKey>, pack_limits: Option<PackLimits> }`.
 - `TrustedKey { key_id, public_key (32 raw bytes), status: KeyStatus }`,
   `KeyStatus { Active, Retiring, Revoked }`,

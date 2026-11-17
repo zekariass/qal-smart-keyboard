@@ -2,7 +2,7 @@
 //!
 //! - Direct Fidel (C1.3): [`DirectFidel`] drives the consonant-key layouts described by a
 //!   `KEYBOARD_LAYOUT` pack ([`layout`], `docs/specs/keyboard-layout-v1.md`).
-//! - Phonetic composing buffer (C1.4): not yet implemented.
+//! - Phonetic composing buffer (C1.4): `crate::translit::PhoneticSession` (data-driven profiles).
 //!
 //! The syllable table is generated from Unicode character names by
 //! `language-data/scripts/gen_fidel_table.py`, never computed from code point offsets (the
@@ -12,6 +12,7 @@ mod direct;
 mod fidel_table;
 pub mod layout;
 
+pub(crate) use direct::sanitize;
 pub use direct::DirectFidel;
 pub use layout::{FidelDigit, FidelForm, FidelKey, FidelLayout, FidelVowelKey, Layout};
 

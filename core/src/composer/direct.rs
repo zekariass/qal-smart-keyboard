@@ -148,7 +148,7 @@ impl DirectFidel {
 /// empty, longer than [`MAX_CHAR_EVENT_CHARS`], or containing control characters other than
 /// newline and tab. Ethiopic syllables, punctuation and numerals pass through unchanged
 /// (they are already NFC); other text (digits, Latin, emoji) is passed through, normalised.
-fn sanitize(text: &str) -> Option<String> {
+pub(crate) fn sanitize(text: &str) -> Option<String> {
     if text.is_empty() || text.chars().count() > MAX_CHAR_EVENT_CHARS {
         return None;
     }
