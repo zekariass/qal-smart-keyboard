@@ -11,6 +11,8 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
 import com.qalsmartkeyboard.ime.packs.PackStorage
+import com.qalsmartkeyboard.ime.packs.installedProfiles
+import kotlinx.coroutines.runBlocking
 import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.data.SettingsSnapshot
 import uniffi.qal_keyboard_core.KeyboardEngine
@@ -73,7 +75,16 @@ class KeyboardImeService : InputMethodService() {
         val appContext = applicationContext
         Thread({
             val created = try {
-                PackStorage.create(appContext) { Log.w(TAG, it) }?.load()?.engine
+                PackStorage.create(appContext) { Log.w(TAG, it) }?.load()?.also { result ->
+                    // A1.5/A1.6 seam: retired profile codes in the settings fall back to the loaded
+                    // profile (F14); the "profile changed" flag is `SettingsRepository.profileChanges`.
+                    // We are on the loader thread, so blocking here is fine.
+                    try {
+                        runBlocking { SettingsRepository.get(appContext).applyInstalledProfiles(result.installedProfiles()) }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "profile fallback skipped: ${e.javaClass.simpleName}")
+                    }
+                }?.engine
             } catch (e: Exception) {
                 // Bad trust key, missing native library, ...: keep typing ABC. No content is logged.
                 Log.e(TAG, "core unavailable: ${e.javaClass.simpleName}")

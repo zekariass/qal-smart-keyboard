@@ -175,8 +175,9 @@ fn merged_list_is_capped_at_max_candidates() {
         assert!(u.candidates.len() <= max as usize, "max {max}");
         assert_eq!(u.candidates[0].text, "ሰላ");
     }
-    // With room for the alternative only, no lexicon candidate squeezes it out.
-    assert_eq!(texts(&typed(&with_max(2), "sela")), ["ሰላ", "ሠላ"]);
+    // U6: a completion keeps a reserved slot, so with room for one extra only the
+    // completion shows (it used to be the homophone, C1.4/A1.3).
+    assert_eq!(texts(&typed(&with_max(2), "sela")), ["ሰላ", "ሰላም"]);
 }
 
 #[test]
@@ -470,4 +471,141 @@ fn concurrent_loading_while_typing_is_safe() {
         }
     });
     assert!(texts(&typed(&e, "sela")).contains(&"ሰላም"));
+}
+
+// ---- ADR 0004 U6: homophones sorted by dictionary frequency, reserved completion slots ----
+
+/// "hasa" gives the literal ሃሳ and the homophones ሓሳ, ኃሳ, ሃሣ (C1.4 order).
+const HASA_C14: [&str; 4] = ["ሃሳ", "ሓሳ", "ኃሳ", "ሃሣ"];
+
+/// Phonetic AM engine with a synthetic dictionary and the given `max_candidates`.
+fn custom(max: u32, wordlist: &str) -> Arc<KeyboardEngine> {
+    let mut c = config(&[&active()], None);
+    c.max_candidates = max;
+    let e = KeyboardEngine::new(c).unwrap();
+    let lex = Lexicon::from_wordlist_text(wordlist.to_string());
+    e.load_pack(pack_of(
+        "am",
+        ResourceType::Dictionary,
+        "0.1.0",
+        &lex.to_bytes(),
+    ))
+    .unwrap();
+    phonetic(&e);
+    e
+}
+
+const HASA_WORDS: &str = "ሃሣ	900
+ኃሳ	500
+ሃሳብ	100
+ሃሳቡ	50
+ሃሳባት	10
+";
+
+#[test]
+fn homophones_are_sorted_by_dictionary_frequency() {
+    let u = typed(&custom(8, HASA_WORDS), "hasa");
+    assert_eq!(u.candidates[0].text, "ሃሳ");
+    // ሃሣ (900) before ኃሳ (500); the unknown ሓሳ keeps its place after the known ones.
+    assert_eq!(texts(&u)[..4], ["ሃሳ", "ሃሣ", "ኃሳ", "ሓሳ"]);
+    assert_eq!(
+        of_kind(&u, CandidateKind::Transliteration),
+        ["ሃሳ", "ሃሣ", "ኃሳ", "ሓሳ"]
+    );
+    assert!(of_kind(&u, CandidateKind::Completion).contains(&"ሃሳብ"));
+}
+
+#[test]
+fn unknown_homophones_keep_their_c14_order() {
+    let u = typed(
+        &custom(
+            8,
+            "ሃሳብ	100
+ሃሳቡ	50
+",
+        ),
+        "hasa",
+    );
+    assert_eq!(texts(&u)[..4], HASA_C14);
+    // Equal frequencies keep C1.4 order too (deterministic tie-break).
+    let u = typed(
+        &custom(
+            8,
+            "ኃሳ	7
+ሃሣ	7
+ሃሳብ	1
+",
+        ),
+        "hasa",
+    );
+    assert_eq!(texts(&u)[..4], ["ሃሳ", "ኃሳ", "ሃሣ", "ሓሳ"]);
+}
+
+#[test]
+fn completions_keep_two_reserved_slots() {
+    // max 4: literal + one homophone (the most frequent) + two completions.
+    let u = typed(&custom(4, HASA_WORDS), "hasa");
+    assert_eq!(texts(&u), ["ሃሳ", "ሃሣ", "ሃሳብ", "ሃሳቡ"]);
+    // max 3: literal + the reserved two; no homophone fits.
+    let u = typed(&custom(3, HASA_WORDS), "hasa");
+    assert_eq!(texts(&u), ["ሃሳ", "ሃሳብ", "ሃሳቡ"]);
+    // max 2: literal + one completion.
+    let u = typed(&custom(2, HASA_WORDS), "hasa");
+    assert_eq!(texts(&u), ["ሃሳ", "ሃሳብ"]);
+    // max 1: only the literal output.
+    assert_eq!(texts(&typed(&custom(1, HASA_WORDS), "hasa")), ["ሃሳ"]);
+    // One completion available: only that one slot is reserved, homophones fill the rest.
+    let u = typed(
+        &custom(
+            4,
+            "ሃሣ	900
+ሃሳብ	100
+",
+        ),
+        "hasa",
+    );
+    assert_eq!(texts(&u), ["ሃሳ", "ሃሣ", "ሓሳ", "ሃሳብ"]);
+}
+
+#[test]
+fn index_zero_is_the_literal_output_and_space_commits_it() {
+    let e = custom(8, HASA_WORDS);
+    let u = typed(&e, "hasa");
+    assert_eq!(u.candidates[0].text, u.composing);
+    assert_eq!(u.composing, "ሃሳ");
+    assert_eq!(e.on_key(KeyEvent::Space).commit, "ሃሳ ");
+}
+
+#[test]
+fn select_after_reorder_commits_the_shown_text() {
+    for max in [2, 3, 4, 8] {
+        let e = custom(max, HASA_WORDS);
+        let shown: Vec<String> = typed(&e, "hasa")
+            .candidates
+            .iter()
+            .map(|c| c.text.clone())
+            .collect();
+        for (i, want) in shown.iter().enumerate() {
+            let e = custom(max, HASA_WORDS);
+            typed(&e, "hasa");
+            let u = e.select_candidate(i as u32);
+            assert_eq!(u.commit, *want, "max {max} index {i}");
+        }
+        // Out of range changes nothing.
+        let u = e.select_candidate(shown.len() as u32);
+        assert_eq!(u.commit, "");
+    }
+}
+
+#[test]
+fn without_a_dictionary_u6_changes_nothing() {
+    for max in [1, 2, 5, 8] {
+        let mut c = config(&[&active()], None);
+        c.max_candidates = max;
+        let e = KeyboardEngine::new(c).unwrap();
+        phonetic(&e);
+        let u = typed(&e, "hasa");
+        let n = HASA_C14.len().min(max as usize);
+        assert_eq!(texts(&u), HASA_C14[..n], "max {max}");
+    }
 }

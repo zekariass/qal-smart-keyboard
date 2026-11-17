@@ -191,11 +191,16 @@ struct LangModel {
     ranker: Arc<Ranker>,
 }
 
+/// Slots of the strip kept for dictionary completions when the lexicon offers any (ADR 0004 U6).
+const RESERVED_COMPLETION_SLOTS: usize = 2;
+
 /// What a key event needs to look up lexicon candidates once the state lock is released.
 struct CompletionRequest {
     language: String,
     previous: Option<String>,
     generation: u64,
+    /// The composition's transliteration alternatives (after index 0), in C1.4 order.
+    homophones: Vec<String>,
 }
 
 /// The language engine. Internally synchronised, so it is `Send + Sync`.
@@ -679,15 +684,24 @@ impl KeyboardEngine {
             language: s.language.clone(),
             previous: s.context.previous.clone(),
             generation: s.generation,
+            homophones: s
+                .phonetic
+                .as_ref()
+                .map(|p| p.alternatives())
+                .unwrap_or_default(),
         })
     }
 
-    /// Appends lexicon candidates of the composition to `update` (A1.3 merge policy, ADR 0004):
-    /// transliteration alternatives keep their order and index 0 stays the default composition;
-    /// completions and one-edit corrections from the ranker follow, de-duplicated, up to
+    /// Merges lexicon candidates into the strip (A1.3 merge policy, ADR 0004 incl. the U6
+    /// amendment). Index 0 stays the literal rule output. The transliteration alternatives
+    /// follow sorted by dictionary frequency (known words first, most frequent first; unknown
+    /// ones keep their C1.4 order after them; ties keep C1.4 order). At least
+    /// [`RESERVED_COMPLETION_SLOTS`] slots go to completions and one-edit corrections from the
+    /// ranker whenever it offers any; the rest of the strip is filled in order, up to
     /// `max_candidates`. Nothing is applied automatically (harm guard): corrections are only
     /// offered. Ranking runs outside the state lock; if another call changed the state in the
     /// meantime the candidates are dropped, so `select_candidate` always matches the strip.
+    /// Without a dictionary for the language the C1.4 strip is returned unchanged.
     fn with_lexicon_candidates(
         &self,
         mut update: EditorUpdate,
@@ -697,33 +711,64 @@ impl KeyboardEngine {
             return update;
         };
         let max = usize::try_from(self.config.max_candidates).unwrap_or(usize::MAX);
-        if update.candidates.len() >= max {
+        if update.candidates.is_empty() || max <= 1 {
             return update;
         }
         let Some(model) = self.lock_models().get(&req.language).cloned() else {
             return update;
         };
-        let ranked = model.ranker.rank(
-            update.composing.clone(),
-            req.previous,
-            self.config.max_candidates,
-        );
-        let extra: Vec<(String, CandidateKind)> = ranked
+        // Ask for enough to survive removing the homophones that the ranker may also return.
+        let want = self
+            .config
+            .max_candidates
+            .saturating_add(u32::try_from(req.homophones.len()).unwrap_or(u32::MAX));
+        let ranked = model
+            .ranker
+            .rank(update.composing.clone(), req.previous, want);
+        let primary = update.candidates[0].text.clone();
+        // Stable sort: known words by descending frequency, unknown ones last, C1.4 order kept
+        // for ties and among the unknown.
+        let mut keyed: Vec<(Option<u32>, String)> = req
+            .homophones
             .into_iter()
-            .filter_map(|c| {
-                let kind = match c.kind {
-                    RankKind::Exact | RankKind::Variant | RankKind::Completion => {
-                        CandidateKind::Completion
-                    }
-                    RankKind::Correction => CandidateKind::Correction,
-                    RankKind::NextWord | RankKind::Frequent => return None,
-                };
-                Some((c.text, kind))
-            })
+            .map(|t| (model.lexicon.word_score(t.clone()), t))
             .collect();
-        if extra.is_empty() {
-            return update;
+        keyed.sort_by(|a, b| match (a.0, b.0) {
+            (Some(x), Some(y)) => y.cmp(&x),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        });
+        let homophones: Vec<String> = keyed.into_iter().map(|(_, t)| t).collect();
+        let mut completions: Vec<(String, CandidateKind)> = Vec::new();
+        for c in ranked {
+            let kind = match c.kind {
+                RankKind::Exact | RankKind::Variant | RankKind::Completion => {
+                    CandidateKind::Completion
+                }
+                RankKind::Correction => CandidateKind::Correction,
+                RankKind::NextWord | RankKind::Frequent => continue,
+            };
+            let text = c.text;
+            if !text.is_empty()
+                && text != primary
+                && !homophones.contains(&text)
+                && !completions.iter().any(|(t, _)| *t == text)
+            {
+                completions.push((text, kind));
+            }
         }
+        let reserved = completions.len().min(RESERVED_COMPLETION_SLOTS);
+        let hom_take = homophones.len().min((max - 1).saturating_sub(reserved));
+        let comp_take = completions.len().min(max - 1 - hom_take);
+        let mut merged = vec![(primary, CandidateKind::Transliteration)];
+        merged.extend(
+            homophones
+                .into_iter()
+                .take(hom_take)
+                .map(|t| (t, CandidateKind::Transliteration)),
+        );
+        merged.extend(completions.into_iter().take(comp_take));
         let mut s = self.lock();
         if s.generation != req.generation {
             return update;
@@ -731,13 +776,12 @@ impl KeyboardEngine {
         let Some(p) = s.phonetic.as_mut() else {
             return update;
         };
-        let added = p.extend_candidates(extra.iter().map(|(t, _)| t.clone()));
+        p.set_candidates(merged.iter().map(|(t, _)| t.clone()).collect());
         drop(s);
-        for text in added {
-            if let Some((_, kind)) = extra.iter().find(|(t, _)| *t == text) {
-                update.candidates.push(Candidate { text, kind: *kind });
-            }
-        }
+        update.candidates = merged
+            .into_iter()
+            .map(|(text, kind)| Candidate { text, kind })
+            .collect();
         update
     }
 
