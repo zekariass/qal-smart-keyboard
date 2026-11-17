@@ -34,6 +34,8 @@ jobs:
           node-version: 22
       - name: Lint OpenAPI contract
         run: npx --yes @redocly/cli@1 lint --format=github-actions contracts/openapi.yaml
+      - name: Generate client types and type-check them (B1.3)
+        run: backend/scripts/gen-client-types.sh "$RUNNER_TEMP/client-types"
 
   schema:
     name: Schema applies on PostgreSQL ${{ matrix.pg }}
