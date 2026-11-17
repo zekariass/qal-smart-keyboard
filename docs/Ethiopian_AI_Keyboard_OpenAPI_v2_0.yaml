@@ -168,7 +168,12 @@ paths:
       summary: Sign in with a Google or Apple ID token
       description: |
         Verifies the provider ID token (signature, audience, nonce, expiry) server-side.
-        Same guest-upgrade merge behaviour as OTP verification.
+        Same guest-upgrade merge behaviour as OTP verification. The account is found or created by
+        the provider and its `sub` claim only; an e-mail address never links to another account.
+        A provider the server cannot verify yet (Apple until its adapter exists) is a 400
+        `VALIDATION_FAILED` on `provider`. A rejected token is 401 `UNAUTHENTICATED`; a suspended
+        account gets 403 `ACCOUNT_SUSPENDED`; 503 `PROVIDER_UNAVAILABLE` means the issuer's signing
+        keys could not be fetched.
       security:
         - {}
         - bearerAuth: []
@@ -192,6 +197,9 @@ paths:
               schema: { $ref: '#/components/schemas/AuthSession' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/auth/email/register:
     post:
       tags: [Auth]

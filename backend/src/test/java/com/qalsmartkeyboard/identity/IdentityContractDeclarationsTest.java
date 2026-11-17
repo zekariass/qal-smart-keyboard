@@ -92,4 +92,24 @@ class IdentityContractDeclarationsTest {
 		List<?> contractValues = profile.getProperties().get("marketSource").getEnum();
 		assertThat(contractValues).map(Object::toString).containsExactlyElementsOf(sqlValues);
 	}
+
+	/** B2.2: the OAuth exchange declares what the server answers (suspended, rate limit, signing keys unavailable). */
+	@Test
+	void oauthExchangeDeclaresItsErrorStatusesAndTheProviderEnum() {
+		Operation exchange = op("/api/v1/auth/oauth/{provider}", PathItem.HttpMethod.POST);
+		assertThat(exchange.getResponses()).containsKeys("200", "400", "401", "403", "429", "503");
+		assertThat(exchange.getParameters().get(0).getSchema().getEnum()).containsExactly("GOOGLE", "APPLE");
+		assertThat(API.getComponents().getSchemas().get("OAuthExchangeRequest").getRequired())
+				.containsExactlyInAnyOrder("idToken", "nonce");
+	}
+
+	/** ADR 0007 D15: {@code GET /devices} follows the list convention and is bearer-protected. */
+	@Test
+	void listDevicesIsDeclaredWithCursorPaginationAndBearerAuth() {
+		Operation list = op("/api/v1/devices", PathItem.HttpMethod.GET);
+		assertThat(list.getOperationId()).isEqualTo("listDevices");
+		assertThat(list.getSecurity()).isNull();
+		assertThat(list.getParameters()).extracting(p -> p.getName()).containsExactlyInAnyOrder("cursor", "limit");
+		assertThat(list.getResponses()).containsKeys("200", "400", "401");
+	}
 }
