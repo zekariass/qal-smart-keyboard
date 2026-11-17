@@ -110,6 +110,17 @@ jobs:
       - name: Assemble and unit test
         run: ./gradlew --no-daemon :app:assemblePlayDebug :app:assembleDirectDebug testDebugUnitTest
 
+  language-data:
+    name: Language data eval harness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests (stdlib only)
+        run: python -m unittest discover -s language-data/eval/tests -v
+
   core:
     name: Rust keyboard-core
     runs-on: ubuntu-latest

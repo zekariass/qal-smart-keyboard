@@ -1,0 +1,9 @@
+{
+  "_comment": "Same as local-mock but every request carries X-Mock-Scenario: error, to verify errors are counted, not fatal.",
+  "providers": [
+    {"name": "mock-mt-error", "kind": "mt", "adapter": "mock_http", "base_url": "http://localhost:8089/ai", "timeout_s": 5, "headers": {"X-Mock-Scenario": "error"}},
+    {"name": "mock-mt-slow", "kind": "mt", "adapter": "mock_http", "base_url": "http://localhost:8089/ai", "timeout_s": 1, "headers": {"X-Mock-Scenario": "slow"}}
+  ],
+  "testsets": [{"name": "sample", "path": "../testsets/sample", "task": "translation"}],
+  "language_pairs": ["en-am"]
+}

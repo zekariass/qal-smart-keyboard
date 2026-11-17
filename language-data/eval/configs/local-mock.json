@@ -1,0 +1,13 @@
+{
+  "_comment": "Targets the WireMock stack: docker compose -f infra/compose/docker-compose.yml up -d wiremock",
+  "providers": [
+    {"name": "mock-mt", "kind": "mt", "adapter": "mock_http", "base_url": "http://localhost:8089/ai", "timeout_s": 5},
+    {"name": "mock-llm", "kind": "llm", "adapter": "mock_http", "base_url": "http://localhost:8089/ai", "timeout_s": 5},
+    {"name": "mock-asr", "kind": "asr", "adapter": "mock_http", "base_url": "http://localhost:8089/ai", "timeout_s": 5}
+  ],
+  "testsets": [
+    {"name": "sample", "path": "../testsets/sample", "task": "translation"},
+    {"name": "sample_asr", "path": "../testsets/sample_asr", "task": "asr"}
+  ],
+  "language_pairs": ["en-am", "am-en", "en-ti", "en-om", "am-am"]
+}

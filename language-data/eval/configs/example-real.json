@@ -1,0 +1,13 @@
+{
+  "_comment": "TEMPLATE ONLY. Placeholders, no keys. Keys are read from the environment variable named in api_key_env. 'vendor_x_mt' is a hypothetical adapter you would add under qal_eval/adapters/.",
+  "providers": [
+    {"name": "vendor-x-mt", "kind": "mt", "adapter": "vendor_x_mt", "base_url": "https://api.example-mt.invalid", "api_key_env": "VENDOR_X_API_KEY", "timeout_s": 20, "model": "PLACEHOLDER-MODEL"},
+    {"name": "vendor-y-llm", "kind": "llm", "adapter": "vendor_y_llm", "base_url": "https://api.example-llm.invalid", "api_key_env": "VENDOR_Y_API_KEY", "timeout_s": 60, "model": "PLACEHOLDER-MODEL"},
+    {"name": "vendor-z-asr", "kind": "asr", "adapter": "vendor_z_asr", "base_url": "https://api.example-asr.invalid", "api_key_env": "VENDOR_Z_API_KEY", "timeout_s": 60}
+  ],
+  "testsets": [
+    {"name": "flores200-devtest-subset", "path": "../testsets/flores200_subset", "task": "translation"},
+    {"name": "asr-native-panel-v1", "path": "../testsets/asr_panel_v1", "task": "asr"}
+  ],
+  "language_pairs": ["en-am", "am-en", "en-ti", "en-om"]
+}

@@ -32,3 +32,11 @@ DerivedData/
 
 # Rust
 core/target/
+
+# Python
+__pycache__/
+*.pyc
+
+# Evaluation outputs (may contain provider outputs)
+language-data/eval/results*.csv
+language-data/eval/*.jsonl

@@ -1,0 +1,20 @@
+{"id": "en-am-01", "source_lang": "en", "target_lang": "am", "source": "Hello", "reference": "ሰላም", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-am-02", "source_lang": "en", "target_lang": "am", "source": "Thank you", "reference": "አመሰግናለሁ", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-am-03", "source_lang": "en", "target_lang": "am", "source": "Where is the market?", "reference": "ገበያው የት ነው?", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-am-04", "source_lang": "en", "target_lang": "am", "source": "I am reading a book.", "reference": "እኔ መጽሐፍ አነባለሁ።", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-am-05", "source_lang": "en", "target_lang": "am", "source": "Water", "reference": "ውሃ", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "am-en-01", "source_lang": "am", "target_lang": "en", "source": "ሰላም", "reference": "Hello", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "am-en-02", "source_lang": "am", "target_lang": "en", "source": "አመሰግናለሁ", "reference": "Thank you", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "am-en-03", "source_lang": "am", "target_lang": "en", "source": "ገበያው የት ነው?", "reference": "Where is the market?", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "am-en-04", "source_lang": "am", "target_lang": "en", "source": "እኔ መጽሐፍ አነባለሁ።", "reference": "I am reading a book.", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "am-en-05", "source_lang": "am", "target_lang": "en", "source": "ውሃ", "reference": "Water", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-ti-01", "source_lang": "en", "target_lang": "ti", "source": "Hello", "reference": "ሰላም", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-ti-02", "source_lang": "en", "target_lang": "ti", "source": "Thank you", "reference": "የቐንየልና", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-ti-03", "source_lang": "en", "target_lang": "ti", "source": "Where is the market?", "reference": "ዕዳጋ ኣበይ ኣሎ?", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-ti-04", "source_lang": "en", "target_lang": "ti", "source": "I am reading a book.", "reference": "ሓደ መጽሓፍ ይንብብ ኣሎኹ።", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-ti-05", "source_lang": "en", "target_lang": "ti", "source": "Water", "reference": "ማይ", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-om-01", "source_lang": "en", "target_lang": "om", "source": "Hello", "reference": "Akkam", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-om-02", "source_lang": "en", "target_lang": "om", "source": "Thank you", "reference": "Galatoomaa", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-om-03", "source_lang": "en", "target_lang": "om", "source": "Where is the market?", "reference": "Gabaan eessa jira?", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-om-04", "source_lang": "en", "target_lang": "om", "source": "I am reading a book.", "reference": "Kitaaba dubbisaa jira.", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "en-om-05", "source_lang": "en", "target_lang": "om", "source": "Water", "reference": "Bishaan", "domain": "synthetic", "tags": ["not-a-benchmark"]}

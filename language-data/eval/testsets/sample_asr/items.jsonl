@@ -1,0 +1,2 @@
+{"id": "asr-am-01", "source_lang": "am", "audio": "audio/silence.wav", "reference": "ሰላም እንዴት ነህ", "domain": "synthetic", "tags": ["not-a-benchmark"]}
+{"id": "asr-am-02", "source_lang": "am", "audio": "audio/silence.wav", "reference": "ሰላም እንዴት ነሽ", "domain": "synthetic", "tags": ["not-a-benchmark"]}
