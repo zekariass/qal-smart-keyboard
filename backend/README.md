@@ -176,6 +176,35 @@ Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST 
   (`userId`, `sessionId`, `deviceId`, `accountType`).
 - **Metrics:** `qal.identity.sessions{event=issued|rotated|rotated_grace|reuse_detected|expired|logout|logout_all}`.
 
+## Devices (B2.5, ADR 0006)
+
+Module `devices` owns `user_devices`: `POST /api/v1/devices` (`registerDevice`), `PATCH /api/v1/devices/{deviceId}`
+(`updateDevice`) and `DELETE /api/v1/devices/{deviceId}` (`revokeDevice`); all need an access token.
+
+- **Register** is idempotent per user and installation id (`ux_user_device_installation`): the same row comes back and
+  the reported fields are refreshed (`null` keeps the stored value). Platform must be `ANDROID` or `IOS` (`WEB` has no
+  devices: 400), an installation never changes platform (400 `PLATFORM_MISMATCH`), and a present `X-Client-Platform`
+  header must equal the body's platform. `X-App-Version` fills `appVersion` when the body has none (also on PATCH).
+  A REVOKED device registered again becomes ACTIVE with its attestation reset. `distribution_channel` stays `OTHER`
+  (the contract carries no channel).
+- **List:** the contract has no `GET /devices`, so there is no endpoint; `DeviceService.list(userId)` exists for it.
+- **Ownership:** every lookup is by device id and the caller's user id. A foreign, unknown or (for PATCH) revoked device is
+  the same 404 `NOT_FOUND`. DELETE of an already revoked device is 204 again.
+- **Push token:** write-only (never returned, never logged), stored in `push_token` as the V1 column defines it (plain:
+  the unique active-token index must recognise a token that moves between accounts; it is a delivery address, not user
+  content, so it is not sealed with `UserDataEncryption`). Provider is derived from the platform (`FCM`/`APNS`) and a
+  mismatching `pushProvider` is a 400. An empty `pushToken` on PATCH clears it. A token already held by another ACTIVE
+  device moves to the newest registration. Revocation drops the token.
+- **Device and session (`did`):** identity depends on no devices code. `identity.DeviceRegistrar` (port, implemented by
+  `devices`) is called while a sign-in issues its session, so OTP verify with a `device` member registers it and the
+  session row, and every access token of that family, carry the device (`AuthSession.deviceId`, claim `did`); `WEB`
+  devices are skipped. `POST /devices` binds the caller's session family when it has no device yet (the next refresh
+  returns a token with `did`; the current access token is not reissued). `DELETE` calls `identity.DeviceSessions` in
+  the same transaction: every family bound to the device is revoked (`DEVICE_REVOKED`), so its refresh token gets
+  `UNAUTHENTICATED`. Access tokens already issued still verify for up to 15 minutes. The outbox event
+  `devices.device.revoked` (`userId`, `deviceId`, `revokedSessions`) has no consumer yet.
+- **Metrics:** `qal.devices{event=registered|refreshed|updated|revoked}`, `qal.identity.sessions{event=device_revoked}`.
+
 ## Security chain (B2.4, OI-P11)
 
 `identity.security.ApiSecurityConfiguration` is the only `SecurityFilterChain`. It is stateless (no session, no CSRF,

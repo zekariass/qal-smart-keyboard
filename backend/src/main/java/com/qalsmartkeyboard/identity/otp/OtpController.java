@@ -61,7 +61,8 @@ class OtpController {
 		String deviceKey = body.device() == null ? null : body.device().installationId().toString();
 		VerifiedSignIn signIn = service.verify(body.challengeId(), body.code(), Boolean.TRUE.equals(body.ageConfirmed()),
 				request.getRemoteAddr(), deviceKey,
-				new SessionContext(null, request.getRemoteAddr(), request.getHeader(HttpHeaders.USER_AGENT)));
+				new SessionContext(null, request.getRemoteAddr(), request.getHeader(HttpHeaders.USER_AGENT),
+						body.device() == null ? null : body.device().toDeviceInfo(request.getHeader("X-App-Version"))));
 		return ResponseEntity.ok().cacheControl(CacheControl.noStore())
 				.body(AuthSessionDto.of(signIn.session(), signIn.user(), signIn.created()));
 	}

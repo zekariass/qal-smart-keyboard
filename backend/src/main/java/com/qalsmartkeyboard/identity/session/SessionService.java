@@ -3,15 +3,19 @@ package com.qalsmartkeyboard.identity.session;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.qalsmartkeyboard.identity.AuthenticatedUser;
+import com.qalsmartkeyboard.identity.DeviceRegistrar;
+import com.qalsmartkeyboard.identity.DeviceSessions;
 import com.qalsmartkeyboard.identity.account.UserAccount;
 import com.qalsmartkeyboard.identity.account.UserAccountStore;
 import com.qalsmartkeyboard.identity.session.SessionStore.SessionRow;
@@ -52,7 +56,7 @@ import io.micrometer.core.instrument.MeterRegistry;
  * it unused (grace rotation; that use then presents a superseded token and revokes the family) or used (the family is
  * revoked). Failures return from the transaction (so revocations commit) and then become Problems.
  */
-public class SessionService implements SessionIssuer {
+public class SessionService implements SessionIssuer, DeviceSessions {
 
 	private static final Logger log = LoggerFactory.getLogger(SessionService.class);
 	static final String REUSE_EVENT = "identity.refresh_token.reuse_detected";
@@ -72,6 +76,7 @@ public class SessionService implements SessionIssuer {
 		}
 	}
 
+	private final ObjectProvider<DeviceRegistrar> devices;
 	private final SessionStore store;
 	private final UserAccountStore accounts;
 	private final AccessTokenService accessTokens;
@@ -83,9 +88,10 @@ public class SessionService implements SessionIssuer {
 	private final Clock clock;
 	private final MeterRegistry meters;
 
-	SessionService(SessionStore store, UserAccountStore accounts, AccessTokenService accessTokens,
+	SessionService(ObjectProvider<DeviceRegistrar> devices, SessionStore store, UserAccountStore accounts, AccessTokenService accessTokens,
 			RefreshTokens refreshTokens, OutboxPublisher outbox, TransactionTemplate transactions, Duration refreshTtl,
 			Duration reuseGrace, Clock clock, MeterRegistry meters) {
+		this.devices = devices;
 		this.store = store;
 		this.accounts = accounts;
 		this.accessTokens = accessTokens;
@@ -101,9 +107,26 @@ public class SessionService implements SessionIssuer {
 	/** Joins the caller's transaction (the sign-in proof commits with the session). */
 	@Override
 	public IssuedSession issue(UserAccount user, SessionContext context) {
-		IssuedSession session = newRow(user, UUID.randomUUID(), context, clock.instant());
+		IssuedSession session = newRow(user, UUID.randomUUID(), withDevice(user, context), clock.instant());
 		count("issued");
 		return session;
+	}
+
+	/**
+	 * Registers the installation named by a sign-in request (B2.5) so the session, and through it the access token's
+	 * {@code did}, carry the device. Skipped when the device is already known, when the request has none, or for
+	 * {@code WEB} (no device rows there). The registration failing (400) fails the whole sign-in transaction.
+	 */
+	private SessionContext withDevice(UserAccount user, SessionContext context) {
+		if (context.deviceId() != null || context.device() == null || !context.device().isNative()) {
+			return context;
+		}
+		DeviceRegistrar registrar = devices.getIfAvailable();
+		if (registrar == null) {
+			return context;
+		}
+		UUID deviceId = registrar.register(user.id(), context.device(), null);
+		return new SessionContext(deviceId, context.ipAddress(), context.userAgent(), null);
 	}
 
 	private IssuedSession newRow(UserAccount user, UUID familyId, SessionContext context, Instant now) {
@@ -254,6 +277,29 @@ public class SessionService implements SessionIssuer {
 			}
 		});
 		count(allDevices ? "logout_all" : "logout");
+	}
+
+	/** Joins the caller's transaction. Family locks first (stable order), so a concurrent rotation cannot be missed. */
+	@Override
+	public int revokeDeviceSessions(UUID userId, UUID deviceId) {
+		Instant now = clock.instant();
+		List<UUID> families = store.activeFamiliesOfDevice(userId, deviceId);
+		families.forEach(store::lockFamily);
+		int revoked = 0;
+		for (UUID family : families) {
+			revoked += store.revokeFamilyOfUser(family, userId, "DEVICE_REVOKED", now);
+		}
+		if (revoked > 0) {
+			count("device_revoked");
+		}
+		return revoked;
+	}
+
+	/** Joins the caller's transaction; takes the family lock like a rotation does. */
+	@Override
+	public boolean bindDeviceToSession(UUID userId, UUID sessionId, UUID deviceId) {
+		store.lockFamily(sessionId);
+		return store.bindDevice(sessionId, userId, deviceId) > 0;
 	}
 
 	private static ApiException problem(RefreshFailure failure) {

@@ -12,7 +12,8 @@ import java.util.UUID;
  *
  * @param userId      {@code users.id} ({@code sub})
  * @param sessionId   the refresh-token family ({@code sid}); stable across refreshes, revoked as a whole
- * @param deviceId    {@code user_devices.id} ({@code did}) or {@code null} until device registration (B2.5)
+ * @param deviceId    {@code user_devices.id} ({@code did}) or {@code null} when the session was created without one (it is bound by
+ *                    {@code POST /devices} and appears in the next refreshed access token)
  * @param accountType {@code REGISTERED} or {@code GUEST}
  */
 public record AuthenticatedUser(UUID userId, UUID sessionId, UUID deviceId, String accountType) {
