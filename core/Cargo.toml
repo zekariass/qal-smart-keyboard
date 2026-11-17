@@ -16,6 +16,10 @@ name = "uniffi-bindgen"
 path = "src/bin/uniffi-bindgen.rs"
 required-features = ["cli"]
 
+[[bin]]
+name = "qal-pack-verify"
+path = "src/bin/qal-pack-verify.rs"
+
 [features]
 # Enables the uniffi-bindgen binary (not needed by app builds).
 cli = ["uniffi/cli"]
