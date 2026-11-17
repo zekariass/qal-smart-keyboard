@@ -6,6 +6,7 @@ use crate::pack::{
     self, KeyRing, PackInfo, PackLimits, PackPlatform, PackRejectReason, ResourceType, TrustedKey,
     VerifiedPack,
 };
+use crate::translit::{PhoneticSession, Profile, ProfileStatus};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -82,12 +83,30 @@ pub struct EditorUpdate {
     pub candidates: Vec<Candidate>,
 }
 
+/// Review status of a transliteration profile. `Draft` profiles have not been approved by the
+/// native-speaker panel (gate G0); hosts must not present them as verified (rule N9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum TranslitProfileStatus {
+    Draft,
+    Approved,
+}
+
+/// Identity and review status of the phonetic profile loaded for a language.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TranslitProfileInfo {
+    pub profile_id: String,
+    pub profile_version: String,
+    pub status: TranslitProfileStatus,
+}
+
 #[derive(Debug)]
 struct State {
     mode: InputMode,
     composing: String,
     /// Active direct-Fidel session; `Some` exactly when `mode` is `DirectFidel`.
     direct: Option<DirectFidel>,
+    /// Active phonetic session; `Some` exactly when `mode` is `PhoneticLatin`.
+    phonetic: Option<PhoneticSession>,
 }
 
 /// Rollback-protection slot: one loaded pack per (language, resource type, platform).
@@ -103,7 +122,6 @@ pub struct KeyboardEngine {
     layouts: Mutex<HashMap<String, Arc<Layout>>>,
     key_ring: KeyRing,
     pack_limits: PackLimits,
-    #[allow(dead_code)] // max_candidates is used by the ranker from C1.7
     config: EngineConfig,
 }
 
@@ -123,6 +141,7 @@ impl KeyboardEngine {
                 mode: InputMode::Abc,
                 composing: String::new(),
                 direct: None,
+                phonetic: None,
             }),
             packs: Mutex::new(HashMap::new()),
             layouts: Mutex::new(HashMap::new()),
@@ -142,6 +161,9 @@ impl KeyboardEngine {
     ///   identical pack is an idempotent success;
     /// - a `KEYBOARD_LAYOUT` artifact must parse and validate as a layout for the manifest's
     ///   language (`InvalidArtifact` otherwise) before the pack is activated;
+    /// - a `TRANSLITERATION_RULES` artifact is parsed and validated as a phonetic profile when
+    ///   `set_input_mode(.., PhoneticLatin)` or `translit_profile` first needs it (`InvalidState`
+    ///   there), because transliteration packs of other kinds share the resource type;
     /// - delta packs (`baseResourceId` set) are verified, then rejected with
     ///   `DeltaNotSupported`: the host pack manager applies deltas and loads the full result.
     pub fn load_pack(&self, bytes: Vec<u8>) -> Result<PackInfo, CoreError> {
@@ -234,11 +256,43 @@ impl KeyboardEngine {
         } else {
             None
         };
+        // PhoneticLatin is data-driven too: it needs a verified TRANSLITERATION_RULES profile.
+        let phonetic = if mode == InputMode::PhoneticLatin {
+            let profile = self.profile_for(&language_code)?;
+            let max = usize::try_from(self.config.max_candidates).unwrap_or(usize::MAX);
+            Some(PhoneticSession::new(profile, max))
+        } else {
+            None
+        };
         let mut s = self.lock();
         s.mode = mode;
         s.composing.clear();
         s.direct = direct;
+        s.phonetic = phonetic;
         Ok(())
+    }
+
+    /// Identity and review status of the phonetic profile loaded for `language_code`, so the
+    /// host can refuse to present a `Draft` profile as verified (N9). `InvalidState` when no
+    /// `TRANSLITERATION_RULES` pack is loaded for it.
+    pub fn translit_profile(
+        &self,
+        language_code: String,
+    ) -> Result<TranslitProfileInfo, CoreError> {
+        if !SUPPORTED_LANGUAGES.contains(&language_code.as_str()) {
+            return Err(CoreError::UnsupportedLanguage {
+                code: language_code,
+            });
+        }
+        let p = self.profile_for(&language_code)?;
+        Ok(TranslitProfileInfo {
+            profile_id: p.profile_id().to_string(),
+            profile_version: p.profile_version().to_string(),
+            status: match p.status() {
+                ProfileStatus::Draft => TranslitProfileStatus::Draft,
+                ProfileStatus::Approved => TranslitProfileStatus::Approved,
+            },
+        })
     }
 
     /// The direct-Fidel layout loaded for `language_code`, for the host to render.
@@ -266,8 +320,15 @@ impl KeyboardEngine {
                 .map(|d| d.on_key(event))
                 .unwrap_or_default();
         }
+        if s.mode == InputMode::PhoneticLatin {
+            return s
+                .phonetic
+                .as_mut()
+                .map(|p| p.on_key(event))
+                .unwrap_or_default();
+        }
         if !matches!(s.mode, InputMode::Abc | InputMode::English) {
-            // Unreachable today: set_input_mode refuses modes that have not landed (C1.4, C1.5).
+            // Unreachable today: set_input_mode refuses modes that have not landed (C1.5).
             return EditorUpdate::default();
         }
         match event {
@@ -304,10 +365,15 @@ impl KeyboardEngine {
         }
     }
 
-    /// Select a candidate by index. No candidates exist yet, so this is a no-op update.
+    /// Select a candidate by index from the last update's `candidates`: the composing text is
+    /// replaced by it and committed (index 0 is the default composition). Other modes offer no
+    /// candidates yet, and an index that is out of range changes nothing.
     pub fn select_candidate(&self, index: u32) -> EditorUpdate {
-        let _ = index;
-        EditorUpdate::default()
+        let mut s = self.lock();
+        match s.phonetic.as_mut() {
+            Some(p) => p.select(usize::try_from(index).unwrap_or(usize::MAX)),
+            None => EditorUpdate::default(),
+        }
     }
 
     pub fn reset(&self) -> EditorUpdate {
@@ -315,6 +381,9 @@ impl KeyboardEngine {
         s.composing.clear();
         if let Some(d) = s.direct.as_mut() {
             d.reset();
+        }
+        if let Some(p) = s.phonetic.as_mut() {
+            p.reset();
         }
         EditorUpdate::default()
     }
@@ -335,13 +404,12 @@ fn mode_fits_language(mode: InputMode, language_code: &str) -> bool {
     }
 }
 
-/// Modes implemented in this build. DirectFidel is implemented (C1.3) but additionally needs a
-/// loaded layout, checked in `set_input_mode`. Extend as C1.4 (PhoneticLatin) and C1.5 (Qubee)
-/// land.
+/// Modes implemented in this build. DirectFidel (C1.3) and PhoneticLatin (C1.4) additionally
+/// need a loaded layout / profile, checked in `set_input_mode`. Extend as C1.5 (Qubee) lands.
 fn mode_available(mode: InputMode) -> bool {
     matches!(
         mode,
-        InputMode::Abc | InputMode::English | InputMode::DirectFidel
+        InputMode::Abc | InputMode::English | InputMode::DirectFidel | InputMode::PhoneticLatin
     )
 }
 
@@ -354,6 +422,41 @@ impl KeyboardEngine {
     fn lock_layouts(&self) -> MutexGuard<'_, HashMap<String, Arc<Layout>>> {
         // Entries are only inserted after full validation, so a poisoned map is still valid.
         self.layouts.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Parses the `TRANSLITERATION_RULES` artifact loaded for `language_code`. The pack was
+    /// verified at load time; the profile itself is validated here, when it is first needed, so
+    /// an invalid profile can only fail phonetic mode and never other pack types.
+    fn profile_for(&self, language_code: &str) -> Result<Arc<Profile>, CoreError> {
+        let pack = {
+            let packs = self.lock_packs();
+            [
+                PackPlatform::Shared,
+                PackPlatform::Android,
+                PackPlatform::Ios,
+            ]
+            .into_iter()
+            .find_map(|pl| {
+                packs.get(&(
+                    language_code.to_string(),
+                    ResourceType::TransliterationRules,
+                    pl,
+                ))
+            })
+            .cloned()
+        };
+        let pack = pack.ok_or_else(|| CoreError::InvalidState {
+            reason: format!("no transliteration profile is loaded for {language_code}"),
+        })?;
+        let profile = Profile::parse(pack.artifact()).map_err(|e| CoreError::InvalidState {
+            reason: e.to_string(),
+        })?;
+        if profile.language() != language_code {
+            return Err(CoreError::InvalidState {
+                reason: "profile language differs from the pack language".to_string(),
+            });
+        }
+        Ok(Arc::new(profile))
     }
 
     fn lock_packs(&self) -> MutexGuard<'_, HashMap<PackSlot, Arc<VerifiedPack>>> {

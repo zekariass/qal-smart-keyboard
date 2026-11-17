@@ -1,0 +1,75 @@
+{
+ "format": "qal-transliteration-profile",
+ "formatVersion": 1,
+ "language": "am",
+ "profileId": "am-phonetic",
+ "profileVersion": "0.1.0",
+ "status": "DRAFT",
+ "foldCase": true,
+ "collapseGemination": true,
+ "labialMarker": "W",
+ "separator": "_",
+ "labializedSeries": {"G": "GW", "Q": "QW", "K": "KW", "KX": "KXW", "X": "XW"},
+ "initial": {
+  "series": "GLOTTAL",
+  "altSeries": ["PHARYNGEAL"],
+  "overrides": [
+   {"in": "a", "order": 1, "altOrders": [4]},
+   {"in": "e", "order": 6, "altOrders": [1]}
+  ]
+ },
+ "consonants": [
+  {"in": "h", "series": "H", "alt": ["HH", "X"]},
+  {"in": "hh", "series": "HH"},
+  {"in": "l", "series": "L"},
+  {"in": "m", "series": "M"},
+  {"in": "r", "series": "R"},
+  {"in": "s", "series": "S", "alt": ["SZ"]},
+  {"in": "sh", "series": "SH"},
+  {"in": "q", "series": "Q"},
+  {"in": "b", "series": "B"},
+  {"in": "v", "series": "V"},
+  {"in": "t", "series": "T"},
+  {"in": "ch", "series": "C"},
+  {"in": "n", "series": "N"},
+  {"in": "ny", "series": "NY"},
+  {"in": "k", "series": "K"},
+  {"in": "kh", "series": "KX"},
+  {"in": "w", "series": "W"},
+  {"in": "z", "series": "Z"},
+  {"in": "zh", "series": "ZH"},
+  {"in": "y", "series": "Y"},
+  {"in": "d", "series": "D"},
+  {"in": "j", "series": "J"},
+  {"in": "g", "series": "G"},
+  {"in": "f", "series": "F"},
+  {"in": "p", "series": "P"},
+  {"in": "t'", "series": "TH"},
+  {"in": "ch'", "series": "CH"},
+  {"in": "p'", "series": "PH"},
+  {"in": "ts", "series": "TS", "alt": ["TZ"]},
+  {"in": "ts'", "series": "TS", "alt": ["TZ"]}
+ ],
+ "vowels": [
+  {"in": "e", "order": 1},
+  {"in": "u", "order": 2},
+  {"in": "i", "order": 3},
+  {"in": "a", "order": 4},
+  {"in": "ee", "order": 5},
+  {"in": "ie", "order": 5},
+  {"in": "I", "order": 6},
+  {"in": "o", "order": 7}
+ ],
+ "punctuation": [
+  {"in": "..", "out": "።"},
+  {"in": ",,", "out": "፣"},
+  {"in": ";;", "out": "፤"},
+  {"in": "::", "out": "፥"},
+  {"in": "??", "out": "፧"}
+ ],
+ "protected": {
+  "prefixes": ["http", "www"],
+  "chars": ["@"],
+  "terms": ["whatsapp", "telegram", "facebook", "youtube", "gmail"]
+ }
+}

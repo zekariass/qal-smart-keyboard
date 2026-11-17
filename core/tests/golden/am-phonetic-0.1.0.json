@@ -1,0 +1,382 @@
+{
+  "profile": "am-phonetic",
+  "profile_version": "0.1.0",
+  "status": "DRAFT",
+  "profile_source": "language-data/profiles/am-phonetic-draft.json",
+  "notation": "keystrokes: one character = Char key; Backspace / Space / Enter / Commit; Select:<n> = select_candidate(n). steps[].after = number of keystrokes applied; composing/commit/delete_before(default 0)/alternatives (candidates without the default) are checked after that keystroke. Per vector: composing, alternatives and committed are checked after the last keystroke; committed is the text left after applying all commits and deletions.",
+  "vectors": [
+    {
+      "name": "selam-live-composing",
+      "keystrokes": ["s", "e", "l", "a", "m"],
+      "steps": [
+        { "after": 1, "composing": "ስ", "commit": "", "alternatives": ["ሥ"] },
+        { "after": 2, "composing": "ሰ", "commit": "", "alternatives": ["ሠ"] },
+        { "after": 3, "composing": "ሰል", "commit": "", "alternatives": ["ሠል"] },
+        { "after": 4, "composing": "ሰላ", "commit": "", "alternatives": ["ሠላ"] }
+      ],
+      "composing": "ሰላም",
+      "alternatives": ["ሠላም"],
+      "committed": ""
+    },
+    {
+      "name": "selam-space-commits",
+      "keystrokes": ["s", "e", "l", "a", "m", "Space"],
+      "steps": [{ "after": 6, "composing": "", "commit": "ሰላም ", "alternatives": [] }],
+      "composing": "",
+      "alternatives": [],
+      "committed": "ሰላም "
+    },
+    {
+      "name": "two-words",
+      "keystrokes": ["e", "n", "e", "Space", "d", "e", "h", "n", "a"],
+      "steps": [
+        { "after": 3, "composing": "እነ", "commit": "", "alternatives": ["አነ", "ዕነ"] },
+        { "after": 4, "composing": "", "commit": "እነ " }
+      ],
+      "composing": "ደህና",
+      "alternatives": ["ደሕና", "ደኅና"],
+      "committed": "እነ "
+    },
+    {
+      "name": "initial-a-is-glottal-first-order",
+      "keystrokes": ["a", "m", "a", "n"],
+      "composing": "አማን",
+      "alternatives": ["ኣማን", "ዐማን"],
+      "committed": ""
+    },
+    {
+      "name": "initial-vowels-all-orders",
+      "keystrokes": ["a", "u", "e", "e", "i", "o"],
+      "steps": [
+        { "after": 1, "composing": "አ", "commit": "", "alternatives": ["ኣ", "ዐ"] },
+        { "after": 2, "composing": "አኡ", "commit": "" },
+        { "after": 3, "composing": "አኡእ", "commit": "" },
+        { "after": 4, "composing": "አኡኤ", "commit": "" },
+        { "after": 5, "composing": "አኡኤኢ", "commit": "" }
+      ],
+      "composing": "አኡኤኢኦ",
+      "alternatives": ["ኣኡኤኢኦ", "ዐኡኤኢኦ", "አዑኤኢኦ", "አኡዔኢኦ"],
+      "committed": ""
+    },
+    {
+      "name": "homophone-h-alternatives",
+      "keystrokes": ["h", "u", "l", "u"],
+      "composing": "ሁሉ",
+      "alternatives": ["ሑሉ", "ኁሉ"],
+      "committed": ""
+    },
+    {
+      "name": "sixth-order-final-consonant",
+      "keystrokes": ["b", "e", "t"],
+      "composing": "በት",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "explicit-sixth-order",
+      "keystrokes": ["s", "I"],
+      "composing": "ስ",
+      "alternatives": ["ሥ"],
+      "committed": ""
+    },
+    {
+      "name": "digraph-sh-longest-match-and-backspace",
+      "keystrokes": ["s", "h", "i", "Backspace", "Backspace"],
+      "steps": [
+        { "after": 1, "composing": "ስ", "commit": "" },
+        { "after": 2, "composing": "ሽ", "commit": "" },
+        { "after": 3, "composing": "ሺ", "commit": "" },
+        { "after": 4, "composing": "ሽ", "commit": "" }
+      ],
+      "composing": "ስ",
+      "alternatives": ["ሥ"],
+      "committed": ""
+    },
+    {
+      "name": "digraph-ch-and-w",
+      "keystrokes": ["c", "h", "a", "w"],
+      "composing": "ቻው",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "digraph-ny",
+      "keystrokes": ["n", "y", "a"],
+      "composing": "ኛ",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "fifth-order-ee-and-ie",
+      "keystrokes": ["s", "e", "e", "Space", "s", "i", "e"],
+      "steps": [{ "after": 4, "composing": "", "commit": "ሴ " }],
+      "composing": "ሴ",
+      "alternatives": ["ሤ"],
+      "committed": "ሴ "
+    },
+    {
+      "name": "meskel",
+      "keystrokes": ["m", "e", "s", "k", "e", "l"],
+      "composing": "መስከል",
+      "alternatives": ["መሥከል"],
+      "committed": ""
+    },
+    {
+      "name": "case-folding-sentence-capital",
+      "keystrokes": ["S", "e", "l", "a", "m"],
+      "composing": "ሰላም",
+      "alternatives": ["ሠላም"],
+      "committed": ""
+    },
+    {
+      "name": "labialised-gwa",
+      "keystrokes": ["g", "W", "a"],
+      "steps": [{ "after": 2, "composing": "ጕ", "commit": "" }],
+      "composing": "ጓ",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "labialised-own-wa-form",
+      "keystrokes": ["l", "W", "a"],
+      "composing": "ሏ",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "labiovelar-qwi-and-kwe",
+      "keystrokes": ["q", "W", "i", "Space", "k", "W", "e"],
+      "steps": [{ "after": 4, "composing": "", "commit": "ቊ " }],
+      "composing": "ኰ",
+      "alternatives": [],
+      "committed": "ቊ "
+    },
+    {
+      "name": "labialised-fallback-when-no-form",
+      "keystrokes": ["g", "W", "u"],
+      "composing": "ግዉ",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "lowercase-w-is-the-consonant",
+      "keystrokes": ["g", "w", "a"],
+      "composing": "ግዋ",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "initial-capital-w-is-the-consonant",
+      "keystrokes": ["W", "a"],
+      "composing": "ዋ",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "gemination-collapses",
+      "keystrokes": ["m", "e", "s", "s", "e", "r", "e", "t"],
+      "composing": "መሰረት",
+      "alternatives": ["መሠረት"],
+      "committed": ""
+    },
+    {
+      "name": "separator-blocks-collapse-and-digraph",
+      "keystrokes": ["s", "_", "s", "Space", "s", "_", "h"],
+      "steps": [{ "after": 4, "composing": "", "commit": "ስስ " }],
+      "composing": "ስህ",
+      "alternatives": ["ሥህ", "ስሕ", "ስኅ"],
+      "committed": "ስስ "
+    },
+    {
+      "name": "ejectives-and-affricates",
+      "keystrokes": ["t", "'", "e", "Space", "c", "h", "'", "a", "Space", "p", "'", "u"],
+      "steps": [
+        { "after": 2, "composing": "ጥ", "commit": "" },
+        { "after": 4, "composing": "", "commit": "ጠ " },
+        { "after": 9, "composing": "", "commit": "ጫ " }
+      ],
+      "composing": "ጱ",
+      "alternatives": [],
+      "committed": "ጠ ጫ "
+    },
+    {
+      "name": "ts-homophones-tsade-and-tsappa",
+      "keystrokes": ["t", "s", "'", "e", "Space", "t", "s", "a"],
+      "steps": [{ "after": 5, "composing": "", "commit": "ጸ ", "alternatives": [] }],
+      "composing": "ጻ",
+      "alternatives": ["ፃ"],
+      "committed": "ጸ "
+    },
+    {
+      "name": "ethiopia",
+      "keystrokes": ["i", "t", "y", "o", "p", "'", "y", "a"],
+      "composing": "ኢትዮጵያ",
+      "alternatives": ["ዒትዮጵያ"],
+      "committed": ""
+    },
+    {
+      "name": "punctuation-double-period-is-full-stop",
+      "keystrokes": ["s", "e", "l", "a", "m", ".", "."],
+      "steps": [
+        { "after": 6, "composing": ".", "commit": "ሰላም", "alternatives": [] },
+        { "after": 7, "composing": "", "commit": "።" }
+      ],
+      "composing": "",
+      "alternatives": [],
+      "committed": "ሰላም።"
+    },
+    {
+      "name": "punctuation-comma-question-colon-semicolon",
+      "keystrokes": [",", ",", "?", "?", ":", ":", ";", ";"],
+      "composing": "",
+      "alternatives": [],
+      "committed": "፣፧፥፤"
+    },
+    {
+      "name": "single-period-stays-ascii",
+      "keystrokes": ["a", ".", "b"],
+      "steps": [
+        { "after": 2, "composing": ".", "commit": "አ" },
+        { "after": 3, "composing": "ብ", "commit": "." }
+      ],
+      "composing": "ብ",
+      "alternatives": [],
+      "committed": "አ."
+    },
+    {
+      "name": "single-period-then-space",
+      "keystrokes": ["a", ".", "Space"],
+      "composing": "",
+      "alternatives": [],
+      "committed": "አ. "
+    },
+    {
+      "name": "backspace-cancels-pending-punctuation",
+      "keystrokes": [".", "Backspace", "Backspace"],
+      "steps": [
+        { "after": 1, "composing": ".", "commit": "" },
+        { "after": 2, "composing": "", "commit": "" },
+        { "after": 3, "composing": "", "commit": "", "delete_before": 1 }
+      ],
+      "composing": "",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "backspace-removes-last-latin-keystroke",
+      "keystrokes": ["s", "e", "l", "a", "m", "Backspace", "Backspace", "Backspace", "Backspace", "Backspace"],
+      "steps": [
+        { "after": 6, "composing": "ሰላ", "commit": "" },
+        { "after": 7, "composing": "ሰል", "commit": "" },
+        { "after": 8, "composing": "ሰ", "commit": "" },
+        { "after": 9, "composing": "ስ", "commit": "" },
+        { "after": 10, "composing": "", "commit": "", "alternatives": [] }
+      ],
+      "composing": "",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "backspace-after-commit-deletes-one-grapheme",
+      "keystrokes": ["a", "Space", "Backspace"],
+      "steps": [{ "after": 3, "composing": "", "commit": "", "delete_before": 1 }],
+      "composing": "",
+      "alternatives": [],
+      "committed": "አ"
+    },
+    {
+      "name": "digits-end-the-word",
+      "keystrokes": ["a", "b", "1", "2"],
+      "steps": [{ "after": 3, "composing": "", "commit": "አብ1" }],
+      "composing": "",
+      "alternatives": [],
+      "committed": "አብ12"
+    },
+    {
+      "name": "unmapped-letter-is-committed-as-typed",
+      "keystrokes": ["a", "x", "b"],
+      "steps": [{ "after": 2, "composing": "", "commit": "አx" }],
+      "composing": "ብ",
+      "alternatives": [],
+      "committed": "አx"
+    },
+    {
+      "name": "enter-and-commit-flush",
+      "keystrokes": ["a", "Enter", "b", "Commit"],
+      "steps": [
+        { "after": 2, "composing": "", "commit": "አ\n" },
+        { "after": 4, "composing": "", "commit": "ብ" }
+      ],
+      "composing": "",
+      "alternatives": [],
+      "committed": "አ\nብ"
+    },
+    {
+      "name": "protected-url-www",
+      "keystrokes": ["w", "w", "w", ".", "a", "b", "c", ".", "c", "o", "m"],
+      "steps": [
+        { "after": 3, "composing": "www", "commit": "", "alternatives": [] },
+        { "after": 5, "composing": "www.a", "commit": "" }
+      ],
+      "composing": "www.abc.com",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "protected-url-https",
+      "keystrokes": ["h", "t", "t", "p", "s", ":", "/", "/", "q", "a", "l", ".", "e", "t", "Space"],
+      "composing": "",
+      "alternatives": [],
+      "committed": "https://qal.et "
+    },
+    {
+      "name": "protected-email-turns-the-word-latin",
+      "keystrokes": ["a", "b", "e", "@", "g", "m", "a", "i", "l", ".", "c", "o", "m", "Space"],
+      "steps": [
+        { "after": 3, "composing": "አበ", "commit": "" },
+        { "after": 4, "composing": "abe@", "commit": "", "alternatives": [] }
+      ],
+      "composing": "",
+      "alternatives": [],
+      "committed": "abe@gmail.com "
+    },
+    {
+      "name": "protected-term-stays-latin-with-transliteration-alternative",
+      "keystrokes": ["t", "e", "l", "e", "g", "r", "a", "m"],
+      "composing": "telegram",
+      "alternatives": ["ተለግራም"],
+      "committed": ""
+    },
+    {
+      "name": "select-alternative-replaces-composing",
+      "keystrokes": ["s", "e", "l", "a", "m", "Select:1"],
+      "steps": [{ "after": 6, "composing": "", "commit": "ሠላም", "alternatives": [] }],
+      "composing": "",
+      "alternatives": [],
+      "committed": "ሠላም"
+    },
+    {
+      "name": "select-default-candidate",
+      "keystrokes": ["s", "e", "l", "a", "m", "Select:0", "Space"],
+      "composing": "",
+      "alternatives": [],
+      "committed": "ሰላም "
+    },
+    {
+      "name": "select-out-of-range-changes-nothing",
+      "keystrokes": ["s", "e", "l", "a", "m", "Select:9"],
+      "steps": [{ "after": 6, "composing": "ሰላም", "commit": "", "alternatives": ["ሠላም"] }],
+      "composing": "ሰላም",
+      "alternatives": ["ሠላም"],
+      "committed": ""
+    },
+    {
+      "name": "long-word-is-split-not-dropped",
+      "keystrokes": ["s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e", "s", "e"],
+      "steps": [{ "after": 49, "composing": "ስ", "commit": "ሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰ" }],
+      "composing": "ሰ",
+      "alternatives": ["ሠ"],
+      "committed": "ሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰ"
+    }
+  ]
+}
