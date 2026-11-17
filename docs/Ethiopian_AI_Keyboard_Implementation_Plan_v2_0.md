@@ -69,7 +69,7 @@
 |---|---|---|---|---|---|---|---|
 | Phase 0 | Foundations (M0) | 6 | 6 | 0 | 0 | 0 | 100% |
 | Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 4 | 0 | 0 | 18 | 18% |
-| Phase 2 | Backend + P0 AI (M2) | 39 | 1 | 0 | 0 | 38 | 3% |
+| Phase 2 | Backend + P0 AI (M2) | 39 | 2 | 0 | 0 | 37 | 5% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
 | Phase 4 | Monetisation (M4) | 10 | 0 | 0 | 0 | 10 | 0% |
 | Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
@@ -105,6 +105,7 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 | 2026-11-17 | C1.3 | 🟩 DONE | see git log | Fidel syllable table generated from Unicode names (`language-data/scripts/gen_fidel_table.py`: 78 series, 481 forms; reviewer re-checked every form against its Unicode name), mirrored into `core/src/composer/fidel_table.rs` with a staleness test (in CI). Layout format `docs/specs/keyboard-layout-v1.md`; DRAFT am (34 series) and ti (35, + ቐ) layouts in `language-data/layouts/`. Core: `KEYBOARD_LAYOUT` packs validated after signature check (`INVALID_ARTIFACT`), `fidel_layout()`, `KeyEvent::FidelConsonant/FidelVowel`, LONG_PRESS + TWO_KEY (default 6th order), DirectFidel only when a layout is loaded. 93 Rust tests + 8 Python tests. Open for G0 panel: ኸ in Amharic, homophone series on main keys, default order 6 vs 1. Fuzz crate not rebuilt this step. |
 | 2026-11-17 | C1.9 | 🟩 DONE | 15b4c9f, 6ae9369, 82cb96a | `core/src/calendar.rs`: Gregorian<->Ethiopian conversion (JDN, 13 months, Pagume 5/6 days), Ethiopian 6:00-offset clock, Ethiopic<->Arabic numerals (1..=99,999,999), all UniFFI-exported. 32 unit/property tests; `cargo fmt --check`, `clippy -D warnings` and `cargo test` pass on Rust 1.91.0. First real test run caught two bugs the Python cross-check missed (clock inverse for hours 6-11; wrong 20,000 numeral expectation), both fixed. |
 | 2026-11-17 | B1.1 | 🟩 DONE | 2d83e78, 3edbd45 | Spring Modulith 2.1.2 (BOM; Boot 4.1.2 does not manage it); 21 SD §24 module packages (package-info only); app class moved to `com.qalsmartkeyboard` root so Modulith sees exactly those modules; `ModularityTests` (`ApplicationModules.verify()`) runs in surefire in the existing CI backend job. `mvnw verify` green on JDK 25 against PG18: 3 unit + 10 IT, none skipped. |
+| 2026-11-17 | B1.2 | 🟩 DONE | 061439e | Flyway and `V1__baseline.sql` were already wired by F0.3 (file byte-identical to docs; CI `sync.sh --check` covers drift). Added `FlywayBaselineIT`: Spring Boot app boots on Testcontainers PG18, Flyway applies V1 (one migration, success, `validate()` OK), 86 tables. `mvnw verify` green: 3 unit + 12 IT. |
 
 ---
 
@@ -179,7 +180,7 @@ Goal: identity, devices, preferences, packs, AI gateway, translate/grammar/rewri
 | ID | Step | Depends on | Done when | Status |
 |---|---|---|---|---|
 | B1.1 | Spring Boot 4 project with Spring Modulith packages from SD §24; `ApplicationModules.verify()` test in CI. | F0.2 | Module boundary test passes. | 🟩 DONE |
-| B1.2 | Flyway with `V1__baseline.sql` copied unchanged from docs; never edit applied migrations — later changes are `V2__…`. | F0.3 | App boots; schema matches. | ⬜ TODO |
+| B1.2 | Flyway with `V1__baseline.sql` copied unchanged from docs; never edit applied migrations — later changes are `V2__…`. | F0.3 | App boots; schema matches. | 🟩 DONE |
 | B1.3 | Platform module: Problem Details error handling with API error codes, correlation ID filter, request validation, OpenAPI contract tests (every controller response validated against `contracts/openapi.yaml`), generated client types in CI. | B1.1 | Contract test suite green. | ⬜ TODO |
 | B1.4 | Outbox + db-scheduler infrastructure (outbox table dispatcher, retry/backoff, idempotent consumers). | B1.2 | Test: event survives crash and is delivered once-effectively. | ⬜ TODO |
 | B1.5 | Per-user envelope encryption service (KMS adapter: local dev KMS + cloud KMS interface), key-per-user, crypto-shred operation. | B1.2 | Round-trip + shred test. | ⬜ TODO |
