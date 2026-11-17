@@ -38,3 +38,19 @@ See docs/Ethiopian_AI_Keyboard_Implementation_Plan_v2_0.md for the steps that po
   `consentBasis`, `reviewStatus: PENDING_REVIEW`, ...) plus `sha256`, `path`, `attribution`, `packs`.
   Adding a licence to the allow-list needs legal review (OI-R7). Only `artifact.kind: "file"`
   exists; wordlist -> lexicon artifacts arrive with C1.6, rule artifacts with C1.4.
+
+## Seed packs (L1.3)
+- `scripts/build_seed_packs.py` builds the AM/TI/OM/EN baseline packs (DICTIONARY "QLX1", FREQUENCY_LIST
+  "QBG1" bigrams, one shared LANGUAGE_ID_MODEL "QLID" v1, plus the existing AM/TI layouts and phonetic
+  profiles) from `seed/` using the core's own builders (`cargo run --bin qal-artifact-build`), signs them
+  with the dev key and copies them with an index (`seed-packs.json`) to `android/ime/src/main/assets/packs/`
+  and `ios/KeyboardExtension/Resources/packs/`. `--check` needs no key (payloads fresh, shipped files match
+  the index, budgets met). Budgets: `seed/budgets.json` (SD 17.1: 15 MB Ethiopic, 25 MB English per language).
+- **Everything is DRAFT / UNVERIFIED (N9, `releaseChannel` INTERNAL, index `userExposable: false`).** Word lists,
+  bigrams and language-ID seeds are tiny, hand-written by the engineering team (`LicenseRef-Qal-Original`),
+  derived from `eval/langid/train_*.txt`, with placeholder frequencies. Amharic, Tigrinya and Oromo content
+  needs native-speaker review (human gate G0) and a real licensed corpus before any release.
+- The shipped packs are signed with a dev key (public key recorded in the index); a fresh checkout has a
+  different dev key, so rebuilding changes the pack bytes. Release packs are signed by the backend (B3.2).
+- OM and EN have no layout pack yet: only `am`/`ti` KEYBOARD_LAYOUT artifacts exist (the `orthography/`
+  files describe Latin letter sets, not layouts).

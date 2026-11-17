@@ -1,0 +1,8 @@
+{
+ "format": "qal-size-budgets",
+ "formatVersion": 1,
+ "source": "System Design v2.0 section 17.1: Disk per language, typing packs <= 15 MB (Ethiopic); <= 25 MB (English).",
+ "note": "Afaan Oromoo uses Latin script but SD 17.1 names only Ethiopic and English, so om is held to the stricter 15 MB. Packs of a shared language code (mul, the language-ID model) count against every language, which is conservative.",
+ "perLanguageBytes": {"am": 15728640, "ti": 15728640, "om": 15728640, "en": 26214400},
+ "sharedLanguageCodes": ["mul"]
+}

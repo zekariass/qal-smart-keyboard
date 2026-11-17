@@ -1,0 +1,199 @@
+{
+ "format": "qal-seed-pack-index",
+ "formatVersion": 1,
+ "status": "DRAFT_UNVERIFIED",
+ "userExposable": false,
+ "reviewRequired": "Native-speaker review (human gate G0) for am, ti, om; none of this content may be shown to users as verified (N9).",
+ "signingKeyId": "qal-dev-2fe9e4a0",
+ "signingPublicKeyHex": "2fe9e4a008a2b48158b81f7bd0a9836cd3d4e6bc3d14582a14f6dc06b26d9b1a",
+ "signingKeyIsDevOnly": true,
+ "packs": [
+  {
+   "file": "am-bigrams.pack",
+   "languageCode": "am",
+   "resourceType": "FREQUENCY_LIST",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 687,
+   "sha256": "43a451935a9704dd668a657095f583af9290497b413be6b068cb829494b0c473",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "am-seed-bigrams"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "am-dictionary.pack",
+   "languageCode": "am",
+   "resourceType": "DICTIONARY",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 1741,
+   "sha256": "9511d7abdf2759ad9ab64f6c6ed8f37d8eeb3d3928cd3ff369b015a97a7374cb",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "am-seed-wordlist"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "am-keyboard-layout.pack",
+   "languageCode": "am",
+   "resourceType": "KEYBOARD_LAYOUT",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 2909,
+   "sha256": "87acd31b2aeda38543a6cd07f482f6854a2f0af13fe674e39b71ba6761d4e470",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "am-fidel-draft-layout"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "am-phonetic-rules.pack",
+   "languageCode": "am",
+   "resourceType": "TRANSLITERATION_RULES",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 2612,
+   "sha256": "baffd222e42d8feeaac4569bedfde9321a3ef813639cb120d8574a596fe7faf5",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "am-phonetic-draft-profile"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "en-bigrams.pack",
+   "languageCode": "en",
+   "resourceType": "FREQUENCY_LIST",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 634,
+   "sha256": "0b3e4a6243a832a322262aaf52c7ae71f7414cf9e374eaf789811987b81d8113",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "en-seed-bigrams"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "en-dictionary.pack",
+   "languageCode": "en",
+   "resourceType": "DICTIONARY",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 1494,
+   "sha256": "5ba871a578ab13b7a4cbdd3821921b0d0d72f2f5cd928b856852adecdaa8e7ba",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "en-seed-wordlist"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "mul-langid.pack",
+   "languageCode": "mul",
+   "resourceType": "LANGUAGE_ID_MODEL",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 42223,
+   "sha256": "2c6e96827eee9242e154ac51bc182d06e054fd292cbfbebdf3fd66b43e27721b",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "langid-seed-am",
+    "langid-seed-ti",
+    "langid-seed-om",
+    "langid-seed-en",
+    "langid-seed-am-latn",
+    "langid-seed-ti-latn"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "om-bigrams.pack",
+   "languageCode": "om",
+   "resourceType": "FREQUENCY_LIST",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 597,
+   "sha256": "406ac564b94423c6b77c7d5d929cd096bdb73292723e0d454360968118f009b5",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "om-seed-bigrams"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "om-dictionary.pack",
+   "languageCode": "om",
+   "resourceType": "DICTIONARY",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 1479,
+   "sha256": "70fede5a1e0be48d1c00f95a3a9160daaa78680badf81a5e1f4a094b6daa7eca",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "om-seed-wordlist"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "ti-bigrams.pack",
+   "languageCode": "ti",
+   "resourceType": "FREQUENCY_LIST",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 637,
+   "sha256": "1f6331ea32eb852c7842ca6cdf7e142aa88ee613e64ae3efadbd15708cec1052",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "ti-seed-bigrams"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "ti-dictionary.pack",
+   "languageCode": "ti",
+   "resourceType": "DICTIONARY",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 1722,
+   "sha256": "e9ccd16af2cd56fdbca331a016328d7b0efb02ca31e8bfce18bb3cbcb0208472",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "ti-seed-wordlist"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "ti-keyboard-layout.pack",
+   "languageCode": "ti",
+   "resourceType": "KEYBOARD_LAYOUT",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 2964,
+   "sha256": "00c22e34c75fc0d91ba5ca5fc30299174509bc8a2cfb785ff041cc0dfa68c6e5",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "ti-fidel-draft-layout"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  },
+  {
+   "file": "ti-phonetic-rules.pack",
+   "languageCode": "ti",
+   "resourceType": "TRANSLITERATION_RULES",
+   "version": "0.1.0",
+   "releaseChannel": "INTERNAL",
+   "sizeBytes": 2719,
+   "sha256": "2a195b3b8ab334c85d5a1284328327a4dca474746ec8c8d61a1d5f9f7def73bf",
+   "licenseCode": "LicenseRef-Qal-Original",
+   "datasets": [
+    "ti-phonetic-draft-profile"
+   ],
+   "status": "DRAFT_UNVERIFIED"
+  }
+ ]
+}
