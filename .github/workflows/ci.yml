@@ -8,6 +8,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      record_baseline:
+        description: "core-bench: re-record core/benches/baseline.json on this runner and upload it as an artifact instead of gating"
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -152,6 +157,32 @@ jobs:
           cargo build --release
           cargo run --features cli --bin uniffi-bindgen -- generate \
             --library target/release/libqal_keyboard_core.so --language kotlin --out-dir "$RUNNER_TEMP/kotlin"
+
+  core-bench:
+    name: Rust keyboard-core benchmark gate (>10% p50 regression fails)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Gate script unit tests
+        run: python -I -m unittest discover -s core/scripts -p "test_bench_gate.py" -v
+      - name: Install pinned toolchain
+        working-directory: core
+        run: rustup toolchain install
+      - name: Benchmark gate (min-of-runs p50 vs core/benches/baseline.json)
+        if: ${{ !inputs.record_baseline }}
+        run: python -I core/scripts/bench_gate.py
+      - name: Record baseline on this runner (workflow_dispatch only)
+        if: ${{ inputs.record_baseline }}
+        run: python -I core/scripts/bench_gate.py --update --runs 5
+      - name: Upload recorded baseline
+        if: ${{ inputs.record_baseline }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: bench-baseline
+          path: core/benches/baseline.json
 
   # iOS (xcodebuild on macos-latest) and admin-web (Node) jobs are added by
   # steps I5.1 and H3.6 when those projects exist.

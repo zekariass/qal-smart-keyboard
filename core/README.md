@@ -150,3 +150,22 @@ See `bindings/README.md`. Generated output is not committed.
 ## Golden vectors
 Format described in `tests/golden/README.md`. `fidel-direct-0.1.0.json` (C1.3) is the first file; the
 phonetic profiles follow in C1.4.
+
+## Property tests and benchmark gate (C1.10)
+- `tests/properties.rs`: proptest for grapheme-safe segmentation (`src/segmenter.rs`, UAX #29 via
+  `unicode-segmentation`), NFC idempotence of the lexicon, ranker and composers, and phonetic
+  Backspace undoing the last key. (Ethiopic numeral round-trips: `src/calendar.rs`.)
+- Benchmark gate: `python core/scripts/bench_gate.py` runs `cargo bench --bench lexicon|ranker`
+  5 times, takes the minimum over runs of each label's **p50** (median latency per run; the minimum discards runs disturbed by other load), and fails if any is more than 10 %
+  above `benches/baseline.json` AND more than 0.020 ms slower (noise floor), or if a bench exceeds
+  its own absolute p95 budget. p50 is used because tail percentiles are too noisy on shared
+  runners; the cost is that pure tail regressions are only caught by the absolute budgets, and
+  labels with sub-0.02 ms medians can never trip the relative rule.
+- Updating the baseline is deliberate: `python core/scripts/bench_gate.py --update`, review the diff
+  of `benches/baseline.json`, and commit it with the reason in the message.
+- The committed baseline was recorded on a Windows developer machine. Ubuntu CI runners differ, so
+  until it is re-recorded the `core-bench` CI job may fail on a slower (or pass on a faster) runner.
+  Re-record on the runner class: run the CI workflow via `workflow_dispatch` with
+  `record_baseline` = true, download the `bench-baseline` artifact, commit it as
+  `core/benches/baseline.json`. Do this once before relying on the gate, and again whenever the
+  runner image changes.
