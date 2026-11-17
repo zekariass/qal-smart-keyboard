@@ -29,6 +29,8 @@
 	<properties>
 		<java.version>25</java.version>
 		<spring-modulith.version>2.1.2</spring-modulith.version>
+		<openapi-request-validator.version>3.0.0</openapi-request-validator.version>
+		<db-scheduler.version>17.1.0</db-scheduler.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -79,6 +81,12 @@
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
+		<!-- B1.4: core library only; the Spring Boot starter is built against Boot 3 auto-configuration -->
+		<dependency>
+			<groupId>com.github.kagkarlsson</groupId>
+			<artifactId>db-scheduler</artifactId>
+			<version>${db-scheduler.version}</version>
+		</dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -124,6 +132,18 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-testcontainers</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- B1.3: validates controller responses against contracts/openapi.yaml (OpenAPI 3.1) -->
+		<dependency>
+			<groupId>com.atlassian.oai</groupId>
+			<artifactId>openapi-request-validator-mockmvc</artifactId>
+			<version>${openapi-request-validator.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.awaitility</groupId>
+			<artifactId>awaitility</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<dependency>

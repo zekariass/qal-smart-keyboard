@@ -1,0 +1,10 @@
+# Test-only overrides, loaded by Spring Boot on top of classpath:/application.yaml for every
+# @SpringBootTest (classpath:/config/ has higher precedence). Never packaged in the application jar.
+#
+# B1.5: the local development KMS with a random per-JVM key-encryption key, so tests need no secret.
+qal:
+  crypto:
+    kms:
+      provider: local
+    local-kms:
+      allow-ephemeral-kek: true
