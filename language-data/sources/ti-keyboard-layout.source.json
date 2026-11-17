@@ -1,0 +1,15 @@
+{
+ "format": "qal-pack-source",
+ "formatVersion": 1,
+ "resourceId": "47f13cc9-82f3-4c0f-b8de-9efbfa387915",
+ "languageCode": "ti",
+ "resourceType": "KEYBOARD_LAYOUT",
+ "version": "0.1.0",
+ "platform": "SHARED",
+ "releaseChannel": "INTERNAL",
+ "licenseCode": "LicenseRef-Qal-Original",
+ "artifact": {"kind": "file", "path": "../layouts/ti-fidel-draft.json"},
+ "inputs": [
+  {"id": "ti-fidel-draft-layout", "path": "../layouts/ti-fidel-draft.json", "licenseCode": "LicenseRef-Qal-Original"}
+ ]
+}

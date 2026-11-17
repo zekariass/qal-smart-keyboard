@@ -1,0 +1,15 @@
+{
+ "format": "qal-pack-source",
+ "formatVersion": 1,
+ "resourceId": "1d32c5ea-d30d-4800-8de9-9a3a8a6fbd94",
+ "languageCode": "am",
+ "resourceType": "KEYBOARD_LAYOUT",
+ "version": "0.1.0",
+ "platform": "SHARED",
+ "releaseChannel": "INTERNAL",
+ "licenseCode": "LicenseRef-Qal-Original",
+ "artifact": {"kind": "file", "path": "../layouts/am-fidel-draft.json"},
+ "inputs": [
+  {"id": "am-fidel-draft-layout", "path": "../layouts/am-fidel-draft.json", "licenseCode": "LicenseRef-Qal-Original"}
+ ]
+}

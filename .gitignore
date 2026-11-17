@@ -40,3 +40,7 @@ __pycache__/
 # Evaluation outputs (may contain provider outputs)
 language-data/eval/results*.csv
 language-data/eval/*.jsonl
+
+# Pack build (L1.1): dev signing keys must never be committed; build output
+language-data/keys/
+language-data/build/
