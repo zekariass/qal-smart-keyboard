@@ -33,6 +33,11 @@ qal:
         key-id: ${QAL_JWT_KEY_ID:qal-1}
         private-key: ${QAL_JWT_PRIVATE_KEY:}
         public-key: ${QAL_JWT_PUBLIC_KEY:}
+    # Attestation (B2.3, ADR 0008): no real Play Integrity / App Attest adapter exists yet, so without the mock switch no
+    # guest session is ever created. QAL_ATTESTATION_MOCK=true is for development only (refused under prod/production/staging).
+    attestation:
+      mock:
+        enabled: ${QAL_ATTESTATION_MOCK:false}
   # SMS provider (B2.1). No default: 'log' (development only, refused under prod/production/staging).
   notifications:
     sms:

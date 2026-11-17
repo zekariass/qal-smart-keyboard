@@ -38,8 +38,8 @@ class FlywayBaselineIT {
     @Test
     void baselineIsAppliedByTheBootedApplicationAndValidates() {
         MigrationInfo[] all = flyway.info().all();
-        assertEquals(4, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
-                + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up)");
+        assertEquals(5, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
+                + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up), V5 attestation nonces (B2.3)");
         assertEquals("1", all[0].getVersion().getVersion());
         assertEquals("baseline", all[0].getDescription());
         assertEquals(MigrationState.SUCCESS, all[0].getState());
@@ -47,6 +47,8 @@ class FlywayBaselineIT {
         assertEquals(MigrationState.SUCCESS, all[1].getState());
         assertEquals("4", all[3].getVersion().getVersion());
         assertEquals(MigrationState.SUCCESS, all[3].getState());
+        assertEquals("5", all[4].getVersion().getVersion());
+        assertEquals(MigrationState.SUCCESS, all[4].getState());
         flyway.validate(); // throws if an applied migration was edited
     }
 
@@ -55,8 +57,8 @@ class FlywayBaselineIT {
         Integer tables = jdbc.queryForObject(
                 "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'"
                         + " and table_name <> 'flyway_schema_history'", Integer.class);
-        // 86 baseline tables + scheduled_tasks and processed_events from V2
-        assertEquals(88, tables);
+        // 86 baseline tables + scheduled_tasks and processed_events from V2 + attestation_nonces from V5
+        assertEquals(89, tables);
         assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
                 "select success from flyway_schema_history where version='1'", Boolean.class)));
     }

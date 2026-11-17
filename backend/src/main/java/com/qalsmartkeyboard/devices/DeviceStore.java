@@ -32,6 +32,24 @@ class DeviceStore {
 		advisoryLock("qal.device:" + userId + ":" + installationId);
 	}
 
+	/** Serialises guest creation per installation id (see {@link #guestOwnsInstallation}). */
+	void lockInstallationId(UUID installationId) {
+		advisoryLock("qal.device-installation:" + installationId);
+	}
+
+	/**
+	 * Whether a live GUEST account already owns this installation id. Reads {@code users.account_type} only to classify
+	 * the owner of a device row.
+	 */
+	boolean guestOwnsInstallation(UUID installationId) {
+		return jdbc.sql("""
+				SELECT EXISTS (
+				    SELECT 1 FROM user_devices d JOIN users u ON u.id = d.user_id
+				    WHERE d.installation_id = :installationId AND u.account_type = 'GUEST'
+				      AND u.deleted_at IS NULL AND u.account_status NOT IN ('DELETED', 'MERGED'))
+				""").param("installationId", installationId).query(Boolean.class).single();
+	}
+
 	private void advisoryLock(String key) {
 		jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))").param("key", key).query().singleRow();
 	}

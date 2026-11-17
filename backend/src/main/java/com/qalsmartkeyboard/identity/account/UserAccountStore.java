@@ -107,6 +107,19 @@ public class UserAccountStore {
 		return new PhoneSignIn.SignedIn(created, true);
 	}
 
+	/**
+	 * Creates an anonymous {@code GUEST} account (SD 9.1): ACTIVE, no email, phone or identity row (V1
+	 * {@code ck_users_guest_has_no_identity}), no age confirmation (it has no personal data and no purchases). Its plan is
+	 * {@code GUEST}, resolved from the account type (SD 15.5), so no subscription row is written.
+	 */
+	public UserAccount createGuest(Instant now) {
+		return jdbc.sql("""
+				INSERT INTO users AS u (id, account_type, account_status, last_login_at, created_at, updated_at)
+				VALUES (:id, 'GUEST', 'ACTIVE', :now, :now, :now)
+				RETURNING """ + " " + USER_COLUMNS).param("id", UUID.randomUUID()).param("now", Timestamp.from(now))
+				.query(UserAccountStore::map).single();
+	}
+
 	private void insertPhoneIdentity(UUID userId, String phoneE164, Instant now) {
 		jdbc.sql("""
 				INSERT INTO user_auth_identities (id, user_id, identity_provider, provider_subject, created_at, last_used_at)

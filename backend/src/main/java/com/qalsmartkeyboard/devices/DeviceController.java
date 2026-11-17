@@ -14,9 +14,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.qalsmartkeyboard.devices.DeviceDtos.AttestationEvidenceRequest;
+import com.qalsmartkeyboard.devices.DeviceDtos.AttestationResultDto;
 import com.qalsmartkeyboard.devices.DeviceDtos.DeviceDto;
 import com.qalsmartkeyboard.devices.DeviceDtos.DeviceRegistrationRequest;
 import com.qalsmartkeyboard.devices.DeviceDtos.DeviceUpdateRequest;
+import com.qalsmartkeyboard.identity.AttestationChecker;
 import com.qalsmartkeyboard.identity.AuthenticatedUser;
 import com.qalsmartkeyboard.identity.DeviceInfo;
 
@@ -24,7 +27,8 @@ import jakarta.validation.Valid;
 
 /**
  * {@code POST /api/v1/devices} ({@code registerDevice}), {@code PATCH /api/v1/devices/{deviceId}}
- * ({@code updateDevice}) and {@code DELETE /api/v1/devices/{deviceId}} ({@code revokeDevice}); all need an access
+ * ({@code updateDevice}), {@code DELETE /api/v1/devices/{deviceId}} ({@code revokeDevice}) and
+ * {@code POST /api/v1/devices/{deviceId}/attestations} ({@code submitDeviceAttestation}); all need an access
  * token. The client headers fill what the body leaves out: {@code X-App-Version} is the app version, and a present
  * {@code X-Client-Platform} must equal the body's platform on registration.
  */
@@ -64,6 +68,14 @@ class DeviceController {
 				body.pushToken());
 		return ResponseEntity.ok().cacheControl(CacheControl.noStore())
 				.body(service.update(caller.userId(), deviceId, changes));
+	}
+
+	@PostMapping(path = "/api/v1/devices/{deviceId}/attestations", consumes = MediaType.APPLICATION_JSON_VALUE)
+	ResponseEntity<AttestationResultDto> attest(@AuthenticationPrincipal AuthenticatedUser caller,
+			@PathVariable UUID deviceId, @Valid @RequestBody AttestationEvidenceRequest body) {
+		AttestationResultDto result = service.attest(caller.userId(), deviceId,
+				new AttestationChecker.Evidence(body.provider(), body.token(), body.keyId(), body.nonce()));
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);
 	}
 
 	@DeleteMapping("/api/v1/devices/{deviceId}")

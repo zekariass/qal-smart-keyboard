@@ -19,4 +19,11 @@ public interface DeviceRegistrar {
 	 * @throws com.qalsmartkeyboard.platform.ApiException 400 {@code VALIDATION_FAILED} for an unusable registration
 	 */
 	UUID register(UUID userId, DeviceInfo device, DeviceAttestation attestation);
+
+	/**
+	 * Whether no live GUEST account owns this installation id yet. Takes a transaction-scoped lock on the installation
+	 * id, so of two concurrent guest creations for one installation only one finds it free. Must be called in the
+	 * transaction that then creates the guest.
+	 */
+	boolean claimGuestInstallation(UUID installationId);
 }

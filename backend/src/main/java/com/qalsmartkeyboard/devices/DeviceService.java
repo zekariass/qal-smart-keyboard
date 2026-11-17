@@ -10,8 +10,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.qalsmartkeyboard.devices.DeviceDtos.AttestationResultDto;
 import com.qalsmartkeyboard.devices.DeviceDtos.DeviceDto;
 import com.qalsmartkeyboard.devices.DeviceStore.DeviceRow;
+import com.qalsmartkeyboard.identity.AttestationChecker;
 import com.qalsmartkeyboard.identity.AuthenticatedUser;
 import com.qalsmartkeyboard.identity.DeviceAttestation;
 import com.qalsmartkeyboard.identity.DeviceInfo;
@@ -50,15 +52,17 @@ class DeviceService implements DeviceRegistrar {
 
 	private final DeviceStore store;
 	private final DeviceSessions sessions;
+	private final AttestationChecker attestations;
 	private final OutboxPublisher outbox;
 	private final TransactionTemplate transactions;
 	private final Clock clock;
 	private final MeterRegistry meters;
 
-	DeviceService(DeviceStore store, DeviceSessions sessions, OutboxPublisher outbox, TransactionTemplate transactions,
-			Clock clock, MeterRegistry meters) {
+	DeviceService(DeviceStore store, DeviceSessions sessions, AttestationChecker attestations, OutboxPublisher outbox,
+			TransactionTemplate transactions, Clock clock, MeterRegistry meters) {
 		this.store = store;
 		this.sessions = sessions;
+		this.attestations = attestations;
 		this.outbox = outbox;
 		this.transactions = transactions;
 		this.clock = clock;
@@ -111,6 +115,12 @@ class DeviceService implements DeviceRegistrar {
 		});
 	}
 
+	@Override
+	public boolean claimGuestInstallation(UUID installationId) {
+		store.lockInstallationId(installationId);
+		return !store.guestOwnsInstallation(installationId);
+	}
+
 	// ------------------------------------------------------------------ list, update, revoke
 
 	/**
@@ -156,6 +166,29 @@ class DeviceService implements DeviceRegistrar {
 				log.info("Device {} revoked; {} session row(s) ended", deviceId, revokedSessions);
 			}
 		});
+	}
+
+	// ------------------------------------------------------------------ attestation
+
+	/**
+	 * {@code POST /devices/{id}/attestations}: checks the verdict (single-use nonce, platform's verifier; see
+	 * {@link AttestationChecker}) and stores the result on the device row. The verifier is called outside any
+	 * transaction. {@code UNSUPPORTED} (no verifier available) never overwrites an existing VALID or FAILED verdict.
+	 */
+	AttestationResultDto attest(UUID userId, UUID deviceId, AttestationChecker.Evidence evidence) {
+		DeviceRow device = store.findOwned(userId, deviceId).filter(d -> "ACTIVE".equals(d.status()))
+				.orElseThrow(DeviceService::notFound);
+		AttestationChecker.Result result = attestations.check(userId, device.platform(), evidence);
+		transactions.executeWithoutResult(status -> {
+			DeviceRow row = activeOwned(userId, deviceId);
+			boolean unsupported = result.status() == AttestationChecker.Status.UNSUPPORTED;
+			if (!unsupported || "NOT_CHECKED".equals(row.attestationStatus())
+					|| "UNSUPPORTED".equals(row.attestationStatus())) {
+				store.recordAttestation(deviceId, result.provider(), result.status().name(), result.checkedAt());
+			}
+		});
+		count("attestation_" + result.status().name().toLowerCase(java.util.Locale.ROOT));
+		return new AttestationResultDto(result.status().name(), result.checkedAt(), result.validUntil());
 	}
 
 	// ------------------------------------------------------------------ helpers

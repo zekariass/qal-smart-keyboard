@@ -165,4 +165,33 @@ class DeviceControllerTest {
 		mvc.perform(delete("/api/v1/devices/" + other).header("Authorization", bearer()))
 				.andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
 	}
+
+	static final String EVIDENCE = "{\"provider\":\"PLAY_INTEGRITY\",\"token\":\"attest-secret\",\"nonce\":\"n-1\"}";
+
+	@Test
+	void attestationReturns200ResultWithoutEchoingTheToken() throws Exception {
+		when(service.attest(eq(userId), eq(deviceId), any())).thenReturn(new DeviceDtos.AttestationResultDto("VALID",
+				Instant.parse("2026-11-17T10:00:00Z"), Instant.parse("2026-11-17T11:00:00Z")));
+		mvc.perform(post("/api/v1/devices/" + deviceId + "/attestations").header("Authorization", bearer())
+				.contentType(MediaType.APPLICATION_JSON).content(EVIDENCE)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.attestationStatus").value("VALID"))
+				.andExpect(jsonPath("$.checkedAt").value("2026-11-17T10:00:00Z"))
+				.andExpect(jsonPath("$.validUntil").value("2026-11-17T11:00:00Z"))
+				.andExpect(content().string(not(containsString("attest-secret"))));
+		ArgumentCaptor<com.qalsmartkeyboard.identity.AttestationChecker.Evidence> evidence = ArgumentCaptor
+				.forClass(com.qalsmartkeyboard.identity.AttestationChecker.Evidence.class);
+		verify(service).attest(eq(userId), eq(deviceId), evidence.capture());
+		org.assertj.core.api.Assertions.assertThat(evidence.getValue().nonce()).isEqualTo("n-1");
+	}
+
+	@Test
+	void attestationOfAnUnknownDeviceIs404AndAMalformedBodyIs400() throws Exception {
+		when(service.attest(any(), any(), any())).thenThrow(DeviceService.notFound());
+		mvc.perform(post("/api/v1/devices/" + deviceId + "/attestations").header("Authorization", bearer())
+				.contentType(MediaType.APPLICATION_JSON).content(EVIDENCE)).andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("NOT_FOUND"));
+		mvc.perform(post("/api/v1/devices/" + deviceId + "/attestations").header("Authorization", bearer())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"provider\":\"PLAY_INTEGRITY\",\"nonce\":\"n\"}"))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("token"));
+	}
 }
