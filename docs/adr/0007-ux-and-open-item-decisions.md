@@ -1,0 +1,41 @@
+# ADR 0007: UX and open-item decisions (alpha)
+
+- **Status:** Accepted for the M1/M2 alpha. Items marked **PROVISIONAL (G0)** stand until the native-speaker panel (gate G0) reviews them.
+- **Date:** 2026-11-17
+- **Context:** Implementation steps C1.3, A1.3, A1.4 and B1.3–B1.6 raised questions for the product owner and the language panel. The product owner delegated these decisions to engineering, which took the recommended option for each. Each decision below is recorded so agents implement it consistently and the panel can overturn it.
+
+## Keyboard UX (product)
+
+| # | Question (source) | Decision | Why |
+|---|---|---|---|
+| U1 | Should a language switch (globe tap) land in the target language's native layout or stay in ABC? (A1.4) | **Land in the target language's last-used native layout**, as built. ABC is a per-language toggle, not a global state. | The globe means "change language". Staying in ABC would make every switch to an Ethiopic language look like nothing happened. |
+| U2 | Should long-press on space open a picker or cycle languages? (A1.4) | **Picker** (slide and release), as built. | This matches the common Android convention. With four languages, cycling is slower and gives no overview. The globe tap already cycles. |
+| U3 | Should a fresh install start on the am Fidel grid or ABC? (A1.4) | **Phonetic QWERTY for am/ti.** The first active language is am until onboarding (A1.7) sets the user's choice. ABC is used only while the core or packs are loading. | Most smartphone users in Ethiopia and the diaspora already type on a Latin QWERTY layout (SD J2). Fidel is one globe long-press away. SD §26 still lists the onboarding default as a panel item, so this is **PROVISIONAL (G0)**. |
+| U4 | Should autocorrect run on Space in phonetic mode? (A1.3) | **No, suggestions only** for the alpha. The C1.7 harm-guarded autocorrect stays unwired until evaluation sets exist for the language (gate G1). | Auto-replacing Ethiopic words without evaluated data risks corrupting text, which is the harm the guard exists to prevent. |
+| U5 | Which label marks unreviewed language data on the strip? (A1.3) | **Keep "DRAFT"** for internal and alpha builds. It disappears automatically when the profile status becomes APPROVED. | The label is aimed at testers, and rule N9 requires it. Public builds cannot ship DRAFT profiles anyway. |
+| U6 | Homophone alternatives push dictionary words off the strip, and frequency does not reorder homophones. (A1.3, SD 7.2) | Index 0 stays the literal rule output, so Space commits exactly what was typed. **Homophone alternatives are sorted by dictionary frequency**, so the conventional spelling comes first after index 0. **At least two strip slots are reserved for dictionary completions** when the lexicon has any. | This follows SD 7.2 ("dictionary frequency picks the conventional spelling") without silently changing the user's input. Implemented as a core follow-up after A1.6 (it touches `engine.rs`). |
+| U7 | Should the A1.9 device matrix include fields that reject composing text? (A1.3) | **Yes.** Add a `TYPE_NULL` terminal app and a Chrome/WebView text field. | These fields exercise the direct-commit fallback from ADR 0004, which so far has only been tested in unit tests. |
+
+## Language layouts: PROVISIONAL (G0)
+
+| # | Question (source) | Decision |
+|---|---|---|
+| L1 | What should a tap on `.` and `,` produce in the Fidel grid? (A1.4) | **Fidel grid only:** a tap gives ። and ፣. ASCII `.` and `,` come first in the long-press popup. Phonetic, Qubee, English and ABC keep ASCII on tap. |
+| L2 | Should Amharic keep the ኸ series? (C1.3) | **Keep it.** It appears in common Amharic charts and loanword spellings, and it costs one key. |
+| L3 | Should the homophone series ሐ ሠ ኀ ዐ ፀ be on the main grid or behind long-press? (C1.3, A1.4 density) | **Keep them on the main grid for now.** The panel decides in G0. If the grid proves too dense on 5-inch phones in A1.9, they move behind long-press of ሀ/ሰ/ሀ/አ/ጸ. That change is to layout data only (new pack version), not code. |
+| L4 | Which order should a consonant tap show first in two-key entry? (C1.3) | **Sixth order** (the consonant without a vowel), as built per SD §7.2. This is one field per layout (`defaultOrder`). |
+| L5 | What should the mode labels say? (A1.4) | Keep `አማ`/`ትግ`/`OM`/`EN` plus `ፊደል`, `QWERTY`, `Qubee`, `ABC→አ`. |
+
+## Backend and data
+
+| # | Item | Decision |
+|---|---|---|
+| D1 | OI-P6: shredding and backups | Deletion completes when the last backup containing the wrapped DEK expires. **Backup retention is capped at 30 days.** The privacy notice says "deleted within 30 days from backups". KEK versions are rotated, and versions older than the retention window are destroyed. This must be implemented with the cloud KMS (OI-04) before launch (gate R-privacy, Phase 3). |
+| D2 | OI-P7: dictionary `word_hmac` key | A **separate per-user HMAC key** (wrapped like the DEK, never rotated with it, destroyed by crypto-shred) is added in a V-migration when B3.6 needs it. |
+| D3 | OI-P8: who owns `user_data_keys` | **`platform.crypto` owns the table.** SD §20.2's Identity listing is updated when the SD is next revised. Columns for wrap algorithm and KEK version are added only when a second KMS provider exists. Callers must store `EncryptedValue.keyVersion()`. |
+| D4 | OI-P9: migrations after V1 | `docs/Ethiopian_AI_Keyboard_Database_Design_v2_0.sql` stays the **V1 baseline only**, byte-identical to `V1__baseline.sql`. Changing it would change the Flyway checksum. **V2 and later are canonical in `backend/src/main/resources/db/migration/`**, and each one is listed in the plan's Notes log entry for the step that adds it. |
+| D5 | OI-P10: 426 is missing from the contract | A shared `components.responses.AppVersionUnsupported` (426 Problem) was added, and the Conventions text references it. Operations do not list it one by one, because it applies to every `/api/v1` operation except those exempt under B1.6. |
+| D6 | B1.3: the 5xx handler logs the full throwable | **Kept for now.** The logging redaction filter that SD §19 requires, verified by tests, is a Phase 3 hardening item and will also cover exception messages. |
+| D7 | Rust toolchain on the dev machine | **Accepted.** A1.1 installed Rust and cargo-ndk on the host for Android builds. Core checks keep using the pinned Docker toolchain (`rust:1.91`), matching CI. |
+| D8 | Refresh-token reuse versus lost responses on poor networks (B2.4) | SD 9.3 revokes the whole family on any reuse, including a client retry after a lost response, which is common on slow or intermittent Ethiopian mobile networks (OI-R4). **Add a grace window (default 30 s):** if the presented ROTATED token's direct successor has never been used and the reuse is within the window, rotate again from the presented token (revoke the unused successor, issue a new one) instead of revoking the family. Any other reuse revokes the family as before. Clients still serialise refresh calls (A2.x). SD 9.3 gets this amendment. Implemented as the B2.4 follow-up. |
+| D9 | Contract gaps found in B2.1/B2.4 | (1) Add optional `installationId` to `OtpStartRequest`, so the per-device limit also applies to start. (2) Declare 403 `ACCOUNT_SUSPENDED` on `otp/verify` and `auth/refresh`. (3) An invalid bearer on an optional-auth operation **stays a 401** (fail loudly, never silently downgrade to anonymous); declare 401 on those operations. (4) Declare 400 on `auth/refresh`. (5) The contract's `UserProfile.marketSource` enum is aligned to the SQL CHECK list (SQL is canonical for stored values). Done in the B2.4 follow-up. |

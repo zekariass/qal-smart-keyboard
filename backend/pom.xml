@@ -31,6 +31,7 @@
 		<spring-modulith.version>2.1.2</spring-modulith.version>
 		<openapi-request-validator.version>3.0.0</openapi-request-validator.version>
 		<db-scheduler.version>17.1.0</db-scheduler.version>
+		<bucket4j.version>8.21.0</bucket4j.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -69,6 +70,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
+		<!-- B2.4: access-token (JWT, ES256) verification for the API security chain -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
@@ -86,6 +92,16 @@
 			<groupId>com.github.kagkarlsson</groupId>
 			<artifactId>db-scheduler</artifactId>
 			<version>${db-scheduler.version}</version>
+		</dependency>
+		<!-- B2.1: rate limiting (SD 8.1, 18). In-memory buckets behind platform.ratelimit.RateLimiter for now. -->
+		<dependency>
+			<groupId>com.bucket4j</groupId>
+			<artifactId>bucket4j_jdk17-core</artifactId>
+			<version>${bucket4j.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.github.ben-manes.caffeine</groupId>
+			<artifactId>caffeine</artifactId>
 		</dependency>
 
 		<dependency>

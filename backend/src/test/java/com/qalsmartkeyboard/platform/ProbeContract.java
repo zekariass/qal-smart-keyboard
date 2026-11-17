@@ -23,7 +23,7 @@ import io.swagger.v3.oas.models.responses.ApiResponses;
  */
 final class ProbeContract {
 
-	static final List<String> PATHS = List.of("/probe/validated", "/probe/limit", "/probe/api-exception", "/probe/quota",
+	static final List<String> PATHS = List.of("/probe/validated", "/probe/limit", "/probe/api-exception", "/probe/quota", "/probe/rate-limited",
 			"/probe/boom", "/probe/ping", "/probe/violating", "/probe/no-such-route");
 
 	private ProbeContract() {
