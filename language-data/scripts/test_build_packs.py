@@ -73,8 +73,9 @@ class Build(Base):
         doc = json.loads((bp.SOURCES_DIR / "am-keyboard-layout.source.json").read_text("utf-8"))
         doc["releaseChannel"] = "STABLE"
         doc["artifact"]["path"] = str(bp.ROOT / "language-data" / "layouts" / "am-fidel-draft.json")
+        doc["inputs"][0]["path"] = doc["artifact"]["path"]
         (src / "x.source.json").write_text(json.dumps(doc), "utf-8")
-        with self.assertRaises(bp.BuildError):
+        with self.assertRaisesRegex(bp.BuildError, "STABLE"):
             bp.build_all(src, self.tmp / "o", self.ks)
 
     def test_non_dev_key_refused(self):
@@ -84,6 +85,99 @@ class Build(Base):
         p.write_text(json.dumps(d), "utf-8")
         with self.assertRaises(bp.BuildError):
             bp.load_dev_key(self.ks)
+
+
+class LicenceGate(Base):
+    """L1.2 / N10: the build refuses a missing, unknown or non-commercial licence."""
+
+    def make(self, mutate):
+        src = self.tmp / "src"
+        src.mkdir(exist_ok=True)
+        doc = json.loads((bp.SOURCES_DIR / "am-keyboard-layout.source.json").read_text("utf-8"))
+        layout = str(bp.ROOT / "language-data" / "layouts" / "am-fidel-draft.json")
+        doc["artifact"]["path"] = layout
+        doc["inputs"][0]["path"] = layout
+        mutate(doc)
+        (src / "x.source.json").write_text(json.dumps(doc), "utf-8")
+        return src
+
+    def refused(self, mutate, pattern):
+        src = self.make(mutate)
+        out = self.tmp / "o"
+        with self.assertRaisesRegex(bp.BuildError, pattern):
+            bp.build_all(src, out, self.ks)
+        self.assertFalse(out.exists(), "nothing may be written when the gate fails")
+
+    def test_passing_case_writes_dataset_manifest(self):
+        self.build("a")
+        doc = json.loads((self.tmp / "a" / "datasets.manifest.json").read_text("utf-8"))
+        self.assertEqual(doc["format"], "qal-datasets-manifest")
+        ids = [d["datasetCode"] for d in doc["datasets"]]
+        self.assertEqual(ids, sorted(ids))
+        self.assertEqual(len(ids), 2)
+        d = doc["datasets"][0]
+        art = (bp.ROOT / "language-data" / "layouts" / "am-fidel-draft.json").read_bytes()
+        self.assertEqual(d["sha256"], hashlib.sha256(art).hexdigest())
+        self.assertEqual(d["licenseCode"], "LicenseRef-Qal-Original")
+        self.assertEqual(d["permittedUses"], ["COMMERCIAL"])
+        self.assertEqual(d["consentBasis"], "OWN_CREATION")
+        self.assertEqual(d["reviewStatus"], "PENDING_REVIEW")
+        self.assertEqual(d["packs"], ["am-keyboard-layout"])
+        self.assertEqual(d["path"], "language-data/layouts/am-fidel-draft.json")
+
+    def test_dataset_manifest_reproducible(self):
+        self.build("a")
+        self.build("b")
+        self.assertEqual((self.tmp / "a" / "datasets.manifest.json").read_bytes(), (self.tmp / "b" / "datasets.manifest.json").read_bytes())
+
+    def test_pack_licence_missing(self):
+        self.refused(lambda d: d.pop("licenseCode"), "missing licenseCode")
+
+    def test_pack_licence_unknown_fails_closed(self):
+        self.refused(lambda d: d.update(licenseCode="LicenseRef-Mystery"), "not in the allow-list")
+
+    def test_pack_licence_non_commercial(self):
+        self.refused(lambda d: d.update(licenseCode="CC-BY-NC-4.0"), "does not permit commercial use")
+
+    def test_input_licence_missing(self):
+        self.refused(lambda d: d["inputs"][0].pop("licenseCode"), "licence missing")
+
+    def test_input_licence_empty(self):
+        self.refused(lambda d: d["inputs"][0].update(licenseCode=" "), "licence missing")
+
+    def test_input_licence_unknown(self):
+        self.refused(lambda d: d["inputs"][0].update(licenseCode="GPL-9000"), "not in the allow-list")
+
+    def test_input_licence_non_commercial_while_pack_is_fine(self):
+        self.refused(lambda d: d["inputs"][0].update(licenseCode="CC-BY-NC-SA-4.0"), "does not permit commercial use")
+
+    def test_inputs_missing_or_empty(self):
+        self.refused(lambda d: d.pop("inputs"), "inputs")
+        self.refused(lambda d: d.update(inputs=[]), "inputs")
+
+    def test_nc_code_refused_even_if_allow_list_says_commercial(self):
+        lic = self.tmp / "lic.json"
+        doc = json.loads(bp.LICENSES_FILE.read_text("utf-8"))
+        doc["licenses"]["CC-BY-NC-4.0"]["commercialUse"] = True
+        lic.write_text(json.dumps(doc), "utf-8")
+        src = self.make(lambda d: d["inputs"][0].update(licenseCode="CC-BY-NC-4.0"))
+        with self.assertRaisesRegex(bp.BuildError, "does not permit commercial use"):
+            bp.build_all(src, self.tmp / "o", self.ks, licenses_file=lic)
+
+    def test_shipped_allow_list_is_sane(self):
+        for code, e in bp.load_licenses().items():
+            self.assertIn(e["commercialUse"], (True, False), code)
+            if "-NC" in code or code in ("UNKNOWN", "PROPRIETARY"):
+                self.assertFalse(e["commercialUse"], code)
+
+    def test_cli_exits_nonzero_on_unlicensed_source(self):
+        src = self.make(lambda d: d["inputs"][0].pop("licenseCode"))
+        r = subprocess.run(
+            [sys.executable, str(HERE / "build_packs.py"), "--sources", str(src), "--out", str(self.tmp / "o"), "--keystore", str(self.ks)],
+            capture_output=True, text=True, encoding="utf-8",
+        )
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("licence missing", r.stderr)
 
 
 @unittest.skipUnless(shutil.which("cargo"), "cargo not installed")

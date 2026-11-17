@@ -14,11 +14,15 @@ Source manifest (`format: qal-pack-source`, formatVersion 1):
   artifact {kind: "file", path}   the artifact is the file's bytes verbatim (path relative to the
                                   source manifest). Other kinds (e.g. a lexicon built from a
                                   wordlist, C1.6) are added here when their artifact format exists.
-  inputs[] {id, path, licenseCode}   every raw input the artifact derives from, with its licence.
-                                  L1.1 only records it; L1.2 makes the build REFUSE a missing or
-                                  non-commercial licence (N10) using this field. The pack-level
-                                  `licenseCode` is already mandatory because the signed manifest
-                                  needs it.
+  inputs[] {id, path, licenseCode, name?, sourceUrl?, attribution?}   REQUIRED, non-empty: every raw
+                                  input the artifact derives from, with its licence.
+Licence gate (L1.2, N10): the pack-level `licenseCode` and every input's `licenseCode` must be
+present AND listed with commercialUse=true in language-data/licenses.json. Missing, unknown (fail
+closed), non-commercial (any -NC code) or unlisted codes abort the build before anything is written.
+Each build also writes <out>/datasets.manifest.json (deterministic: sorted, no timestamps), one
+record per distinct input id, shaped to the `language_datasets` columns (dataset_code, name,
+language_code -> language_id, source_url, license_code, license_url, permitted_uses, consent_basis,
+review_status=PENDING_REVIEW) plus sha256/sizeBytes/path/attribution/packs for provenance.
 
 Keys: ONLY a dev keystore (default language-data/keys/dev/, gitignored) is supported. It is created
 on demand with a random seed (`--init-dev-key`) and refuses to sign STABLE packs. Production keys
@@ -43,6 +47,7 @@ import ed25519_ref  # noqa: E402
 ROOT = HERE.parents[1]
 SOURCES_DIR = ROOT / "language-data" / "sources"
 DEFAULT_KEYSTORE = ROOT / "language-data" / "keys" / "dev"
+LICENSES_FILE = ROOT / "language-data" / "licenses.json"
 DEFAULT_OUT = ROOT / "language-data" / "build" / "packs"
 
 MAGIC = b"QALPACK\x00"
@@ -157,9 +162,99 @@ def load_source(path):
     if art.get("kind") != "file" or not art.get("path"):
         raise BuildError("%s: artifact must be {kind: file, path}" % where)
     s["artifactPath"] = (path.parent / art["path"]).resolve()
-    s["inputs"] = doc.get("inputs", [])  # L1.2 enforces per-input licences
+    s["inputs"] = doc.get("inputs")  # checked by gate_source (L1.2)
     s["name"] = path.name[: -len(".source.json")]
+    s["dir"] = path.parent
     return s
+
+
+# --------------------------------------------------------------------------------- licence gate (N10)
+
+_NC_RE = re.compile(r"(^|[-_.])NC([-_.]|$)", re.IGNORECASE)
+
+
+def load_licenses(path=LICENSES_FILE):
+    doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    if doc.get("format") != "qal-licence-allowlist" or doc.get("formatVersion") != 1:
+        raise BuildError("%s: not a qal-licence-allowlist v1 file" % Path(path).name)
+    return doc["licenses"]
+
+
+def check_license(code, licenses, where):
+    """Returns the allow-list entry; raises BuildError unless `code` is explicitly commercial-use."""
+    if not isinstance(code, str) or not code.strip():
+        raise BuildError("%s: licence missing (N10)" % where)
+    entry = licenses.get(code)
+    if entry is None:
+        raise BuildError("%s: licence %r is not in the allow-list licenses.json (unknown fails closed, N10)" % (where, code))
+    if entry.get("commercialUse") is not True or _NC_RE.search(code):
+        raise BuildError("%s: licence %r does not permit commercial use (N10)" % (where, code))
+    return entry
+
+
+def gate_source(src, licenses):
+    """Checks the pack licence and every input licence. Returns [(input, allow-list entry, path)]."""
+    where = src["name"] + ".source.json"
+    check_license(src["licenseCode"], licenses, where + ": pack licenseCode")
+    inputs = src["inputs"]
+    if not isinstance(inputs, list) or not inputs:
+        raise BuildError("%s: inputs[] missing or empty; every source needs its provenance and licence (N10)" % where)
+    out = []
+    for i, inp in enumerate(inputs):
+        if not isinstance(inp, dict) or not inp.get("id") or not inp.get("path"):
+            raise BuildError("%s: inputs[%d] needs id and path" % (where, i))
+        w = "%s: input %r" % (where, inp["id"])
+        entry = check_license(inp.get("licenseCode"), licenses, w)
+        path = (src["dir"] / inp["path"]).resolve()
+        if not path.is_file():
+            raise BuildError("%s: path %s not found" % (w, inp["path"]))
+        out.append((inp, entry, path))
+    return out
+
+
+def _rel(path):
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def dataset_records(gated):
+    """gated: [(src, [(inp, entry, path)])]. One record per distinct input id, sorted by id."""
+    recs = {}
+    for src, inputs in gated:
+        for inp, entry, path in inputs:
+            data = path.read_bytes()
+            rec = {
+                "datasetCode": inp["id"],
+                "name": inp.get("name") or inp["id"],
+                "languageCode": src["languageCode"],
+                "sourceUrl": inp.get("sourceUrl"),
+                "licenseCode": inp["licenseCode"],
+                "licenseUrl": entry.get("url") or None,
+                "permittedUses": ["COMMERCIAL"],
+                "consentBasis": entry.get("consentBasis", "UNKNOWN"),
+                "reviewStatus": "PENDING_REVIEW",
+                "attributionRequired": entry.get("attributionRequired") is True,
+                "attribution": inp.get("attribution"),
+                "path": _rel(path),
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "sizeBytes": len(data),
+                "packs": [src["name"]],
+            }
+            old = recs.get(rec["datasetCode"])
+            if old is None:
+                recs[rec["datasetCode"]] = rec
+                continue
+            if any(old[k] != rec[k] for k in ("path", "sha256", "licenseCode", "languageCode")):
+                raise BuildError("input id %r is declared twice with different content or licence" % rec["datasetCode"])
+            old["packs"] = sorted(set(old["packs"]) | set(rec["packs"]))
+    return [recs[k] for k in sorted(recs)]
+
+
+def datasets_manifest_bytes(records):
+    doc = {"format": "qal-datasets-manifest", "formatVersion": 1, "datasets": records}
+    return (json.dumps(doc, ensure_ascii=False, indent=1, sort_keys=True) + "\n").encode("utf-8")
 
 
 # --------------------------------------------------------------------------------- build
@@ -205,19 +300,25 @@ def assemble(key_id, seed, manifest, artifact):
     )
 
 
-def build_all(sources_dir, out_dir, keystore):
-    """Writes <name>.pack and <name>.manifest.json; returns [(name, pack_bytes)]."""
+def build_all(sources_dir, out_dir, keystore, licenses_file=LICENSES_FILE):
+    """Writes <name>.pack, <name>.manifest.json and datasets.manifest.json; returns [(name, pack_bytes)].
+
+    The licence gate (N10) runs over ALL sources before anything is written."""
     key_id, seed, _ = load_dev_key(keystore)
     files = sorted(Path(sources_dir).glob("*.source.json"), key=lambda p: p.name)
     if not files:
         raise BuildError("no *.source.json in %s" % sources_dir)
+    licenses = load_licenses(licenses_file)
+    srcs = [load_source(f) for f in files]
+    gated = [(src, gate_source(src, licenses)) for src in srcs]
+    for src in srcs:
+        if src["releaseChannel"] == "STABLE":
+            raise BuildError("%s: a dev key may not sign STABLE packs" % src["name"])
+    records = dataset_records(gated)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     built = []
-    for f in files:
-        src = load_source(f)
-        if src["releaseChannel"] == "STABLE":
-            raise BuildError("%s: a dev key may not sign STABLE packs" % f.name)
+    for src in srcs:
         artifact = src["artifactPath"].read_bytes()
         manifest = manifest_bytes(src, key_id, artifact)
         pack = assemble(key_id, seed, manifest, artifact)
@@ -225,6 +326,7 @@ def build_all(sources_dir, out_dir, keystore):
         # The exact signed manifest bytes, for the backend (spec §5.2: keep the signed bytes).
         (out_dir / (src["name"] + ".manifest.json")).write_bytes(manifest)
         built.append((src["name"], pack))
+    (out_dir / "datasets.manifest.json").write_bytes(datasets_manifest_bytes(records))
     return built
 
 
