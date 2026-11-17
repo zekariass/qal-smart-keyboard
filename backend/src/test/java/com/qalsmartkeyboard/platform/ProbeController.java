@@ -48,6 +48,13 @@ class ProbeController {
 				Map.of("featureCode", "TRANSLATE", "resetAt", "2026-11-17T21:00:00Z", "creditBalance", 0));
 	}
 
+	/** B2.1: a Problem with response headers (rate limiting). */
+	@GetMapping("/probe/rate-limited")
+	void rateLimited() {
+		throw new ApiException(ApiErrorCode.RATE_LIMITED, HttpStatus.TOO_MANY_REQUESTS, null, List.of(), Map.of(),
+				Map.of("Retry-After", "42", "RateLimit-Limit", "5", "RateLimit-Remaining", "0", "RateLimit-Reset", "42"));
+	}
+
 	@GetMapping("/probe/boom")
 	void boom() {
 		throw new IllegalStateException("secret internal text with user content: hello@example.com");

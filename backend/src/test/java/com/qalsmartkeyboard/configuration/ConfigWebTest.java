@@ -80,7 +80,10 @@ class ConfigWebTest {
 			});
 		}
 
-		/** Authentication is B2's concern; no security chain exists yet. */
+		/**
+		 * Web slice: the application's security chain (identity, B2.4) is not loaded here, so this test opens every path.
+		 * {@code ConfigurationIT} covers {@code /config} and the gate behind the real chain.
+		 */
 		@Bean
 		SecurityFilterChain openChain(HttpSecurity http) throws Exception {
 			return http.authorizeHttpRequests(a -> a.anyRequest().permitAll()).csrf(c -> c.disable()).build();
