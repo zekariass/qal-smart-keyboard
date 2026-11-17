@@ -68,7 +68,7 @@
 | Phase | Name | Steps | 🟩 Done | 🟦 In progress | 🟥 Blocked | ⬜ Todo | % |
 |---|---|---|---|---|---|---|---|
 | Phase 0 | Foundations (M0) | 6 | 6 | 0 | 0 | 0 | 100% |
-| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 4 | 0 | 0 | 18 | 18% |
+| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 5 | 0 | 0 | 17 | 23% |
 | Phase 2 | Backend + P0 AI (M2) | 39 | 2 | 0 | 0 | 37 | 5% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
 | Phase 4 | Monetisation (M4) | 10 | 0 | 0 | 0 | 10 | 0% |
@@ -106,6 +106,7 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 | 2026-11-17 | C1.9 | 🟩 DONE | 15b4c9f, 6ae9369, 82cb96a | `core/src/calendar.rs`: Gregorian<->Ethiopian conversion (JDN, 13 months, Pagume 5/6 days), Ethiopian 6:00-offset clock, Ethiopic<->Arabic numerals (1..=99,999,999), all UniFFI-exported. 32 unit/property tests; `cargo fmt --check`, `clippy -D warnings` and `cargo test` pass on Rust 1.91.0. First real test run caught two bugs the Python cross-check missed (clock inverse for hours 6-11; wrong 20,000 numeral expectation), both fixed. |
 | 2026-11-17 | B1.1 | 🟩 DONE | 2d83e78, 3edbd45 | Spring Modulith 2.1.2 (BOM; Boot 4.1.2 does not manage it); 21 SD §24 module packages (package-info only); app class moved to `com.qalsmartkeyboard` root so Modulith sees exactly those modules; `ModularityTests` (`ApplicationModules.verify()`) runs in surefire in the existing CI backend job. `mvnw verify` green on JDK 25 against PG18: 3 unit + 10 IT, none skipped. |
 | 2026-11-17 | B1.2 | 🟩 DONE | 061439e | Flyway and `V1__baseline.sql` were already wired by F0.3 (file byte-identical to docs; CI `sync.sh --check` covers drift). Added `FlywayBaselineIT`: Spring Boot app boots on Testcontainers PG18, Flyway applies V1 (one migration, success, `validate()` OK), 86 tables. `mvnw verify` green: 3 unit + 12 IT. |
+| 2026-11-17 | L1.1 | 🟩 DONE | 13537b2, merge | Pack build: stdlib-only `language-data/scripts/build_packs.py` (`sources/*.source.json` -> signed `.pack` + exact signed manifest; pure-Python Ed25519 in `ed25519_ref.py`, checked against RFC 8032 and the core's test vector). Reproducible (identical SHA-256 across builds); verified in core via new `qal-pack-verify` bin (am+ti layout packs load, tampered pack rejected). Dev-only random keystore in gitignored `language-data/keys/` (no key committed; refuses STABLE and non-devOnly keys). Sources carry per-input `licenseCode` for L1.2. Only artifact kind `file` so far; lexicon (C1.6) and rule (C1.4) kinds follow with those steps. Re-verified after merge: cargo fmt/clippy/test and 7 Python tests green. |
 
 ---
 
@@ -149,7 +150,7 @@ Goal: a fully offline Android keyboard for Amharic, Tigrinya, Afaan Oromoo and E
 
 | ID | Step | Depends on | Done when | Status |
 |---|---|---|---|---|
-| L1.1 | `language-data/` build script: source rules + licensed wordlists → signed packs (`.pack` + manifest), keys from a dev keystore. | C1.2 | Pack builds reproducibly; signature verifies in core. | ⬜ TODO |
+| L1.1 | `language-data/` build script: source rules + licensed wordlists → signed packs (`.pack` + manifest), keys from a dev keystore. | C1.2 | Pack builds reproducibly; signature verifies in core. | 🟩 DONE |
 | L1.2 | Record licence per source in a data manifest (feeds `language_datasets`). Block build if licence field is missing or non-commercial (N10). | L1.1 | Build fails on an unlicensed source (test). | ⬜ TODO |
 | L1.3 | Seed packs: AM, TI, OM, EN baseline (small), meeting size budgets from SD §17.1. | L1.1 | Packs in `android/ime/src/main/assets` and `ios/.../Resources`. | ⬜ TODO |
 
