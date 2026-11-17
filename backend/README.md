@@ -178,7 +178,7 @@ Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST 
 
 ## Devices (B2.5, ADR 0006)
 
-Module `devices` owns `user_devices`: `POST /api/v1/devices` (`registerDevice`), `PATCH /api/v1/devices/{deviceId}`
+Module `devices` owns `user_devices`: `GET /api/v1/devices` (`listDevices`), `POST /api/v1/devices` (`registerDevice`), `PATCH /api/v1/devices/{deviceId}`
 (`updateDevice`) and `DELETE /api/v1/devices/{deviceId}` (`revokeDevice`); all need an access token.
 
 - **Register** is idempotent per user and installation id (`ux_user_device_installation`): the same row comes back and
@@ -187,7 +187,11 @@ Module `devices` owns `user_devices`: `POST /api/v1/devices` (`registerDevice`),
   header must equal the body's platform. `X-App-Version` fills `appVersion` when the body has none (also on PATCH).
   A REVOKED device registered again becomes ACTIVE with its attestation reset. `distribution_channel` stays `OTHER`
   (the contract carries no channel).
-- **List:** the contract has no `GET /devices`, so there is no endpoint; `DeviceService.list(userId)` exists for it.
+- **List (ADR 0007 D15):** `GET /api/v1/devices` (`listDevices`) returns `{items, nextCursor}` per the contract's cursor
+  convention: oldest first, `limit` 1-100 (default 20), an opaque keyset cursor over (`created_at`, `id`) that carries no
+  user data (malformed: 400 `VALIDATION_FAILED` on `cursor`). Only the caller's rows are ever read. **Revoked devices are
+  included** with `status: REVOKED` (the schema has the field, and a devices screen shows them); the push token is never
+  returned.
 - **Ownership:** every lookup is by device id and the caller's user id. A foreign, unknown or (for PATCH) revoked device is
   the same 404 `NOT_FOUND`. DELETE of an already revoked device is 204 again.
 - **Push token:** write-only (never returned, never logged), stored in `push_token` as the V1 column defines it (plain:

@@ -344,6 +344,32 @@ paths:
 
   # ---------------------------------------------------------------- Devices
   /api/v1/devices:
+    get:
+      tags: [Devices]
+      operationId: listDevices
+      summary: List the caller's devices
+      description: |
+        Returns the caller's own device installations, oldest first, **including revoked ones**
+        (`status` is `ACTIVE` or `REVOKED`), so a client can show a "devices" screen. Another
+        user's devices never appear. The push token is write-only and is never returned.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: The caller's devices.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Device' }
+                  nextCursor: { $ref: '#/components/schemas/NextCursor' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       tags: [Devices]
       operationId: registerDevice

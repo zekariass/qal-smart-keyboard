@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -362,8 +363,64 @@ class DevicesIT {
 		// the list only has the caller's devices; registering the same installation id creates the caller's own row
 		UUID own = registerDevice(intruder, installation);
 		assertThat(own).isNotEqualTo(id);
-		assertThat(devices.list(owner.userId())).extracting(d -> d.id()).containsExactly(id);
-		assertThat(devices.list(intruder.userId())).extracting(d -> d.id()).containsExactly(own);
+		assertThat(devices.list(owner.userId(), null, 100).items()).extracting(d -> d.id()).containsExactly(id);
+		assertThat(devices.list(intruder.userId(), null, 100).items()).extracting(d -> d.id()).containsExactly(own);
+	}
+
+	// ---------------------------------------------------------------- list (ADR 0007 D15)
+
+	@Test
+	void listReturnsOnlyTheCallersDevicesIncludingRevokedOnesWithoutThePushToken() throws Exception {
+		Account owner = signUp();
+		Account other = signUp();
+		UUID first = registerDevice(owner, UUID.randomUUID());
+		MvcResult withToken = register(owner, "{\"installationId\":\"" + UUID.randomUUID()
+				+ "\",\"platform\":\"ANDROID\",\"pushToken\":\"fcm-list-secret\"}").andExpect(status().isOk()).andReturn();
+		UUID second = UUID.fromString(JsonPath.read(withToken.getResponse().getContentAsString(), "$.id"));
+		UUID foreign = registerDevice(other, UUID.randomUUID());
+		mvc.perform(delete("/api/v1/devices/" + first).header("Authorization", "Bearer " + owner.accessToken()))
+				.andExpect(status().isNoContent());
+
+		MvcResult r = mvc.perform(get("/api/v1/devices").header("Authorization", "Bearer " + owner.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2))
+				.andExpect(jsonPath("$.items[0].id").value(first.toString()))
+				.andExpect(jsonPath("$.items[0].status").value("REVOKED"))
+				.andExpect(jsonPath("$.items[1].id").value(second.toString()))
+				.andExpect(jsonPath("$.items[1].status").value("ACTIVE")).andExpect(jsonPath("$.nextCursor").doesNotExist())
+				.andReturn();
+		assertThat(r.getResponse().getContentAsString()).doesNotContain(foreign.toString()).doesNotContain("fcm-list-secret")
+				.doesNotContain("pushToken");
+		mvc.perform(get("/api/v1/devices").header("Authorization", "Bearer " + other.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+				.andExpect(jsonPath("$.items[0].id").value(foreign.toString()));
+	}
+
+	@Test
+	void listPagesWithAnOpaqueCursorAndRejectsBadParameters() throws Exception {
+		Account a = signUp();
+		List<UUID> ids = new ArrayList<>();
+		for (int i = 0; i < 3; i++) {
+			ids.add(registerDevice(a, UUID.randomUUID()));
+		}
+		String bearer = "Bearer " + a.accessToken();
+		MvcResult page1 = mvc.perform(get("/api/v1/devices").param("limit", "2").header("Authorization", bearer))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2))
+				.andExpect(jsonPath("$.nextCursor").isNotEmpty()).andReturn();
+		String cursor = JsonPath.read(page1.getResponse().getContentAsString(), "$.nextCursor");
+		mvc.perform(get("/api/v1/devices").param("limit", "2").param("cursor", cursor).header("Authorization", bearer))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+				.andExpect(jsonPath("$.items[0].id").value(ids.get(2).toString()))
+				.andExpect(jsonPath("$.nextCursor").doesNotExist());
+		// a cursor of another user's list is only a position: it never reveals foreign rows
+		Account other = signUp();
+		mvc.perform(get("/api/v1/devices").param("cursor", cursor).header("Authorization", "Bearer " + other.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
+		mvc.perform(get("/api/v1/devices").param("cursor", "garbage").header("Authorization", bearer))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("cursor"));
+		mvc.perform(get("/api/v1/devices").param("limit", "101").header("Authorization", bearer))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("limit"));
+		mvc.perform(get("/api/v1/devices")).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
 	}
 
 	// ---------------------------------------------------------------- revoke
