@@ -1,0 +1,17 @@
+{
+  "name": "ai: LLM chat / transform",
+  "priority": 5,
+  "request": { "method": "POST", "urlPath": "/ai/v1/llm/chat" },
+  "response": {
+    "status": 200,
+    "headers":{"Content-Type":"application/json; charset=utf-8"},
+    "jsonBody": {
+      "id": "{{randomValue type='UUID'}}",
+      "model": "mock-llm-1",
+      "output": "ሰላም፣ እባክዎ ስብሰባውን ወደ ነገ ጠዋት ማዛወር ይቻል ይሆን? እናመሰግናለን።",
+      "finish_reason": "stop",
+      "usage": { "input_tokens": 25, "output_tokens": 31 }
+    },
+    "transformers": ["response-template"]
+  }
+}

@@ -30,7 +30,8 @@ Start with `docs/Ethiopian_AI_Keyboard_Implementation_Plan_v2_0.md`. Design: `do
 ## Build and run
 
 ```bash
-# Local database (PostgreSQL 18 on host port 5434)
+# Local stack: PostgreSQL 18 (host port 5434), MinIO (9000/9001), WireMock mock SMS/AI/Chapa providers (8089).
+# Endpoints, credentials and mock scenarios: infra/compose/README.md
 docker compose -f infra/compose/docker-compose.yml up -d
 
 # Backend: Flyway applies V1__baseline.sql on startup.

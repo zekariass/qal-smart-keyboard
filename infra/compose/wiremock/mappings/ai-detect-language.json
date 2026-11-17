@@ -1,0 +1,15 @@
+{
+  "name": "ai: detect language",
+  "priority": 5,
+  "request": { "method": "POST", "urlPath": "/ai/v1/detect-language" },
+  "response": {
+    "status": 200,
+    "headers":{"Content-Type":"application/json; charset=utf-8"},
+    "jsonBody": {
+      "language": "am",
+      "script": "Ethi",
+      "confidence": 0.97,
+      "alternatives": [ { "language": "ti", "confidence": 0.02 } ]
+    }
+  }
+}

@@ -1,14 +1,81 @@
-# Local dev stack. Plan step F0.4 will add MinIO and WireMock mock providers.
+# Local dev stack (plan step F0.4): PostgreSQL 18, MinIO, WireMock mock providers.
+# All credentials are dev-only. Defaults work without a .env file (see .env.example).
 services:
   postgres:
     image: postgres:18
     environment:
-      POSTGRES_DB: qal
-      POSTGRES_USER: qal
-      POSTGRES_PASSWORD: qal_dev_only
+      POSTGRES_DB: ${POSTGRES_DB:-qal}
+      POSTGRES_USER: ${POSTGRES_USER:-qal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qal_dev_only}
     ports:
-      - "5434:5432"
+      - "${POSTGRES_HOST_PORT:-5434}:5432"
     volumes:
       - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # MinIO: upstream minio/minio images are no longer published on Docker Hub or Quay,
+  # so we use the Chainguard build, pinned by digest (release RELEASE.2026-11-16T00-11-40Z).
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:59953701f8f8d0de81aab456f0b0b6c0a1804119415559bf7ede79d944108879
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-qal_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-qal_minio_dev_only}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      # The image has bash but no curl/wget: probe the liveness endpoint over /dev/tcp.
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /minio/health/live HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && read -r l <&3 && [[ $$l == *200* ]]'
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # One-shot: creates the buckets, then exits 0.
+  minio-init:
+    image: cgr.dev/chainguard/minio-client@sha256:5eee28fde834bf5da476a6e0cfaf98dfe9625761bab9cd297ebb7125a261ba35
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-qal_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-qal_minio_dev_only}
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        for b in qal-language-packs qal-exports qal-audio-temp; do
+          mc mb --ignore-existing "local/$$b"
+        done
+        mc ls local
+
+  # Mock SMS / AI / Chapa providers. Mappings and files are mounted read-only.
+  wiremock:
+    image: wiremock/wiremock:3.13.1
+    command: ["--global-response-templating", "--disable-banner", "--verbose"]
+    ports:
+      - "${WIREMOCK_PORT:-8089}:8080"
+    volumes:
+      - ./wiremock/mappings:/home/wiremock/mappings:ro
+      - ./wiremock/__files:/home/wiremock/__files:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/__admin/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
 volumes:
   pgdata:
+  miniodata:

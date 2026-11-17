@@ -1,0 +1,17 @@
+{
+  "name": "chapa: initialize transaction",
+  "priority": 5,
+  "request": { "method": "POST", "urlPath": "/chapa/v1/transaction/initialize" },
+  "response": {
+    "status": 200,
+    "headers":{"Content-Type":"application/json; charset=utf-8"},
+    "jsonBody": {
+      "message": "Hosted Link",
+      "status": "success",
+      "data": {
+        "checkout_url": "http://localhost:8089/chapa/checkout/{{jsonPath request.body '$.tx_ref'}}"
+      }
+    },
+    "transformers": ["response-template"]
+  }
+}

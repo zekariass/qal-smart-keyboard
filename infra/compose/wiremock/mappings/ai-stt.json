@@ -1,0 +1,16 @@
+{
+  "name": "ai: speech-to-text (accepts any audio upload)",
+  "priority": 5,
+  "request": { "method": "POST", "urlPath": "/ai/v1/stt" },
+  "response": {
+    "status": 200,
+    "headers":{"Content-Type":"application/json; charset=utf-8"},
+    "jsonBody": {
+      "transcript": "ሰላም እንዴት ነህ",
+      "language": "am",
+      "duration_seconds": 3.2,
+      "confidence": 0.94,
+      "model": "mock-stt-1"
+    }
+  }
+}

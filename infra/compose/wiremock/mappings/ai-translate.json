@@ -1,0 +1,16 @@
+{
+  "name": "ai: translate (Amharic sample)",
+  "priority": 5,
+  "request": { "method": "POST", "urlPath": "/ai/v1/translate" },
+  "response": {
+    "status": 200,
+    "headers":{"Content-Type":"application/json; charset=utf-8"},
+    "jsonBody": {
+      "translation": "ሰላም፣ እንዴት ነህ? ዛሬ ስብሰባው በሦስት ሰዓት ይጀምራል።",
+      "source_language": "en",
+      "target_language": "am",
+      "model": "mock-mt-1",
+      "usage": { "input_tokens": 12, "output_tokens": 18 }
+    }
+  }
+}

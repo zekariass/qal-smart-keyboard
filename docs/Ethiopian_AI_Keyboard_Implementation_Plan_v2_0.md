@@ -67,7 +67,7 @@
 
 | Phase | Name | Steps | 🟩 Done | 🟦 In progress | 🟥 Blocked | ⬜ Todo | % |
 |---|---|---|---|---|---|---|---|
-| Phase 0 | Foundations (M0) | 6 | 3 | 0 | 0 | 3 | 50% |
+| Phase 0 | Foundations (M0) | 6 | 4 | 0 | 0 | 2 | 67% |
 | Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 0 | 0 | 0 | 22 | 0% |
 | Phase 2 | Backend + P0 AI (M2) | 39 | 0 | 0 | 0 | 39 | 0% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
@@ -75,7 +75,7 @@
 | Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
 | Phase 6 | Differentiation (M6) | 8 | 0 | 0 | 0 | 8 | 0% |
 | Phase 7 | Expansion + B2B (M7) | 5 | 0 | 0 | 0 | 5 | 0% |
-| **Total** | | **109** | 3 | 0 | 0 | 106 | 3% |
+| **Total** | | **109** | 4 | 0 | 0 | 105 | 4% |
 
 ### Human gates
 
@@ -96,7 +96,8 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 |---|---|---|---|---|
 | 2026-11-17 | F0.1 | 🟩 DONE | eb7a580 | Skeleton per SD §24 with READMEs; root `.gitignore`; `git init`; `contracts/openapi.yaml` + `contracts/sync.sh --check` (passes); root README prerequisites and build commands. Android: `ime`, `data`, `billing-play`, `billing-direct` library modules + `play`/`direct` flavours; `assemblePlayDebug` and `assembleDirectDebug` succeed. Backend: `V1__baseline.sql` in Flyway folder; `contextLoads` passes on PG18 (compose, port 5434, 86 tables) with `-Djava.version=21`. Open: JDK 25 not installed locally. |
 | 2026-11-17 | F0.2 | 🟩 DONE | 1c757ca, fcd569a, 62c7d78 | GitHub Actions `ci.yml`: contract + migration drift check, Redocly lint (annotations), schema on PG17/PG18 (86 tables), backend `verify` on Java 25 + PG18, Android play/direct assemble + unit tests, Rust job (skips until `core/Cargo.toml`). Run 44088993925 all green. Fixed 11 unquoted OpenAPI descriptions that YAML split on commas. Open: 4 Redocly warnings (2 unused realtime schemas, 1 example/oneOf mismatch, example.com server); iOS/admin-web jobs to add at I5.1/H3.6. |
-| 2026-11-17 | F0.3 | 🟩 DONE | see git log | `backend/src/test/java/com/qalsmartkeyboard/schema/SchemaGuardsIT.java`: Testcontainers PG18 + Flyway, 10 tests covering smoke checks 01–26, each in a rolled-back transaction; SQLSTATE 42xxx (test-authoring errors) cannot count as a rejection. Failsafe runs `*IT` in `mvnw verify`. Mutation check: removing `payment_transactions` from the append-only trigger list fails check 18. Image overridable with `-Dqal.test.postgres-image=postgres:17`. |
+| 2026-11-17 | F0.3 | 🟩 DONE | 979df1b | `backend/src/test/java/com/qalsmartkeyboard/schema/SchemaGuardsIT.java`: Testcontainers PG18 + Flyway, 10 tests covering smoke checks 01–26, each in a rolled-back transaction; SQLSTATE 42xxx (test-authoring errors) cannot count as a rejection. Failsafe runs `*IT` in `mvnw verify`. Mutation check: removing `payment_transactions` from the append-only trigger list fails check 18. Image overridable with `-Dqal.test.postgres-image=postgres:17`. |
+| 2026-11-17 | F0.4 | 🟩 DONE | see git log | Compose: postgres:18 (5434), MinIO (9000/9001; Chainguard image pinned by digest because `minio/minio` is no longer pullable) + init creating `qal-language-packs`, `qal-exports`, `qal-audio-temp`; WireMock 3.13.1 (8089) with 13 stubs under `/sms`, `/ai`, `/chapa`; `X-Mock-Scenario: slow|error` for fallback tests. All healthy, stubs verified with curl. Open: Chapa stub shapes are from memory and must be checked against Chapa docs before M4.2; AI request/response shapes are placeholders until providers are chosen; MinIO digest needs manual repinning. |
 
 ---
 
@@ -109,7 +110,7 @@ Goal: repo, CI, contracts and decisions that unblock everything else. Many items
 | F0.1 | Create the repo skeleton exactly per SD §24 (folders already created, each with a README stating its purpose); sync API to `contracts/openapi.yaml` (docs/ is canonical; CI fails on drift). Add build instructions per module. | — | Tree matches §24; each module has a placeholder build that passes. | 🟩 DONE |
 | F0.2 | CI pipeline: Rust (`cargo fmt/clippy/test`), backend (Gradle or Maven build + Testcontainers), Android (assemble + unit tests, Gradle at `android/`), iOS (xcodebuild on macOS runner), OpenAPI lint (`npx @redocly/cli@1 lint contracts/openapi.yaml`), SQL apply test on PG17 and PG18. | F0.1 | CI green on an empty change. | 🟩 DONE |
 | F0.3 | Port `scratchpad/schema_smoke_test.sql` ideas into `backend/src/test/.../SchemaGuardsIT`: apply `V1__baseline.sql` on Testcontainers PG18 and assert the 26 guard checks (price overlap, append-only ledgers, entitlement gating, etc.). | F0.1 | Test passes; fails if a guard is removed. | 🟩 DONE |
-| F0.4 | `infra/compose/docker-compose.yml`: PostgreSQL 18, MinIO, mock SMS/AI/payment providers (WireMock). | F0.1 | `docker compose up` gives a working local stack. | ⬜ TODO |
+| F0.4 | `infra/compose/docker-compose.yml`: PostgreSQL 18, MinIO, mock SMS/AI/payment providers (WireMock). | F0.1 | `docker compose up` gives a working local stack. | 🟩 DONE |
 | F0.5 | Record human-owned open items in `docs/adr/0001-open-items.md` from SD §26.2: transliteration scheme sign-off, provider shortlist, Play Billing eligibility in Ethiopia, quota/cost model, hosting region. | — | File exists with owner + due milestone per item. | ⬜ TODO |
 | F0.6 | Provider evaluation harness: `language-data/eval/` scripts that run a test set (am/ti/om/en) through candidate MT/LLM/ASR providers and write scores to CSV. No user data; use public/test corpora. | F0.4 | Harness runs against mocks; real providers pluggable by config. | ⬜ TODO |
 

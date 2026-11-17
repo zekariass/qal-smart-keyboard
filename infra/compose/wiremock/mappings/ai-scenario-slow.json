@@ -1,0 +1,15 @@
+{
+  "name": "ai: scenario slow (any /ai/ endpoint, 15s delay)",
+  "priority": 1,
+  "request": {
+    "method": "ANY",
+    "urlPathPattern": "/ai/.*",
+    "headers": { "X-Mock-Scenario": { "equalTo": "slow" } }
+  },
+  "response": {
+    "status": 200,
+    "headers":{"Content-Type":"application/json; charset=utf-8"},
+    "fixedDelayMilliseconds": 15000,
+    "jsonBody": { "mock_scenario": "slow" }
+  }
+}

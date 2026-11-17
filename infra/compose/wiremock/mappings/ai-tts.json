@@ -1,0 +1,10 @@
+{
+  "name": "ai: text-to-speech (returns a tiny silent WAV)",
+  "priority": 5,
+  "request": { "method": "POST", "urlPath": "/ai/v1/tts" },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "audio/wav" },
+    "bodyFileName": "tts-sample.wav"
+  }
+}
