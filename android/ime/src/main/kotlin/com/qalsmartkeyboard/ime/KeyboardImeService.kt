@@ -10,6 +10,8 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
+import com.qalsmartkeyboard.data.SettingsRepository
+import com.qalsmartkeyboard.data.SettingsSnapshot
 import org.json.JSONObject
 import uniffi.qal_keyboard_core.KeyboardEngine
 
@@ -48,11 +50,18 @@ class KeyboardImeService : InputMethodService() {
     }
 
     private val adapter = InputConnectionAdapter { if (currentInputConnection != null) editorOps else null }
-    private val controller = KeyboardController(adapter) { refreshViews() }
+    // Settings (A1.5): a cached snapshot (defaults until the first load), updated off the main thread.
+    private val snapshot by lazy { SettingsSnapshot(SettingsRepository.get(applicationContext)) }
+    private val settingsPrefs by lazy {
+        SettingsPreferences({ snapshot.current }) { lang, mode -> snapshot.launchUpdate { it.copy(lastModes = it.lastModes + (lang to mode)) } }
+    }
+    private val controller by lazy { KeyboardController(adapter, settingsPrefs, settingsPrefs) { refreshViews() } }
 
     override fun onCreate() {
         super.onCreate()
         adapter.onCompositionAbandoned = { controller.onCompositionAbandoned() }
+        snapshot.onChange = { main.post { controller.onPreferencesChanged() } }
+        snapshot.start()
         loadCoreInBackground()
     }
 
@@ -94,6 +103,7 @@ class KeyboardImeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        snapshot.stop()
         engine?.close()
         engine = null
         super.onDestroy()

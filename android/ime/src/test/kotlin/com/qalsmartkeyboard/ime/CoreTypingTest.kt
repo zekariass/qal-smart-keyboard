@@ -14,7 +14,7 @@ class CoreTypingTest {
     private val engine get() = CoreTestEnv.engine
     private val log get() = CoreTestEnv.log
 
-    private fun Session(type: Int = InputType.TYPE_CLASS_TEXT) = CoreTestEnv.Session(type)
+    private fun Session(type: Int = InputType.TYPE_CLASS_TEXT) = CoreTestEnv.Session(type, prefs = CoreTestEnv.FidelFirst())
 
     private val AM_PH = TypingMode("am", LayoutKind.PHONETIC)
 
