@@ -38,10 +38,12 @@ class FlywayBaselineIT {
     @Test
     void baselineIsAppliedByTheBootedApplicationAndValidates() {
         MigrationInfo[] all = flyway.info().all();
-        assertEquals(1, all.length, "only V1 exists until a V2__ migration is added");
+        assertEquals(2, all.length, "V1 baseline plus V2 outbox/scheduler (B1.4)");
         assertEquals("1", all[0].getVersion().getVersion());
         assertEquals("baseline", all[0].getDescription());
         assertEquals(MigrationState.SUCCESS, all[0].getState());
+        assertEquals("2", all[1].getVersion().getVersion());
+        assertEquals(MigrationState.SUCCESS, all[1].getState());
         flyway.validate(); // throws if an applied migration was edited
     }
 
@@ -50,7 +52,8 @@ class FlywayBaselineIT {
         Integer tables = jdbc.queryForObject(
                 "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'"
                         + " and table_name <> 'flyway_schema_history'", Integer.class);
-        assertEquals(86, tables);
+        // 86 baseline tables + scheduled_tasks and processed_events from V2
+        assertEquals(88, tables);
         assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
                 "select success from flyway_schema_history where version='1'", Boolean.class)));
     }
