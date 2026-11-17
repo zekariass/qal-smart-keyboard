@@ -11,3 +11,15 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+
+# Per-user envelope encryption (B1.5, ADR 0005). Startup fails if no KMS provider is configured.
+# Local development: QAL_KMS_PROVIDER=local and QAL_LOCAL_KMS_KEK=<base64 of 32 random bytes>.
+# The local KMS is refused under the prod/production/staging profiles.
+qal:
+  crypto:
+    kms:
+      provider: ${QAL_KMS_PROVIDER:}
+    local-kms:
+      kek: ${QAL_LOCAL_KMS_KEK:}
+    cloud-kms:
+      key-name: ${QAL_CLOUD_KMS_KEY_NAME:}
