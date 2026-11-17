@@ -60,3 +60,9 @@ opt-level = 3
 [[bench]]
 name = "lexicon"
 harness = false
+
+# Timed benchmark for the C1.7 ranker (rank + autocorrect over a 200k-word lexicon):
+# `cargo bench --bench ranker`. Asserts the whole strip-update compute share of SD 17.1.
+[[bench]]
+name = "ranker"
+harness = false
