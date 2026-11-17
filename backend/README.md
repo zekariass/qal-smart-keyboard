@@ -45,6 +45,35 @@ void activate(...) {
   Logs carry event id and type only.
 - Schema: `V2__outbox_scheduler.sql` adds db-scheduler's `scheduled_tasks` and `processed_events`.
 
+## Configuration (B1.6)
+
+Module `configuration`: `GET /api/v1/config` and the app-version gate. Both read an in-memory snapshot of
+`feature_flags` and `app_configurations` that is reloaded after `qal.config.cache-ttl` (default 30s). Edits to those
+tables become visible within the TTL; explicit invalidation comes with the admin module. If a reload fails the previous
+snapshot keeps being served.
+
+- **Values:** active `app_configurations` rows of scope `ALL`, overridden per key by the caller's platform row
+  (`BACKEND` rows are never served). Reserved keys `minSupportedAppVersion` and `recommendedAppVersion` (JSON strings) fill the
+  top-level fields; no `minSupportedAppVersion` row means `0.0.0` (nothing is rejected). `configVersion` is the highest
+  `config_version` among the applied rows (0 if none).
+- **Flags:** every flag is listed; it is `true` only if enabled, its `platform_scope` is `ALL` or the caller's platform, the
+  caller's version meets `min_app_version` (unknown version: not met), `targeting` is empty and the rollout admits the caller.
+  Targeted flags (markets/plans/channels) stay `false` until an authenticated context exists (B2.4). Partial rollout
+  (`rollout_percentage` 1-99) is deterministic: `SHA-256(flagCode + ":" + subjectKey)` first 4 bytes mod 100 below the percentage.
+  The subject key (user id, else device id) is not available yet, so partial rollouts are `false` for now.
+- **Version gate (426):** an MVC interceptor on `/api/v1/**` compares `X-App-Version` with the platform's minimum and throws
+  `APP_VERSION_UNSUPPORTED` (426, extension member `minSupportedAppVersion`). Exempt: `/api/v1/config` (old clients must be able
+  to learn they have to update), `/api/v1/billing/webhooks/**` and `/api/v1/billing/store-notifications/**` (provider/store
+  callbacks). `/partner/v1/**` and `/actuator/**` are not covered. The contract makes all client headers optional, so:
+  no `X-App-Version` means not enforced; a malformed `X-App-Version` or an `X-Client-Platform` other than `ANDROID|IOS|WEB`
+  is 400 `VALIDATION_FAILED`; no platform means the `ALL` minimum applies; an unreadable configuration fails open (logged).
+  The headers are client-asserted: this is a compatibility gate, not a security control.
+- **Version comparison** is SemVer precedence (`1.10.0 > 1.9.0`); `2.1` means `2.1.0`; a pre-release is below its release
+  (`2.0.0-beta.1 < 2.0.0`); build metadata (`+...`) is ignored. See `AppVersion`.
+- Until B2.4 adds a `SecurityFilterChain`, Spring Boot's default security answers 401 before any of this runs for anonymous
+  callers (the contract allows anonymous `/config`); the tests use a permit-all chain.
+- `/config` never fails on bad client headers (the contract declares no 400 for it): they count as unknown.
+
 ## Contract tests
 
 Controller tests validate every response against `contracts/openapi.yaml` (OpenAPI 3.1) by adding one annotation:
