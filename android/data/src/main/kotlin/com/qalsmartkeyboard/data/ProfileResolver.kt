@@ -1,7 +1,15 @@
 package com.qalsmartkeyboard.data
 
 /** An ACTIVE transliteration profile as known locally (from installed packs, later the synced catalog). */
-data class ProfileRef(val code: String, val language: String, val activatedAtEpochMs: Long)
+data class ProfileRef(
+    val code: String,
+    val language: String,
+    val activatedAtEpochMs: Long,
+    /** Profile version of the pack it came from, when known. */
+    val version: String? = null,
+    /** True when the profile is reviewed (APPROVED), false for DRAFT data. */
+    val approved: Boolean = false,
+)
 
 /** What profiles are active right now. */
 fun interface ProfileCatalog {

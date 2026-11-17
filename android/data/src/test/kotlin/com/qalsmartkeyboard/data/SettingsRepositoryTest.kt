@@ -216,4 +216,57 @@ class SettingsRepositoryTest {
         assertEquals("AM_PHONETIC_V2", items[3].transliterationProfileCode)
         assertNull(items[0].transliterationProfileCode)
     }
+
+    // ---------------------------------------------------------------- A1.6 seam
+
+    @Test fun loadedPacksReplaceARetiredProfileAndRaiseTheFlag() = runBlocking {
+        val r = open()
+        r.update { phonetic("AM_PHONETIC_V0") }
+        val order = r.current().languages.map { it.languageCode }
+        assertFalse(r.profileChanges.profileChanged)
+
+        val changes = r.applyInstalledProfiles(listOf(ProfileRef("AM_PHONETIC", "am", 0, "0.1.0", false)))
+
+        assertEquals(listOf(ProfileChange("am", "AM_PHONETIC_V0", "AM_PHONETIC")), changes)
+        val after = r.current()
+        assertEquals("AM_PHONETIC", after.language("am")!!.transliterationProfileCode)
+        assertEquals(order, after.languages.map { it.languageCode })
+        assertTrue(r.profileChanges.profileChanged)
+        assertEquals(changes, r.profileChanges.changes.value)
+        r.profileChanges.acknowledge()
+        assertFalse(r.profileChanges.profileChanged)
+
+        // A second run finds nothing to change and does not raise the flag again.
+        assertTrue(r.applyInstalledProfiles(listOf(ProfileRef("AM_PHONETIC", "am", 0))).isEmpty())
+        assertFalse(r.profileChanges.profileChanged)
+    }
+
+    @Test fun nothingChangesWhilePacksAreNotLoaded() = runBlocking {
+        val r = open()
+        r.update { phonetic("AM_PHONETIC_V0") }
+        assertNull(r.profileCatalog.activeProfiles("am"))
+        assertTrue(r.applyProfileFallback(r.profileCatalog).isEmpty())
+        assertEquals("AM_PHONETIC_V0", r.current().language("am")!!.transliterationProfileCode)
+        assertFalse(r.profileChanges.profileChanged)
+    }
+
+    @Test fun languageWithoutAProfilePackFallsBackToNewestAndFlagsIt() = runBlocking {
+        val r = open()
+        r.update { phonetic("AM_PHONETIC_V0") }
+        // Packs loaded, but none carries an Amharic profile: the stale code is dropped (null = newest active).
+        r.applyInstalledProfiles(listOf(ProfileRef("TI_PHONETIC", "ti", 0)))
+        assertNull(r.current().language("am")!!.transliterationProfileCode)
+        assertEquals(ProfileChange("am", "AM_PHONETIC_V0", null), r.profileChanges.changes.value.single())
+    }
+
+    @Test fun changeNoticeAccumulatesUntilAcknowledged() {
+        val n = ProfileChangeNotice()
+        val a = ProfileChange("am", "A", "B")
+        n.report(listOf(a))
+        n.report(emptyList())
+        n.report(listOf(a, ProfileChange("ti", "X", null)))
+        assertEquals(2, n.changes.value.size)
+        n.acknowledge()
+        assertTrue(n.changes.value.isEmpty())
+    }
 }
