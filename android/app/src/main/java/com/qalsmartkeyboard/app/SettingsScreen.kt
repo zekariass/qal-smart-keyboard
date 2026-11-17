@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.qalsmartkeyboard.data.InputMode
 import com.qalsmartkeyboard.data.KeyboardSettings
@@ -43,10 +44,18 @@ fun SettingsScreen(
     settings: KeyboardSettings,
     repository: SettingsRepository,
     modifier: Modifier = Modifier,
+    onRunSetup: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Keyboard settings", style = MaterialTheme.typography.headlineSmall)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.settings_setup_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.settings_setup_body))
+                Button(onClick = onRunSetup) { Text(stringResource(R.string.settings_setup_button)) }
+            }
+        }
         Text("Languages (top = first on the globe key)", style = MaterialTheme.typography.titleMedium)
         val onlyOneEnabled = settings.enabledLanguages.size <= 1
         settings.languages.forEachIndexed { i, l ->

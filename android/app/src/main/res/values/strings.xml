@@ -1,3 +1,78 @@
 <resources>
     <string name="app_name">Qal Smart Keyboard</string>
+
+    <!-- Onboarding (A1.7). English now; keep every user-visible string here so am/ti/om can be added as values-xx. -->
+    <string name="privacy_notice_url" translatable="false">https://qalsmartkeyboard.example/privacy</string>
+
+    <string name="onb_step_progress">Step %1$d of %2$d</string>
+    <string name="onb_skip">Skip setup</string>
+    <string name="onb_skip_description">Skip setup. You can run it again from Settings.</string>
+    <string name="onb_back">Back</string>
+    <string name="onb_continue">Continue</string>
+
+    <string name="onb_welcome_title">Welcome to Qal Smart Keyboard</string>
+    <string name="onb_welcome_intro">A keyboard for Amharic, Tigrinya, Afaan Oromoo and English. Setup takes about a minute.</string>
+    <string name="onb_privacy_title">Your privacy</string>
+    <string name="onb_privacy_offline">Typing works fully offline. You do not need an account to type.</string>
+    <string name="onb_privacy_keystrokes">What you type stays on your device. The keyboard hands it only to the app you are typing in; it does not store it or send it anywhere.</string>
+    <string name="onb_privacy_ai">This version has no AI features. If they are added, they will be optional and will run only when you ask for them.</string>
+    <string name="onb_privacy_settings">Your keyboard settings are stored on this device.</string>
+    <string name="onb_privacy_link">Read the full privacy notice</string>
+    <string name="onb_privacy_link_description">Read the full privacy notice in your browser</string>
+
+    <string name="onb_enable_title">Turn on the keyboard</string>
+    <string name="onb_enable_body">Android needs you to switch Qal Smart Keyboard on in the system keyboard list. Tap the button, turn on Qal Smart Keyboard, then come back here.</string>
+    <string name="onb_enable_button">Open keyboard settings</string>
+    <string name="onb_enable_status_on">Qal Smart Keyboard is turned on.</string>
+    <string name="onb_enable_status_off">Qal Smart Keyboard is not turned on yet.</string>
+    <string name="onb_enable_warning">Android shows a general warning that any keyboard can see what you type. The privacy notice in the first step says what this keyboard does.</string>
+
+    <string name="onb_select_title">Choose the keyboard</string>
+    <string name="onb_select_body">Now pick Qal Smart Keyboard as the keyboard you type with. Tap the button and choose it in the list that appears.</string>
+    <string name="onb_select_button">Choose keyboard</string>
+    <string name="onb_select_status_on">Qal Smart Keyboard is your current keyboard.</string>
+    <string name="onb_select_status_off">Another keyboard is still selected.</string>
+
+    <string name="onb_lang_title">Your languages</string>
+    <string name="onb_lang_body">Choose the languages you type in. The first one is used when the keyboard opens; the globe key moves to the next language in this order. You can change this later in Settings.</string>
+    <string name="onb_lang_first_badge">First</string>
+    <string name="onb_lang_make_first">Make first</string>
+    <string name="onb_lang_make_first_description">Make %1$s the first language</string>
+    <string name="onb_lang_enabled_description">Use %1$s</string>
+    <string name="onb_lang_up">Up</string>
+    <string name="onb_lang_up_description">Move %1$s up</string>
+    <string name="onb_lang_down">Down</string>
+    <string name="onb_lang_down_description">Move %1$s down</string>
+    <string name="onb_lang_mode_title">How do you want to type %1$s?</string>
+    <string name="onb_mode_phonetic">Phonetic QWERTY (recommended)</string>
+    <string name="onb_mode_phonetic_hint">Type with Latin letters, for example selam, and get ሰላም.</string>
+    <string name="onb_mode_fidel">Fidel grid</string>
+    <string name="onb_mode_fidel_hint">Tap a consonant, then a vowel key.</string>
+
+    <string name="lang_am">Amharic (አማርኛ)</string>
+    <string name="lang_ti">Tigrinya (ትግርኛ)</string>
+    <string name="lang_om">Afaan Oromoo</string>
+    <string name="lang_en">English</string>
+    <string name="lang_am_short">Amharic</string>
+    <string name="lang_ti_short">Tigrinya</string>
+
+    <string name="onb_tutorial_title">Try it out</string>
+    <string name="onb_tutorial_body">Tap the box and type. If the keyboard does not appear, go back and choose Qal Smart Keyboard.</string>
+    <string name="onb_tutorial_field_label">Type here to try the keyboard</string>
+    <string name="onb_tutorial_not_selected">Qal Smart Keyboard is not your current keyboard, so the box below will use another one.</string>
+    <string name="onb_tips_title">Tips</string>
+    <string name="onb_tip_phonetic">Phonetic: type selam and tap the word on the strip above the keys (or press space) to get ሰላም.</string>
+    <string name="onb_tip_fidel">Fidel grid: tap a consonant, then a vowel key. Or long-press a consonant and slide to the form you want.</string>
+    <string name="onb_tip_globe_tap">Globe key: tap to go to the next language.</string>
+    <string name="onb_tip_globe_long">Globe key: long-press to switch between the layouts of the current language (for example phonetic, Fidel and ABC).</string>
+    <string name="onb_tip_abc">ABC key: switches to plain Latin letters and back.</string>
+    <string name="onb_tip_space">Space bar: long-press to pick a language from a list.</string>
+    <string name="onb_tip_punctuation">Punctuation: while typing in Amharic or Tigrinya, long-press . or , for ። ፣ ፤ and more.</string>
+    <string name="onb_tip_draft">Words marked DRAFT come from language data that is still being reviewed.</string>
+    <string name="onb_finish">Finish setup</string>
+
+    <!-- Settings entry point -->
+    <string name="settings_setup_title">Keyboard setup</string>
+    <string name="settings_setup_body">Turn on and choose the keyboard, pick languages and try it out.</string>
+    <string name="settings_setup_button">Run setup again</string>
 </resources>
