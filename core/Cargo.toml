@@ -50,3 +50,9 @@ strip = "debuginfo" # full strip removes the UniFFI metadata symbols that librar
 opt-level = 3
 [profile.dev.package.sha2]
 opt-level = 3
+
+# Timed benchmark for the C1.6 lexicon (std only, no criterion): `cargo bench --bench lexicon`.
+# It asserts the lexicon's share of the SD 17.1 candidate-strip budget, so it can gate CI.
+[[bench]]
+name = "lexicon"
+harness = false
