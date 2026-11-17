@@ -1,5 +1,5 @@
 -- ============================================================================
--- Ethiopian AI Keyboard — PostgreSQL baseline schema
+-- Qal Smart Keyboard — PostgreSQL baseline schema
 -- Version: 2.0 (consolidated baseline; ship as Flyway V1__baseline.sql)
 -- Target:  PostgreSQL 17+ (18 recommended). Uses gen_random_uuid(), UNIQUE
 --          NULLS NOT DISTINCT (PG15+) and the btree_gist extension.
