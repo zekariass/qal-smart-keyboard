@@ -327,10 +327,15 @@ impl KeyboardEngine {
                 .map(|p| p.on_key(event))
                 .unwrap_or_default();
         }
-        if !matches!(s.mode, InputMode::Abc | InputMode::English) {
-            // Unreachable today: set_input_mode refuses modes that have not landed (C1.5).
-            return EditorUpdate::default();
-        }
+        // Abc, English and Qubee are plain passthrough (SD 7.1): typed text is committed exactly
+        // as received, never transformed (no auto-capitalisation, no apostrophe rewriting). The
+        // Qubee apostrophe (hudhaa) is an ordinary character here; word segmentation around it
+        // lives in `crate::latin`. After commit, Backspace deletes one grapheme cluster, so a
+        // digraph such as `dh` takes two presses (the host's cursor view).
+        debug_assert!(matches!(
+            s.mode,
+            InputMode::Abc | InputMode::English | InputMode::Qubee
+        ));
         match event {
             // Two-key Fidel events only mean something in DirectFidel.
             KeyEvent::FidelConsonant { .. } | KeyEvent::FidelVowel { .. } => {
@@ -405,11 +410,16 @@ fn mode_fits_language(mode: InputMode, language_code: &str) -> bool {
 }
 
 /// Modes implemented in this build. DirectFidel (C1.3) and PhoneticLatin (C1.4) additionally
-/// need a loaded layout / profile, checked in `set_input_mode`. Extend as C1.5 (Qubee) lands.
+/// need a loaded layout / profile, checked in `set_input_mode`. Qubee and English (C1.5) are
+/// passthrough and need no data.
 fn mode_available(mode: InputMode) -> bool {
     matches!(
         mode,
-        InputMode::Abc | InputMode::English | InputMode::DirectFidel | InputMode::PhoneticLatin
+        InputMode::Abc
+            | InputMode::English
+            | InputMode::Qubee
+            | InputMode::DirectFidel
+            | InputMode::PhoneticLatin
     )
 }
 
