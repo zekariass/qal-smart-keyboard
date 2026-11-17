@@ -1,6 +1,11 @@
 //! The FFI-facing engine object and its data types.
 
 use crate::error::CoreError;
+use crate::pack::{
+    self, KeyRing, PackInfo, PackLimits, PackPlatform, PackRejectReason, ResourceType, TrustedKey,
+    VerifiedPack,
+};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Engine construction options.
@@ -8,6 +13,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 pub struct EngineConfig {
     /// Upper bound on candidates returned per update.
     pub max_candidates: u32,
+    /// Pinned pack-signing public keys (current and next, plus retiring/revoked ones).
+    /// An empty list means every pack is rejected with `UnknownKey`.
+    pub trusted_keys: Vec<TrustedKey>,
+    /// Pack size limits; `None` uses the defaults (32 MiB artifact, 64 KiB manifest).
+    pub pack_limits: Option<PackLimits>,
 }
 
 /// How typed characters are interpreted for a language.
@@ -58,25 +68,24 @@ pub struct EditorUpdate {
     pub candidates: Vec<Candidate>,
 }
 
-/// Metadata of a successfully loaded pack.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct PackInfo {
-    pub pack_id: String,
-    pub language_code: String,
-    pub version: String,
-}
-
 #[derive(Debug)]
 struct State {
     mode: InputMode,
     composing: String,
 }
 
+/// Rollback-protection slot: one loaded pack per (language, resource type, platform).
+type PackSlot = (String, ResourceType, PackPlatform);
+
 /// The language engine. Internally synchronised, so it is `Send + Sync`.
 #[derive(uniffi::Object)]
 pub struct KeyboardEngine {
     state: Mutex<State>,
-    #[allow(dead_code)] // used by the ranker from C1.7
+    /// Verified packs. Separate lock so pack loading never blocks the key path.
+    packs: Mutex<HashMap<PackSlot, Arc<VerifiedPack>>>,
+    key_ring: KeyRing,
+    pack_limits: PackLimits,
+    #[allow(dead_code)] // max_candidates is used by the ranker from C1.7
     config: EngineConfig,
 }
 
@@ -84,23 +93,75 @@ const SUPPORTED_LANGUAGES: [&str; 4] = ["am", "ti", "om", "en"];
 
 #[uniffi::export]
 impl KeyboardEngine {
+    /// Fails with `CoreError::InvalidConfig` if a trusted key is malformed (not 32 bytes, not a
+    /// valid Ed25519 point, small order, duplicate id or duplicate key) or the limits are unusable.
     #[uniffi::constructor]
-    pub fn new(config: EngineConfig) -> Arc<Self> {
-        Arc::new(Self {
+    pub fn new(config: EngineConfig) -> Result<Arc<Self>, CoreError> {
+        let key_ring = KeyRing::new(&config.trusted_keys)?;
+        let pack_limits = config.pack_limits.unwrap_or_default();
+        pack_limits.validate()?;
+        Ok(Arc::new(Self {
             state: Mutex::new(State {
                 mode: InputMode::Abc,
                 composing: String::new(),
             }),
+            packs: Mutex::new(HashMap::new()),
+            key_ring,
+            pack_limits,
             config,
-        })
+        }))
     }
 
-    /// Load a signed language pack. Real verification arrives in C1.2; every pack is rejected now.
+    /// Verify and activate a signed language pack (`docs/specs/pack-format-v1.md`).
+    ///
+    /// Nothing is activated unless the container is authentic (strict Ed25519 under a trusted,
+    /// non-revoked key) and intact (artifact size and SHA-256 match the signed manifest).
+    /// Engine policy on top of verification:
+    /// - rollback protection per (language, resource type, platform): a lower version, or the
+    ///   same version with a different artifact, is rejected with `Downgrade`; reloading the
+    ///   identical pack is an idempotent success;
+    /// - delta packs (`baseResourceId` set) are verified, then rejected with
+    ///   `DeltaNotSupported`: the host pack manager applies deltas and loads the full result.
     pub fn load_pack(&self, bytes: Vec<u8>) -> Result<PackInfo, CoreError> {
-        let _ = bytes;
-        Err(CoreError::PackRejected {
-            reason: "pack loading is not implemented yet".to_string(),
-        })
+        // Verify outside any lock: hashing a large artifact must not block other calls.
+        let verified = pack::verify_pack(bytes, &self.key_ring, &self.pack_limits)?;
+        if verified.is_delta() {
+            return Err(CoreError::PackRejected {
+                reason: PackRejectReason::DeltaNotSupported,
+                detail: "delta packs are applied by the host pack manager".to_string(),
+            });
+        }
+        let info = verified.info();
+        let m = verified.manifest();
+        let slot = (m.language_code.clone(), m.resource_type, m.platform);
+
+        let mut packs = self.lock_packs();
+        if let Some(loaded) = packs.get(&slot) {
+            let l = loaded.manifest();
+            if m.version == l.version && m.sha256 == l.sha256 && m.resource_id == l.resource_id {
+                return Ok(loaded.info()); // identical pack: idempotent no-op
+            }
+            if m.version <= l.version {
+                return Err(CoreError::PackRejected {
+                    reason: PackRejectReason::Downgrade,
+                    detail: "a pack with the same or a higher version is already loaded"
+                        .to_string(),
+                });
+            }
+        }
+        packs.insert(slot, Arc::new(verified));
+        Ok(info)
+    }
+
+    /// Metadata of every loaded pack, sorted by language, resource type and platform.
+    pub fn loaded_packs(&self) -> Vec<PackInfo> {
+        let packs = self.lock_packs();
+        let mut slots: Vec<&PackSlot> = packs.keys().collect();
+        slots.sort();
+        slots
+            .into_iter()
+            .filter_map(|s| packs.get(s).map(|p| p.info()))
+            .collect()
     }
 
     pub fn set_input_mode(&self, language_code: String, mode: InputMode) -> Result<(), CoreError> {
@@ -201,6 +262,11 @@ impl KeyboardEngine {
         // A poisoned lock only means another thread panicked; the state is still usable.
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    fn lock_packs(&self) -> MutexGuard<'_, HashMap<PackSlot, Arc<VerifiedPack>>> {
+        // Packs are only inserted after full verification, so a poisoned map is still valid.
+        self.packs.lock().unwrap_or_else(|e| e.into_inner())
+    }
 }
 
 #[cfg(test)]
@@ -208,7 +274,12 @@ mod tests {
     use super::*;
 
     fn engine() -> Arc<KeyboardEngine> {
-        KeyboardEngine::new(EngineConfig { max_candidates: 5 })
+        KeyboardEngine::new(EngineConfig {
+            max_candidates: 5,
+            trusted_keys: vec![],
+            pack_limits: None,
+        })
+        .unwrap()
     }
 
     #[test]

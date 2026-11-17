@@ -19,12 +19,32 @@ required-features = ["cli"]
 [features]
 # Enables the uniffi-bindgen binary (not needed by app builds).
 cli = ["uniffi/cli"]
+# Pack signing API (`pack::builder`) for tests, the fuzz crate and the L1.1 pack build tool.
+# Never enabled in app builds: the shipped library can only verify packs, not sign them.
+builder = []
 
 [dependencies]
 uniffi = "0.32"
 thiserror = "2"
+# Pack verification (C1.2). `verify_strict` rejects malleable / small-order signatures.
+ed25519-dalek = "2.2"
+sha2 = "0.10"
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+# Self-reference so unit and integration tests get the signing builder; app builds do not.
+qal-keyboard-core = { path = ".", features = ["builder"] }
+proptest = "1"
 
 [profile.release]
 lto = true
 opt-level = "s"
 strip = "debuginfo" # full strip removes the UniFFI metadata symbols that library-mode bindgen needs
+
+# Keep the exhaustive tamper tests fast in debug builds.
+[profile.dev.package.curve25519-dalek]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3

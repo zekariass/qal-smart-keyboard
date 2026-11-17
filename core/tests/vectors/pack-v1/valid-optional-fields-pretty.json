@@ -1,0 +1,51 @@
+{
+  "containerHex": "51414c5041434b0000010d746573742d6163746976652d31c1c0558ae85ea014ab358b776af45ebc72804d35aa05911301020aa0f5ba8973f788f33bd9e090da4cdc0ff105392601a48c2dfb5f7315d6928129dfa8c5a50d000002a17b0a2020227265736f757263654964223a202230663866616435622d643963622d343639662d613136352d373038363737323839353065222c0a2020226c616e6775616765436f6465223a20227469222c0a2020227265736f7572636554797065223a20224b4559424f4152445f4c41594f5554222c0a20202276657273696f6e223a2022322e302e302d626574612e31222c0a202022706c6174666f726d223a2022414e44524f4944222c0a20202272656c656173654368616e6e656c223a202242455441222c0a2020226d696e41707056657273696f6e223a2022312e342e30222c0a202022617274696661637455726c223a202268747470733a2f2f63646e2e6578616d706c652e636f6d2f7061636b732f74692f6c61796f75742f322e302e302d626574612e312e7061636b222c0a202022736861323536223a202232363532353435663035643731346265326539363433326534643030643939336339646266653732333366666132373437616564653665323664316333336562222c0a20202273697a654279746573223a2032362c0a202022626173655265736f757263654964223a206e756c6c2c0a202022646576696365526571756972656d656e7473223a207b20226d696e52616d4d62223a2030207d2c0a2020226c6963656e7365436f6465223a20224c6963656e73655265662d51616c2d54657374222c0a20202270726f66696c65223a207b2022636f6465223a202254495f54455354222c2022646973706c61794e616d65223a2022e189b5e18c8de188ade18a9b222c20226e6f726d616c697a6174696f6e223a20224e464322207d2c0a2020226675747572654d656d626572223a205b312c20322c20335d2c0a2020227369676e61747572654b65794964223a2022746573742d6163746976652d31220a7d0a000000000000001a73796e7468657469632074657374206172746966616374207631",
+  "description": "Pretty-printed manifest with optional, unknown and non-ASCII members: the signature covers these exact bytes; no canonical JSON form is involved.",
+  "expected": {
+    "load": "ACCEPT",
+    "packInfo": {
+      "isDelta": false,
+      "keyId": "test-active-1",
+      "languageCode": "ti",
+      "minAppVersion": "1.4.0",
+      "packId": "0f8fad5b-d9cb-469f-a165-70867728950e",
+      "platform": "ANDROID",
+      "releaseChannel": "BETA",
+      "resourceType": "KEYBOARD_LAYOUT",
+      "sha256": "2652545f05d714be2e96432e4d00d993c9dbfe7233ffa2747aede6e26d1c33eb",
+      "sizeBytes": 26,
+      "version": "2.0.0-beta.1"
+    },
+    "verifies": true
+  },
+  "format": "qal-pack-v1-test-vector",
+  "input": {
+    "artifactHex": "73796e7468657469632074657374206172746966616374207631",
+    "manifestUtf8": "{\n  \"resourceId\": \"0f8fad5b-d9cb-469f-a165-70867728950e\",\n  \"languageCode\": \"ti\",\n  \"resourceType\": \"KEYBOARD_LAYOUT\",\n  \"version\": \"2.0.0-beta.1\",\n  \"platform\": \"ANDROID\",\n  \"releaseChannel\": \"BETA\",\n  \"minAppVersion\": \"1.4.0\",\n  \"artifactUrl\": \"https://cdn.example.com/packs/ti/layout/2.0.0-beta.1.pack\",\n  \"sha256\": \"2652545f05d714be2e96432e4d00d993c9dbfe7233ffa2747aede6e26d1c33eb\",\n  \"sizeBytes\": 26,\n  \"baseResourceId\": null,\n  \"deviceRequirements\": { \"minRamMb\": 0 },\n  \"licenseCode\": \"LicenseRef-Qal-Test\",\n  \"profile\": { \"code\": \"TI_TEST\", \"displayName\": \"ትግርኛ\", \"normalization\": \"NFC\" },\n  \"futureMember\": [1, 2, 3],\n  \"signatureKeyId\": \"test-active-1\"\n}\n",
+    "signingKeyId": "test-active-1",
+    "signingSeedHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+  },
+  "limits": {
+    "maxArtifactBytes": 33554432,
+    "maxContainerBytes": 33685504,
+    "maxManifestBytes": 65536
+  },
+  "name": "valid-optional-fields-pretty",
+  "trustedKeys": [
+    {
+      "keyId": "test-active-1",
+      "publicKeyHex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "status": "ACTIVE"
+    },
+    {
+      "keyId": "test-retiring-1",
+      "publicKeyHex": "29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7",
+      "status": "RETIRING"
+    },
+    {
+      "keyId": "test-revoked-1",
+      "publicKeyHex": "2543b92ff1095511476adc8369db6ddc933665a11978dda1404ee1066ca9559d",
+      "status": "REVOKED"
+    }
+  ]
+}

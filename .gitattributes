@@ -7,3 +7,4 @@ mvnw      text eol=lf
 *.jar     binary
 *.png     binary
 *.webp    binary
+core/tests/vectors/** text eol=lf

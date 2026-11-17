@@ -411,10 +411,11 @@ Each resource has a signed manifest:
   "deviceRequirements": { "minRamMb": 0 },
   "licenseCode": "PROPRIETARY",
   "profile": { "code": "AM_PHONETIC_QWERTY_TO_ETHIOPIC", "sourceScript": "Latn", "targetScript": "Ethi", "normalization": "NFC", "reversible": true },
-  "signatureKeyId": "packs-2026-01",
-  "signature": "base64(ed25519(manifest-without-signature))"
+  "signatureKeyId": "packs-2026-01"
 }
 ```
+
+The manifest travels with its artifact in one signed container. The Ed25519 signature covers the **exact transmitted manifest bytes** prefixed with the domain-separation context `QAL-PACK-MANIFEST-v1\0` (never a re-serialised JSON form), and the manifest commits to the artifact by `sha256` and `sizeBytes`. Byte layout, verification order, limits, key handling, rollback rule and test vectors: [`specs/pack-format-v1.md`](specs/pack-format-v1.md).
 
 Distribution rules:
 

@@ -1,0 +1,32 @@
+# cargo-fuzz targets for the pack parser (plan step C1.2). Standalone crate with its own
+# workspace so the main crate, stable CI and app builds never see it. Needs nightly:
+# see README.md.
+[package]
+name = "qal-keyboard-core-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+qal-keyboard-core = { path = "..", features = ["builder"] }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "pack_container"
+path = "fuzz_targets/pack_container.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pack_signed_manifest"
+path = "fuzz_targets/pack_signed_manifest.rs"
+test = false
+doc = false
+bench = false

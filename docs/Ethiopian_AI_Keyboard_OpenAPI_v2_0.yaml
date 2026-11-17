@@ -3583,7 +3583,11 @@ components:
         - OTHER
     LanguageResourceManifest:
       type: object
-      required: [id, languageCode, resourceType, version, platform, channel, artifactUrl, sha256, sizeBytes, signatureKeyId, signature]
+      description: >-
+        Discovery metadata for one pack, used to decide what to download. It is NOT trusted:
+        the downloaded artifact is a self-authenticating container (docs/specs/pack-format-v1.md)
+        whose embedded manifest is Ed25519-signed and verified on the device before activation.
+      required: [id, languageCode, resourceType, version, platform, channel, artifactUrl, sha256, sizeBytes, signatureKeyId]
       properties:
         id: { type: string, format: uuid }
         languageCode: { $ref: '#/components/schemas/LanguageCode' }
@@ -3594,11 +3598,11 @@ components:
           enum: [SHARED, ANDROID, IOS]
         channel: { $ref: '#/components/schemas/ReleaseChannel' }
         artifactUrl: { type: string, format: uri, description: HTTPS CDN URL. }
-        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
-        sizeBytes: { type: integer, format: int64, minimum: 0 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$', description: SHA-256 of the artifact inside the container; equals the signed manifest value. }
+        sizeBytes: { type: integer, format: int64, minimum: 0, description: Artifact size inside the container; equals the signed manifest value. }
+        containerSizeBytes: { type: integer, format: int64, minimum: 0, description: Size of the whole container file, for download planning. }
         baseResourceId: { type: string, format: uuid, description: Present for delta artifacts; apply only on top of this installed resource. }
         signatureKeyId: { type: string }
-        signature: { type: string, description: Base64 Ed25519 signature over the canonical manifest. }
         minAppVersion: { type: string }
         licenseCode: { type: string, description: SPDX or internal licence code; non-commercial licences are never published. }
         deviceRequirements:

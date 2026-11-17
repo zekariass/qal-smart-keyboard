@@ -7,6 +7,8 @@
 //! The public surface is exposed through UniFFI proc-macros and kept FFI-friendly: owned types,
 //! no lifetimes, no generics, `Arc` objects.
 
+#![forbid(unsafe_code)]
+
 pub mod calendar;
 pub mod composer;
 mod engine;
@@ -20,8 +22,11 @@ pub mod translit;
 
 pub use engine::{
     Candidate, CandidateKind, EditorUpdate, EngineConfig, InputMode, KeyEvent, KeyboardEngine,
-    PackInfo,
 };
 pub use error::CoreError;
+pub use pack::{
+    KeyStatus, PackInfo, PackLimits, PackPlatform, PackRejectReason, ReleaseChannel, ResourceType,
+    TrustedKey,
+};
 
 uniffi::setup_scaffolding!();

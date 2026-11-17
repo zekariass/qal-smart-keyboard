@@ -139,6 +139,7 @@ jobs:
         run: |
           cargo fmt --check
           cargo clippy --all-targets -- -D warnings
+          cargo clippy --lib -- -D warnings   # shipped build, without the test-only `builder` feature
           cargo test
       - name: Build cdylib and generate Kotlin bindings (smoke check)
         if: steps.detect.outputs.present == 'true'

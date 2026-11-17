@@ -1,0 +1,51 @@
+{
+  "containerHex": "51414c5041434b0000010f746573742d7265746972696e672d3149c67fc9647ca2c65b05704c1480ce275608042a8d09dc38e6892df4ff8f5e7bbe690dff51aeae90bd466f8ff5642293129e49e20363bd587bd3295ed8222900000001687b227265736f757263654964223a2230663866616435622d643963622d343639662d613136352d373038363737323839353065222c226c616e6775616765436f6465223a22616d222c227265736f7572636554797065223a225452414e534c495445524154494f4e5f52554c4553222c2276657273696f6e223a22312e332e30222c22706c6174666f726d223a22534841524544222c2272656c656173654368616e6e656c223a22535441424c45222c22736861323536223a2232363532353435663035643731346265326539363433326534643030643939336339646266653732333366666132373437616564653665323664316333336562222c2273697a654279746573223a32362c22626173655265736f757263654964223a6e756c6c2c226c6963656e7365436f6465223a224c6963656e73655265662d51616c2d54657374222c227369676e61747572654b65794964223a22746573742d7265746972696e672d31227d000000000000001a73796e7468657469632074657374206172746966616374207631",
+  "description": "Signed by a RETIRING key: still verifies.",
+  "expected": {
+    "load": "ACCEPT",
+    "packInfo": {
+      "isDelta": false,
+      "keyId": "test-retiring-1",
+      "languageCode": "am",
+      "minAppVersion": null,
+      "packId": "0f8fad5b-d9cb-469f-a165-70867728950e",
+      "platform": "SHARED",
+      "releaseChannel": "STABLE",
+      "resourceType": "TRANSLITERATION_RULES",
+      "sha256": "2652545f05d714be2e96432e4d00d993c9dbfe7233ffa2747aede6e26d1c33eb",
+      "sizeBytes": 26,
+      "version": "1.3.0"
+    },
+    "verifies": true
+  },
+  "format": "qal-pack-v1-test-vector",
+  "input": {
+    "artifactHex": "73796e7468657469632074657374206172746966616374207631",
+    "manifestUtf8": "{\"resourceId\":\"0f8fad5b-d9cb-469f-a165-70867728950e\",\"languageCode\":\"am\",\"resourceType\":\"TRANSLITERATION_RULES\",\"version\":\"1.3.0\",\"platform\":\"SHARED\",\"releaseChannel\":\"STABLE\",\"sha256\":\"2652545f05d714be2e96432e4d00d993c9dbfe7233ffa2747aede6e26d1c33eb\",\"sizeBytes\":26,\"baseResourceId\":null,\"licenseCode\":\"LicenseRef-Qal-Test\",\"signatureKeyId\":\"test-retiring-1\"}",
+    "signingKeyId": "test-retiring-1",
+    "signingSeedHex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
+  },
+  "limits": {
+    "maxArtifactBytes": 33554432,
+    "maxContainerBytes": 33685504,
+    "maxManifestBytes": 65536
+  },
+  "name": "valid-retiring-key",
+  "trustedKeys": [
+    {
+      "keyId": "test-active-1",
+      "publicKeyHex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "status": "ACTIVE"
+    },
+    {
+      "keyId": "test-retiring-1",
+      "publicKeyHex": "29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7",
+      "status": "RETIRING"
+    },
+    {
+      "keyId": "test-revoked-1",
+      "publicKeyHex": "2543b92ff1095511476adc8369db6ddc933665a11978dda1404ee1066ca9559d",
+      "status": "REVOKED"
+    }
+  ]
+}
