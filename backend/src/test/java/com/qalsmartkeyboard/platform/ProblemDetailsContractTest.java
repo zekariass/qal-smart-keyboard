@@ -148,7 +148,7 @@ class ProblemDetailsContractTest {
 		mvc.perform(post("/probe/ping").contentType(JSON).content("{}")).andExpect(status().isMethodNotAllowed())
 				.andExpect(header().exists("Allow"))
 				.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
-				.andExpect(jsonPath("$.status").value(405)).andExpect(jsonPath("$.code").isNotEmpty());
+				.andExpect(jsonPath("$.status").value(405)).andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
 	}
 
 	@Test
@@ -156,7 +156,8 @@ class ProblemDetailsContractTest {
 		mvc.perform(post("/probe/validated").contentType(MediaType.TEXT_PLAIN).content("name=x"))
 				.andExpect(status().isUnsupportedMediaType())
 				.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
-				.andExpect(jsonPath("$.status").value(415));
+				.andExpect(jsonPath("$.status").value(415))
+				.andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
 	}
 
 	@ParameterizedTest

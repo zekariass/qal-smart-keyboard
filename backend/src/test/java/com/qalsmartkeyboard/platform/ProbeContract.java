@@ -18,8 +18,8 @@ import io.swagger.v3.oas.models.responses.ApiResponses;
  * The real contract plus test-only operations for the probe controller. The probe operations reuse the
  * contract's own shared error responses ({@code components.responses.*}: the {@code Problem} schema with the
  * {@code X-Correlation-Id} header) for every error status, so each Problem produced by the platform is validated
- * against the contract's Problem schema. The contract has no 405/406/415 responses, so those statuses reuse the same
- * Problem response object here. Nothing is written back to contracts/openapi.yaml.
+ * against the contract's Problem schema. The contract has no shared 405/406/415 response objects (their codes are in
+ * Problem.code), so those statuses reuse the same Problem response object here. Nothing is written back to contracts/openapi.yaml.
  */
 final class ProbeContract {
 

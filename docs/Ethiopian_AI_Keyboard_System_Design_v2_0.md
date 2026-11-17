@@ -614,7 +614,7 @@ On failure, usage is RELEASEd and the client receives a typed Problem response (
   - language ID matches the requested destination
   - no-op detection (output identical to input when a change was expected)
   - protected tokens (names, URLs, numbers, glossary terms) preserved
-- A failed check triggers one retry on the same route and then a fallback route. If both fail, the response is `AI_OUTPUT_REJECTED` with no charge.
+- A failed check triggers one retry on the same route and then a fallback route. If both fail, the response is `OUTPUT_GUARDRAIL_FAILED` with no charge.
 - **Safety:** provider safety filters plus a lightweight policy check. Requests are not refused merely because of the language they are in.
 
 ### 11.5 Cultural intelligence
@@ -834,9 +834,7 @@ All errors use RFC 9457 `application/problem+json`:
 }
 ```
 
-These stable `code` values are part of the contract, and clients switch on `code`, never on `title`:
-
-`VALIDATION_FAILED`, `UNAUTHENTICATED`, `TOKEN_REUSE_DETECTED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `IDEMPOTENCY_KEY_REUSED`, `QUOTA_EXCEEDED`, `RATE_LIMITED`, `FEATURE_NOT_IN_PLAN`, `CONSENT_REQUIRED`, `LANGUAGE_PAIR_UNAVAILABLE`, `TEXT_TOO_LONG`, `AI_PROVIDER_UNAVAILABLE`, `AI_OUTPUT_REJECTED`, `ATTESTATION_REQUIRED`, `OTP_INVALID`, `OTP_EXPIRED`, `PAYMENT_METHOD_UNAVAILABLE`, `ORDER_NOT_PAYABLE`, `PURCHASE_FLOW_NOT_ALLOWED`, `STORE_VERIFICATION_FAILED`, `REQUEST_IN_PROGRESS`, `GUEST_NOT_ALLOWED`, `REVISION_CONFLICT`, `WEBHOOK_SIGNATURE_INVALID`, `APP_VERSION_UNSUPPORTED` (HTTP 426).
+These stable `code` values are part of the contract, and clients switch on `code`, never on `title`. The canonical list is the `Problem.code` description in the OpenAPI contract; new codes are added there first. Framework errors map to `NOT_FOUND` (404), `METHOD_NOT_ALLOWED` (405), `NOT_ACCEPTABLE` (406) and `UNSUPPORTED_MEDIA_TYPE` (415); malformed bodies and failed validation map to `VALIDATION_FAILED` (400) with per-field `errors[]`; `APP_VERSION_UNSUPPORTED` is HTTP 426, and unexpected failures are `INTERNAL_ERROR` (500) with no detail.
 
 ## 15. Plans, entitlements, usage and credits
 
@@ -1053,7 +1051,7 @@ There MUST NOT be synchronous disk or network access on the key path. Pack loadi
 
 ### 17.2 Resilience
 
-- Every provider call has a timeout and a circuit breaker. Retries are limited to idempotent or transient failures. Fallback is allowed only to a route of equal or better `quality_tier`; otherwise the request returns a clear `AI_PROVIDER_UNAVAILABLE`.
+- Every provider call has a timeout and a circuit breaker. Retries are limited to idempotent or transient failures. Fallback is allowed only to a route of equal or better `quality_tier`; otherwise the request returns a clear `PROVIDER_UNAVAILABLE`.
 - Payment and store calls are idempotent with provider idempotency keys where supported.
 - PostgreSQL has PITR backups (RPO ≤ 5 min, RTO ≤ 1 h) and quarterly restore drills.
 - The CDN serves packs, so pack availability does not depend on API availability.

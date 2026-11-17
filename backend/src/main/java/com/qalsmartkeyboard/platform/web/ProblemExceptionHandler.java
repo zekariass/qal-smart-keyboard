@@ -122,6 +122,9 @@ class ProblemExceptionHandler extends ResponseEntityExceptionHandler {
 		}
 		ApiErrorCode code = switch (status) {
 			case NOT_FOUND -> ApiErrorCode.NOT_FOUND;
+			case METHOD_NOT_ALLOWED -> ApiErrorCode.METHOD_NOT_ALLOWED;
+			case NOT_ACCEPTABLE -> ApiErrorCode.NOT_ACCEPTABLE;
+			case UNSUPPORTED_MEDIA_TYPE -> ApiErrorCode.UNSUPPORTED_MEDIA_TYPE;
 			default -> status.is5xxServerError() ? ApiErrorCode.INTERNAL_ERROR : ApiErrorCode.VALIDATION_FAILED;
 		};
 		return problem(request, code, status, null, frameworkErrors(ex), null, headers);
