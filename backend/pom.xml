@@ -29,6 +29,7 @@
 	<properties>
 		<java.version>25</java.version>
 		<spring-modulith.version>2.1.2</spring-modulith.version>
+		<openapi-request-validator.version>3.0.0</openapi-request-validator.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -124,6 +125,13 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-testcontainers</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- B1.3: validates controller responses against contracts/openapi.yaml (OpenAPI 3.1) -->
+		<dependency>
+			<groupId>com.atlassian.oai</groupId>
+			<artifactId>openapi-request-validator-mockmvc</artifactId>
+			<version>${openapi-request-validator.version}</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
