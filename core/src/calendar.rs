@@ -239,10 +239,11 @@ pub fn ethiopian_to_clock(time: EthiopianTime) -> Result<ClockTime, CalendarErro
     if !(1..=12).contains(&time.hour) || time.minute > 59 {
         return Err(CalendarError::InvalidTime);
     }
-    let offset = match time.period {
-        EthiopianPeriod::Day => 0,
-        EthiopianPeriod::Night => 12,
-    };
+    // Ethiopian hours 6..=11 fall in the second half of their 12-hour period (the 24-hour
+    // clock hour is 12..=17 for Day and 0..=5 for Night), so the PM offset flips for them.
+    let second_half = (6..=11).contains(&time.hour);
+    let is_night = matches!(time.period, EthiopianPeriod::Night);
+    let offset = if is_night != second_half { 12 } else { 0 };
     Ok(ClockTime {
         hour: ((time.hour + 6) % 12 + offset) % 24,
         minute: time.minute,
@@ -262,7 +263,7 @@ fn push_pair(out: &mut String, v: u64) {
     if v >= 10 {
         out.push(TENS[(v / 10 - 1) as usize]);
     }
-    if v % 10 != 0 {
+    if !v.is_multiple_of(10) {
         out.push(ONES[(v % 10 - 1) as usize]);
     }
 }
@@ -351,22 +352,58 @@ mod tests {
     #[test]
     fn meskerem_1_falls_on_sept_11_or_12() {
         // Sept 12 in the Gregorian year after an Ethiopian leap year (Pagume of 6 days).
-        assert_eq!(gregorian_to_ethiopian(g(2023, 9, 12)).unwrap(), e(2016, 1, 1));
-        assert_eq!(gregorian_to_ethiopian(g(2024, 9, 11)).unwrap(), e(2017, 1, 1));
-        assert_eq!(gregorian_to_ethiopian(g(2025, 9, 11)).unwrap(), e(2018, 1, 1));
-        assert_eq!(gregorian_to_ethiopian(g(2026, 9, 11)).unwrap(), e(2019, 1, 1));
-        assert_eq!(gregorian_to_ethiopian(g(2027, 9, 12)).unwrap(), e(2020, 1, 1));
-        assert_eq!(ethiopian_to_gregorian(e(2017, 1, 1)).unwrap(), g(2024, 9, 11));
-        assert_eq!(ethiopian_to_gregorian(e(2020, 1, 1)).unwrap(), g(2027, 9, 12));
+        assert_eq!(
+            gregorian_to_ethiopian(g(2023, 9, 12)).unwrap(),
+            e(2016, 1, 1)
+        );
+        assert_eq!(
+            gregorian_to_ethiopian(g(2024, 9, 11)).unwrap(),
+            e(2017, 1, 1)
+        );
+        assert_eq!(
+            gregorian_to_ethiopian(g(2025, 9, 11)).unwrap(),
+            e(2018, 1, 1)
+        );
+        assert_eq!(
+            gregorian_to_ethiopian(g(2026, 9, 11)).unwrap(),
+            e(2019, 1, 1)
+        );
+        assert_eq!(
+            gregorian_to_ethiopian(g(2027, 9, 12)).unwrap(),
+            e(2020, 1, 1)
+        );
+        assert_eq!(
+            ethiopian_to_gregorian(e(2017, 1, 1)).unwrap(),
+            g(2024, 9, 11)
+        );
+        assert_eq!(
+            ethiopian_to_gregorian(e(2020, 1, 1)).unwrap(),
+            g(2027, 9, 12)
+        );
     }
 
     #[test]
     fn known_dates() {
-        assert_eq!(gregorian_to_ethiopian(g(2000, 1, 1)).unwrap(), e(1992, 4, 22));
-        assert_eq!(gregorian_to_ethiopian(g(2024, 1, 7)).unwrap(), e(2016, 4, 28));
-        assert_eq!(gregorian_to_ethiopian(g(2025, 1, 7)).unwrap(), e(2017, 4, 29)); // Genna
-        assert_eq!(gregorian_to_ethiopian(g(2024, 9, 27)).unwrap(), e(2017, 1, 17)); // Meskel
-        assert_eq!(gregorian_to_ethiopian(g(1970, 1, 1)).unwrap(), e(1962, 4, 23));
+        assert_eq!(
+            gregorian_to_ethiopian(g(2000, 1, 1)).unwrap(),
+            e(1992, 4, 22)
+        );
+        assert_eq!(
+            gregorian_to_ethiopian(g(2024, 1, 7)).unwrap(),
+            e(2016, 4, 28)
+        );
+        assert_eq!(
+            gregorian_to_ethiopian(g(2025, 1, 7)).unwrap(),
+            e(2017, 4, 29)
+        ); // Genna
+        assert_eq!(
+            gregorian_to_ethiopian(g(2024, 9, 27)).unwrap(),
+            e(2017, 1, 17)
+        ); // Meskel
+        assert_eq!(
+            gregorian_to_ethiopian(g(1970, 1, 1)).unwrap(),
+            e(1962, 4, 23)
+        );
         assert_eq!(ethiopian_to_gregorian(e(1, 1, 1)).unwrap(), g(8, 8, 27));
     }
 
@@ -378,23 +415,59 @@ mod tests {
         assert_eq!(ethiopian_days_in_month(2016, 14), 0);
         assert!(is_ethiopian_leap_year(2015) && !is_ethiopian_leap_year(2016));
         // Pagume 6 of the leap year 2015 is Sept 11 2023; the next day starts 2016.
-        assert_eq!(ethiopian_to_gregorian(e(2015, 13, 6)).unwrap(), g(2023, 9, 11));
-        assert_eq!(ethiopian_to_gregorian(e(2015, 13, 5)).unwrap(), g(2023, 9, 10));
-        assert_eq!(ethiopian_to_gregorian(e(2016, 13, 5)).unwrap(), g(2024, 9, 10));
-        assert_eq!(gregorian_to_ethiopian(g(2024, 9, 10)).unwrap(), e(2016, 13, 5));
+        assert_eq!(
+            ethiopian_to_gregorian(e(2015, 13, 6)).unwrap(),
+            g(2023, 9, 11)
+        );
+        assert_eq!(
+            ethiopian_to_gregorian(e(2015, 13, 5)).unwrap(),
+            g(2023, 9, 10)
+        );
+        assert_eq!(
+            ethiopian_to_gregorian(e(2016, 13, 5)).unwrap(),
+            g(2024, 9, 10)
+        );
+        assert_eq!(
+            gregorian_to_ethiopian(g(2024, 9, 10)).unwrap(),
+            e(2016, 13, 5)
+        );
     }
 
     #[test]
     fn invalid_dates_rejected() {
-        assert_eq!(ethiopian_to_gregorian(e(2016, 13, 6)), Err(CalendarError::InvalidDate));
-        assert_eq!(ethiopian_to_gregorian(e(2016, 14, 1)), Err(CalendarError::InvalidDate));
-        assert_eq!(ethiopian_to_gregorian(e(2016, 0, 1)), Err(CalendarError::InvalidDate));
-        assert_eq!(ethiopian_to_gregorian(e(2016, 1, 31)), Err(CalendarError::InvalidDate));
-        assert_eq!(gregorian_to_ethiopian(g(2023, 2, 29)), Err(CalendarError::InvalidDate));
+        assert_eq!(
+            ethiopian_to_gregorian(e(2016, 13, 6)),
+            Err(CalendarError::InvalidDate)
+        );
+        assert_eq!(
+            ethiopian_to_gregorian(e(2016, 14, 1)),
+            Err(CalendarError::InvalidDate)
+        );
+        assert_eq!(
+            ethiopian_to_gregorian(e(2016, 0, 1)),
+            Err(CalendarError::InvalidDate)
+        );
+        assert_eq!(
+            ethiopian_to_gregorian(e(2016, 1, 31)),
+            Err(CalendarError::InvalidDate)
+        );
+        assert_eq!(
+            gregorian_to_ethiopian(g(2023, 2, 29)),
+            Err(CalendarError::InvalidDate)
+        );
         assert!(gregorian_to_ethiopian(g(2024, 2, 29)).is_ok());
-        assert_eq!(gregorian_to_ethiopian(g(0, 1, 1)), Err(CalendarError::YearOutOfRange));
-        assert_eq!(gregorian_to_ethiopian(g(8, 1, 1)), Err(CalendarError::YearOutOfRange));
-        assert_eq!(ethiopian_to_gregorian(e(10000, 1, 1)), Err(CalendarError::YearOutOfRange));
+        assert_eq!(
+            gregorian_to_ethiopian(g(0, 1, 1)),
+            Err(CalendarError::YearOutOfRange)
+        );
+        assert_eq!(
+            gregorian_to_ethiopian(g(8, 1, 1)),
+            Err(CalendarError::YearOutOfRange)
+        );
+        assert_eq!(
+            ethiopian_to_gregorian(e(10000, 1, 1)),
+            Err(CalendarError::YearOutOfRange)
+        );
     }
 
     #[test]
@@ -436,7 +509,7 @@ mod tests {
 
     #[test]
     fn numeral_known_values() {
-        let cases: [(u64, &str); 14] = [
+        let cases: [(u64, &str); 15] = [
             (1, "፩"),
             (9, "፱"),
             (10, "፲"),
@@ -449,18 +522,34 @@ mod tests {
             (2017, "፳፻፲፯"),
             (10_000, "፼"),
             (10_100, "፼፻"),
-            (20_000, "፳፼"),
+            (20_000, "፪፼"),
+            (200_000, "፳፼"),
             (1_000_000, "፻፼"),
         ];
         for (n, s) in cases {
             assert_eq!(arabic_to_ethiopic(n).unwrap(), s, "encode {n}");
             assert_eq!(ethiopic_to_arabic(s.to_string()).unwrap(), n, "decode {s}");
         }
-        assert_eq!(arabic_to_ethiopic(0), Err(CalendarError::ZeroNotRepresentable));
-        assert_eq!(arabic_to_ethiopic(100_000_000), Err(CalendarError::NumberTooLarge));
-        assert_eq!(ethiopic_to_arabic(String::new()), Err(CalendarError::InvalidNumeral));
-        assert_eq!(ethiopic_to_arabic("፩a".into()), Err(CalendarError::InvalidNumeral));
-        assert_eq!(ethiopic_to_arabic("12".into()), Err(CalendarError::InvalidNumeral));
+        assert_eq!(
+            arabic_to_ethiopic(0),
+            Err(CalendarError::ZeroNotRepresentable)
+        );
+        assert_eq!(
+            arabic_to_ethiopic(100_000_000),
+            Err(CalendarError::NumberTooLarge)
+        );
+        assert_eq!(
+            ethiopic_to_arabic(String::new()),
+            Err(CalendarError::InvalidNumeral)
+        );
+        assert_eq!(
+            ethiopic_to_arabic("፩a".into()),
+            Err(CalendarError::InvalidNumeral)
+        );
+        assert_eq!(
+            ethiopic_to_arabic("12".into()),
+            Err(CalendarError::InvalidNumeral)
+        );
     }
 
     proptest! {
