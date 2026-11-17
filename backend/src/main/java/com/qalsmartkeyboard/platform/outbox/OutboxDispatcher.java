@@ -148,7 +148,8 @@ class OutboxDispatcher {
         return result;
     }
 
-    private void deliver(OutboxEvent event) {
+    /** Package-private for tests that interleave two dispatchers' claims and deliveries. */
+    void deliver(OutboxEvent event) {
         try {
             for (OutboxEventHandler handler : handlersByType.getOrDefault(event.eventType(), List.of())) {
                 invokeOnce(handler, event);
@@ -158,7 +159,7 @@ class OutboxDispatcher {
             return;
         }
         // Not guarded: if this throws (crash), the event stays PROCESSING and the lease expires.
-        markPublished(event.id());
+        markPublished(event.id(), event.attempt());
         delivered.increment();
         log.debug("outbox published id={} type={}", event.id(), event.eventType());
     }
@@ -186,12 +187,16 @@ class OutboxDispatcher {
         });
     }
 
-    void markPublished(UUID id) {
+    /**
+     * Outcome updates are fenced by the claimed attempt number: a worker whose lease expired and whose event was
+     * reclaimed by another worker (attempts incremented) must not overwrite the new owner's state.
+     */
+    void markPublished(UUID id, int attempt) {
         jdbc.update("""
                 UPDATE outbox_events SET event_status = 'PUBLISHED', published_at = ?, locked_until = NULL,
                        last_error = NULL
-                 WHERE id = ? AND event_status = 'PROCESSING'
-                """, ts(clock.instant()), id);
+                 WHERE id = ? AND event_status = 'PROCESSING' AND attempts = ?
+                """, ts(clock.instant()), id, attempt);
     }
 
     private void recordFailure(OutboxEvent event, Exception e) {
@@ -203,8 +208,8 @@ class OutboxDispatcher {
         if (maxAttempts != null && event.attempt() >= maxAttempts) {
             jdbc.update("""
                     UPDATE outbox_events SET event_status = 'DEAD', locked_until = NULL, last_error = ?
-                     WHERE id = ? AND event_status = 'PROCESSING'
-                    """, error, event.id());
+                     WHERE id = ? AND event_status = 'PROCESSING' AND attempts = ?
+                    """, error, event.id(), event.attempt());
             dead.increment();
             log.error("outbox event dead id={} type={} attempts={}", event.id(), event.eventType(), event.attempt());
             return;
@@ -212,8 +217,8 @@ class OutboxDispatcher {
         Instant next = clock.instant().plus(backoff(event.attempt()));
         jdbc.update("""
                 UPDATE outbox_events SET event_status = 'FAILED', locked_until = NULL, last_error = ?, available_at = ?
-                 WHERE id = ? AND event_status = 'PROCESSING'
-                """, error, ts(next), event.id());
+                 WHERE id = ? AND event_status = 'PROCESSING' AND attempts = ?
+                """, error, ts(next), event.id(), event.attempt());
         failed.increment();
         log.warn("outbox attempt failed id={} type={} attempt={} error={}", event.id(), event.eventType(),
                 event.attempt(), error);

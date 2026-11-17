@@ -240,7 +240,7 @@ class OutboxIT {
         OutboxDispatcher crashing = new OutboxDispatcher(jdbc, txManager, List.of(h), props(10), clock, () -> 0.0,
                 new SimpleMeterRegistry()) {
             @Override
-            void markPublished(UUID eventId) {
+            void markPublished(UUID eventId, int attempt) {
                 throw new SimulatedCrash();
             }
         };
@@ -280,6 +280,30 @@ class OutboxIT {
     }
 
     class SimulatedCrash extends RuntimeException {
+    }
+
+    /** A slow worker whose lease expired must not overwrite the state of the worker that reclaimed the event. */
+    @Test
+    void staleWorkerOutcomeDoesNotOverwriteReclaimedEvent() {
+        EffectHandler failing = new EffectHandler("c1", 1);
+        EffectHandler ok = new EffectHandler("c1", 0);
+        UUID id = publish();
+
+        OutboxDispatcher slow = dispatcher(10, failing);
+        List<OutboxEvent> slowClaim = slow.claim(); // attempt 1, then the worker stalls past its lease
+        clock.advance(Duration.ofSeconds(61));
+        OutboxDispatcher reclaimer = dispatcher(10, ok);
+        List<OutboxEvent> freshClaim = reclaimer.claim(); // attempt 2
+        assertEquals(1, slowClaim.size());
+        assertEquals(1, freshClaim.size());
+
+        slow.deliver(slowClaim.get(0)); // stale worker fails late
+        assertEquals("PROCESSING", status(id), "stale failure must not reset the reclaimed event to FAILED");
+        assertEquals(2, attempts(id));
+
+        reclaimer.deliver(freshClaim.get(0));
+        assertEquals("PUBLISHED", status(id));
+        assertEquals(1, effects());
     }
 
     // ---- (d) retry with backoff ---------------------------------------------------
