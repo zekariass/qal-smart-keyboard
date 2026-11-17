@@ -44,3 +44,6 @@ language-data/eval/*.jsonl
 # Pack build (L1.1): dev signing keys must never be committed; build output
 language-data/keys/
 language-data/build/
+
+# Kotlin Gradle plugin session data
+android/.kotlin/
