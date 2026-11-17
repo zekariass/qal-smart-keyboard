@@ -14,6 +14,7 @@ pub mod composer;
 mod engine;
 pub mod error;
 pub mod langid;
+pub mod latin;
 pub mod lexicon;
 pub mod pack;
 pub mod ranker;

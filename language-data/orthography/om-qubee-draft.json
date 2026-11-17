@@ -1,0 +1,12 @@
+{
+  "format": "qal-latin-orthography",
+  "formatVersion": 1,
+  "language": "om",
+  "orthographyId": "om-qubee",
+  "orthographyVersion": "0.1.0",
+  "status": "DRAFT",
+  "letters": "abcdefghijklmnopqrstuvwxyz",
+  "units": ["aa", "ee", "ii", "oo", "uu", "ch", "dh", "ny", "ph", "sh", "ts", "zy"],
+  "apostrophes": ["'", "’", "ʼ"],
+  "canonicalApostrophe": "'"
+}

@@ -1,0 +1,12 @@
+{
+  "format": "qal-latin-orthography",
+  "formatVersion": 1,
+  "language": "en",
+  "orthographyId": "en-latin",
+  "orthographyVersion": "0.1.0",
+  "status": "DRAFT",
+  "letters": "abcdefghijklmnopqrstuvwxyz",
+  "units": [],
+  "apostrophes": ["'", "’"],
+  "canonicalApostrophe": "'"
+}
