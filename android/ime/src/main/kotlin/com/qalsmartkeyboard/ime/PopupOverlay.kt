@@ -1,0 +1,110 @@
+package com.qalsmartkeyboard.ime
+
+import android.content.Context
+import android.content.res.Configuration
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.view.View
+
+/**
+ * Draws the long-press popup of [KeyboardSurface] (ADR 0003 follow-up). It covers the whole input
+ * view, which has a transparent, non-touchable headroom above the strip (see
+ * `KeyboardImeService.onComputeInsets`), so a popup can rise above the top key row. It never takes
+ * touches: the surface keeps the pointer and reports the highlighted item.
+ */
+class PopupOverlay(context: Context) : View(context) {
+    private val d = resources.displayMetrics.density
+    private val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    private val panel = if (dark) 0xFF2A2B30.toInt() else 0xFFFFFFFF.toInt()
+    private val edge = if (dark) 0xFF5A5C66.toInt() else 0xFFB5B7C0.toInt()
+    private val accent = 0xFF2E7D32.toInt()
+    private val textColor = if (dark) 0xFFF1F1F4.toInt() else 0xFF1B1B1F.toInt()
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+
+    private var items: List<PopupItem> = emptyList()
+    private var cols = 1
+    private var cw = 0f
+    private var chh = 0f
+    private var left = 0f
+    private var top = 0f
+    private var sel = -1
+
+    init {
+        isClickable = false
+        isFocusable = false
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    fun show(items: List<PopupItem>, cols: Int, cellW: Float, cellH: Float, left: Float, top: Float, selected: Int) {
+        this.items = items
+        this.cols = cols
+        cw = cellW
+        chh = cellH
+        this.left = left
+        this.top = top
+        sel = selected
+        invalidate()
+    }
+
+    fun hide() {
+        if (items.isEmpty()) return
+        items = emptyList()
+        invalidate()
+    }
+
+    // Never intercept touches.
+    override fun onTouchEvent(event: android.view.MotionEvent) = false
+
+    override fun onDraw(canvas: Canvas) {
+        if (items.isEmpty()) return
+        val r = 8f * d
+        val rows = (items.size + cols - 1) / cols
+        fill.color = edge
+        canvas.drawRoundRect(left - d, top - d, left + cw * cols + d, top + chh * rows + d, r, r, fill)
+        fill.color = panel
+        canvas.drawRoundRect(left, top, left + cw * cols, top + chh * rows, r, r, fill)
+        items.forEachIndexed { i, item ->
+            val cell = RectF(left + (i % cols) * cw, top + (i / cols) * chh, left + (i % cols + 1) * cw, top + (i / cols + 1) * chh)
+            if (i == sel) {
+                fill.color = accent
+                canvas.drawRoundRect(cell.left + 2 * d, cell.top + 2 * d, cell.right - 2 * d, cell.bottom - 2 * d, r, r, fill)
+            }
+            text.color = when {
+                i == sel -> 0xFFFFFFFF.toInt()
+                item.selected -> accent
+                else -> textColor
+            }
+            text.textSize = 20f * d
+            val w = text.measureText(item.label)
+            if (w > cell.width() - 6f * d) text.textSize = 20f * d * (cell.width() - 6f * d) / w
+            text.isFakeBoldText = item.selected
+            canvas.drawText(item.label, cell.centerX(), cell.centerY() - (text.descent() + text.ascent()) / 2, text)
+            text.isFakeBoldText = false
+        }
+    }
+}
+
+/**
+ * Stacks the keyboard column (child 0, sized by its content) and the popup overlay (child 1, given
+ * exactly the column's size so it never makes the input view taller than the keyboard).
+ */
+class OverlayStack(context: Context) : android.view.ViewGroup(context) {
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val column = getChildAt(0)
+        val maxH = MeasureSpec.getSize(heightMeasureSpec)
+        column.measure(
+            MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(maxH, MeasureSpec.AT_MOST),
+        )
+        val w = column.measuredWidth
+        val h = column.measuredHeight
+        getChildAt(1).measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
+        setMeasuredDimension(w, h)
+    }
+
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        for (i in 0 until childCount) getChildAt(i).layout(0, 0, r - l, b - t)
+    }
+}

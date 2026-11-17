@@ -29,7 +29,9 @@ info:
     - State-changing AI, billing, order, attempt, mandate, store-purchase and realtime-session
       POSTs require `Idempotency-Key` (see the parameter for the at-most-once charging rule).
     - Clients send `X-Client-Platform`, `X-App-Version` and `X-Client-Surface` on every request.
-      A request from an unsupported app version fails with `APP_VERSION_UNSUPPORTED` (426).
+      A request from an unsupported app version fails with `APP_VERSION_UNSUPPORTED` (426,
+      `components.responses.AppVersionUnsupported`) on every `/api/v1` operation except
+      `/config`, billing webhooks and store notifications. Operations do not list it individually.
   contact:
     name: Platform Engineering
   license:
@@ -2987,6 +2989,21 @@ components:
             correlationId: d8d14c6e-f6da-4c1b-8be8-6be9b5c4f1f5
             sourceLanguage: om
             destinationLanguage: ti
+
+    AppVersionUnsupported:
+      description: 'The app version (`X-Client-Platform` + `X-App-Version`) is below the platform minimum (`APP_VERSION_UNSUPPORTED`). The Problem carries `minSupportedAppVersion`; the client must update.'
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://api.example.com/problems/app-version-unsupported
+            title: This version of the app is no longer supported.
+            status: 426
+            code: APP_VERSION_UNSUPPORTED
+            correlationId: d8d14c6e-f6da-4c1b-8be8-6be9b5c4f1f5
+            minSupportedAppVersion: 1.4.0
 
   schemas:
     # ------------------------------------------------------------ primitives

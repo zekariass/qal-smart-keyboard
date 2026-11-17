@@ -102,20 +102,49 @@ class KeyboardImeService : InputMethodService() {
     // The keyboard is small; never take over the screen with the extract UI.
     override fun onEvaluateFullscreenMode(): Boolean = false
 
+    /** Transparent, non-touchable space above the strip where long-press popups are drawn. */
+    private var headroom: View? = null
+    private var inputRoot: View? = null
+
     override fun onCreateInputView(): View {
+        val d = resources.displayMetrics.density
         val s = CandidateStripView(this).also {
             it.onSelect = { i -> controller.selectCandidate(i) }
             strip = it
         }
+        val overlay = PopupOverlay(this)
         val k = KeyboardSurface(this).also {
             it.controller = controller
+            it.overlay = overlay
             surface = it
         }
-        return LinearLayout(this).apply {
+        val space = View(this).also { headroom = it }
+        val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
             addView(s, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        return OverlayStack(this).apply {
+            addView(column)
+            addView(overlay)
+            inputRoot = this
             refreshViews()
+        }
+    }
+
+    /** The app only sees the part of the window below the headroom; the headroom does not take touches. */
+    override fun onComputeInsets(outInsets: Insets) {
+        super.onComputeInsets(outInsets)
+        val root = inputRoot
+        val room = headroom
+        if (root != null && room != null && root.height > 0) {
+            val loc = IntArray(2)
+            room.getLocationInWindow(loc)
+            val top = loc[1] + room.height
+            outInsets.contentTopInsets = top
+            outInsets.visibleTopInsets = top
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
         }
     }
 
@@ -179,5 +208,6 @@ class KeyboardImeService : InputMethodService() {
 
     private companion object {
         const val TAG = "QalIme"
+        const val POPUP_HEADROOM_DP = 190f
     }
 }
