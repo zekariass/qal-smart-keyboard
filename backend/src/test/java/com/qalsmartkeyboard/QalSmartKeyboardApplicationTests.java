@@ -1,4 +1,4 @@
-package com.qalsmartkeyboard.api;
+package com.qalsmartkeyboard;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
