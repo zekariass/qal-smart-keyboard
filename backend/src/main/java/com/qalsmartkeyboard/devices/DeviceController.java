@@ -7,16 +7,19 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.qalsmartkeyboard.devices.DeviceDtos.AttestationEvidenceRequest;
 import com.qalsmartkeyboard.devices.DeviceDtos.AttestationResultDto;
 import com.qalsmartkeyboard.devices.DeviceDtos.DeviceDto;
+import com.qalsmartkeyboard.devices.DeviceDtos.DeviceListDto;
 import com.qalsmartkeyboard.devices.DeviceDtos.DeviceRegistrationRequest;
 import com.qalsmartkeyboard.devices.DeviceDtos.DeviceUpdateRequest;
 import com.qalsmartkeyboard.identity.AttestationChecker;
@@ -26,7 +29,7 @@ import com.qalsmartkeyboard.identity.DeviceInfo;
 import jakarta.validation.Valid;
 
 /**
- * {@code POST /api/v1/devices} ({@code registerDevice}), {@code PATCH /api/v1/devices/{deviceId}}
+ * {@code GET /api/v1/devices} ({@code listDevices}), {@code POST /api/v1/devices} ({@code registerDevice}), {@code PATCH /api/v1/devices/{deviceId}}
  * ({@code updateDevice}), {@code DELETE /api/v1/devices/{deviceId}} ({@code revokeDevice}) and
  * {@code POST /api/v1/devices/{deviceId}/attestations} ({@code submitDeviceAttestation}); all need an access
  * token. The client headers fill what the body leaves out: {@code X-App-Version} is the app version, and a present
@@ -42,6 +45,19 @@ class DeviceController {
 
 	DeviceController(DeviceService service) {
 		this.service = service;
+	}
+
+	@GetMapping("/api/v1/devices")
+	ResponseEntity<DeviceListDto> list(@AuthenticationPrincipal AuthenticatedUser caller,
+			@RequestParam(name = "cursor", required = false) String cursor,
+			@RequestParam(name = "limit", required = false) Integer limit) {
+		if (cursor != null && cursor.length() > 512) {
+			throw DeviceService.invalid("cursor", "INVALID", "The cursor is not valid.");
+		}
+		DeviceService.DevicePage page = service.list(caller.userId(), cursor,
+				limit == null ? DeviceService.DEFAULT_PAGE : limit);
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+				.body(new DeviceListDto(page.items(), page.nextCursor()));
 	}
 
 	@PostMapping(path = "/api/v1/devices", consumes = MediaType.APPLICATION_JSON_VALUE)

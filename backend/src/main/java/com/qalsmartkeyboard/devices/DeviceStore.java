@@ -71,9 +71,21 @@ class DeviceStore {
 				.param("id", deviceId).param("userId", userId).query(DeviceStore::map).optional();
 	}
 
-	List<DeviceRow> listOwned(UUID userId) {
-		return jdbc.sql("SELECT " + COLUMNS + " FROM user_devices WHERE user_id = :userId ORDER BY created_at, id")
-				.param("userId", userId).query(DeviceStore::map).list();
+	/**
+	 * One page of the owner's devices, oldest first ({@code created_at, id}), after the keyset position
+	 * ({@code afterCreatedAt}/{@code afterId} both {@code null} for the first page).
+	 */
+	List<DeviceRow> listOwned(UUID userId, Instant afterCreatedAt, UUID afterId, int limit) {
+		if (afterCreatedAt == null) {
+			return jdbc.sql("SELECT " + COLUMNS
+					+ " FROM user_devices WHERE user_id = :userId ORDER BY created_at, id LIMIT :limit")
+					.param("userId", userId).param("limit", limit).query(DeviceStore::map).list();
+		}
+		return jdbc.sql("SELECT " + COLUMNS + """
+				 FROM user_devices WHERE user_id = :userId AND (created_at, id) > (:ts, :afterId)
+				ORDER BY created_at, id LIMIT :limit""").param("userId", userId)
+				.param("ts", Timestamp.from(afterCreatedAt)).param("afterId", afterId).param("limit", limit)
+				.query(DeviceStore::map).list();
 	}
 
 	void insert(UUID id, UUID userId, UUID installationId, String platform, String deviceName, String appVersion,

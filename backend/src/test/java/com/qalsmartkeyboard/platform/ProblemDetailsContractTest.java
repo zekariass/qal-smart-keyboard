@@ -133,9 +133,9 @@ class ProblemDetailsContractTest {
 		mvc.perform(get("/probe/limit")).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors[0].field").value("limit"))
 				.andExpect(jsonPath("$.errors[0].code").value("REQUIRED"));
-		mvc.perform(get("/probe/limit").param("limit", "abc")).andExpect(status().isBadRequest())
+		mvc.perform(get("/probe/limit").param("limit", "not-a-number-xyz")).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors[0].code").value("TYPE_MISMATCH"))
-				.andExpect(content().string(not(containsString("abc"))));
+				.andExpect(content().string(not(containsString("not-a-number-xyz"))));
 	}
 
 	@Test

@@ -4,12 +4,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.qalsmartkeyboard.identity.DeviceInfo;
+import com.qalsmartkeyboard.identity.session.DeviceRegistrationDto;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 
 /** Request and response bodies of {@code /auth/otp/*} (contract schemas of the same names). */
 final class OtpDtos {
@@ -46,27 +45,6 @@ final class OtpDtos {
 		public String toString() {
 			return "OtpVerifyRequest[challengeId=" + challengeId + ", code=<redacted>, ageConfirmed=" + ageConfirmed
 					+ "]";
-		}
-	}
-
-	/**
-	 * {@code DeviceRegistration}. {@code installationId} keys the per-device verify limit; a native device is also
-	 * registered by the devices module while the session is issued (B2.5), so the session carries the device.
-	 */
-	record DeviceRegistrationDto(@NotNull UUID installationId,
-			@NotNull @Pattern(regexp = "^(ANDROID|IOS|WEB)$") String platform, @Size(max = 160) String deviceName,
-			@Size(max = 40) String appVersion, @Size(max = 80) String osVersion,
-			@Pattern(regexp = "^(FCM|APNS)$") String pushProvider, @Size(max = 4096) String pushToken) {
-
-		/** {@code appVersion} falls back to the {@code X-App-Version} header. */
-		DeviceInfo toDeviceInfo(String appVersionHeader) {
-			return new DeviceInfo(installationId, platform, deviceName, appVersion != null ? appVersion : appVersionHeader,
-					osVersion, pushProvider, pushToken);
-		}
-
-		@Override
-		public String toString() {
-			return "DeviceRegistrationDto[installationId=" + installationId + ", platform=" + platform + "]";
 		}
 	}
 }

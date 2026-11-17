@@ -37,6 +37,26 @@ public class UserAccountStore {
 		}
 	}
 
+	/** Result of an external-identity (Google, later Apple) sign-in after the ID token was verified. */
+	public sealed interface IdentitySignIn {
+
+		/** @param created whether the account was created by this sign-in */
+		record SignedIn(UserAccount user, boolean created) implements IdentitySignIn {
+		}
+
+		/** No account exists for the identity and the request did not confirm the minimum age (D26). Nothing was written. */
+		record AgeConfirmationRequired() implements IdentitySignIn {
+		}
+
+		/** The account exists but is {@code SUSPENDED}. */
+		record Suspended() implements IdentitySignIn {
+		}
+
+		/** The identity belongs to a {@code DELETED} or {@code MERGED} account that can no longer sign in. */
+		record Unavailable() implements IdentitySignIn {
+		}
+	}
+
 	private static final String USER_COLUMNS = "u.id, u.account_type, u.account_status, u.phone_e164, "
 			+ "u.phone_verified_at, u.display_name, u.ui_locale, u.time_zone, u.created_at";
 
@@ -105,6 +125,67 @@ public class UserAccountStore {
 				.param("now", Timestamp.from(now)).query(UserAccountStore::map).single();
 		insertPhoneIdentity(userId, phoneE164, now);
 		return new PhoneSignIn.SignedIn(created, true);
+	}
+
+	/**
+	 * Finds the account of a verified external identity <b>by provider and subject only</b>, or creates a
+	 * {@code REGISTERED}, {@code ACTIVE} account with that identity. An e-mail address is never used to find or link an
+	 * account: a provider's e-mail can match a different person's phone or e-mail account, and linking by it would be an
+	 * account takeover. Only {@code provider_email} (verified e-mails only, {@code null} otherwise) is kept on the
+	 * identity row; {@code users.email} is not set. The caller serialises sign-ins of one identity (advisory lock), and
+	 * must run in a transaction.
+	 *
+	 * @param provider    {@code GOOGLE} or {@code APPLE}
+	 * @param subject     the issuer's stable {@code sub}
+	 * @param verifiedEmail the e-mail if the provider asserts it is verified, else {@code null}
+	 * @param displayName used for a <em>new</em> account only (never overwrites), may be {@code null}
+	 */
+	public IdentitySignIn signInWithIdentity(String provider, String subject, String verifiedEmail, String displayName,
+			boolean ageConfirmed, Instant now) {
+		Optional<UserAccount> existing = jdbc.sql("SELECT " + USER_COLUMNS + """
+				 FROM user_auth_identities i JOIN users u ON u.id = i.user_id
+				WHERE i.identity_provider = :provider AND i.provider_subject = :subject
+				""").param("provider", provider).param("subject", subject).query(UserAccountStore::map).optional();
+		if (existing.isPresent()) {
+			UserAccount user = existing.get();
+			switch (user.accountStatus()) {
+				case "SUSPENDED":
+					return new IdentitySignIn.Suspended();
+				case "DELETED", "MERGED":
+					return new IdentitySignIn.Unavailable();
+				default:
+					break;
+			}
+			jdbc.sql("""
+					UPDATE user_auth_identities SET last_used_at = :now, provider_email = COALESCE(:email, provider_email)
+					WHERE identity_provider = :provider AND provider_subject = :subject
+					""").param("now", Timestamp.from(now)).param("email", verifiedEmail).param("provider", provider)
+					.param("subject", subject).update();
+			UserAccount updated = jdbc.sql("""
+					UPDATE users u SET last_login_at = :now, updated_at = :now,
+					       account_status = CASE WHEN u.account_status = 'PENDING' THEN 'ACTIVE' ELSE u.account_status END
+					WHERE u.id = :id
+					RETURNING """ + " " + USER_COLUMNS).param("now", Timestamp.from(now)).param("id", user.id())
+					.query(UserAccountStore::map).single();
+			return new IdentitySignIn.SignedIn(updated, false);
+		}
+		if (!ageConfirmed) {
+			return new IdentitySignIn.AgeConfirmationRequired();
+		}
+		UUID userId = UUID.randomUUID();
+		UserAccount created = jdbc.sql("""
+				INSERT INTO users AS u (id, account_type, display_name, account_status, age_confirmed_at, last_login_at,
+				                        created_at, updated_at)
+				VALUES (:id, 'REGISTERED', :displayName, 'ACTIVE', :now, :now, :now, :now)
+				RETURNING """ + " " + USER_COLUMNS).param("id", userId).param("displayName", displayName)
+				.param("now", Timestamp.from(now)).query(UserAccountStore::map).single();
+		jdbc.sql("""
+				INSERT INTO user_auth_identities (id, user_id, identity_provider, provider_subject, provider_email,
+				                                  created_at, last_used_at)
+				VALUES (:id, :userId, :provider, :subject, :email, :now, :now)
+				""").param("id", UUID.randomUUID()).param("userId", userId).param("provider", provider)
+				.param("subject", subject).param("email", verifiedEmail).param("now", Timestamp.from(now)).update();
+		return new IdentitySignIn.SignedIn(created, true);
 	}
 
 	/**
