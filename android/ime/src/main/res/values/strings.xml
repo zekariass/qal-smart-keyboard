@@ -1,4 +1,7 @@
 <resources>
     <string name="ime_name">Qal Smart Keyboard</string>
     <string name="subtype_english_qwerty">English (QWERTY)</string>
+    <!-- N9: shown on the candidate strip while the transliteration profile is DRAFT (not native-speaker approved). -->
+    <string name="candidate_strip_draft">DRAFT</string>
+    <string name="candidate_strip_draft_description">Draft suggestions, not verified by native speakers</string>
 </resources>

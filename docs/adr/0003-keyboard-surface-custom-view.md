@@ -50,3 +50,9 @@ dropped frame while typing is the most visible defect we can ship.
   performed; with no action a plain ENTER key press is sent.
 - Backspace and Enter-as-key use key events (`KEYCODE_DEL`/`KEYCODE_ENTER`) so selections are
   deleted and hosts that ignore `deleteSurroundingText` still work.
+
+**Amended by [ADR 0004](0004-composer-candidates-and-composing-fallback.md) (A1.3):** keys now go
+through the Rust core and an `InputConnectionAdapter`. Backspace sends a DEL key event only for a
+selection, an empty field or an editor that answers no text queries; otherwise it deletes the
+grapheme clusters the core asks for with `deleteSurroundingText`. Enter-as-key still sends
+`KEYCODE_ENTER`. The candidate strip is a second custom `View` above the key surface.

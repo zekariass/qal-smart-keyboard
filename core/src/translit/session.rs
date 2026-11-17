@@ -112,6 +112,24 @@ impl PhoneticSession {
         }
     }
 
+    /// Appends lexicon candidates (A1.3) after the transliteration alternatives, so that
+    /// [`select`](Self::select) resolves the merged strip the host shows. Texts already present
+    /// are skipped and the list stays capped at `max_candidates`. Returns the texts added, in
+    /// order.
+    pub fn extend_candidates(&mut self, extra: impl IntoIterator<Item = String>) -> Vec<String> {
+        let mut added = Vec::new();
+        for text in extra {
+            if self.candidates.len() >= self.max_candidates {
+                break;
+            }
+            if !text.is_empty() && !self.candidates.contains(&text) {
+                self.candidates.push(text.clone());
+                added.push(text);
+            }
+        }
+        added
+    }
+
     /// Builds the update for the host from the current buffer.
     fn view(&mut self, commit: String) -> EditorUpdate {
         let (composing, mut cands) = if self.raw.is_empty() {

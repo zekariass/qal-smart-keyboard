@@ -33,6 +33,13 @@ data class InputProfile(
     /** Auto-capitalisation request bits (`TYPE_TEXT_FLAG_CAP_*`); 0 when not applicable. */
     val capsFlags: Int,
 ) {
+    /**
+     * Phonetic transliteration may be used: plain text fields only. Password, email, URI,
+     * number and phone fields stay Latin/direct (SD 6.2, 7: transliteration is never forced).
+     */
+    val allowsTransliteration: Boolean
+        get() = kind == FieldKind.TEXT
+
     val enterLabel: EnterLabel
         get() = when (val a = enterAction) {
             EnterAction.Newline, EnterAction.EnterKey -> EnterLabel.RETURN

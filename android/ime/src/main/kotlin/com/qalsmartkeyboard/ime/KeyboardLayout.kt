@@ -1,7 +1,7 @@
 package com.qalsmartkeyboard.ime
 
-/** What a key does when pressed. */
-enum class KeyKind { CHAR, SHIFT, BACKSPACE, SPACE, ENTER, TO_SYMBOLS, TO_SYMBOLS_2, TO_LETTERS }
+/** What a key does when pressed. [MODE] is the TEMPORARY A1.3 typing-mode toggle (A1.4 replaces it). */
+enum class KeyKind { CHAR, SHIFT, BACKSPACE, SPACE, ENTER, MODE, TO_SYMBOLS, TO_SYMBOLS_2, TO_LETTERS }
 
 /**
  * One key. [text] is what a CHAR key commits (lower-case for letters; shift upper-cases it).
@@ -45,6 +45,8 @@ object Layouts {
         val bottom = when (profile.kind) {
             FieldKind.EMAIL -> listOf(toSym, ch("@"), ch(","), space(3f), ch("."), enter())
             FieldKind.URI -> listOf(toSym, ch("/"), space(2f), ch("."), Key(KeyKind.CHAR, ".com", ".com", 1.5f), enter())
+            // Plain text: the mode key (ABC / አማ / ትግ) sits next to ?123; its label is drawn live.
+            FieldKind.TEXT -> listOf(toSym, Key(KeyKind.MODE, "ABC", weight = 1.25f), ch(","), space(3.75f), ch("."), enter())
             else -> listOf(toSym, ch(","), space(4f), ch("."), enter())
         }
         return KeyboardLayout(

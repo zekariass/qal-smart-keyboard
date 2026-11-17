@@ -2,10 +2,12 @@
 
 use crate::composer::{DirectFidel, FidelLayout, Layout};
 use crate::error::CoreError;
+use crate::lexicon::Lexicon;
 use crate::pack::{
     self, KeyRing, PackInfo, PackLimits, PackPlatform, PackRejectReason, ResourceType, TrustedKey,
     VerifiedPack,
 };
+use crate::ranker::{RankKind, Ranker};
 use crate::translit::{PhoneticSession, Profile, ProfileStatus};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -102,6 +104,13 @@ pub struct TranslitProfileInfo {
 #[derive(Debug)]
 struct State {
     mode: InputMode,
+    /// Language of the current mode (as passed to `set_input_mode`).
+    language: String,
+    /// Bumped by every call that changes the state. Lexicon candidates are computed outside
+    /// the lock and only attached if no other call changed the state meanwhile.
+    generation: u64,
+    /// The committed word before the cursor, for bigram ranking (phonetic mode only).
+    context: WordContext,
     composing: String,
     /// Active direct-Fidel session; `Some` exactly when `mode` is `DirectFidel`.
     direct: Option<DirectFidel>,
@@ -112,6 +121,79 @@ struct State {
 /// Rollback-protection slot: one loaded pack per (language, resource type, platform).
 type PackSlot = (String, ResourceType, PackPlatform);
 
+/// Longest word kept as ranking context (the ranker's typed-word bound).
+const MAX_CONTEXT_CHARS: usize = 48;
+
+/// The last committed word, kept in memory only for bigram ranking: never logged, never
+/// persisted, cleared by `reset`, `set_input_mode` and any deletion.
+#[derive(Debug, Default)]
+struct WordContext {
+    /// The last complete word before the cursor (`None` at the start or after a sentence end).
+    previous: Option<String>,
+    /// Letters committed since the last word boundary.
+    current: String,
+}
+
+impl WordContext {
+    fn clear(&mut self) {
+        self.previous = None;
+        self.current.clear();
+    }
+
+    /// Follows the text the host commits. Whitespace and the Ethiopic wordspace end a word;
+    /// any other punctuation ends the context (a new sentence has no useful previous word).
+    fn observe(&mut self, update: &EditorUpdate) {
+        if update.delete_before > 0 {
+            self.clear();
+        }
+        for c in update.commit.chars() {
+            if c.is_alphanumeric() || is_combining_mark(c) {
+                if self.current.chars().count() < MAX_CONTEXT_CHARS {
+                    self.current.push(c);
+                }
+            } else if c.is_whitespace() || c == '\u{1361}' {
+                if !self.current.is_empty() {
+                    self.previous = Some(std::mem::take(&mut self.current));
+                }
+            } else {
+                self.clear();
+            }
+        }
+    }
+}
+
+fn is_combining_mark(c: char) -> bool {
+    matches!(c, '\u{0300}'..='\u{036F}' | '\u{135D}'..='\u{135F}')
+}
+
+/// Ethiopic blocks (SD 7.2). Lexicon candidates are only looked up for a composition that is
+/// entirely Ge'ez, so protected Latin tokens and pending punctuation get none.
+fn is_ethiopic(c: char) -> bool {
+    matches!(
+        c,
+        '\u{1200}'..='\u{139F}'
+            | '\u{2D80}'..='\u{2DDF}'
+            | '\u{AB00}'..='\u{AB2F}'
+            | '\u{1E7E0}'..='\u{1E7FF}'
+    )
+}
+
+/// Dictionary-backed ranking for one language: built from its `DICTIONARY` pack plus, when
+/// loaded, its `FREQUENCY_LIST` (bigram) pack.
+struct LangModel {
+    /// The dictionary pack the lexicon was parsed from (reused when only the bigrams change).
+    dictionary: Arc<VerifiedPack>,
+    lexicon: Arc<Lexicon>,
+    ranker: Arc<Ranker>,
+}
+
+/// What a key event needs to look up lexicon candidates once the state lock is released.
+struct CompletionRequest {
+    language: String,
+    previous: Option<String>,
+    generation: u64,
+}
+
 /// The language engine. Internally synchronised, so it is `Send + Sync`.
 #[derive(uniffi::Object)]
 pub struct KeyboardEngine {
@@ -120,6 +202,13 @@ pub struct KeyboardEngine {
     packs: Mutex<HashMap<PackSlot, Arc<VerifiedPack>>>,
     /// Parsed `KEYBOARD_LAYOUT` artifacts by language (lock order: `packs` before `layouts`).
     layouts: Mutex<HashMap<String, Arc<Layout>>>,
+    /// Lexicon + ranker per language. Held only to clone or swap an entry, never while
+    /// parsing, so the key path never waits for pack loading.
+    models: Mutex<HashMap<String, Arc<LangModel>>>,
+    /// Serialises `DICTIONARY` / `FREQUENCY_LIST` activation so concurrent loads cannot leave a
+    /// model built from a superseded pack. Lock order: `model_build`, `packs`, then `models`.
+    /// Never taken on the key path.
+    model_build: Mutex<()>,
     key_ring: KeyRing,
     pack_limits: PackLimits,
     config: EngineConfig,
@@ -139,12 +228,17 @@ impl KeyboardEngine {
         Ok(Arc::new(Self {
             state: Mutex::new(State {
                 mode: InputMode::Abc,
+                language: String::new(),
+                generation: 0,
+                context: WordContext::default(),
                 composing: String::new(),
                 direct: None,
                 phonetic: None,
             }),
             packs: Mutex::new(HashMap::new()),
             layouts: Mutex::new(HashMap::new()),
+            models: Mutex::new(HashMap::new()),
+            model_build: Mutex::new(()),
             key_ring,
             pack_limits,
             config,
@@ -164,6 +258,12 @@ impl KeyboardEngine {
     /// - a `TRANSLITERATION_RULES` artifact is parsed and validated as a phonetic profile when
     ///   `set_input_mode(.., PhoneticLatin)` or `translit_profile` first needs it (`InvalidState`
     ///   there), because transliteration packs of other kinds share the resource type;
+    /// - activating a `DICTIONARY` ("QLX1" lexicon) or `FREQUENCY_LIST` ("QBG1" bigrams) pack
+    ///   rebuilds the language's lexicon + ranker (A1.3, ADR 0004), so phonetic compositions get
+    ///   lexicon candidates after the transliteration alternatives. Like transliteration packs,
+    ///   their payloads are opaque to the container check: a verified pack whose dictionary does
+    ///   not parse is activated but gives no candidates (the language's previous model is
+    ///   dropped), and unparsable bigrams leave the ranker without context statistics;
     /// - delta packs (`baseResourceId` set) are verified, then rejected with
     ///   `DeltaNotSupported`: the host pack manager applies deltas and loads the full result.
     pub fn load_pack(&self, bytes: Vec<u8>) -> Result<PackInfo, CoreError> {
@@ -175,7 +275,17 @@ impl KeyboardEngine {
                 detail: "delta packs are applied by the host pack manager".to_string(),
             });
         }
-        let layout = if verified.manifest().resource_type == ResourceType::KeyboardLayout {
+        let resource_type = verified.manifest().resource_type;
+        // Parse a dictionary before taking any lock (it can be large).
+        let lexicon = (resource_type == ResourceType::Dictionary)
+            .then(|| Lexicon::from_bytes(verified.artifact().to_vec()).ok())
+            .flatten();
+        let builds_model = matches!(
+            resource_type,
+            ResourceType::Dictionary | ResourceType::FrequencyList
+        );
+        let _build_guard = builds_model.then(|| self.lock_model_build());
+        let layout = if resource_type == ResourceType::KeyboardLayout {
             let parsed =
                 Layout::parse(verified.artifact()).map_err(|e| CoreError::PackRejected {
                     reason: PackRejectReason::InvalidArtifact,
@@ -213,7 +323,12 @@ impl KeyboardEngine {
             self.lock_layouts()
                 .insert(info.language_code.clone(), layout);
         }
-        packs.insert(slot, Arc::new(verified));
+        let activated = Arc::new(verified);
+        packs.insert(slot, Arc::clone(&activated));
+        drop(packs);
+        if builds_model {
+            self.rebuild_model(&info.language_code, lexicon.map(|l| (activated, l)));
+        }
         Ok(info)
     }
 
@@ -266,6 +381,9 @@ impl KeyboardEngine {
         };
         let mut s = self.lock();
         s.mode = mode;
+        s.language = language_code;
+        s.generation = s.generation.wrapping_add(1);
+        s.context.clear();
         s.composing.clear();
         s.direct = direct;
         s.phonetic = phonetic;
@@ -313,6 +431,7 @@ impl KeyboardEngine {
 
     pub fn on_key(&self, event: KeyEvent) -> EditorUpdate {
         let mut s = self.lock();
+        s.generation = s.generation.wrapping_add(1);
         if s.mode == InputMode::DirectFidel {
             return s
                 .direct
@@ -321,11 +440,14 @@ impl KeyboardEngine {
                 .unwrap_or_default();
         }
         if s.mode == InputMode::PhoneticLatin {
-            return s
+            let update = s
                 .phonetic
                 .as_mut()
                 .map(|p| p.on_key(event))
                 .unwrap_or_default();
+            let request = Self::phonetic_followup(&mut s, &update);
+            drop(s);
+            return self.with_lexicon_candidates(update, request);
         }
         // Abc, English and Qubee are plain passthrough (SD 7.1): typed text is committed exactly
         // as received, never transformed (no auto-capitalisation, no apostrophe rewriting). The
@@ -371,18 +493,25 @@ impl KeyboardEngine {
     }
 
     /// Select a candidate by index from the last update's `candidates`: the composing text is
-    /// replaced by it and committed (index 0 is the default composition). Other modes offer no
-    /// candidates yet, and an index that is out of range changes nothing.
+    /// replaced by it and committed (index 0 is the default composition; transliteration
+    /// alternatives and lexicon candidates follow). Other modes offer no candidates yet, and an
+    /// index that is out of range changes nothing.
     pub fn select_candidate(&self, index: u32) -> EditorUpdate {
         let mut s = self.lock();
-        match s.phonetic.as_mut() {
-            Some(p) => p.select(usize::try_from(index).unwrap_or(usize::MAX)),
-            None => EditorUpdate::default(),
-        }
+        s.generation = s.generation.wrapping_add(1);
+        let Some(p) = s.phonetic.as_mut() else {
+            return EditorUpdate::default();
+        };
+        let update = p.select(usize::try_from(index).unwrap_or(usize::MAX));
+        let request = Self::phonetic_followup(&mut s, &update);
+        drop(s);
+        self.with_lexicon_candidates(update, request)
     }
 
     pub fn reset(&self) -> EditorUpdate {
         let mut s = self.lock();
+        s.generation = s.generation.wrapping_add(1);
+        s.context.clear();
         s.composing.clear();
         if let Some(d) = s.direct.as_mut() {
             d.reset();
@@ -434,27 +563,155 @@ impl KeyboardEngine {
         self.layouts.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    fn lock_models(&self) -> MutexGuard<'_, HashMap<String, Arc<LangModel>>> {
+        // Entries are only inserted fully built, so a poisoned map is still valid.
+        self.models.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn lock_model_build(&self) -> MutexGuard<'_, ()> {
+        self.model_build.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The active pack of `resource_type` for `language_code` (Shared, then Android, then iOS).
+    fn find_pack(
+        packs: &HashMap<PackSlot, Arc<VerifiedPack>>,
+        language_code: &str,
+        resource_type: ResourceType,
+    ) -> Option<Arc<VerifiedPack>> {
+        [
+            PackPlatform::Shared,
+            PackPlatform::Android,
+            PackPlatform::Ios,
+        ]
+        .into_iter()
+        .find_map(|pl| packs.get(&(language_code.to_string(), resource_type, pl)))
+        .cloned()
+    }
+
+    /// Rebuilds the lexicon + ranker of `language_code` from its active `DICTIONARY` and
+    /// `FREQUENCY_LIST` packs. Called with `model_build` held. `fresh` is the dictionary pack
+    /// just activated with its already parsed lexicon, so nothing is parsed twice.
+    fn rebuild_model(&self, language_code: &str, fresh: Option<(Arc<VerifiedPack>, Arc<Lexicon>)>) {
+        let (dictionary, bigrams) = {
+            let packs = self.lock_packs();
+            (
+                Self::find_pack(&packs, language_code, ResourceType::Dictionary),
+                Self::find_pack(&packs, language_code, ResourceType::FrequencyList),
+            )
+        };
+        // A ranker needs a lexicon; bigrams alone wait for the dictionary.
+        let Some(dictionary) = dictionary else {
+            return;
+        };
+        let current = self.lock_models().get(language_code).cloned();
+        let lexicon = match (fresh, current) {
+            (Some((p, l)), _) if Arc::ptr_eq(&p, &dictionary) => l,
+            (_, Some(m)) if Arc::ptr_eq(&m.dictionary, &dictionary) => Arc::clone(&m.lexicon),
+            _ => match Lexicon::from_bytes(dictionary.artifact().to_vec()) {
+                Ok(l) => l,
+                Err(_) => {
+                    // The active dictionary is unusable: offer no lexicon candidates rather
+                    // than ones from a superseded pack.
+                    self.lock_models().remove(language_code);
+                    return;
+                }
+            },
+        };
+        let ranker = Ranker::new(Arc::clone(&lexicon));
+        if let Some(b) = bigrams {
+            // Unparsable bigrams leave the ranker with unigram frequencies only.
+            let _ = ranker.load_bigrams(b.artifact().to_vec());
+        }
+        self.lock_models().insert(
+            language_code.to_string(),
+            Arc::new(LangModel {
+                dictionary,
+                lexicon,
+                ranker,
+            }),
+        );
+    }
+
+    /// After a phonetic update (state lock held): follows committed words for ranking context
+    /// and says whether lexicon candidates should be looked up for the new composition.
+    fn phonetic_followup(s: &mut State, update: &EditorUpdate) -> Option<CompletionRequest> {
+        s.context.observe(update);
+        let wants = !update.composing.is_empty() && update.composing.chars().all(is_ethiopic);
+        wants.then(|| CompletionRequest {
+            language: s.language.clone(),
+            previous: s.context.previous.clone(),
+            generation: s.generation,
+        })
+    }
+
+    /// Appends lexicon candidates of the composition to `update` (A1.3 merge policy, ADR 0004):
+    /// transliteration alternatives keep their order and index 0 stays the default composition;
+    /// completions and one-edit corrections from the ranker follow, de-duplicated, up to
+    /// `max_candidates`. Nothing is applied automatically (harm guard): corrections are only
+    /// offered. Ranking runs outside the state lock; if another call changed the state in the
+    /// meantime the candidates are dropped, so `select_candidate` always matches the strip.
+    fn with_lexicon_candidates(
+        &self,
+        mut update: EditorUpdate,
+        request: Option<CompletionRequest>,
+    ) -> EditorUpdate {
+        let Some(req) = request else {
+            return update;
+        };
+        let max = usize::try_from(self.config.max_candidates).unwrap_or(usize::MAX);
+        if update.candidates.len() >= max {
+            return update;
+        }
+        let Some(model) = self.lock_models().get(&req.language).cloned() else {
+            return update;
+        };
+        let ranked = model.ranker.rank(
+            update.composing.clone(),
+            req.previous,
+            self.config.max_candidates,
+        );
+        let extra: Vec<(String, CandidateKind)> = ranked
+            .into_iter()
+            .filter_map(|c| {
+                let kind = match c.kind {
+                    RankKind::Exact | RankKind::Variant | RankKind::Completion => {
+                        CandidateKind::Completion
+                    }
+                    RankKind::Correction => CandidateKind::Correction,
+                    RankKind::NextWord | RankKind::Frequent => return None,
+                };
+                Some((c.text, kind))
+            })
+            .collect();
+        if extra.is_empty() {
+            return update;
+        }
+        let mut s = self.lock();
+        if s.generation != req.generation {
+            return update;
+        }
+        let Some(p) = s.phonetic.as_mut() else {
+            return update;
+        };
+        let added = p.extend_candidates(extra.iter().map(|(t, _)| t.clone()));
+        drop(s);
+        for text in added {
+            if let Some((_, kind)) = extra.iter().find(|(t, _)| *t == text) {
+                update.candidates.push(Candidate { text, kind: *kind });
+            }
+        }
+        update
+    }
+
     /// Parses the `TRANSLITERATION_RULES` artifact loaded for `language_code`. The pack was
     /// verified at load time; the profile itself is validated here, when it is first needed, so
     /// an invalid profile can only fail phonetic mode and never other pack types.
     fn profile_for(&self, language_code: &str) -> Result<Arc<Profile>, CoreError> {
-        let pack = {
-            let packs = self.lock_packs();
-            [
-                PackPlatform::Shared,
-                PackPlatform::Android,
-                PackPlatform::Ios,
-            ]
-            .into_iter()
-            .find_map(|pl| {
-                packs.get(&(
-                    language_code.to_string(),
-                    ResourceType::TransliterationRules,
-                    pl,
-                ))
-            })
-            .cloned()
-        };
+        let pack = Self::find_pack(
+            &self.lock_packs(),
+            language_code,
+            ResourceType::TransliterationRules,
+        );
         let pack = pack.ok_or_else(|| CoreError::InvalidState {
             reason: format!("no transliteration profile is loaded for {language_code}"),
         })?;
@@ -560,6 +817,42 @@ mod tests {
                 Err(CoreError::PackRejected { .. })
             ));
         }
+    }
+
+    fn commit(text: &str) -> EditorUpdate {
+        EditorUpdate {
+            commit: text.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn word_context_follows_commits() {
+        let mut c = WordContext::default();
+        c.observe(&commit("ሰላም"));
+        assert_eq!(c.previous, None);
+        c.observe(&commit(" "));
+        assert_eq!(c.previous.as_deref(), Some("ሰላም"));
+        // The Ethiopic wordspace is a word boundary too.
+        c.observe(&commit("ነው፡"));
+        assert_eq!(c.previous.as_deref(), Some("ነው"));
+        // Sentence punctuation ends the context; deletions forget it.
+        c.observe(&commit("ደህና። "));
+        assert_eq!(c.previous, None);
+        c.observe(&commit("ሰላም "));
+        c.observe(&EditorUpdate {
+            delete_before: 1,
+            ..Default::default()
+        });
+        assert_eq!(c.previous, None);
+        assert!(c.current.is_empty());
+    }
+
+    #[test]
+    fn word_context_is_bounded() {
+        let mut c = WordContext::default();
+        c.observe(&commit(&"ሰ".repeat(500)));
+        assert_eq!(c.current.chars().count(), MAX_CONTEXT_CHARS);
     }
 
     #[test]
