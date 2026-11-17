@@ -1,0 +1,84 @@
+# SYNTHETIC held-out eval set for the C1.8 language-ID detector (DRAFT).
+# Hand-written by the engineering team (not native-speaker reviewed, no user data). Small by design.
+# Format: one phrase per line, tokens `word|tag` separated by spaces; each token is classified with the
+# preceding tokens of the same line as context. Tags: am ti om en am-latn ti-latn.
+# Words here are kept disjoint from train_*.txt of the same tag (checked by the test).
+እባክዎ|am ቡናውን|am አምጡልኝ|am
+ልጆቹ|am ደስተኞች|am ናቸው|am
+እናቴ|am ታማለች|am
+አውቶቡስ|am ጣቢያ|am ደረስን|am
+ወንድሜ|am ዶክተር|am ነበር|am
+ምሳ|am በልተሃል|am
+የሚቀጥለው|am ሳምንቱ|am እመጣለሁ|am
+ሱቁ|am ተዘግቷል|am
+ዝናብ|am ዘነበ|am
+አስተማሪዋ|am ጎበዝ|am ናት|am
+ሞባይሌ|am ጠፋብኝ|am
+ኮምፒውተር|am ገዛሁ|am
+ቁርስ|ti ኣብልዓ|ti ዲኻ|ti
+ኣደይ|ti ሓሚማ|ti ኣላ|ti
+ሓወይ|ti ሓኪም|ti እዩ|ti
+ንዕዳጋ|ti ክኸይድ|ti እየ|ti
+ዝናብ|ti ኣዝዩ|ti ዘንቢዑ|ti
+ጸኒሑ|ti ክመጽእ|ti እየ|ti
+ተማሃራይ|ti ኣዝዩ|ti ሓይለኛ|ti እዩ|ti
+ህጻን|ti ሰሚዑ|ti
+ኣቦይ|ti ተመሊሱ|ti ኣሎ|ti
+ሞባይለይ|ti ጠፊኣ|ti
+ሽዑ|ti ነጊረዮ|ti ነይረ|ti
+ጋዜጣ|ti ኣንቢበ|ti
+yeroo|om dhufta|om
+ijoolleen|om manaa|om barnootaa|om deemaniiru|om
+anis|om bunaa|om dhugaa|om
+obboleettiin|om koo|om dhukkubsatteetti|om
+guyyaan|om kanaa|om bareedaa|om dha|om
+midhaan|om bayee|om jaalladha|om
+konkolaachisaan|om dhufee|om jiraa|om
+barattoonni|om hundi|om dhufanii|om turan|om
+boqonnaa|om kana|om dubbisi|om
+kophee|om haaraa|om bitadhe|om
+hunduu|om gaariidha|om
+waan|om hunda|om beekna|om
+could|en someone|en explain|en these|en instructions|en
+battery|en died|en during|en lunch|en
+weather|en looks|en cloudy|en
+my|en laptop|en needs|en repairs|en
+our|en flight|en arrives|en late|en
+internet|en connection|en failed|en
+it|en seems|en difficult|en
+which|en bus|en leaves|en first|en
+an|en old|en neighbour|en visited|en
+dinner|en was|en delicious|en
+kindly|en reply|en soon|en
+tell|en him|en politely|en
+bought|en a|en new|en laptop|en
+tenayistilign|am-latn dehnanachihu|am-latn aleh|am-latn
+antem|am-latn ageleglot|am-latn
+yemitekeyew|am-latn sedet|am-latn newu|am-latn
+ewedihalehu|am-latn bezu|am-latn
+mindin|am-latn yitebalal|am-latn yihe|am-latn
+nachew|am-latn temari|am-latn
+lemindinew|am-latn alhonem|am-latn
+tilant|am-latn mata|am-latn
+enatachin|am-latn tenfalech|am-latn
+bota|am-latn alawkim|am-latn
+yihew|am-latn gudday|am-latn alhonem|am-latn
+inye|am-latn lemehed|am-latn felege|am-latn
+selamta|ti-latn aleka|ti-latn
+anaye|ti-latn tsebuk|ti-latn eyu|ti-latn
+nayti|ti-latn adey|ti-latn hmum|ti-latn eya|ti-latn
+zeybeley|ti-latn ayfelxen|ti-latn
+mekinay|ti-latn nzi|ti-latn bzuh|ti-latn
+temaharay|ti-latn keyd|ti-latn eyu|ti-latn
+abta|ti-latn gbya|ti-latn keyd|ti-latn eye|ti-latn
+keyfeka|ti-latn ahdirka|ti-latn
+nsuy|ti-latn zeyrekebe|ti-latn
+hawey|ti-latn kitsfe|ti-latn alo|ti-latn
+yekenyeleyo|ti-latn bzahaba|ti-latn
+# code-switched lines
+ስብሰባው|am email|en ተሰርዟል|am
+አባቴ|am laptop|en ገዛልኝ|am
+ኢሜይል|am deadline|en አድርጌዋለሁ|am
+ዛሬ|ti report|en ኣሎ|ti
+namni|om kana|om laptop|en baasuu|om
+ishiin|om email|en ergite|om
