@@ -33,8 +33,9 @@ Start with `docs/Ethiopian_AI_Keyboard_Implementation_Plan_v2_0.md`. Design: `do
 # Local database (PostgreSQL 18 on host port 5434)
 docker compose -f infra/compose/docker-compose.yml up -d
 
-# Backend: Flyway applies V1__baseline.sql on startup
-cd backend && ./mvnw test            # on JDK 21 only: ./mvnw -Djava.version=21 test
+# Backend: Flyway applies V1__baseline.sql on startup.
+# `verify` also runs SchemaGuardsIT, which starts its own PostgreSQL via Testcontainers (Docker must be running).
+cd backend && ./mvnw verify          # on JDK 21 only: ./mvnw -Djava.version=21 verify
 cd backend && ./mvnw spring-boot:run # DB_URL / DB_USER / DB_PASSWORD override the defaults
 
 # Android: one APK, two flavours
