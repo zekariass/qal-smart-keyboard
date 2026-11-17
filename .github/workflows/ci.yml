@@ -107,6 +107,15 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
+      # A1.1: the app build compiles the Rust core with cargo-ndk (NOT yet run in CI).
+      - name: Rust toolchain and Android targets
+        run: |
+          rustup toolchain install 1.91.0 --profile minimal
+          rustup target add --toolchain 1.91.0 aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+      - name: Install cargo-ndk and the NDK
+        run: |
+          cargo install cargo-ndk --locked
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" >/dev/null
       - name: Assemble and unit test
         run: ./gradlew --no-daemon :app:assemblePlayDebug :app:assembleDirectDebug testDebugUnitTest
 

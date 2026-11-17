@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "com.qalsmartkeyboard.app"
-        minSdk = 24
+        minSdk = providers.gradleProperty("qal.minSdk").get().toInt()
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -25,6 +25,17 @@ android {
     productFlavors {
         create("play") { dimension = "distribution" }
         create("direct") { dimension = "distribution" }
+    }
+
+    // ABI splits: one APK per ABI (Play/CI) plus a universal APK for sideloading the `direct`
+    // flavour. Keep this list in sync with qal.abis (gradle.properties).
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include(*providers.gradleProperty("qal.abis").get().split(",").map { it.trim() }.toTypedArray())
+            isUniversalApk = true
+        }
     }
 
     buildTypes {
@@ -46,6 +57,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":core-bindings"))
     implementation(project(":ime"))
     implementation(project(":data"))
     "playImplementation"(project(":billing-play"))
