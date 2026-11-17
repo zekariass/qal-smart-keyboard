@@ -29,6 +29,16 @@ impl UserState {
         self.words.get(word).copied()
     }
 
+    /// Drops `word` from the overlay without hiding any base-lexicon entry.
+    pub(super) fn forget(&mut self, word: &str) -> bool {
+        self.words.remove(word).is_some()
+    }
+
+    /// All user words, alphabetical.
+    pub(super) fn words(&self) -> impl Iterator<Item = &str> {
+        self.words.keys().map(String::as_str)
+    }
+
     pub(super) fn is_blocked(&self, word: &str) -> bool {
         self.blocked.contains(word)
     }

@@ -250,6 +250,18 @@ impl Lexicon {
         self.user_write().remove(word, in_base)
     }
 
+    /// Forgets a word the user added or learned, without hiding it from the base lexicon (the
+    /// "delete" of a personal-dictionary list). Returns true if it was in the user dictionary.
+    pub fn forget_user_word(&self, word: String) -> bool {
+        self.user_write().forget(&nfc(&word))
+    }
+
+    /// The words in the user dictionary (added or learned; not the removed-word list), in
+    /// alphabetical order, for a settings list.
+    pub fn user_words(&self) -> Vec<String> {
+        self.user_read().words().map(str::to_string).collect()
+    }
+
     /// Number of words in the user dictionary.
     pub fn user_word_count(&self) -> u32 {
         self.user_read().len() as u32

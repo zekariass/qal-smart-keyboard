@@ -75,4 +75,21 @@
     <string name="settings_setup_title">Keyboard setup</string>
     <string name="settings_setup_body">Turn on and choose the keyboard, pick languages and try it out.</string>
     <string name="settings_setup_button">Run setup again</string>
+
+    <!-- Personal dictionary (A1.8) -->
+    <string name="pd_title">Personal dictionary</string>
+    <string name="pd_body">Words you add or the keyboard learns as you type. They stay on this device, encrypted, and are never uploaded. Nothing is learned in password fields or when a field asks for no personalised learning.</string>
+    <string name="pd_empty">No words yet.</string>
+    <string name="pd_loading">Loading…</string>
+    <string name="pd_language_count">%1$s: %2$d words</string>
+    <string name="pd_show">Show words</string>
+    <string name="pd_hide">Hide words</string>
+    <string name="pd_show_more">Show more</string>
+    <string name="pd_delete">Delete</string>
+    <string name="pd_delete_description">Delete %1$s from the dictionary</string>
+    <string name="pd_clear_all">Clear all</string>
+    <string name="pd_clear_title">Clear your personal dictionary?</string>
+    <string name="pd_clear_message">All added and learned words and word pairs, in every language, are deleted from this device. This cannot be undone.</string>
+    <string name="pd_clear_confirm">Clear all</string>
+    <string name="pd_cancel">Cancel</string>
 </resources>

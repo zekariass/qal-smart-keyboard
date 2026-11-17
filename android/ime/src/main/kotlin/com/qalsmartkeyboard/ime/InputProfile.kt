@@ -34,6 +34,13 @@ data class InputProfile(
     val capsFlags: Int,
 ) {
     /**
+     * Words committed here may be learned (SD 7.4): plain text fields that did not ask for no
+     * personalised learning (incognito). Password, email, URI, number and phone fields never learn.
+     */
+    val learnsWords: Boolean
+        get() = learningAllowed && kind == FieldKind.TEXT
+
+    /**
      * Phonetic transliteration may be used: plain text fields only. Password, email, URI,
      * number and phone fields stay Latin/direct (SD 6.2, 7: transliteration is never forced).
      */
