@@ -34,6 +34,14 @@ content, nor put it in error messages. Tests use synthetic text only.
   `language-data/profiles/*-phonetic-draft.json`), then `set_input_mode(lang, PhoneticLatin)`. Every
   `on_key` returns the composing text and `candidates` (index 0 is the composing text, the rest are
   homophone alternatives, at most `max_candidates`); `select_candidate(i)` commits candidate `i`.
+- Dictionary candidates (A1.3, ADR 0004): `DICTIONARY` ("QLX1" lexicon) and `FREQUENCY_LIST`
+  ("QBG1" bigrams) packs per language build a lexicon + ranker inside the engine. In PhoneticLatin the
+  strip is the composition, then the transliteration alternatives (unchanged order, kind
+  `Transliteration`), then the ranker's candidates for the composition (`Completion`, or `Correction`
+  for one-edit corrections), de-duplicated and capped at `max_candidates`. Nothing is applied
+  automatically. The last committed word is kept in memory (cleared by `reset`, `set_input_mode`,
+  deletions and sentence punctuation) as bigram context. A verified dictionary pack whose payload does
+  not parse is activated but gives no candidates.
 - `EngineConfig { max_candidates, trusted_keys: Vec<TrustedKey>, pack_limits: Option<PackLimits> }`.
 - `TrustedKey { key_id, public_key (32 raw bytes), status: KeyStatus }`,
   `KeyStatus { Active, Retiring, Revoked }`,
@@ -155,6 +163,11 @@ phonetic profiles follow in C1.4.
 - `tests/properties.rs`: proptest for grapheme-safe segmentation (`src/segmenter.rs`, UAX #29 via
   `unicode-segmentation`), NFC idempotence of the lexicon, ranker and composers, and phonetic
   Backspace undoing the last key. (Ethiopic numeral round-trips: `src/calendar.rs`.)
+- `tests/composer_candidates.rs` (A1.3): merged strip with the seed dictionary/bigrams, dedup,
+  cap, corrections offered but never applied, bigram context, every C1.4 golden vector unchanged with
+  a dictionary loaded, pack replacement/rollback, concurrent loading while typing.
+- `cargo bench --bench engine` (A1.3, not gated): `on_key` in phonetic mode over a 200k-word
+  dictionary pack; asserts p95 <= 10 ms on the host (measured 0.22 ms).
 - Benchmark gate: `python core/scripts/bench_gate.py` runs `cargo bench --bench lexicon|ranker`
   5 times, takes the minimum over runs of each label's **p50** (median latency per run; the minimum discards runs disturbed by other load), and fails if any is more than 10 %
   above `benches/baseline.json` AND more than 0.020 ms slower (noise floor), or if a bench exceeds

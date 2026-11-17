@@ -71,3 +71,9 @@ harness = false
 [[bench]]
 name = "ranker"
 harness = false
+
+# Key-path latency of on_key (phonetic + merged lexicon candidates, A1.3) over a 200k-word
+# dictionary pack: `cargo bench --bench engine`. Not part of the C1.10 gate.
+[[bench]]
+name = "engine"
+harness = false

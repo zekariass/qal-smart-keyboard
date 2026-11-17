@@ -100,6 +100,7 @@ class KeyboardSurface(context: Context) : View(context) {
             val label = when (p.key.kind) {
                 KeyKind.ENTER -> enterText(c.profile.enterLabel)
                 KeyKind.SHIFT -> if (c.shift == ShiftState.LOCKED) "⇪" else "⇧"
+                KeyKind.MODE -> c.effectiveMode.label
                 KeyKind.SPACE -> ""
                 KeyKind.CHAR -> if (p.key.isLetter && c.shift != ShiftState.OFF) p.key.label.uppercase() else p.key.label
                 else -> p.key.label
