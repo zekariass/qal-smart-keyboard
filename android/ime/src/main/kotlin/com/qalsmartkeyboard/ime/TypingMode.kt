@@ -30,9 +30,9 @@ data class TypingMode(val language: String, val kind: LayoutKind) {
 
 /** Static facts about the four launch languages (SD 7.1). Names/labels are DRAFT UI strings. */
 object LanguageCatalog {
-    /** Native (non-ABC) layouts per language, in long-press-globe cycle order. */
+    /** Native (non-ABC) layouts per language, in long-press-globe cycle order; the first is the first-run default (ADR 0007: phonetic QWERTY). */
     fun nativeKinds(language: String): List<LayoutKind> = when (language) {
-        "am", "ti" -> listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC)
+        "am", "ti" -> listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL)
         "om" -> listOf(LayoutKind.QUBEE)
         "en" -> listOf(LayoutKind.ENGLISH)
         else -> emptyList()
@@ -115,6 +115,38 @@ fun interface EnabledLanguages {
 
 object DefaultEnabledLanguages : EnabledLanguages {
     override fun enabled() = listOf("am", "ti", "om", "en")
+}
+
+/**
+ * The rest of the user's keyboard settings that the controller and surface use (A1.5). Reads must be
+ * cheap and non-blocking (a cached snapshot); writes are fire-and-forget.
+ */
+interface ModePreferences {
+    /** The layout to start a language on when it has no remembered one (the language's input-mode setting). */
+    fun preferredKind(language: String): LayoutKind? = null
+
+    /** The last native layout used in [language]. */
+    fun lastNative(language: String): LayoutKind? = null
+
+    fun setLastNative(language: String, kind: LayoutKind) {}
+
+    /** Whether the candidate strip is shown for [language]'s phonetic mode. */
+    fun showCandidates(language: String): Boolean = true
+
+    /** numeralStyle ETHIOPIC: offer Ethiopic numerals as digit alternatives. */
+    val ethiopicNumerals: Boolean get() = false
+
+    val hapticsEnabled: Boolean get() = true
+
+    /** Key height multiplier (1.0 = default). */
+    val keyHeightScale: Float get() = 1f
+}
+
+/** In-memory preferences: used by tests and before settings load. */
+open class InMemoryModePreferences : ModePreferences {
+    private val last = HashMap<String, LayoutKind>()
+    override fun lastNative(language: String) = last[language]
+    override fun setLastNative(language: String, kind: LayoutKind) { last[language] = kind }
 }
 
 /** Direct-Fidel layout data, copied from the core's `FidelLayout` so the UI model does not depend on FFI types. */

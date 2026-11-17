@@ -1,0 +1,123 @@
+package com.qalsmartkeyboard.app
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.qalsmartkeyboard.data.InputMode
+import com.qalsmartkeyboard.data.KeyboardSettings
+import com.qalsmartkeyboard.data.LanguageRules
+import com.qalsmartkeyboard.data.NumeralStyle
+import com.qalsmartkeyboard.data.SettingsRepository
+import com.qalsmartkeyboard.data.ThemeMode
+import kotlinx.coroutines.launch
+
+private val languageNames = mapOf("am" to "Amharic", "ti" to "Tigrinya", "om" to "Afaan Oromoo", "en" to "English")
+
+private fun modeLabel(m: InputMode) = when (m) {
+    InputMode.DIRECT_SCRIPT_LAYOUT -> "Fidel grid"
+    InputMode.PHONETIC_LATIN_TO_NATIVE -> "Phonetic QWERTY"
+    InputMode.LATIN_PASSTHROUGH -> "Latin"
+}
+
+/** Minimal settings screen (A1.5): languages (enable, order, mode), numerals, theme, haptics, key height. */
+@Composable
+fun SettingsScreen(
+    settings: KeyboardSettings,
+    repository: SettingsRepository,
+    modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+    Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Keyboard settings", style = MaterialTheme.typography.headlineSmall)
+        Text("Languages (top = first on the globe key)", style = MaterialTheme.typography.titleMedium)
+        val onlyOneEnabled = settings.enabledLanguages.size <= 1
+        settings.languages.forEachIndexed { i, l ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = l.enabled,
+                            enabled = !(l.enabled && onlyOneEnabled),
+                            onCheckedChange = { on -> scope.launch { repository.setLanguageEnabled(l.languageCode, on) } },
+                        )
+                        Text(languageNames[l.languageCode] ?: l.languageCode, Modifier.weight(1f).padding(start = 12.dp))
+                        TextButton(enabled = i > 0, onClick = { scope.launch { repository.moveLanguage(l.languageCode, i - 1) } }) { Text("Up") }
+                        TextButton(enabled = i < settings.languages.lastIndex, onClick = { scope.launch { repository.moveLanguage(l.languageCode, i + 1) } }) { Text("Down") }
+                    }
+                    val modes = LanguageRules.allowedModes(l.languageCode)
+                    if (modes.size > 1) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            modes.forEach { m ->
+                                FilterChip(
+                                    selected = l.inputMode == m,
+                                    onClick = { scope.launch { repository.updateLanguage(l.languageCode) { it.copy(inputMode = m) } } },
+                                    label = { Text(modeLabel(m)) },
+                                )
+                            }
+                        }
+                    }
+                    if (l.inputMode == InputMode.PHONETIC_LATIN_TO_NATIVE) {
+                        Text("Transliteration profile: newest active (automatic)", style = MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Show candidates", Modifier.weight(1f))
+                            Switch(
+                                checked = l.showTransliterationCandidates,
+                                onCheckedChange = { on -> scope.launch { repository.updateLanguage(l.languageCode) { it.copy(showTransliterationCandidates = on) } } },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalDivider()
+        Text("Numerals", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NumeralStyle.entries.forEach { n ->
+                FilterChip(
+                    selected = settings.numeralStyle == n,
+                    onClick = { scope.launch { repository.update { it.copy(numeralStyle = n) } } },
+                    label = { Text(if (n == NumeralStyle.ETHIOPIC) "Ethiopic offered" else "Western") },
+                )
+            }
+        }
+        Text("Theme", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ThemeMode.entries.forEach { t ->
+                FilterChip(
+                    selected = settings.theme == t,
+                    onClick = { scope.launch { repository.update { it.copy(theme = t) } } },
+                    label = { Text(t.name.lowercase().replaceFirstChar { c -> c.uppercase() }) },
+                )
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Haptic feedback", Modifier.weight(1f))
+            Switch(checked = settings.hapticsEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(hapticsEnabled = on) } } })
+        }
+        Text("Key height: ${settings.keyHeightPercent}%", style = MaterialTheme.typography.titleMedium)
+        Slider(
+            value = settings.keyHeightPercent.toFloat(),
+            onValueChange = { v -> scope.launch { repository.update { it.copy(keyHeightPercent = v.toInt()) } } },
+            valueRange = KeyboardSettings.KEY_HEIGHT_MIN.toFloat()..KeyboardSettings.KEY_HEIGHT_MAX.toFloat(),
+        )
+        Button(onClick = { scope.launch { repository.update { KeyboardSettings.DEFAULT } } }) { Text("Reset to defaults") }
+    }
+}

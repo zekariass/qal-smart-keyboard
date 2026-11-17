@@ -21,11 +21,24 @@ object CoreTestEnv {
         BundledPacks.createEngine(index, { File(packDir, it).readBytes() }, { log += it })
     }
 
+    /**
+     * The pre-ADR-0007 starting point (Fidel grid first, Ethiopic numerals offered) that the A1.4
+     * layout tests were written against; the first-run defaults are tested in SettingsPreferencesTest.
+     */
+    class FidelFirst : InMemoryModePreferences() {
+        override fun preferredKind(language: String) = if (LanguageCatalog.isEthiopic(language)) LayoutKind.FIDEL else null
+        override val ethiopicNumerals get() = true
+    }
+
     /** A keyboard controller wired to a [FakeEditor] through the real adapter and the real core. */
-    class Session(type: Int = InputType.TYPE_CLASS_TEXT) {
+    class Session(
+        type: Int = InputType.TYPE_CLASS_TEXT,
+        languages: EnabledLanguages = DefaultEnabledLanguages,
+        prefs: ModePreferences = InMemoryModePreferences(),
+    ) {
         val ed = FakeEditor()
         val adapter = InputConnectionAdapter { ed }
-        val c = KeyboardController(adapter) {}
+        val c = KeyboardController(adapter, languages, prefs) {}
 
         init {
             adapter.onCompositionAbandoned = { c.onCompositionAbandoned() }
