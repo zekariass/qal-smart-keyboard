@@ -68,7 +68,7 @@
 | Phase | Name | Steps | 🟩 Done | 🟦 In progress | 🟥 Blocked | ⬜ Todo | % |
 |---|---|---|---|---|---|---|---|
 | Phase 0 | Foundations (M0) | 6 | 6 | 0 | 0 | 0 | 100% |
-| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 5 | 0 | 0 | 17 | 23% |
+| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 6 | 0 | 0 | 16 | 27% |
 | Phase 2 | Backend + P0 AI (M2) | 39 | 2 | 0 | 0 | 37 | 5% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
 | Phase 4 | Monetisation (M4) | 10 | 0 | 0 | 0 | 10 | 0% |
@@ -107,6 +107,7 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 | 2026-11-17 | B1.1 | 🟩 DONE | 2d83e78, 3edbd45 | Spring Modulith 2.1.2 (BOM; Boot 4.1.2 does not manage it); 21 SD §24 module packages (package-info only); app class moved to `com.qalsmartkeyboard` root so Modulith sees exactly those modules; `ModularityTests` (`ApplicationModules.verify()`) runs in surefire in the existing CI backend job. `mvnw verify` green on JDK 25 against PG18: 3 unit + 10 IT, none skipped. |
 | 2026-11-17 | B1.2 | 🟩 DONE | 061439e | Flyway and `V1__baseline.sql` were already wired by F0.3 (file byte-identical to docs; CI `sync.sh --check` covers drift). Added `FlywayBaselineIT`: Spring Boot app boots on Testcontainers PG18, Flyway applies V1 (one migration, success, `validate()` OK), 86 tables. `mvnw verify` green: 3 unit + 12 IT. |
 | 2026-11-17 | L1.1 | 🟩 DONE | 13537b2, merge | Pack build: stdlib-only `language-data/scripts/build_packs.py` (`sources/*.source.json` -> signed `.pack` + exact signed manifest; pure-Python Ed25519 in `ed25519_ref.py`, checked against RFC 8032 and the core's test vector). Reproducible (identical SHA-256 across builds); verified in core via new `qal-pack-verify` bin (am+ti layout packs load, tampered pack rejected). Dev-only random keystore in gitignored `language-data/keys/` (no key committed; refuses STABLE and non-devOnly keys). Sources carry per-input `licenseCode` for L1.2. Only artifact kind `file` so far; lexicon (C1.6) and rule (C1.4) kinds follow with those steps. Re-verified after merge: cargo fmt/clippy/test and 7 Python tests green. |
+| 2026-11-17 | C1.6 | 🟩 DONE | d861bab, merge | Lexicon: immutable radix trie in a flat byte buffer ("QLX1", the `DICTIONARY` pack payload; `from_bytes` fully validates, byte-flip and truncation tested), exact top-k prefix search via per-node max-frequency best-first walk, NFC-normalised. User overlay (add/learn/remove, removal hides base words, 50k cap) exports/imports opaque bytes for host-side encrypted storage (A1.8). FFI `Lexicon` + `LexiconError`. Bench (`cargo bench --bench lexicon`, asserts p95 <= 5 ms, an allotment within the SD §17.1 30 ms strip budget; SD sets no lexicon-specific number): 179k words = 2.34 MiB, load ~13 ms, worst p95 0.33 ms. Host numbers only; re-measure on devices in A1.9. Open: case/diacritic folding left to C1.7 and profiles; engine not yet wired to Lexicon or validating DICTIONARY artifacts. Re-verified after merge: fmt/clippy/test (61 unit) green. |
 
 ---
 
@@ -140,7 +141,7 @@ Goal: a fully offline Android keyboard for Amharic, Tigrinya, Afaan Oromoo and E
 | C1.3 | **Direct Fidel input** model (fidel layout data, 7 orders, labialised forms) driven by data, not hard-coded. | C1.2 | Golden vectors pass. | 🟩 DONE |
 | C1.4 | **Phonetic Latin→Ge'ez transliteration engine** driven by profile data (rules, longest-match, composing buffer, alternatives, backspace, protected tokens). Load AM and TI DRAFT profiles from `language-data/`. | C1.2 | Golden corpus per profile version: keystrokes → composing → committed → alternatives, 100% pass. | ⬜ TODO |
 | C1.5 | Qubee (Afaan Oromoo Latin) and English handling; ABC passthrough mode. | C1.1 | Unit tests. | ⬜ TODO |
-| C1.6 | **Lexicon**: compact trie/FST from wordlists, prefix lookup, user dictionary overlay. | C1.2 | Lookup meets §17.1 latency budget in benchmark. | ⬜ TODO |
+| C1.6 | **Lexicon**: compact trie/FST from wordlists, prefix lookup, user dictionary overlay. | C1.2 | Lookup meets §17.1 latency budget in benchmark. | 🟩 DONE |
 | C1.7 | **Ranker**: candidate ranking, next-word suggestions, autocorrect with a "harm guard" (never auto-apply a correction that is low-confidence; suggestions only). | C1.6 | Tests incl. homophone families. | ⬜ TODO |
 | C1.8 | **Code-switching / language ID** (cheap on-device detector) to pick candidate languages per word. | C1.6 | Eval set accuracy recorded. | ⬜ TODO |
 | C1.9 | **Calendar utilities**: Ethiopian calendar, Ethiopian clock (6:00 offset), Ethiopic numerals ↔ Arabic numerals. | C1.1 | Property tests incl. leap years, Pagume. | 🟩 DONE |
