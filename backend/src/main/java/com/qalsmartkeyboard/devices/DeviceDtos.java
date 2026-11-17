@@ -65,4 +65,9 @@ final class DeviceDtos {
 					row.osVersion(), row.status(), row.attestationStatus(), row.lastSeenAt(), row.createdAt());
 		}
 	}
+
+	/** Response of {@code GET /devices}: {@code items} plus {@code nextCursor} (absent at the end). */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	record DeviceListDto(java.util.List<DeviceDto> items, String nextCursor) {
+	}
 }

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -193,5 +194,27 @@ class DeviceControllerTest {
 		mvc.perform(post("/api/v1/devices/" + deviceId + "/attestations").header("Authorization", bearer())
 				.contentType(MediaType.APPLICATION_JSON).content("{\"provider\":\"PLAY_INTEGRITY\",\"nonce\":\"n\"}"))
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("token"));
+	}
+
+	@Test
+	void listReturns200ItemsWithoutPushTokenAndPassesCursorAndLimit() throws Exception {
+		when(service.list(eq(userId), eq("c1"), eq(5)))
+				.thenReturn(new DeviceService.DevicePage(java.util.List.of(device("2.0.3")), "c2"));
+		mvc.perform(get("/api/v1/devices").param("cursor", "c1").param("limit", "5").header("Authorization", bearer()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.items[0].id").value(deviceId.toString()))
+				.andExpect(jsonPath("$.items[0].status").value("ACTIVE")).andExpect(jsonPath("$.nextCursor").value("c2"))
+				.andExpect(content().string(not(containsString("pushToken"))));
+		when(service.list(eq(userId), eq(null), eq(20))).thenReturn(new DeviceService.DevicePage(java.util.List.of(), null));
+		mvc.perform(get("/api/v1/devices").header("Authorization", bearer())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.items.length()").value(0)).andExpect(jsonPath("$.nextCursor").doesNotExist());
+	}
+
+	@Test
+	void listWithoutATokenIs401AndABadLimitIs400() throws Exception {
+		mvc.perform(get("/api/v1/devices")).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+		when(service.list(any(), any(), eq(500))).thenThrow(DeviceService.invalid("limit", "OUT_OF_RANGE", "bad"));
+		mvc.perform(get("/api/v1/devices").param("limit", "abc").header("Authorization", bearer()))
+				.andExpect(status().isBadRequest());
 	}
 }

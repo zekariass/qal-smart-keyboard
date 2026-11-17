@@ -1,6 +1,9 @@
 package com.qalsmartkeyboard.devices;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -48,6 +51,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 class DeviceService implements DeviceRegistrar {
 
 	private static final Logger log = LoggerFactory.getLogger(DeviceService.class);
+	static final int MAX_PAGE = 100;
+	static final int DEFAULT_PAGE = 20;
 	static final String REVOKED_EVENT = "devices.device.revoked";
 
 	private final DeviceStore store;
@@ -124,11 +129,41 @@ class DeviceService implements DeviceRegistrar {
 	// ------------------------------------------------------------------ list, update, revoke
 
 	/**
-	 * The caller's devices, oldest first (ACTIVE and REVOKED). The contract has no list operation yet, so this has no
-	 * HTTP endpoint; it is the service the endpoint will use.
+	 * {@code GET /devices}: one page of the caller's devices, oldest first, ACTIVE and REVOKED alike (the contract's
+	 * {@code status} tells them apart; a client shows revoked installations as such). Only rows of {@code userId} are
+	 * ever read. The cursor is an opaque keyset position ({@code created_at}, {@code id}) and carries no user data; a
+	 * malformed one is a 400 {@code VALIDATION_FAILED}.
 	 */
-	List<DeviceDto> list(UUID userId) {
-		return store.listOwned(userId).stream().map(DeviceDto::of).toList();
+	DevicePage list(UUID userId, String cursor, int limit) {
+		if (limit < 1 || limit > MAX_PAGE) {
+			throw invalid("limit", "OUT_OF_RANGE", "limit must be between 1 and " + MAX_PAGE + ".");
+		}
+		Instant afterCreatedAt = null;
+		UUID afterId = null;
+		if (cursor != null) {
+			try {
+				String[] parts = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8).split(":", 3);
+				afterCreatedAt = Instant.ofEpochSecond(Long.parseLong(parts[0]), Long.parseLong(parts[1]));
+				afterId = UUID.fromString(parts[2]);
+			}
+			catch (RuntimeException e) {
+				throw invalid("cursor", "INVALID", "The cursor is not valid.");
+			}
+		}
+		List<DeviceRow> rows = store.listOwned(userId, afterCreatedAt, afterId, limit + 1);
+		boolean more = rows.size() > limit;
+		List<DeviceRow> page = more ? rows.subList(0, limit) : rows;
+		String next = null;
+		if (more) {
+			DeviceRow last = page.get(page.size() - 1);
+			String position = last.createdAt().getEpochSecond() + ":" + last.createdAt().getNano() + ":" + last.id();
+			next = Base64.getUrlEncoder().withoutPadding().encodeToString(position.getBytes(StandardCharsets.UTF_8));
+		}
+		return new DevicePage(page.stream().map(DeviceDto::of).toList(), next);
+	}
+
+	/** A page of {@code GET /devices}; {@code nextCursor} is {@code null} at the end. */
+	record DevicePage(List<DeviceDto> items, String nextCursor) {
 	}
 
 	DeviceDto update(UUID userId, UUID deviceId, DeviceInfo changes) {

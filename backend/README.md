@@ -178,7 +178,7 @@ Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST 
 
 ## Devices (B2.5, ADR 0006)
 
-Module `devices` owns `user_devices`: `POST /api/v1/devices` (`registerDevice`), `PATCH /api/v1/devices/{deviceId}`
+Module `devices` owns `user_devices`: `GET /api/v1/devices` (`listDevices`), `POST /api/v1/devices` (`registerDevice`), `PATCH /api/v1/devices/{deviceId}`
 (`updateDevice`) and `DELETE /api/v1/devices/{deviceId}` (`revokeDevice`); all need an access token.
 
 - **Register** is idempotent per user and installation id (`ux_user_device_installation`): the same row comes back and
@@ -187,7 +187,11 @@ Module `devices` owns `user_devices`: `POST /api/v1/devices` (`registerDevice`),
   header must equal the body's platform. `X-App-Version` fills `appVersion` when the body has none (also on PATCH).
   A REVOKED device registered again becomes ACTIVE with its attestation reset. `distribution_channel` stays `OTHER`
   (the contract carries no channel).
-- **List:** the contract has no `GET /devices`, so there is no endpoint; `DeviceService.list(userId)` exists for it.
+- **List (ADR 0007 D15):** `GET /api/v1/devices` (`listDevices`) returns `{items, nextCursor}` per the contract's cursor
+  convention: oldest first, `limit` 1-100 (default 20), an opaque keyset cursor over (`created_at`, `id`) that carries no
+  user data (malformed: 400 `VALIDATION_FAILED` on `cursor`). Only the caller's rows are ever read. **Revoked devices are
+  included** with `status: REVOKED` (the schema has the field, and a devices screen shows them); the push token is never
+  returned.
 - **Ownership:** every lookup is by device id and the caller's user id. A foreign, unknown or (for PATCH) revoked device is
   the same 404 `NOT_FOUND`. DELETE of an already revoked device is 204 again.
 - **Push token:** write-only (never returned, never logged), stored in `push_token` as the V1 column defines it (plain:
@@ -239,6 +243,33 @@ Module `devices` owns `user_devices`: `POST /api/v1/devices` (`registerDevice`),
   an earlier VALID/FAILED) is stored on `user_devices` (provider, status, `attestation_checked_at`).
 - **Metrics:** `qal.identity.attestation.nonces{outcome}`, `qal.identity.attestation.verdicts{outcome}`,
   `qal.identity.guest{outcome}`. Tokens and nonces are never logged.
+
+## Identity: Google sign-in (B2.2, ADR 0009)
+
+`POST /api/v1/auth/oauth/GOOGLE` (`exchangeOAuthIdToken`, anonymous; body `idToken`, **`nonce`**, optional `displayName`,
+`ageConfirmed`, `device`) returns the same `AuthSession` as OTP verify. `APPLE` and any other provider: 400
+`VALIDATION_FAILED` on `provider` (`PROVIDER_NOT_SUPPORTED`).
+
+- **Configuration:** `QAL_GOOGLE_CLIENT_IDS` (`qal.identity.oauth.google.client-ids`), comma separated Android, iOS and
+  web OAuth client ids; a token is accepted only if its `aud` is one of them. With none, Google sign-in is off, and
+  under `prod`/`production`/`staging` startup fails (set `qal.identity.oauth.google.enabled=false` to run without it).
+  Other settings: `jwks-uri` (default Google's certs URL; https, or http to loopback), `clock-skew` (60s),
+  `jwks-cache-ttl` (1h), `jwks-min-refresh-interval` (30s), `jwks-outage-tolerance` (6h), `http-timeout` (3s).
+- **Verification:** RS256 only (`none`, HS256 and others are refused), `iss` is `https://accounts.google.com` or
+  `accounts.google.com`, `aud` in the client ids, `exp`/`iat` with skew, `sub`, and the `nonce` claim must equal the
+  request nonce. JWKS is cached, refreshed on an unknown `kid` (rate limited, so key rotation works and a flood of
+  unknown ids does not hit Google), and cached keys keep working through a Google outage. Any rejected token is 401
+  `UNAUTHENTICATED` (generic); keys not fetchable and not cached is 503 `PROVIDER_UNAVAILABLE`.
+- **Accounts:** found or created by (`GOOGLE`, `sub`) in `user_auth_identities`, **never by e-mail** (account-takeover
+  risk; linking is B2.6). Stored: `sub`, the e-mail only when `email_verified` (on the identity row, `users.email` stays
+  empty), the display name for new accounts. Never stored or logged: the ID token, nonce, e-mail in logs. Status rules
+  as phone sign-in (suspended 403, deleted/merged 401); new accounts need `ageConfirmed: true`. A `device` member is
+  registered like on OTP verify. Guest merge is not done yet (B2.6).
+- **Limits** (`qal.identity.oauth.limits.<name>.capacity|period`, PROVISIONAL): `exchange-per-ip` 60/1h,
+  `exchange-per-device` 20/1h; checked before verification.
+- **Tests:** `JwksIdTokenVerifierTest` (fake JWKS on a loopback HTTP server: bad signature, wrong `aud`/`iss`, expired,
+  unknown `kid` with refresh, alg none/HS256), `OAuthControllerTest` (contract-validated), `GoogleSignInIT`.
+- **Metrics:** `qal.identity.oauth{provider,outcome}`.
 
 ## Security chain (B2.4, OI-P11)
 
