@@ -24,13 +24,13 @@ final class DataKeyCache {
 	record Key(UUID userId, int keyVersion) {
 	}
 
-	private record Entry(byte[] dek, Instant expiresAt) {
+	private record CachedDek(byte[] dek, Instant expiresAt) {
 	}
 
 	private final int maxEntries;
 	private final Duration ttl;
 	private final InstantSource clock;
-	private final LinkedHashMap<Key, Entry> entries;
+	private final LinkedHashMap<Key, CachedDek> entries;
 
 	DataKeyCache(int maxEntries, Duration ttl, InstantSource clock) {
 		this.maxEntries = maxEntries;
@@ -38,7 +38,7 @@ final class DataKeyCache {
 		this.clock = clock;
 		this.entries = new LinkedHashMap<>(16, 0.75f, true) {
 			@Override
-			protected boolean removeEldestEntry(Map.Entry<Key, Entry> eldest) {
+			protected boolean removeEldestEntry(Map.Entry<Key, CachedDek> eldest) {
 				if (size() > DataKeyCache.this.maxEntries) {
 					wipe(eldest.getValue());
 					return true;
@@ -54,7 +54,7 @@ final class DataKeyCache {
 
 	/** Returns a copy of the cached key (the caller wipes it) or {@code null}. */
 	synchronized byte[] get(Key key) {
-		Entry entry = entries.get(key);
+		CachedDek entry = entries.get(key);
 		if (entry == null) {
 			return null;
 		}
@@ -71,16 +71,16 @@ final class DataKeyCache {
 		if (!enabled()) {
 			return;
 		}
-		Entry previous = entries.put(key, new Entry(dek.clone(), clock.instant().plus(ttl)));
+		CachedDek previous = entries.put(key, new CachedDek(dek.clone(), clock.instant().plus(ttl)));
 		if (previous != null) {
 			wipe(previous);
 		}
 	}
 
 	synchronized void evictUser(UUID userId) {
-		Iterator<Map.Entry<Key, Entry>> it = entries.entrySet().iterator();
+		Iterator<Map.Entry<Key, CachedDek>> it = entries.entrySet().iterator();
 		while (it.hasNext()) {
-			Map.Entry<Key, Entry> next = it.next();
+			Map.Entry<Key, CachedDek> next = it.next();
 			if (next.getKey().userId().equals(userId)) {
 				wipe(next.getValue());
 				it.remove();
@@ -97,7 +97,7 @@ final class DataKeyCache {
 		return entries.size();
 	}
 
-	private static void wipe(Entry entry) {
+	private static void wipe(CachedDek entry) {
 		Arrays.fill(entry.dek(), (byte) 0);
 	}
 }
