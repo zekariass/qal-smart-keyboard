@@ -73,7 +73,9 @@ class ProblemExceptionHandler extends ResponseEntityExceptionHandler {
 		if (ex.status().is5xxServerError()) {
 			log.error("API exception {} ({})", ex.code(), ex.status().value(), ex);
 		}
-		return problem(request, ex.code(), ex.status(), ex.detail(), ex.errors(), ex.extensions(), HttpHeaders.EMPTY);
+		HttpHeaders headers = new HttpHeaders();
+		ex.headers().forEach(headers::set);
+		return problem(request, ex.code(), ex.status(), ex.detail(), ex.errors(), ex.extensions(), headers);
 	}
 
 	@ExceptionHandler(ConstraintViolationException.class)

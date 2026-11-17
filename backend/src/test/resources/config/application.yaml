@@ -8,3 +8,10 @@ qal:
       provider: local
     local-kms:
       allow-ephemeral-kek: true
+  # B2.1: random per-JVM OTP secret and the logging SMS mock (body not logged).
+  identity:
+    otp:
+      allow-ephemeral-secret-key: true
+  notifications:
+    sms:
+      provider: log

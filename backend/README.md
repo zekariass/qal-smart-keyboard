@@ -104,6 +104,56 @@ snapshot keeps being served.
   callers (the contract allows anonymous `/config`); the tests use a permit-all chain.
 - `/config` never fails on bad client headers (the contract declares no 400 for it): they count as unknown.
 
+## Identity: phone OTP (B2.1, ADR 0006)
+
+Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST /api/v1/auth/otp/verify` (200
+`AuthSession`). Rules from SD 9.2:
+
+- **Numbers:** strict E.164 (contract pattern); `+251` numbers must be mobile (`+2519…`/`+2517…`, 9 digits), else 400
+  `VALIDATION_FAILED` (`INVALID_PHONE_NUMBER`).
+- **Codes:** 6 digits from `SecureRandom`, valid `qal.identity.otp.code-ttl` (5m). Stored only as a keyed hash bound to
+  the challenge id; the number only as a keyed hash plus an AES-GCM sealed copy (V3, needed to create the account on
+  verify). At most 5 wrong codes per challenge (`OTP_TOO_MANY_ATTEMPTS`, the challenge is then locked). A used,
+  superseded (a newer challenge exists for the number) or unknown challenge is `OTP_INVALID`; an expired one
+  `OTP_EXPIRED`. New accounts need `ageConfirmed: true` (400 otherwise; the code stays usable).
+- **Resend cooldown:** `qal.identity.otp.resend-cooldown` (60s) per number, enforced in PostgreSQL: 429 `RATE_LIMITED`
+  with `Retry-After`.
+- **Secret (required):** `qal.identity.otp.secret-key` / env `QAL_OTP_SECRET_KEY` = base64 of at least 32 random bytes
+  (`openssl rand -base64 32`). Without it startup fails. Tests use `qal.identity.otp.allow-ephemeral-secret-key=true`
+  (dev/test only, refused under `prod`/`production`/`staging`).
+- **Rate limits** (`qal.identity.otp.limits.<name>.capacity|period`, PROVISIONAL): `start-per-ip` 30/1h,
+  `start-per-phone` 5/1h, `start-per-phone-daily` 10/24h, `verify-per-ip` 60/1h, `verify-per-device` 20/1h (device =
+  `device.installationId` of the verify request). 429 `RATE_LIMITED` with `Retry-After` and `RateLimit-*`; a successful
+  start returns the caller's per-IP `RateLimit-*`.
+- **Client IP** is `request.getRemoteAddr()`. Behind a load balancer set `server.forward-headers-strategy` so the
+  container resolves `X-Forwarded-For` from the trusted proxy; never parse it in code.
+- **Metrics:** `qal.identity.otp.started{outcome,destination}`, `qal.identity.otp.verified{outcome}`,
+  `qal.identity.otp.lockouts`, `qal.ratelimit.rejected{policy}`.
+- **Logs:** never the code, the number (only masked by the SMS mock) or tokens; `PhoneOtpIT` captures all log events
+  of a flow and checks.
+
+## Rate limiting (platform, B2.1)
+
+`com.qalsmartkeyboard.platform.ratelimit` (named interface `ratelimit`):
+
+```java
+RateLimitPolicy perIp = new RateLimitPolicy("otp.start.ip", 30, Duration.ofHours(1));
+limiter.tryConsume(perIp, clientIp).orThrow(); // 429 RATE_LIMITED with Retry-After + RateLimit-* headers
+```
+
+Fixed window per key (Bucket4j `refillIntervally`), buckets in a bounded Caffeine cache per policy
+(`qal.ratelimit.local.max-keys-per-policy`, 100000). **In memory, per instance:** with N instances a client can get
+N times the limit. Replace with a distributed store (Bucket4j on PostgreSQL per SD 8.1, later Redis/Valkey) before
+running more than one instance. Use hashed or opaque keys, never raw personal data. `ApiException` can now carry
+response headers (`new ApiException(code, status, detail, errors, extensions, headers)`).
+
+## Notifications: SMS (B2.1)
+
+`notifications.OtpSender` delivers OTP messages through an `SmsProvider`. **Required:** `qal.notifications.sms.provider`
+/ env `QAL_SMS_PROVIDER`. Only `log` exists (development and tests; refused under `prod`/`production`/`staging`): it
+sends nothing and logs a masked number. To see codes locally set `qal.notifications.sms.log.include-message=true`
+(DEV ONLY). The real aggregator adapter comes with OI-11 (WireMock stub: `infra/compose/wiremock`, `/sms/v1/messages`).
+
 ## Contract tests
 
 Controller tests validate every response against `contracts/openapi.yaml` (OpenAPI 3.1) by adding one annotation:
@@ -134,4 +184,5 @@ Android and iOS client generation are added with their own steps (A2.1, I-steps)
 
 `./mvnw verify` (CI: Java 25; locally `-Djava.version=21` on JDK 21). `QalSmartKeyboardApplicationTests` needs PostgreSQL at
 `DB_URL` (default `localhost:5434`); `*IT` classes use Testcontainers and need Docker. Running the application
-(`./mvnw spring-boot:run`) also needs the KMS settings above.
+(`./mvnw spring-boot:run`) also needs the KMS, OTP secret and SMS provider settings above, e.g.
+`QAL_KMS_PROVIDER=local QAL_LOCAL_KMS_KEK=$(openssl rand -base64 32) QAL_OTP_SECRET_KEY=$(openssl rand -base64 32) QAL_SMS_PROVIDER=log`.
