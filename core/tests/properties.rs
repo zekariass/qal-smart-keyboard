@@ -270,3 +270,19 @@ proptest! {
         prop_assert_eq!(e.on_key(KeyEvent::Backspace).delete_before, 1);
     }
 }
+
+/// Regression (found by `composer_output_is_nfc`): a pending "c" followed by a lone combining
+/// acute (U+0341) must commit as one NFC string, not as "c" + U+0301.
+#[test]
+fn commit_joined_from_pieces_is_nfc() {
+    for e in [direct(), phonetic()] {
+        let first = e.on_key(KeyEvent::Char { text: "c".into() });
+        assert!(is_nfc(&first.commit));
+        let second = e.on_key(KeyEvent::Char {
+            text: "\u{341}".into(),
+        });
+        assert!(is_nfc(&second.commit), "commit {:?}", second.commit);
+        let end = e.on_key(KeyEvent::Commit);
+        assert!(is_nfc(&end.commit));
+    }
+}

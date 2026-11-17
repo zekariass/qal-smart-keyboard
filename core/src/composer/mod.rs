@@ -12,8 +12,8 @@ mod direct;
 mod fidel_table;
 pub mod layout;
 
-pub(crate) use direct::sanitize;
 pub use direct::DirectFidel;
+pub(crate) use direct::{nfc_commit, sanitize};
 pub use layout::{FidelDigit, FidelForm, FidelKey, FidelLayout, FidelVowelKey, Layout};
 
 use fidel_table::{ORDERS, SERIES};

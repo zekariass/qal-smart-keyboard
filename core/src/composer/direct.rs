@@ -73,7 +73,7 @@ impl DirectFidel {
                     commit.push_str(&t);
                 }
                 EditorUpdate {
-                    commit,
+                    commit: nfc_commit(commit),
                     ..Default::default()
                 }
             }
@@ -101,7 +101,7 @@ impl DirectFidel {
         let mut commit = self.flush();
         commit.push_str(suffix);
         EditorUpdate {
-            commit,
+            commit: nfc_commit(commit),
             ..Default::default()
         }
     }
@@ -159,6 +159,17 @@ pub(crate) fn sanitize(text: &str) -> Option<String> {
         return None;
     }
     Some(text.nfc().collect())
+}
+
+/// Normalises a commit string that was assembled from several pieces. Joining two NFC strings
+/// is not always NFC (a base letter followed by a combining mark composes), so every composer
+/// passes its final commit text through here.
+pub(crate) fn nfc_commit(text: String) -> String {
+    if unicode_normalization::is_nfc(&text) {
+        text
+    } else {
+        text.nfc().collect()
+    }
 }
 
 #[cfg(test)]

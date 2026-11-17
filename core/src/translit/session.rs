@@ -7,7 +7,7 @@
 //! (lexicon-based ranking arrives with C1.6/C1.7). No typed text is ever logged (N2).
 
 use super::profile::{ConsonantRule, Profile};
-use crate::composer::sanitize;
+use crate::composer::{nfc_commit, sanitize};
 use crate::engine::{Candidate, CandidateKind, EditorUpdate, KeyEvent};
 use std::sync::Arc;
 
@@ -126,7 +126,7 @@ impl PhoneticSession {
         self.candidates = cands;
         EditorUpdate {
             composing,
-            commit,
+            commit: nfc_commit(commit),
             delete_before: 0,
             candidates: self
                 .candidates
