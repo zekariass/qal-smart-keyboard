@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.qalsmartkeyboard.core.CoreSmoke
 import com.qalsmartkeyboard.app.ui.theme.QalSmartKeyboardTheme
 
 class MainActivity : ComponentActivity() {
@@ -21,7 +22,7 @@ class MainActivity : ComponentActivity() {
             QalSmartKeyboardTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Greeting(
-                        name = "Android",
+                        name = "core " + CoreSmoke.coreVersion(), // A1.1: proves the UniFFI binding
                         modifier = Modifier.padding(innerPadding)
                     )
                 }

@@ -11,7 +11,7 @@ android {
     }
 
     defaultConfig {
-        minSdk = 24
+        minSdk = providers.gradleProperty("qal.minSdk").get().toInt()
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

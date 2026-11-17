@@ -24,6 +24,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "Qal Smart Keyboard"
 include(":app")
+include(":core-bindings")
 include(":ime")
 include(":data")
 include(":billing-play")
