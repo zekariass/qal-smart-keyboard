@@ -13,12 +13,16 @@ class InstalledProfileCatalog : ProfileCatalog {
     @Volatile
     private var byLanguage: Map<String, List<ProfileRef>>? = null
 
-    /** The profiles of the loaded packs; a language without one is known to have none. */
+    /**
+     * The profiles of the loaded packs. A language without one stays unknown (null): its rules pack
+     * may be missing or rejected only transiently, and the keyboard already falls back at run time,
+     * so the saved code is neither replaced nor cleared.
+     */
     fun publish(profiles: List<ProfileRef>) {
         byLanguage = profiles.groupBy { it.language }
     }
 
-    override fun activeProfiles(language: String): List<ProfileRef>? = byLanguage?.let { it[language] ?: emptyList() }
+    override fun activeProfiles(language: String): List<ProfileRef>? = byLanguage?.get(language)
 }
 
 /**

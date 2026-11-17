@@ -250,13 +250,19 @@ class SettingsRepositoryTest {
         assertFalse(r.profileChanges.profileChanged)
     }
 
-    @Test fun languageWithoutAProfilePackFallsBackToNewestAndFlagsIt() = runBlocking {
+    @Test fun languageWithoutALoadedProfileIsLeftUnchangedAndNotFlagged() = runBlocking {
         val r = open()
         r.update { phonetic("AM_PHONETIC_V0") }
-        // Packs loaded, but none carries an Amharic profile: the stale code is dropped (null = newest active).
-        r.applyInstalledProfiles(listOf(ProfileRef("TI_PHONETIC", "ti", 0)))
-        assertNull(r.current().language("am")!!.transliterationProfileCode)
-        assertEquals(ProfileChange("am", "AM_PHONETIC_V0", null), r.profileChanges.changes.value.single())
+        // Packs loaded, but none carries an Amharic profile (missing or rejected): keep the user's choice.
+        assertTrue(r.applyInstalledProfiles(listOf(ProfileRef("TI_PHONETIC", "ti", 0))).isEmpty())
+        assertEquals("AM_PHONETIC_V0", r.current().language("am")!!.transliterationProfileCode)
+        assertFalse(r.profileChanges.profileChanged)
+
+        // A later load with the pack present applies the normal fallback.
+        val changes = r.applyInstalledProfiles(listOf(ProfileRef("AM_PHONETIC", "am", 0)))
+        assertEquals(listOf(ProfileChange("am", "AM_PHONETIC_V0", "AM_PHONETIC")), changes)
+        assertEquals("AM_PHONETIC", r.current().language("am")!!.transliterationProfileCode)
+        assertTrue(r.profileChanges.profileChanged)
     }
 
     @Test fun changeNoticeAccumulatesUntilAcknowledged() {
