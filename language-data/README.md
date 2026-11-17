@@ -29,6 +29,12 @@ See docs/Ethiopian_AI_Keyboard_Implementation_Plan_v2_0.md for the steps that po
   used only by the backend publisher (B3.2). Pin the dev public key in a debug build only.
   Reproducibility is per key: a fresh checkout has a different dev key, hence different bytes.
 - Source manifest: see the docstring of `build_packs.py`. Each source lists `inputs[]` with a
-  `licenseCode` per raw input; L1.1 records it, L1.2 will make the build fail when a licence is
-  missing or non-commercial (N10) without changing the source format. Only `artifact.kind: "file"`
+  `licenseCode` per raw input.
+- **Licence gate (L1.2, N10):** the pack and every input licence must be listed with
+  `commercialUse: true` in `licenses.json` (the allow-list; unknown codes fail closed, `-NC` codes
+  and missing fields fail, `inputs[]` is mandatory); the build aborts before writing anything.
+  Each build also emits `<out>/datasets.manifest.json` (sorted, no timestamps, deterministic), one
+  record per input shaped to `language_datasets` (`datasetCode`, `licenseCode`, `permittedUses`,
+  `consentBasis`, `reviewStatus: PENDING_REVIEW`, ...) plus `sha256`, `path`, `attribution`, `packs`.
+  Adding a licence to the allow-list needs legal review (OI-R7). Only `artifact.kind: "file"`
   exists; wordlist -> lexicon artifacts arrive with C1.6, rule artifacts with C1.4.

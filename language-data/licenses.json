@@ -1,0 +1,24 @@
+{
+ "format": "qal-licence-allowlist",
+ "formatVersion": 1,
+ "note": "Fail-closed (N10): a licence code not listed here blocks the build. commercialUse=false entries are listed only so the error can explain why. Codes containing -NC are always refused. Adding an entry needs legal review (OI-R7); consentBasis feeds language_datasets.consent_basis.",
+ "licenses": {
+  "Apache-2.0": {"commercialUse": true, "attributionRequired": true, "consentBasis": "OPEN_LICENSE", "url": "https://spdx.org/licenses/Apache-2.0.html", "notes": "Keep NOTICE text."},
+  "BSD-2-Clause": {"commercialUse": true, "attributionRequired": true, "consentBasis": "OPEN_LICENSE", "url": "https://spdx.org/licenses/BSD-2-Clause.html", "notes": ""},
+  "BSD-3-Clause": {"commercialUse": true, "attributionRequired": true, "consentBasis": "OPEN_LICENSE", "url": "https://spdx.org/licenses/BSD-3-Clause.html", "notes": ""},
+  "CC-BY-4.0": {"commercialUse": true, "attributionRequired": true, "consentBasis": "OPEN_LICENSE", "url": "https://creativecommons.org/licenses/by/4.0/", "notes": ""},
+  "CC-BY-SA-4.0": {"commercialUse": true, "attributionRequired": true, "consentBasis": "OPEN_LICENSE", "url": "https://creativecommons.org/licenses/by-sa/4.0/", "notes": "ShareAlike: derived packs may need the same licence; legal review before shipping."},
+  "CC0-1.0": {"commercialUse": true, "attributionRequired": false, "consentBasis": "PUBLIC_DOMAIN", "url": "https://creativecommons.org/publicdomain/zero/1.0/", "notes": ""},
+  "ISC": {"commercialUse": true, "attributionRequired": true, "consentBasis": "OPEN_LICENSE", "url": "https://spdx.org/licenses/ISC.html", "notes": ""},
+  "MIT": {"commercialUse": true, "attributionRequired": true, "consentBasis": "OPEN_LICENSE", "url": "https://spdx.org/licenses/MIT.html", "notes": ""},
+  "MPL-2.0": {"commercialUse": true, "attributionRequired": true, "consentBasis": "OPEN_LICENSE", "url": "https://spdx.org/licenses/MPL-2.0.html", "notes": "File-level copyleft."},
+  "Unlicense": {"commercialUse": true, "attributionRequired": false, "consentBasis": "PUBLIC_DOMAIN", "url": "https://spdx.org/licenses/Unlicense.html", "notes": ""},
+  "LicenseRef-Public-Domain": {"commercialUse": true, "attributionRequired": false, "consentBasis": "PUBLIC_DOMAIN", "url": "", "notes": "Only with documented provenance."},
+  "LicenseRef-Qal-Original": {"commercialUse": true, "attributionRequired": false, "consentBasis": "OWN_CREATION", "url": "", "notes": "Created by the Qal team for this project."},
+  "CC-BY-NC-4.0": {"commercialUse": false, "attributionRequired": true, "consentBasis": "OPEN_LICENSE", "url": "https://creativecommons.org/licenses/by-nc/4.0/", "notes": "Non-commercial: not shippable (N10)."},
+  "CC-BY-NC-SA-4.0": {"commercialUse": false, "attributionRequired": true, "consentBasis": "OPEN_LICENSE", "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/", "notes": "Non-commercial: not shippable (N10). NLLB-200, MMS and SeamlessM4T are of this kind."},
+  "LicenseRef-Research-Only": {"commercialUse": false, "attributionRequired": false, "consentBasis": "UNKNOWN", "url": "", "notes": "Research use only."},
+  "PROPRIETARY": {"commercialUse": false, "attributionRequired": false, "consentBasis": "UNKNOWN", "url": "", "notes": "Needs a specific LicenseRef-* once a commercial licence is signed."},
+  "UNKNOWN": {"commercialUse": false, "attributionRequired": false, "consentBasis": "UNKNOWN", "url": "", "notes": "Unknown licence is never shippable."}
+ }
+}
