@@ -327,6 +327,11 @@ pub struct PackInfo {
     pub key_id: String,
     /// Minimum app version from the manifest, for the host to enforce.
     pub min_app_version: Option<String>,
+    /// False when a verified `DICTIONARY` / `FREQUENCY_LIST` payload does not parse. Such a pack
+    /// is activated for rollback protection but never replaces a working model; hosts should
+    /// treat it as corrupt. Always true for other resource types (checked when first used) and
+    /// from `VerifiedPack::info`.
+    pub payload_usable: bool,
 }
 
 // ------------------------------------------------------------------------------------------
@@ -487,6 +492,7 @@ impl VerifiedPack {
             is_delta: self.is_delta(),
             key_id: m.signature_key_id.clone(),
             min_app_version: m.min_app_version.as_ref().map(|v| v.to_string()),
+            payload_usable: true,
         }
     }
 }

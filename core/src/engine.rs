@@ -9,7 +9,7 @@ use crate::pack::{
 };
 use crate::ranker::{RankKind, Ranker};
 use crate::translit::{PhoneticSession, Profile, ProfileStatus};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Engine construction options.
@@ -182,7 +182,11 @@ fn is_ethiopic(c: char) -> bool {
 /// loaded, its `FREQUENCY_LIST` (bigram) pack.
 struct LangModel {
     /// The dictionary pack the lexicon was parsed from (reused when only the bigrams change).
+    /// Not necessarily the active pack: an active dictionary that does not parse leaves the
+    /// last good one in service.
     dictionary: Arc<VerifiedPack>,
+    /// The bigram pack the ranker was loaded from, if any (same last-good rule).
+    bigrams: Option<Arc<VerifiedPack>>,
     lexicon: Arc<Lexicon>,
     ranker: Arc<Ranker>,
 }
@@ -209,6 +213,9 @@ pub struct KeyboardEngine {
     /// model built from a superseded pack. Lock order: `model_build`, `packs`, then `models`.
     /// Never taken on the key path.
     model_build: Mutex<()>,
+    /// SHA-256 of verified `DICTIONARY` / `FREQUENCY_LIST` artifacts whose payload does not
+    /// parse (reported as `PackInfo::payload_usable == false`).
+    unusable_payloads: Mutex<HashSet<String>>,
     key_ring: KeyRing,
     pack_limits: PackLimits,
     config: EngineConfig,
@@ -239,6 +246,7 @@ impl KeyboardEngine {
             layouts: Mutex::new(HashMap::new()),
             models: Mutex::new(HashMap::new()),
             model_build: Mutex::new(()),
+            unusable_payloads: Mutex::new(HashSet::new()),
             key_ring,
             pack_limits,
             config,
@@ -261,9 +269,10 @@ impl KeyboardEngine {
     /// - activating a `DICTIONARY` ("QLX1" lexicon) or `FREQUENCY_LIST` ("QBG1" bigrams) pack
     ///   rebuilds the language's lexicon + ranker (A1.3, ADR 0004), so phonetic compositions get
     ///   lexicon candidates after the transliteration alternatives. Like transliteration packs,
-    ///   their payloads are opaque to the container check: a verified pack whose dictionary does
-    ///   not parse is activated but gives no candidates (the language's previous model is
-    ///   dropped), and unparsable bigrams leave the ranker without context statistics;
+    ///   their payloads are opaque to the container check, so a verified pack whose payload does
+    ///   not parse is still activated (it counts for rollback protection and is returned with
+    ///   `PackInfo::payload_usable == false`) but never replaces a working model: the language
+    ///   keeps its last good lexicon and bigrams. The host should treat such a pack as corrupt;
     /// - delta packs (`baseResourceId` set) are verified, then rejected with
     ///   `DeltaNotSupported`: the host pack manager applies deltas and loads the full result.
     pub fn load_pack(&self, bytes: Vec<u8>) -> Result<PackInfo, CoreError> {
@@ -280,6 +289,11 @@ impl KeyboardEngine {
         let lexicon = (resource_type == ResourceType::Dictionary)
             .then(|| Lexicon::from_bytes(verified.artifact().to_vec()).ok())
             .flatten();
+        let payload_usable = match resource_type {
+            ResourceType::Dictionary => lexicon.is_some(),
+            ResourceType::FrequencyList => crate::ranker::validate_bigrams(verified.artifact()),
+            _ => true,
+        };
         let builds_model = matches!(
             resource_type,
             ResourceType::Dictionary | ResourceType::FrequencyList
@@ -309,7 +323,7 @@ impl KeyboardEngine {
         if let Some(loaded) = packs.get(&slot) {
             let l = loaded.manifest();
             if m.version == l.version && m.sha256 == l.sha256 && m.resource_id == l.resource_id {
-                return Ok(loaded.info()); // identical pack: idempotent no-op
+                return Ok(self.info_of(loaded)); // identical pack: idempotent no-op
             }
             if m.version <= l.version {
                 return Err(CoreError::PackRejected {
@@ -323,13 +337,19 @@ impl KeyboardEngine {
             self.lock_layouts()
                 .insert(info.language_code.clone(), layout);
         }
+        if !payload_usable {
+            self.lock_unusable().insert(m.sha256.clone());
+        }
         let activated = Arc::new(verified);
         packs.insert(slot, Arc::clone(&activated));
         drop(packs);
         if builds_model {
             self.rebuild_model(&info.language_code, lexicon.map(|l| (activated, l)));
         }
-        Ok(info)
+        Ok(PackInfo {
+            payload_usable,
+            ..info
+        })
     }
 
     /// Metadata of every loaded pack, sorted by language, resource type and platform.
@@ -339,7 +359,7 @@ impl KeyboardEngine {
         slots.sort();
         slots
             .into_iter()
-            .filter_map(|s| packs.get(s).map(|p| p.info()))
+            .filter_map(|s| packs.get(s).map(|p| self.info_of(p)))
             .collect()
     }
 
@@ -568,6 +588,21 @@ impl KeyboardEngine {
         self.models.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    fn lock_unusable(&self) -> MutexGuard<'_, HashSet<String>> {
+        self.unusable_payloads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Pack metadata including whether its payload is known to be unusable.
+    fn info_of(&self, p: &VerifiedPack) -> PackInfo {
+        let usable = !self.lock_unusable().contains(&p.manifest().sha256);
+        PackInfo {
+            payload_usable: usable,
+            ..p.info()
+        }
+    }
+
     fn lock_model_build(&self) -> MutexGuard<'_, ()> {
         self.model_build.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -604,28 +639,31 @@ impl KeyboardEngine {
             return;
         };
         let current = self.lock_models().get(language_code).cloned();
-        let lexicon = match (fresh, current) {
-            (Some((p, l)), _) if Arc::ptr_eq(&p, &dictionary) => l,
-            (_, Some(m)) if Arc::ptr_eq(&m.dictionary, &dictionary) => Arc::clone(&m.lexicon),
-            _ => match Lexicon::from_bytes(dictionary.artifact().to_vec()) {
-                Ok(l) => l,
-                Err(_) => {
-                    // The active dictionary is unusable: offer no lexicon candidates rather
-                    // than ones from a superseded pack.
-                    self.lock_models().remove(language_code);
-                    return;
-                }
-            },
+        let parsed = match (fresh, &current) {
+            (Some((p, l)), _) if Arc::ptr_eq(&p, &dictionary) => Some(l),
+            (_, Some(m)) if Arc::ptr_eq(&m.dictionary, &dictionary) => Some(Arc::clone(&m.lexicon)),
+            _ => Lexicon::from_bytes(dictionary.artifact().to_vec()).ok(),
+        };
+        // An active dictionary that does not parse never drops the working model.
+        let (dictionary, lexicon) = match (parsed, &current) {
+            (Some(l), _) => (dictionary, l),
+            (None, Some(m)) => (Arc::clone(&m.dictionary), Arc::clone(&m.lexicon)),
+            (None, None) => return,
         };
         let ranker = Ranker::new(Arc::clone(&lexicon));
-        if let Some(b) = bigrams {
-            // Unparsable bigrams leave the ranker with unigram frequencies only.
-            let _ = ranker.load_bigrams(b.artifact().to_vec());
-        }
+        // Unusable bigrams fall back to the last good ones (or none: unigram frequencies only).
+        let bigrams = bigrams
+            .filter(|b| ranker.load_bigrams(b.artifact().to_vec()).is_ok())
+            .or_else(|| {
+                let last = current.as_ref()?.bigrams.clone()?;
+                ranker.load_bigrams(last.artifact().to_vec()).ok()?;
+                Some(last)
+            });
         self.lock_models().insert(
             language_code.to_string(),
             Arc::new(LangModel {
                 dictionary,
+                bigrams,
                 lexicon,
                 ranker,
             }),
