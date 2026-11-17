@@ -131,15 +131,22 @@ jobs:
         run: |
           if [ -f core/Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; echo "core/Cargo.toml not found; skipping until step C1.1"; fi
       - if: steps.detect.outputs.present == 'true'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+        # Installs the channel and components pinned in core/rust-toolchain.toml.
+        working-directory: core
+        run: rustup toolchain install
       - if: steps.detect.outputs.present == 'true'
         working-directory: core
         run: |
           cargo fmt --check
           cargo clippy --all-targets -- -D warnings
           cargo test
+      - name: Build cdylib and generate Kotlin bindings (smoke check)
+        if: steps.detect.outputs.present == 'true'
+        working-directory: core
+        run: |
+          cargo build --release
+          cargo run --features cli --bin uniffi-bindgen -- generate \
+            --library target/release/libqal_keyboard_core.so --language kotlin --out-dir "$RUNNER_TEMP/kotlin"
 
   # iOS (xcodebuild on macos-latest) and admin-web (Node) jobs are added by
   # steps I5.1 and H3.6 when those projects exist.

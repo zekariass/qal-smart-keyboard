@@ -1,0 +1,30 @@
+[package]
+name = "qal-keyboard-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.91"
+description = "Qal Smart Keyboard language engine (offline, UniFFI bindings for Kotlin and Swift)"
+license = "LicenseRef-Proprietary"
+publish = false
+
+[lib]
+name = "qal_keyboard_core"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["cli"]
+
+[features]
+# Enables the uniffi-bindgen binary (not needed by app builds).
+cli = ["uniffi/cli"]
+
+[dependencies]
+uniffi = "0.32"
+thiserror = "2"
+
+[profile.release]
+lto = true
+opt-level = "s"
+strip = "debuginfo" # full strip removes the UniFFI metadata symbols that library-mode bindgen needs

@@ -1,0 +1,4 @@
+target/
+bindings/out/
+bindings/kotlin/
+bindings/swift/

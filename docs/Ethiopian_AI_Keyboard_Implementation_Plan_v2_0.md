@@ -68,14 +68,14 @@
 | Phase | Name | Steps | 🟩 Done | 🟦 In progress | 🟥 Blocked | ⬜ Todo | % |
 |---|---|---|---|---|---|---|---|
 | Phase 0 | Foundations (M0) | 6 | 6 | 0 | 0 | 0 | 100% |
-| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 0 | 0 | 0 | 22 | 0% |
+| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 1 | 0 | 0 | 21 | 5% |
 | Phase 2 | Backend + P0 AI (M2) | 39 | 0 | 0 | 0 | 39 | 0% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
 | Phase 4 | Monetisation (M4) | 10 | 0 | 0 | 0 | 10 | 0% |
 | Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
 | Phase 6 | Differentiation (M6) | 8 | 0 | 0 | 0 | 8 | 0% |
 | Phase 7 | Expansion + B2B (M7) | 5 | 0 | 0 | 0 | 5 | 0% |
-| **Total** | | **109** | 6 | 0 | 0 | 103 | 6% |
+| **Total** | | **109** | 7 | 0 | 0 | 102 | 6% |
 
 ### Human gates
 
@@ -98,8 +98,9 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 | 2026-11-17 | F0.2 | 🟩 DONE | 1c757ca, fcd569a, 62c7d78 | GitHub Actions `ci.yml`: contract + migration drift check, Redocly lint (annotations), schema on PG17/PG18 (86 tables), backend `verify` on Java 25 + PG18, Android play/direct assemble + unit tests, Rust job (skips until `core/Cargo.toml`). Run 44088993925 all green. Fixed 11 unquoted OpenAPI descriptions that YAML split on commas. Open: 4 Redocly warnings (2 unused realtime schemas, 1 example/oneOf mismatch, example.com server); iOS/admin-web jobs to add at I5.1/H3.6. |
 | 2026-11-17 | F0.3 | 🟩 DONE | 979df1b | `backend/src/test/java/com/qalsmartkeyboard/schema/SchemaGuardsIT.java`: Testcontainers PG18 + Flyway, 10 tests covering smoke checks 01–26, each in a rolled-back transaction; SQLSTATE 42xxx (test-authoring errors) cannot count as a rejection. Failsafe runs `*IT` in `mvnw verify`. Mutation check: removing `payment_transactions` from the append-only trigger list fails check 18. Image overridable with `-Dqal.test.postgres-image=postgres:17`. |
 | 2026-11-17 | F0.4 | 🟩 DONE | 8263cf7 | Compose: postgres:18 (5434), MinIO (9000/9001; Chainguard image pinned by digest because `minio/minio` is no longer pullable) + init creating `qal-language-packs`, `qal-exports`, `qal-audio-temp`; WireMock 3.13.1 (8089) with 13 stubs under `/sms`, `/ai`, `/chapa`; `X-Mock-Scenario: slow|error` for fallback tests. All healthy, stubs verified with curl. Open: Chapa stub shapes are from memory and must be checked against Chapa docs before M4.2; AI request/response shapes are placeholders until providers are chosen; MinIO digest needs manual repinning. |
-| 2026-11-17 | F0.5 | 🟩 DONE | see git log | `docs/adr/0001-open-items.md`: 24 OPEN items (12 from SD §26.2 verbatim, 7 review risks, 5 Phase 0 findings) with owner, due milestone and blocked plan steps. Human gate G0 still open. |
-| 2026-11-17 | F0.6 | 🟩 DONE | see git log | `language-data/eval/`: stdlib-only Python harness (`python -m qal_eval run`), JSON configs (keys only via env var names), `mock_http` adapter + registry, chrF/chrF++/WER/CER/script-ok/latency metrics, CSV output; 22 unit tests (also in CI). Ran end to end against WireMock incl. error/slow scenarios. Open: sample references are synthetic and not native-reviewed; chrF averaging not verified against sacrebleu; dataset licences in README to verify. |
+| 2026-11-17 | F0.5 | 🟩 DONE | 160ab8f | `docs/adr/0001-open-items.md`: 24 OPEN items (12 from SD §26.2 verbatim, 7 review risks, 5 Phase 0 findings) with owner, due milestone and blocked plan steps. Human gate G0 still open. |
+| 2026-11-17 | F0.6 | 🟩 DONE | 160ab8f | `language-data/eval/`: stdlib-only Python harness (`python -m qal_eval run`), JSON configs (keys only via env var names), `mock_http` adapter + registry, chrF/chrF++/WER/CER/script-ok/latency metrics, CSV output; 22 unit tests (also in CI). Ran end to end against WireMock incl. error/slow scenarios. Open: sample references are synthetic and not native-reviewed; chrF averaging not verified against sacrebleu; dataset licences in README to verify. |
+| 2026-11-17 | C1.1 | 🟩 DONE | see git log | Rust 1.91.0 crate `qal-keyboard-core` (UniFFI 0.32 proc-macros; lib/cdylib/staticlib); module stubs per SD §7; FFI API `KeyboardEngine` (new, load_pack, set_input_mode, on_key, select_candidate, reset, version) + records/enums/`CoreError`. `set_input_mode` refuses modes that do not fit the language or are not implemented, so keys are never silently swallowed. 10 tests; Kotlin + Swift bindings generate; built in Docker (`rust:1.91`), Rust not installed locally. Release profile uses `strip = "debuginfo"` (full strip removes UniFFI metadata). Proceeded with Rust per design recommendation; OI-12 still OPEN. |
 
 ---
 
@@ -128,7 +129,7 @@ Goal: a fully offline Android keyboard for Amharic, Tigrinya, Afaan Oromoo and E
 
 | ID | Step | Depends on | Done when | Status |
 |---|---|---|---|---|
-| C1.1 | Crate scaffold: modules `composer, translit, segmenter, lexicon, ranker, langid, calendar`; public API surface designed for UniFFI (no lifetimes across FFI). | F0.1 | `cargo test` passes; `uniffi-bindgen` generates Kotlin and Swift. | ⬜ TODO |
+| C1.1 | Crate scaffold: modules `composer, translit, segmenter, lexicon, ranker, langid, calendar`; public API surface designed for UniFFI (no lifetimes across FFI). | F0.1 | `cargo test` passes; `uniffi-bindgen` generates Kotlin and Swift. | 🟩 DONE |
 | C1.2 | **Pack format + loader**: versioned binary/JSON pack with manifest, Ed25519 signature verify, size limits. Reject unsigned/malformed. | C1.1 | Fuzz target on parser; tampered pack rejected in tests. | ⬜ TODO |
 | C1.3 | **Direct Fidel input** model (fidel layout data, 7 orders, labialised forms) driven by data, not hard-coded. | C1.2 | Golden vectors pass. | ⬜ TODO |
 | C1.4 | **Phonetic Latin→Ge'ez transliteration engine** driven by profile data (rules, longest-match, composing buffer, alternatives, backspace, protected tokens). Load AM and TI DRAFT profiles from `language-data/`. | C1.2 | Golden corpus per profile version: keystrokes → composing → committed → alternatives, 100% pass. | ⬜ TODO |
