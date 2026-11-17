@@ -1,4 +1,4 @@
-package com.qalsmartkeyboard.api;
+package com.qalsmartkeyboard;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
