@@ -315,22 +315,81 @@ fn dictionaries_are_per_language() {
 }
 
 #[test]
-fn unparsable_dictionary_is_activated_but_unused() {
+fn unparsable_dictionary_keeps_the_last_good_model() {
     let e = full();
     // A newer, validly signed dictionary whose payload is not a lexicon.
+    let info = e
+        .load_pack(pack_of(
+            "am",
+            ResourceType::Dictionary,
+            "0.2.0",
+            b"not a lexicon",
+        ))
+        .unwrap();
+    assert!(!info.payload_usable);
+    let dict = |e: &KeyboardEngine| {
+        e.loaded_packs()
+            .into_iter()
+            .find(|p| p.resource_type == ResourceType::Dictionary)
+            .unwrap()
+    };
+    // Activated (rollback protection sees 0.2.0) and reported unusable.
+    assert_eq!(dict(&e).version, "0.2.0");
+    assert!(!dict(&e).payload_usable);
+    // The previous model still serves candidates.
+    phonetic(&e);
+    assert!(texts(&typed(&e, "sela")).contains(&"ሰላም"));
+    // New bigrams are applied on top of the last good lexicon.
     e.load_pack(pack_of(
         "am",
-        ResourceType::Dictionary,
+        ResourceType::FrequencyList,
         "0.2.0",
-        b"not a lexicon",
+        &bigram_payload_from_text("ሰላም	ነገር	50".into()),
     ))
     .unwrap();
-    assert_eq!(texts(&typed(&e, "sela")), ["ሰላ", "ሠላ"]);
-    // A fixed, still newer pack restores candidates.
-    e.load_pack(pack_of("am", ResourceType::Dictionary, "0.3.0", AM_LEXICON))
-        .unwrap();
     e.reset();
     assert!(texts(&typed(&e, "sela")).contains(&"ሰላም"));
+    // A fixed, still newer pack replaces it.
+    let ok = e
+        .load_pack(pack_of("am", ResourceType::Dictionary, "0.3.0", AM_LEXICON))
+        .unwrap();
+    assert!(ok.payload_usable);
+    e.reset();
+    assert!(texts(&typed(&e, "sela")).contains(&"ሰላም"));
+}
+
+#[test]
+fn unparsable_dictionary_without_a_previous_model_gives_no_candidates() {
+    let e = engine();
+    let info = e
+        .load_pack(pack_of(
+            "am",
+            ResourceType::Dictionary,
+            "0.1.0",
+            b"not a lexicon",
+        ))
+        .unwrap();
+    assert!(!info.payload_usable);
+    phonetic(&e);
+    assert_eq!(texts(&typed(&e, "sela")), ["ሰላ", "ሠላ"]);
+}
+
+#[test]
+fn unparsable_bigrams_keep_the_last_good_bigrams() {
+    let e = full();
+    let info = e
+        .load_pack(pack_of(
+            "am",
+            ResourceType::FrequencyList,
+            "0.2.0",
+            b"not bigrams",
+        ))
+        .unwrap();
+    assert!(!info.payload_usable);
+    phonetic(&e);
+    typed(&e, "selam ");
+    let w = typed(&e, "ne");
+    assert!(!of_kind(&w, CandidateKind::Completion).is_empty());
 }
 
 #[test]

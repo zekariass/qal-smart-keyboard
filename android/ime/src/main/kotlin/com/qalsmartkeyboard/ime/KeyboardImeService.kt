@@ -10,7 +10,9 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
-import org.json.JSONObject
+import com.qalsmartkeyboard.ime.packs.PackStorage
+import com.qalsmartkeyboard.data.SettingsRepository
+import com.qalsmartkeyboard.data.SettingsSnapshot
 import uniffi.qal_keyboard_core.KeyboardEngine
 
 /**
@@ -48,11 +50,18 @@ class KeyboardImeService : InputMethodService() {
     }
 
     private val adapter = InputConnectionAdapter { if (currentInputConnection != null) editorOps else null }
-    private val controller = KeyboardController(adapter) { refreshViews() }
+    // Settings (A1.5): a cached snapshot (defaults until the first load), updated off the main thread.
+    private val snapshot by lazy { SettingsSnapshot(SettingsRepository.get(applicationContext)) }
+    private val settingsPrefs by lazy {
+        SettingsPreferences({ snapshot.current }) { lang, mode -> snapshot.launchUpdate { it.copy(lastModes = it.lastModes + (lang to mode)) } }
+    }
+    private val controller by lazy { KeyboardController(adapter, settingsPrefs, settingsPrefs) { refreshViews() } }
 
     override fun onCreate() {
         super.onCreate()
         adapter.onCompositionAbandoned = { controller.onCompositionAbandoned() }
+        snapshot.onChange = { main.post { controller.onPreferencesChanged() } }
+        snapshot.start()
         loadCoreInBackground()
     }
 
@@ -61,23 +70,12 @@ class KeyboardImeService : InputMethodService() {
      * key path). Until it is done the keyboard types ABC through [PassthroughComposer].
      */
     private fun loadCoreInBackground() {
-        val assets = applicationContext.assets
+        val appContext = applicationContext
         Thread({
             val created = try {
-                val json = JSONObject(assets.open("${BundledPacks.ASSET_DIR}/${BundledPacks.INDEX_FILE}").bufferedReader().use { it.readText() })
-                val packs = json.getJSONArray("packs")
-                val index = BundledPacks.Index(
-                    keyId = json.getString("signingKeyId"),
-                    publicKey = BundledPacks.hexToBytes(json.getString("signingPublicKeyHex")),
-                    files = (0 until packs.length()).map { packs.getJSONObject(it).getString("file") },
-                )
-                BundledPacks.createEngine(
-                    index,
-                    read = { f -> assets.open("${BundledPacks.ASSET_DIR}/$f").use { it.readBytes() } },
-                    log = { Log.w(TAG, it) },
-                )
+                PackStorage.create(appContext) { Log.w(TAG, it) }?.load()?.engine
             } catch (e: Exception) {
-                // Bad index, missing native library, ...: keep typing ABC. No content is logged.
+                // Bad trust key, missing native library, ...: keep typing ABC. No content is logged.
                 Log.e(TAG, "core unavailable: ${e.javaClass.simpleName}")
                 null
             } catch (e: LinkageError) {
@@ -94,6 +92,7 @@ class KeyboardImeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        snapshot.stop()
         engine?.close()
         engine = null
         super.onDestroy()

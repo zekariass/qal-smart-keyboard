@@ -13,7 +13,7 @@ import org.junit.Test
  */
 class CoreLayoutsTest {
     private val engine get() = CoreTestEnv.engine
-    private fun session(type: Int = InputType.TYPE_CLASS_TEXT) = CoreTestEnv.Session(type)
+    private fun session(type: Int = InputType.TYPE_CLASS_TEXT) = CoreTestEnv.Session(type, prefs = CoreTestEnv.FidelFirst())
 
     private val amFidel = TypingMode("am", LayoutKind.FIDEL)
     private val amPhonetic = TypingMode("am", LayoutKind.PHONETIC)
@@ -145,12 +145,13 @@ class CoreLayoutsTest {
 
     @Test fun ethiopicPunctuationAndNumeralsAreReachable() {
         val s = session()
-        val period = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "." }
-        assertEquals(listOf("።", "፣", "፤", "፥", "፦", "፧", "፨", "፡"), period.popup.map { it.text })
-        val comma = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "," }
-        assertEquals(listOf("፣", "፤"), comma.popup.map { it.text })
+        // ADR 0007: on the Fidel grid a tap commits the Ethiopic mark; ASCII leads the popup
+        val period = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "።" }
+        assertEquals(listOf(".", "፣", "፤", "፥", "፦", "፧", "፨", "፡"), period.popup.map { it.text })
+        val comma = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "፣" }
+        assertEquals(listOf(",", "፤"), comma.popup.map { it.text })
         s.consonant("S"); s.vowel(1)
-        s.pick(period.popup.first { it.text == "።" })
+        s.tap(period)
         assertEquals("ሰ።", s.ed.text.toString())
         // the Fidel grid has no digit row: digits (with Ethiopic numeral long-press) are on the ?123 page,
         // which also carries the marks as keys
@@ -224,7 +225,7 @@ class CoreLayoutsTest {
             s.c.onLongPress(s.key(KeyKind.GLOBE))
             seen += s.c.effectiveMode
         }
-        assertEquals(listOf(amPhonetic, TypingMode.abc("am"), amFidel, amPhonetic), seen)
+        assertEquals(listOf(TypingMode.abc("am"), amPhonetic, amFidel, TypingMode.abc("am")), seen)
     }
 
     @Test fun fieldRulesBeatLanguageChoice() {
