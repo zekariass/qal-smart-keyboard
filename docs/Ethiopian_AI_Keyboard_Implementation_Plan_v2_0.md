@@ -68,8 +68,8 @@
 | Phase | Name | Steps | 🟩 Done | 🟦 In progress | 🟥 Blocked | ⬜ Todo | % |
 |---|---|---|---|---|---|---|---|
 | Phase 0 | Foundations (M0) | 6 | 6 | 0 | 0 | 0 | 100% |
-| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 3 | 0 | 0 | 19 | 14% |
-| Phase 2 | Backend + P0 AI (M2) | 39 | 0 | 0 | 0 | 39 | 0% |
+| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 4 | 0 | 0 | 18 | 18% |
+| Phase 2 | Backend + P0 AI (M2) | 39 | 1 | 0 | 0 | 38 | 3% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
 | Phase 4 | Monetisation (M4) | 10 | 0 | 0 | 0 | 10 | 0% |
 | Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
@@ -103,6 +103,8 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 | 2026-11-17 | C1.1 | 🟩 DONE | caf044a | Rust 1.91.0 crate `qal-keyboard-core` (UniFFI 0.32 proc-macros; lib/cdylib/staticlib); module stubs per SD §7; FFI API `KeyboardEngine` (new, load_pack, set_input_mode, on_key, select_candidate, reset, version) + records/enums/`CoreError`. `set_input_mode` refuses modes that do not fit the language or are not implemented, so keys are never silently swallowed. 10 tests; Kotlin + Swift bindings generate; built in Docker (`rust:1.91`), Rust not installed locally. Release profile uses `strip = "debuginfo"` (full strip removes UniFFI metadata). Proceeded with Rust per design recommendation; OI-12 still OPEN. |
 | 2026-11-17 | C1.2 | 🟩 DONE | 5784269, 5ad22df | Pack container v1 (`docs/specs/pack-format-v1.md`, ADR 0002): signature over exact manifest bytes with domain separation, strict Ed25519, pinned keys with revocation, SHA-256 + size, limits, downgrade protection, deltas verified but host-applied. API: fallible `KeyboardEngine::new`, `EngineConfig.trusted_keys/pack_limits`, richer `PackInfo`, `PackRejectReason`, `loaded_packs()`. 63 tests (exhaustive bit-flip/truncation, proptest), 20 cross-language vectors (independently reproduced with OpenSSL), cargo-fuzz 2 targets ~76 s each, 0 crashes. OpenAPI `LanguageResourceManifest` now discovery-only (no `signature`, + `containerSizeBytes`). Hosts must persist installed versions (A1.6/A2.3/I5.2). |
 | 2026-11-17 | C1.3 | 🟩 DONE | see git log | Fidel syllable table generated from Unicode names (`language-data/scripts/gen_fidel_table.py`: 78 series, 481 forms; reviewer re-checked every form against its Unicode name), mirrored into `core/src/composer/fidel_table.rs` with a staleness test (in CI). Layout format `docs/specs/keyboard-layout-v1.md`; DRAFT am (34 series) and ti (35, + ቐ) layouts in `language-data/layouts/`. Core: `KEYBOARD_LAYOUT` packs validated after signature check (`INVALID_ARTIFACT`), `fidel_layout()`, `KeyEvent::FidelConsonant/FidelVowel`, LONG_PRESS + TWO_KEY (default 6th order), DirectFidel only when a layout is loaded. 93 Rust tests + 8 Python tests. Open for G0 panel: ኸ in Amharic, homophone series on main keys, default order 6 vs 1. Fuzz crate not rebuilt this step. |
+| 2026-11-17 | C1.9 | 🟩 DONE | 15b4c9f, 6ae9369, 82cb96a | `core/src/calendar.rs`: Gregorian<->Ethiopian conversion (JDN, 13 months, Pagume 5/6 days), Ethiopian 6:00-offset clock, Ethiopic<->Arabic numerals (1..=99,999,999), all UniFFI-exported. 32 unit/property tests; `cargo fmt --check`, `clippy -D warnings` and `cargo test` pass on Rust 1.91.0. First real test run caught two bugs the Python cross-check missed (clock inverse for hours 6-11; wrong 20,000 numeral expectation), both fixed. |
+| 2026-11-17 | B1.1 | 🟩 DONE | 2d83e78, 3edbd45 | Spring Modulith 2.1.2 (BOM; Boot 4.1.2 does not manage it); 21 SD §24 module packages (package-info only); app class moved to `com.qalsmartkeyboard` root so Modulith sees exactly those modules; `ModularityTests` (`ApplicationModules.verify()`) runs in surefire in the existing CI backend job. `mvnw verify` green on JDK 25 against PG18: 3 unit + 10 IT, none skipped. |
 
 ---
 
@@ -139,7 +141,7 @@ Goal: a fully offline Android keyboard for Amharic, Tigrinya, Afaan Oromoo and E
 | C1.6 | **Lexicon**: compact trie/FST from wordlists, prefix lookup, user dictionary overlay. | C1.2 | Lookup meets §17.1 latency budget in benchmark. | ⬜ TODO |
 | C1.7 | **Ranker**: candidate ranking, next-word suggestions, autocorrect with a "harm guard" (never auto-apply a correction that is low-confidence; suggestions only). | C1.6 | Tests incl. homophone families. | ⬜ TODO |
 | C1.8 | **Code-switching / language ID** (cheap on-device detector) to pick candidate languages per word. | C1.6 | Eval set accuracy recorded. | ⬜ TODO |
-| C1.9 | **Calendar utilities**: Ethiopian calendar, Ethiopian clock (6:00 offset), Ethiopic numerals ↔ Arabic numerals. | C1.1 | Property tests incl. leap years, Pagume. | ⬜ TODO |
+| C1.9 | **Calendar utilities**: Ethiopian calendar, Ethiopian clock (6:00 offset), Ethiopic numerals ↔ Arabic numerals. | C1.1 | Property tests incl. leap years, Pagume. | 🟩 DONE |
 | C1.10 | Property tests (segmenter never splits grapheme clusters; NFC idempotence; reversibility where declared) and CI benchmarks (>10% regression fails). | C1.3–C1.9 | CI gate active. | ⬜ TODO |
 
 ### 1B. Language data pipeline
@@ -176,7 +178,7 @@ Goal: identity, devices, preferences, packs, AI gateway, translate/grammar/rewri
 
 | ID | Step | Depends on | Done when | Status |
 |---|---|---|---|---|
-| B1.1 | Spring Boot 4 project with Spring Modulith packages from SD §24; `ApplicationModules.verify()` test in CI. | F0.2 | Module boundary test passes. | ⬜ TODO |
+| B1.1 | Spring Boot 4 project with Spring Modulith packages from SD §24; `ApplicationModules.verify()` test in CI. | F0.2 | Module boundary test passes. | 🟩 DONE |
 | B1.2 | Flyway with `V1__baseline.sql` copied unchanged from docs; never edit applied migrations — later changes are `V2__…`. | F0.3 | App boots; schema matches. | ⬜ TODO |
 | B1.3 | Platform module: Problem Details error handling with API error codes, correlation ID filter, request validation, OpenAPI contract tests (every controller response validated against `contracts/openapi.yaml`), generated client types in CI. | B1.1 | Contract test suite green. | ⬜ TODO |
 | B1.4 | Outbox + db-scheduler infrastructure (outbox table dispatcher, retry/backoff, idempotent consumers). | B1.2 | Test: event survives crash and is delivered once-effectively. | ⬜ TODO |
