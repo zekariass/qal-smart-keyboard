@@ -29,7 +29,9 @@ use user::UserState;
 pub const MAX_WORD_BYTES: usize = trie::MAX_WORD_BYTES;
 /// Most words the user overlay holds; further additions are refused.
 pub const MAX_USER_WORDS: usize = 50_000;
-/// How much each use of a user word adds to its score (provisional; tuned with C1.7).
+/// How much each use of a user word adds to its score. The ranker scores on a log scale, so one
+/// use lifts a word to roughly "moderately common" and about a thousand uses to "top of the
+/// list"; tuned with C1.7 (pinned by `ranker` tests; revisit when real pack frequencies exist).
 pub const USER_WORD_WEIGHT: u32 = 1_000;
 
 /// Errors from lexicon payload handling. Messages are fixed strings, never word content.
@@ -206,6 +208,23 @@ impl Lexicon {
     /// Base-lexicon frequency of `word`, if present (ignores the user overlay).
     pub fn base_frequency(&self, word: String) -> Option<u32> {
         self.base.frequency(&nfc(&word))
+    }
+
+    /// The score `suggest` gives `word` if it is currently visible (user words: base plus
+    /// `USER_WORD_WEIGHT` per use; removed words: `None`). Exact match only (added for C1.7).
+    pub fn word_score(&self, word: String) -> Option<u32> {
+        let word = nfc(&word);
+        let user = self.user_read();
+        match user.count(&word) {
+            Some(count) => Some(
+                self.base
+                    .frequency(&word)
+                    .unwrap_or(0)
+                    .saturating_add(count.saturating_mul(USER_WORD_WEIGHT)),
+            ),
+            None if user.is_blocked(&word) => None,
+            None => self.base.frequency(&word),
+        }
     }
 
     /// Adds a word to the user dictionary (also un-removes it). Returns false if the word is
@@ -447,6 +466,22 @@ mod tests {
         assert!(l2.contains("qal".into()));
         for n in 0..bytes.len() {
             let _ = Lexicon::new_empty().import_user_dictionary(bytes[..n].to_vec());
+        }
+    }
+
+    #[test]
+    fn word_score_matches_suggest_and_respects_overlay() {
+        let l = lex(&[("hello", 10), ("help", 20)]);
+        assert_eq!(l.word_score("hello".into()), Some(10));
+        assert_eq!(l.word_score("nope".into()), None);
+        l.learn_word("hello".into());
+        l.learn_word("qal".into());
+        assert_eq!(l.word_score("hello".into()), Some(10 + USER_WORD_WEIGHT));
+        assert_eq!(l.word_score("qal".into()), Some(USER_WORD_WEIGHT));
+        l.remove_word("help".into());
+        assert_eq!(l.word_score("help".into()), None);
+        for m in l.suggest(String::new(), 10) {
+            assert_eq!(l.word_score(m.word), Some(m.score));
         }
     }
 
