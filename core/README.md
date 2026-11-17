@@ -40,14 +40,17 @@ content, nor put it in error messages. Tests use synthetic text only.
   `Transliteration`), then the ranker's candidates for the composition (`Completion`, or `Correction`
   for one-edit corrections), de-duplicated and capped at `max_candidates`. Nothing is applied
   automatically. The last committed word is kept in memory (cleared by `reset`, `set_input_mode`,
-  deletions and sentence punctuation) as bigram context. A verified dictionary pack whose payload does
-  not parse is activated but gives no candidates.
+  deletions and sentence punctuation) as bigram context. A verified `DICTIONARY` / `FREQUENCY_LIST` pack whose
+  payload does not parse (A1.6) is still activated (it counts for rollback protection) and returned with
+  `payload_usable: false`, but never replaces a working model: the language keeps its last good lexicon
+  and bigrams (without one, no lexicon candidates). Hosts should treat it as corrupt.
 - `EngineConfig { max_candidates, trusted_keys: Vec<TrustedKey>, pack_limits: Option<PackLimits> }`.
 - `TrustedKey { key_id, public_key (32 raw bytes), status: KeyStatus }`,
   `KeyStatus { Active, Retiring, Revoked }`,
   `PackLimits { max_container_bytes, max_manifest_bytes, max_artifact_bytes }` (`None` = defaults).
 - `PackInfo { pack_id, language_code, resource_type: ResourceType, version, platform: PackPlatform,
-  release_channel: ReleaseChannel, size_bytes, sha256, is_delta, key_id, min_app_version }`.
+  release_channel: ReleaseChannel, size_bytes, sha256, is_delta, key_id, min_app_version,
+  payload_usable }` (`payload_usable` is false only for the unparsable case above).
 - `KeyEvent { Char { text }, FidelConsonant { series_id }, FidelVowel { order }, Backspace, Space,
   Enter, Commit }`.
 - Direct Fidel records: `FidelLayout { language_code, layout_id, layout_version, status,

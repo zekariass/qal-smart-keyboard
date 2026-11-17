@@ -230,6 +230,11 @@ fn write<T>(l: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
     l.write().unwrap_or_else(|e| e.into_inner())
 }
 
+/// True if `bytes` is a valid "QBG1" bigram payload (used by the engine to check a pack).
+pub(crate) fn validate_bigrams(bytes: &[u8]) -> bool {
+    bigram::BigramModel::from_bytes(bytes).is_ok()
+}
+
 fn bigram_error(reason: &str) -> RankerError {
     RankerError::InvalidData {
         reason: reason.to_string(),

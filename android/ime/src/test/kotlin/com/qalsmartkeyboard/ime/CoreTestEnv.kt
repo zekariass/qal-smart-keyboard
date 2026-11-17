@@ -1,7 +1,13 @@
 package com.qalsmartkeyboard.ime
 
 import android.text.InputType
+import com.qalsmartkeyboard.ime.packs.PackFile
+import com.qalsmartkeyboard.ime.packs.PackManager
+import com.qalsmartkeyboard.ime.packs.PackOrigin
+import com.qalsmartkeyboard.ime.packs.PackTrust
+import com.qalsmartkeyboard.ime.packs.VersionStore
 import java.io.File
+import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import uniffi.qal_keyboard_core.KeyboardEngine
 
@@ -10,16 +16,23 @@ import uniffi.qal_keyboard_core.KeyboardEngine
  * bundled seed packs (DRAFT data, synthetic text).
  */
 object CoreTestEnv {
-    private val packDir = File("src/main/assets/packs")
+    val packDir = File("src/main/assets/packs")
     val log = ArrayList<String>()
 
     val engine: KeyboardEngine by lazy {
-        val json = File(packDir, BundledPacks.INDEX_FILE).readText()
-        fun field(name: String) = Regex("\"$name\"\\s*:\\s*\"([^\"]+)\"").find(json)!!.groupValues[1]
-        val files = Regex("\"file\"\\s*:\\s*\"([^\"]+)\"").findAll(json).map { it.groupValues[1] }.toList()
-        val index = BundledPacks.Index(field("signingKeyId"), BundledPacks.hexToBytes(field("signingPublicKeyHex")), files)
-        BundledPacks.createEngine(index, { File(packDir, it).readBytes() }, { log += it })
+        val tmp = Files.createTempDirectory("qal-versions").toFile().also { it.deleteOnExit() }
+        PackManager(
+            trust = PackTrust.configured(),
+            bundled = { bundledFiles() },
+            installedDir = null,
+            versions = VersionStore(File(tmp, "versions.txt")),
+            log = { log += it },
+        ).load().engine
     }
+
+    fun bundledFiles(): List<PackFile> =
+        packDir.listFiles { f -> f.name.endsWith(".pack") }!!.sortedBy { it.name }
+            .map { f -> PackFile(f.name, PackOrigin.BUNDLED, { f.readBytes() }) }
 
     /** A keyboard controller wired to a [FakeEditor] through the real adapter and the real core. */
     class Session(type: Int = InputType.TYPE_CLASS_TEXT) {

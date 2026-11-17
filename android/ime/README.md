@@ -16,7 +16,7 @@ Android `InputMethodService` and keyboard UI (plan steps A1.x). Design: SD §6.2
 | `KeyboardLayout` (`Layouts`) | Layout model + builders: Fidel grid (from core data), phonetic/English/ABC QWERTY, Qubee (hudhaa key on the main page), symbol pages, number/phone pads. |
 | `TypingMode` (`LayoutKind`, `LanguageCatalog`, `EnabledLanguages`, `FidelGrid`) | Language + layout model, UI names, the enabled-language interface and the Kotlin copy of the core's `FidelLayout`. |
 | `InputProfile` | `EditorInfo` → field kind, learning, Enter action, caps, `allowsTransliteration`. |
-| `BundledPacks` | TEMPORARY pack loading from `assets/packs/` (see below). |
+| `packs/` (`PackManager`, `PackStorage`, `VersionStore`, `PackTrust`, `SemVer`) | Pack manager (A1.6, see below). Replaces the temporary `BundledPacks`. |
 
 ## Typing path (A1.3)
 key → `KeyboardController` → `Composer.onKey` (core `on_key`) → `EditorUpdate` →
@@ -40,14 +40,39 @@ it; `endBatchEdit`. The update's `candidates` go to the strip.
   returning false, or a report with no composing span where our composition should be. Heuristic and
   limits: ADR 0004.
 
-## Bundled packs (TEMPORARY until A1.6)
-At service start a background thread creates the engine and loads every pack listed in
-`assets/packs/seed-packs.json`, trusting the key in that file (`signingKeyId`,
-`signingPublicKeyHex`). That key is a **DEV key** (`signingKeyIsDevOnly: true`) and the packs are
-DRAFT/UNVERIFIED seeds (N9): fine for development, never a release trust anchor. Each pack still
-passes the core's full verification; a pack that fails is skipped and logged as file name + error
-type only. If the core cannot load at all, the keyboard keeps typing ABC. A1.6 (pack manager) replaces
-`BundledPacks` with version bookkeeping and corrupt-pack fallback.
+## Pack manager (A1.6, package `ime.packs`)
+`KeyboardImeService` starts a background thread: `PackStorage.create(context)` then `PackManager.load()`
+builds one core engine; until it is ready the keyboard types ABC (A1.3/A1.4 behaviour).
+
+- **Sources:** bundled `assets/packs/*.pack` (the file list is the asset directory, `seed-packs.json` is
+  no longer read at run time) and the app-private `noBackupFilesDir/packs/installed/*.pack`, where A2.3
+  will place downloaded packs (temp file, verify, rename to `.pack`). Per (language, resource type,
+  platform) the newest valid pack wins; on a tie the bundled one does. `no_backup` keeps a restored
+  backup from bringing back packs without their version floor.
+- **Verification:** every candidate is first loaded on a throw-away engine (core: signature, key, size,
+  SHA-256, layout parse, payload parse flag `PackInfo.payloadUsable`), then the winners are loaded into
+  the final engine. A failing pack is skipped: an installed file is deleted, a bundled one cannot be.
+  Logged as `pack <file> rejected: <REASON>` only (reason enum: core `PackRejectReason` plus
+  `UNREADABLE`, `PAYLOAD_UNUSABLE`, `DOWNGRADE`, `SUPERSEDED`). A signed but unparsable dictionary or
+  bigram payload is `PAYLOAD_UNUSABLE` and treated as corrupt. `minAppVersion` is not enforced yet (A2.3).
+- **Trust keys** are generated at build time into `PackTrustConfig` by the `generate<Variant>PackTrustConfig`
+  task in `build.gradle.kts`, never read from a file next to the packs. Debug: the DEV key of
+  `seed-packs.json`. Release: `-Pqal.packTrustKeysFile=<keys.json>`
+  (`{"keys":[{"id","publicKeyHex","status","devOnly"}]}`); with only DEV keys (`signingKeyIsDevOnly`)
+  the release build fails unless `-Pqal.allowDevPackKeys=true` (internal builds). `PackTrust.check`
+  repeats the rule at run time: a non-debuggable app with DEV keys and no explicit allow creates no
+  manager and stays on ABC. The bundled seed packs are signed by the DEV key, so a real release also needs
+  production-signed bundled packs.
+- **Downgrade protection:** `VersionStore` (`packs/versions.txt`, `slot<TAB>version`, atomic write)
+  keeps the highest version accepted per slot. An installed pack below it is refused (`DOWNGRADE`,
+  deleted). Only a valid winner raises it, so a corrupt pack cannot lock out a later good one.
+  Bundled packs are always allowed as a fallback even below the floor: they ship in the signed APK
+  (not a replay vector), so a corrupt newer installed pack leaves the user on the bundled data, and a
+  newer bundled pack (app update) raises the floor itself. A missing or corrupt store means no floor
+  for that run (logged).
+- **Last good model:** the core never drops a language's working lexicon or bigrams because of an
+  unparsable payload (core README), and the manager additionally rejects such packs before loading.
+- **Debugging on a device:** with a debug build, `adb shell run-as com.qalsmartkeyboard.app ls no_backup/packs`.
 
 ## Privacy
 Typed text goes only to the InputConnection and the strip; it is never logged, stored or sent (N1,
@@ -56,6 +81,8 @@ N2). The core keeps the previous word in memory for bigram ranking only. No lear
 
 ## Tests
 `./gradlew :ime:testDebugUnitTest` (from `android/`): controller (fake composer), input profile, adapter (fake editor
-modelled on `BaseInputConnection`), and `CoreTypingTest` / `CoreLayoutsTest` (shared `CoreTestEnv`), which build the
-layouts from core data and type a word in each of the four languages into the fake editor through the real Rust core
-(host build via JNA, `:core-bindings:cargoHostBuild`) with the bundled packs.
+modelled on `BaseInputConnection`), `PackManagerTest` (real core; packs signed in the test with a JCA Ed25519 key:
+tamper, unknown key, unparsable payload, downgrade, persisted versions, trust policy), and `CoreTypingTest` /
+`CoreLayoutsTest` (shared `CoreTestEnv`), which build the layouts from core data and type a word in each of the four
+languages into the fake editor through the real Rust core (host build via JNA, `:core-bindings:cargoHostBuild`) with the
+bundled packs loaded by the `PackManager`.

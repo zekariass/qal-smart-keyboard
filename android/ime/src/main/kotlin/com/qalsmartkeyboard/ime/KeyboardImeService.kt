@@ -10,7 +10,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
-import org.json.JSONObject
+import com.qalsmartkeyboard.ime.packs.PackStorage
 import uniffi.qal_keyboard_core.KeyboardEngine
 
 /**
@@ -61,23 +61,12 @@ class KeyboardImeService : InputMethodService() {
      * key path). Until it is done the keyboard types ABC through [PassthroughComposer].
      */
     private fun loadCoreInBackground() {
-        val assets = applicationContext.assets
+        val appContext = applicationContext
         Thread({
             val created = try {
-                val json = JSONObject(assets.open("${BundledPacks.ASSET_DIR}/${BundledPacks.INDEX_FILE}").bufferedReader().use { it.readText() })
-                val packs = json.getJSONArray("packs")
-                val index = BundledPacks.Index(
-                    keyId = json.getString("signingKeyId"),
-                    publicKey = BundledPacks.hexToBytes(json.getString("signingPublicKeyHex")),
-                    files = (0 until packs.length()).map { packs.getJSONObject(it).getString("file") },
-                )
-                BundledPacks.createEngine(
-                    index,
-                    read = { f -> assets.open("${BundledPacks.ASSET_DIR}/$f").use { it.readBytes() } },
-                    log = { Log.w(TAG, it) },
-                )
+                PackStorage.create(appContext) { Log.w(TAG, it) }?.load()?.engine
             } catch (e: Exception) {
-                // Bad index, missing native library, ...: keep typing ABC. No content is logged.
+                // Bad trust key, missing native library, ...: keep typing ABC. No content is logged.
                 Log.e(TAG, "core unavailable: ${e.javaClass.simpleName}")
                 null
             } catch (e: LinkageError) {
