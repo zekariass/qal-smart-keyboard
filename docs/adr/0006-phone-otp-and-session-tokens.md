@@ -86,10 +86,71 @@ ready for an HTTP adapter once OI-11 picks an aggregator.
 number, hash, IP or code is ever a tag or log argument. A test captures every log event of a full flow (TRACE for
 `com.qalsmartkeyboard`) and asserts that the code, the number and the tokens are absent.
 
+## Decision — sessions and tokens (B2.4)
+
+### Access token
+- ES256 (ECDSA P-256/SHA-256) JWT signed with Nimbus. Header `typ: at+jwt` (RFC 9068), `kid`. SD §9.3 allows EdDSA
+  or ES256. ES256 needs no extra provider in Nimbus (its Ed25519 signer needs Tink), and as an asymmetric algorithm it
+  lets other services verify with the public key alone.
+- Claims: `iss`, `aud`, `sub` (user id), `sid` (refresh-token family), `did` (device, only once B2.5 registers
+  devices), `accountType` (`REGISTERED`/`GUEST`; the contract's `bearerAuth` says guest tokens carry it), `iat`,
+  `exp`, `jti`. There is no personal data. SD's `plan` (hint) and `scope` are left out until entitlements (B4.x) and
+  scoped tokens need them. Lifetime 15 min (configurable, capped at 15 min by the contract's "10–15 min").
+- Keys: `qal.identity.tokens.signing-key.{key-id, private-key (PKCS#8 PEM), public-key (SPKI PEM)}`. The pair must be
+  P-256 and must match (a probe is signed at startup). `previous-keys` keeps retired public keys for verification
+  during a rotation. Fail closed like B1.5: no key means no startup. `allow-ephemeral` (dev/test) generates a pair per
+  JVM and is refused under production-like profiles. No JWKS endpoint is published (the contract has none).
+- Verification (Spring Security resource server, `NimbusJwtDecoder` over the configured public JWK set, ES256 only):
+  signature first (so `alg: none`, HS256, foreign keys and unknown `kid` fail as `UNAUTHENTICATED`), then the
+  validators: `typ`, `iss`, `aud`, `iat` not in the future, UUID `sub`/`sid`/`did`, known `accountType`, `jti`,
+  `exp` with 30 s skew. A token whose **only** failure is expiry answers `TOKEN_EXPIRED`. Every other failure answers
+  `UNAUTHENTICATED`.
+- Stateless: no database lookup per request. A session revoked by logout or reuse detection keeps a valid access token
+  for at most 15 minutes. Operations that cannot accept that must check the session explicitly.
+
+### Refresh tokens, families, reuse
+- Opaque, 256 random bits (base64url, 43 characters). Only the SHA-256 is stored (`user_sessions.refresh_token_hash`,
+  SD §9.3). An unkeyed hash is enough for 256-bit random values. Sliding 60-day lifetime: each rotation's new row gets
+  a fresh `expires_at`.
+- One `user_sessions` row per refresh token. Sign-in creates a new `token_family_id`, which is the access token's
+  `sid`. Refresh locks the presented row (`SELECT … FOR UPDATE`). If it is ACTIVE and unexpired, a successor row is
+  inserted in the same family (current IP/user agent, same device), and the old row becomes `ROTATED` with
+  `rotated_at` and `replaced_by_session_id` through a compare-and-set on `session_status = 'ACTIVE'`.
+- **Reuse:** a `ROTATED` token gives `REFRESH_TOKEN_REUSED`. Every ACTIVE row of the family becomes `REVOKED`
+  (`TOKEN_REUSE`), and `reuse_detected_at` is set on the presented row. One outbox event per incident,
+  `identity.refresh_token.reuse_detected` with `{userId, tokenFamilyId, revokedSessions}`, lets notifications tell the
+  user (SD §9.3). No consumer exists yet. Rotated rows keep their status, so the chain stays auditable.
+- **Concurrent refresh** of one token: the row lock serialises the requests. The first rotates. The others then see
+  `ROTATED`, which is reuse by SD §9.3's rule, so the family is revoked, the winner's successor included. Two valid
+  successors can never exist. The price is that a client racing itself (for example app plus keyboard extension
+  sharing the keychain) is signed out. A short reuse grace window would avoid that, but it would contradict SD §9.3,
+  so it is left as an open question.
+- Other outcomes: expired gives `TOKEN_EXPIRED` (the row is marked `EXPIRED`). Unknown or revoked gives
+  `UNAUTHENTICATED`. A `DELETED`/`MERGED` account revokes the family and gives `UNAUTHENTICATED`. `SUSPENDED` gives
+  403 `ACCOUNT_SUSPENDED` without revoking.
+- Logout (bearer) revokes the caller's family (`LOGOUT`), or all of the user's families with `allDevices`.
+
+### Security chain (OI-P11)
+- One `SecurityFilterChain` in `identity.security`: stateless, CSRF off (bearer tokens, no cookies), no
+  form/basic/logout/request cache, `oauth2ResourceServer().jwt()` with the decoder above and a converter to
+  `AuthenticatedUser` (identity's public API; authorities `ROLE_REGISTERED`/`ROLE_GUEST`).
+- Allow-list = the contract's per-operation `security` (`ApiPaths`). Operations with `[{}, bearerAuth]` are anonymous
+  but validate a presented token. Operations with `[{}]`/`[]` (refresh, guest, password reset, webhooks, store
+  notifications) and actuator health ignore `Authorization` (callbacks may send their own, and refresh must work next
+  to an expired access token). `/partner/v1/**` is closed until API keys exist, and user tokens are never accepted
+  there. Everything else, unknown paths included, needs a token. ERROR dispatches are permitted.
+- 401/403 are written as contract Problems with correlation id by the new platform `ProblemResponseWriter`, which
+  shares the body builder with `ProblemExceptionHandler`. 401 carries an RFC 6750 `WWW-Authenticate` that never
+  echoes the token.
+- The B1.6 version gate stays an MVC interceptor, so it runs after authentication. `/config` remains anonymous and
+  exempt.
+
 ## Consequences
 - V3 adds `otp_challenges.phone_ciphertext BYTEA NOT NULL` (+ length CHECK). No purge job for expired challenges yet
   (retention scheduler, B6.3). The V1 comment says "purged shortly after expiry".
 - Multi-instance deployments need the distributed rate-limit store first (see above).
+- Each authenticated request costs one ECDSA verification and no database access. Each refresh costs one locked row
+  read, one insert and one update.
 - Client IP = `getRemoteAddr()`. Behind a proxy, configure the container to trust `X-Forwarded-For` from the load
   balancer only (`server.forward-headers-strategy`). The application never parses it.
 
@@ -101,3 +162,11 @@ number, hash, IP or code is ever a tag or log argument. A test captures every lo
   differs from `users.market_source` (`STOREFRONT`, `SIM_COUNTRY`, `BILLING`, `ADMIN`). Market fields are omitted
   from the profile until resolved.
 - OTP SMS text is English only. Localised templates need native review (G0).
+- Contract: the optional-bearer operations (`otp/start`, `/config`, `/languages`, …) declare no 401, yet an invalid
+  bearer token there is rejected with 401 (RFC 6750 behaviour). Either declare 401 or decide that invalid tokens are
+  ignored on those operations.
+- Contract: `/auth/refresh` declares only 401, but a suspended account gets 403 `ACCOUNT_SUSPENDED`.
+- SD §9.3 vs usability: should a refresh that loses a race within a few seconds of the rotation be exempt from reuse
+  detection (a grace window)? Today it revokes the family, as SD prescribes.
+- No consumer yet for `identity.refresh_token.reuse_detected` (notifications), and `did`/device binding waits for
+  B2.5. Guest upgrade on verify (`mergedGuestUserId`) is B2.6.

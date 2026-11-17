@@ -48,7 +48,10 @@ class ProblemDetailsContractTest {
 			return ProbeContract.validator();
 		}
 
-		/** Authentication is B2's concern; the probe endpoints are open. */
+		/**
+		 * Web slice: the probe paths are test-only and outside the contract's allow-list, so this test opens them instead
+		 * of loading the application's security chain (identity, B2.4).
+		 */
 		@Bean
 		SecurityFilterChain openChain(HttpSecurity http) throws Exception {
 			return http.authorizeHttpRequests(a -> a.anyRequest().permitAll()).csrf(c -> c.disable()).build();

@@ -6,19 +6,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,14 +24,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import com.qalsmartkeyboard.identity.token.AccessTokenService;
+
 /**
  * B1.6 against real {@code feature_flags} / {@code app_configurations} rows (V1 constraints apply) in PostgreSQL, through
- * the whole stack: repository SQL, snapshot cache, {@code /config} and the 426 gate.
+ * the whole stack: repository SQL, snapshot cache, {@code /config} and the 426 gate, behind the real security chain
+ * ({@code /config} anonymous, the gated stand-in endpoint with an access token).
  */
 @SpringBootTest(properties = { "qal.outbox.dispatcher-enabled=false", "qal.config.cache-ttl=0s" })
 @AutoConfigureMockMvc
 @Testcontainers
-@Import({ ConfigurationIT.TestConfig.class, ConfigurationIT.GatedController.class })
+@Import(ConfigurationIT.GatedController.class)
 class ConfigurationIT {
 
 	@Container
@@ -50,19 +50,17 @@ class ConfigurationIT {
 		}
 	}
 
-	@TestConfiguration(proxyBeanMethods = false)
-	static class TestConfig {
-		/** Authentication arrives with B2.4; without a chain Spring Boot's default would answer 401. */
-		@Bean
-		SecurityFilterChain openChain(HttpSecurity http) throws Exception {
-			return http.authorizeHttpRequests(a -> a.anyRequest().permitAll()).csrf(c -> c.disable()).build();
-		}
-	}
-
 	@Autowired
 	MockMvc mvc;
 	@Autowired
 	JdbcTemplate jdbc;
+	@Autowired
+	AccessTokenService tokens;
+
+	/** The gated endpoint is a protected one: the real security chain (B2.4) runs before the version gate. */
+	private String bearer() {
+		return "Bearer " + tokens.issue(UUID.randomUUID(), UUID.randomUUID(), null, "REGISTERED").value();
+	}
 
 	@BeforeEach
 	void clean() {
@@ -130,23 +128,36 @@ class ConfigurationIT {
 	void oldVersionGets426ProblemUsingTheMinimumStoredInTheDatabase() throws Exception {
 		config("minSupportedAppVersion", "ANDROID", 1, "\"2.0.0\"", true);
 
-		mvc.perform(get("/api/v1/it-gated").header("X-Client-Platform", "ANDROID").header("X-App-Version", "1.9.0"))
+		mvc.perform(get("/api/v1/it-gated").header("Authorization", bearer())
+				.header("X-Client-Platform", "ANDROID").header("X-App-Version", "1.9.0"))
 				.andExpect(status().isUpgradeRequired())
 				.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
 				.andExpect(jsonPath("$.code").value("APP_VERSION_UNSUPPORTED"))
 				.andExpect(jsonPath("$.correlationId").isNotEmpty())
 				.andExpect(jsonPath("$.minSupportedAppVersion").value("2.0.0"));
-		mvc.perform(get("/api/v1/it-gated").header("X-Client-Platform", "ANDROID").header("X-App-Version", "2.0.0"))
+		mvc.perform(get("/api/v1/it-gated").header("Authorization", bearer())
+				.header("X-Client-Platform", "ANDROID").header("X-App-Version", "2.0.0"))
 				.andExpect(status().isOk());
 		// the ANDROID minimum does not apply to iOS
-		mvc.perform(get("/api/v1/it-gated").header("X-Client-Platform", "IOS").header("X-App-Version", "1.0.0"))
+		mvc.perform(get("/api/v1/it-gated").header("Authorization", bearer())
+				.header("X-Client-Platform", "IOS").header("X-App-Version", "1.0.0"))
 				.andExpect(status().isOk());
 		// raising the minimum takes effect (cache TTL is 0 in this test)
 		config("minSupportedAppVersion", "ALL", 1, "\"3.0.0\"", true);
-		mvc.perform(get("/api/v1/it-gated").header("X-Client-Platform", "IOS").header("X-App-Version", "1.0.0"))
+		mvc.perform(get("/api/v1/it-gated").header("Authorization", bearer())
+				.header("X-Client-Platform", "IOS").header("X-App-Version", "1.0.0"))
 				.andExpect(status().isUpgradeRequired());
 		// /config stays reachable for the old client
 		mvc.perform(get("/api/v1/config").header("X-Client-Platform", "ANDROID").header("X-App-Version", "1.9.0"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.minSupportedAppVersion").value("2.0.0"));
+	}
+
+	/** OI-P11: the security chain runs before the version gate; /config stays anonymous. */
+	@Test
+	void protectedEndpointsNeedATokenEvenForOldClientsWhileConfigIsAnonymous() throws Exception {
+		config("minSupportedAppVersion", "ALL", 1, "\"2.0.0\"", true);
+		mvc.perform(get("/api/v1/it-gated").header("X-App-Version", "1.0.0")).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+		mvc.perform(get("/api/v1/config").header("X-App-Version", "1.0.0")).andExpect(status().isOk());
 	}
 }

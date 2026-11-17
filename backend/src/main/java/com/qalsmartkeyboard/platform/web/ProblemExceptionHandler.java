@@ -1,6 +1,5 @@
 package com.qalsmartkeyboard.platform.web;
 
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -58,12 +57,11 @@ import jakarta.validation.ConstraintViolationException;
 class ProblemExceptionHandler extends ResponseEntityExceptionHandler {
 
 	private static final Logger log = LoggerFactory.getLogger(ProblemExceptionHandler.class);
-	private static final int MAX_ERRORS = 50; // Problem.errors maxItems
 
 	private final String problemBaseUri;
 
-	ProblemExceptionHandler(@Value("${qal.api.problem-base-uri:https://api.example.com/problems/}") String problemBaseUri) {
-		this.problemBaseUri = problemBaseUri.endsWith("/") ? problemBaseUri : problemBaseUri + "/";
+	ProblemExceptionHandler(@Value(Problems.BASE_URI_PROPERTY) String problemBaseUri) {
+		this.problemBaseUri = Problems.normaliseBaseUri(problemBaseUri);
 	}
 
 	// ------------------------------------------------------------------ module exceptions
@@ -178,24 +176,8 @@ class ProblemExceptionHandler extends ResponseEntityExceptionHandler {
 
 	private ResponseEntity<Object> problem(HttpServletRequest request, ApiErrorCode code, HttpStatus status,
 			String detail, List<ApiFieldError> errors, java.util.Map<String, Object> extensions, HttpHeaders extraHeaders) {
-		ProblemDetail pd = ProblemDetail.forStatus(status);
-		pd.setType(URI.create(problemBaseUri + code.name().toLowerCase(Locale.ROOT).replace('_', '-')));
-		pd.setTitle(code.title());
-		if (detail != null) {
-			pd.setDetail(detail);
-		}
-		pd.setProperty("code", code.name());
-		pd.setProperty("correlationId", correlationId(request));
-		if (errors != null && !errors.isEmpty()) {
-			pd.setProperty("errors", errors.stream().limit(MAX_ERRORS).toList());
-		}
-		if (extensions != null) {
-			extensions.forEach((k, v) -> {
-				if (!List.of("type", "title", "status", "detail", "instance", "code", "correlationId", "errors").contains(k)) {
-					pd.setProperty(k, v);
-				}
-			});
-		}
+		ProblemDetail pd = Problems.build(problemBaseUri, correlationId(request), code, status, detail, errors,
+				extensions);
 		HttpHeaders headers = new HttpHeaders();
 		headers.putAll(extraHeaders);
 		headers.setContentType(MediaType.APPLICATION_PROBLEM_JSON);

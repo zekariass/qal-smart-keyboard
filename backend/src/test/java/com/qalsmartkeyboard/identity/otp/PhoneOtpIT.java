@@ -17,15 +17,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -36,16 +31,15 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import com.jayway.jsonpath.JsonPath;
-import com.qalsmartkeyboard.identity.session.IssuedSession;
-import com.qalsmartkeyboard.identity.session.SessionIssuer;
 import com.qalsmartkeyboard.notifications.OtpMessage;
 import com.qalsmartkeyboard.notifications.OtpSender;
 import com.qalsmartkeyboard.testsupport.logging.CapturedLogs;
 
 /**
  * B2.1 end to end on PostgreSQL: start → SMS (logging mock, code captured from the sender) → verify, including
- * lockout, expiry, cooldown, replay, supersession, per-number/IP/device limits and log hygiene. Each test uses its own
- * number and client IP so the in-memory buckets do not interfere.
+ * lockout, expiry, cooldown, replay, supersession, per-number/IP/device limits and log hygiene, behind the real
+ * security chain and with real sessions (B2.4). Each test uses its own number and client IP so the in-memory buckets
+ * do not interfere.
  */
 @SpringBootTest(properties = { "qal.outbox.dispatcher-enabled=false",
 		"qal.identity.otp.limits.start-per-ip.capacity=4", "qal.identity.otp.limits.start-per-ip.period=1h",
@@ -54,31 +48,12 @@ import com.qalsmartkeyboard.testsupport.logging.CapturedLogs;
 		"qal.identity.otp.limits.verify-per-device.capacity=3", "qal.identity.otp.limits.verify-per-device.period=1h" })
 @AutoConfigureMockMvc
 @Testcontainers
-@Import(PhoneOtpIT.TestConfig.class)
 class PhoneOtpIT {
 
 	@Container
 	@ServiceConnection
 	static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
 			DockerImageName.parse(System.getProperty("qal.test.postgres-image", "postgres:18")));
-
-	@TestConfiguration(proxyBeanMethods = false)
-	static class TestConfig {
-		/** No security chain exists before B2.4. */
-		@Bean
-		SecurityFilterChain openChain(HttpSecurity http) throws Exception {
-			return http.authorizeHttpRequests(a -> a.anyRequest().permitAll()).csrf(c -> c.disable()).build();
-		}
-
-		/** Stand-in for B2.4: issues random opaque values so the log test can look for them. */
-		@Bean
-		@org.springframework.context.annotation.Primary
-		SessionIssuer stubSessionIssuer() {
-			return (user, context) -> new IssuedSession("stub-access-" + UUID.randomUUID(),
-					java.time.Instant.now().plusSeconds(900), "stub-refresh-" + UUID.randomUUID(),
-					java.time.Instant.now().plusSeconds(86400), UUID.randomUUID(), null);
-		}
-	}
 
 	@Autowired
 	MockMvc mvc;

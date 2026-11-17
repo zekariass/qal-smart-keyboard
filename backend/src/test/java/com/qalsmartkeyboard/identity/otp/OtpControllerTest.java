@@ -22,18 +22,15 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.qalsmartkeyboard.identity.account.UserAccount;
+import com.qalsmartkeyboard.identity.security.ApiSecurityConfiguration;
 import com.qalsmartkeyboard.identity.otp.OtpService.StartedChallenge;
 import com.qalsmartkeyboard.identity.otp.OtpService.VerifiedSignIn;
 import com.qalsmartkeyboard.identity.session.IssuedSession;
@@ -42,22 +39,17 @@ import com.qalsmartkeyboard.platform.ApiException;
 import com.qalsmartkeyboard.platform.ApiFieldError;
 import com.qalsmartkeyboard.platform.ratelimit.RateLimitDecision;
 import com.qalsmartkeyboard.platform.ratelimit.RateLimitPolicy;
+import com.qalsmartkeyboard.platform.web.ServletProblemResponseWriter;
 import com.qalsmartkeyboard.testsupport.contract.ContractValidated;
 
-/** B2.1: {@code /auth/otp/start} and {@code /auth/otp/verify} responses against the contract (service mocked). */
+/**
+ * B2.1: {@code /auth/otp/start} and {@code /auth/otp/verify} responses against the contract (service mocked), behind the
+ * real security chain (B2.4): both operations are reachable anonymously.
+ */
 @WebMvcTest(OtpController.class)
 @ContractValidated
-@Import(OtpControllerTest.TestConfig.class)
+@Import({ ApiSecurityConfiguration.class, ServletProblemResponseWriter.class })
 class OtpControllerTest {
-
-	@TestConfiguration(proxyBeanMethods = false)
-	static class TestConfig {
-		/** No security chain exists before B2.4; the OTP endpoints are anonymous in the contract. */
-		@Bean
-		SecurityFilterChain openChain(HttpSecurity http) throws Exception {
-			return http.authorizeHttpRequests(a -> a.anyRequest().permitAll()).csrf(c -> c.disable()).build();
-		}
-	}
 
 	static final String START = "/api/v1/auth/otp/start";
 	static final String VERIFY = "/api/v1/auth/otp/verify";
