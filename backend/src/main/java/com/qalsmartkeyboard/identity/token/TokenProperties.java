@@ -14,14 +14,21 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param accessTokenTtl  access-token lifetime; the contract allows 10-15 minutes, so at most 15 minutes
  * @param clockSkew       tolerance for {@code exp}/{@code iat} checks
  * @param refreshTokenTtl sliding refresh-token lifetime (SD: 60 days); every rotation starts a new period
+ * @param refreshReuseGrace how long after a rotation a retry with the rotated token may rotate again instead of revoking
+ *                        the family, provided the successor was never used (ADR 0007 D8, lost responses on slow
+ *                        networks). Default 30s, {@code 0} disables, at most 2 minutes
  * @param signingKey      the ES256 (P-256) key that signs access tokens
  * @param previousKeys    public keys of retired signing keys, still accepted for verification during a rotation
  */
 @ConfigurationProperties("qal.identity.tokens")
 public record TokenProperties(@DefaultValue("qal-smart-keyboard") String issuer, @DefaultValue("qal-api") String audience,
 		@DefaultValue("15m") Duration accessTokenTtl, @DefaultValue("30s") Duration clockSkew,
-		@DefaultValue("60d") Duration refreshTokenTtl, @DefaultValue SigningKey signingKey,
+		@DefaultValue("60d") Duration refreshTokenTtl, @DefaultValue("30s") Duration refreshReuseGrace,
+		@DefaultValue SigningKey signingKey,
 		List<VerificationKey> previousKeys) {
+
+	/** Upper bound of {@link #refreshReuseGrace()}: a longer window would weaken reuse detection (SD 9.3). */
+	public static final Duration MAX_REFRESH_REUSE_GRACE = Duration.ofMinutes(2);
 
 	public TokenProperties {
 		if (accessTokenTtl.isNegative() || accessTokenTtl.isZero() || accessTokenTtl.compareTo(Duration.ofMinutes(15)) > 0) {
@@ -29,6 +36,9 @@ public record TokenProperties(@DefaultValue("qal-smart-keyboard") String issuer,
 		}
 		if (refreshTokenTtl.isNegative() || refreshTokenTtl.isZero()) {
 			throw new IllegalArgumentException("qal.identity.tokens.refresh-token-ttl must be positive");
+		}
+		if (refreshReuseGrace.isNegative() || refreshReuseGrace.compareTo(MAX_REFRESH_REUSE_GRACE) > 0) {
+			throw new IllegalArgumentException("qal.identity.tokens.refresh-reuse-grace must be between 0 and 2m");
 		}
 		if (clockSkew.isNegative() || clockSkew.compareTo(Duration.ofMinutes(2)) > 0) {
 			throw new IllegalArgumentException("qal.identity.tokens.clock-skew must be between 0 and 2m");

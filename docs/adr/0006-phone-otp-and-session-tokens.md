@@ -1,8 +1,8 @@
 # ADR 0006 — Phone OTP sign-in and session tokens
 
-**Status:** Accepted · **Date:** 2026-11-17 · **Plan steps:** B2.1 (phone OTP), B2.4 (tokens) · **Spec:** SD §9.2,
-§9.3, §18; contract `/api/v1/auth/otp/*`, `/auth/refresh`, `/auth/logout`; V1 `otp_challenges`, `users`,
-`user_auth_identities`, `user_sessions`
+**Status:** Accepted · **Date:** 2026-11-17 · **Plan steps:** B2.1 (phone OTP), B2.4 (tokens), B2.4 follow-up
+(ADR 0007 D8/D9) · **Spec:** SD §9.2, §9.3, §18; contract `/api/v1/auth/otp/*`, `/auth/refresh`, `/auth/logout`;
+V1 `otp_challenges`, `users`, `user_auth_identities`, `user_sessions`; V3, V4
 
 ## Context
 SD §9.2 fixes the OTP rules: E.164 numbers, 6-digit codes, at most 5 attempts per challenge, resend cooldown,
@@ -65,12 +65,14 @@ bound the cost of junk). Revisit for per-country diaspora rules.
   interface before more than one instance serves traffic. The resend cooldown, supersession and the 5-attempt
   lockout are in PostgreSQL and are already exact across instances.
 - Policies (PROVISIONAL, `qal.identity.otp.limits.*`): start per IP 30/h (generous because of carrier CGNAT), start
-  per number 5/h and 10/24h, verify per IP 60/h, verify per device 20/h. The caller's own bucket (IP) is checked
-  before the number's, so a client that is already blocked cannot drain a victim number's budget. A successful start
-  returns the per-IP `RateLimit-*` headers, never the per-number budget (which would hint at activity on someone
-  else's number).
-- Device: the contract's `OtpStartRequest` has no device or installation id, so the per-device limit applies to
-  verify (`device.installationId`) only. See "Open" below.
+  per device 10/h, start per number 5/h and 10/24h, verify per IP 60/h, verify per device 20/h. The caller's own
+  buckets (IP, then device) are checked before the number's, so a client that is already blocked cannot drain a
+  victim number's budget. A successful start returns the per-IP `RateLimit-*` headers, never the per-number budget
+  (which would hint at activity on someone else's number).
+- Device: verify uses `device.installationId`. Start uses the optional `OtpStartRequest.installationId` (added to the
+  contract by ADR 0007 D9, same UUID). A start without it is limited per IP and number only. The id is
+  client-chosen, so this limit slows a single honest-but-buggy or scripted installation; it is no defence against a
+  client that rotates ids (the IP and number limits are).
 
 ### SMS
 `notifications` owns SMS (SD §8.2): public port `OtpSender`/`OtpMessage` (redacting `toString`), internal
@@ -113,18 +115,54 @@ number, hash, IP or code is ever a tag or log argument. A test captures every lo
   SD §9.3). An unkeyed hash is enough for 256-bit random values. Sliding 60-day lifetime: each rotation's new row gets
   a fresh `expires_at`.
 - One `user_sessions` row per refresh token. Sign-in creates a new `token_family_id`, which is the access token's
-  `sid`. Refresh locks the presented row (`SELECT … FOR UPDATE`). If it is ACTIVE and unexpired, a successor row is
-  inserted in the same family (current IP/user agent, same device), and the old row becomes `ROTATED` with
-  `rotated_at` and `replaced_by_session_id` through a compare-and-set on `session_status = 'ACTIVE'`.
-- **Reuse:** a `ROTATED` token gives `REFRESH_TOKEN_REUSED`. Every ACTIVE row of the family becomes `REVOKED`
-  (`TOKEN_REUSE`), and `reuse_detected_at` is set on the presented row. One outbox event per incident,
-  `identity.refresh_token.reuse_detected` with `{userId, tokenFamilyId, revokedSessions}`, lets notifications tell the
-  user (SD §9.3). No consumer exists yet. Rotated rows keep their status, so the chain stays auditable.
-- **Concurrent refresh** of one token: the row lock serialises the requests. The first rotates. The others then see
-  `ROTATED`, which is reuse by SD §9.3's rule, so the family is revoked, the winner's successor included. Two valid
-  successors can never exist. The price is that a client racing itself (for example app plus keyboard extension
-  sharing the keychain) is signed out. A short reuse grace window would avoid that, but it would contradict SD §9.3,
-  so it is left as an open question.
+  `sid`. Refresh takes the family's transaction-scoped advisory lock (`hashtextextended('qal.session-family:' || id)`,
+  found by an unlocked read of the token's family), then locks the presented row (`SELECT … FOR UPDATE`). If it is
+  ACTIVE and unexpired, a successor row is inserted in the same family (current IP/user agent, same device), and the
+  old row becomes `ROTATED` with `rotated_at` and `replaced_by_session_id` through a compare-and-set on
+  `session_status = 'ACTIVE'`.
+- `last_used_at` is `NULL` on a new row and is set whenever the token is presented (rotation, expiry, a refresh refused
+  for a suspended account, a grace retry of a rotated row). It is the "never used" signal of the grace window.
+- **Reuse:** a `ROTATED` token outside the grace window below gives `REFRESH_TOKEN_REUSED`. Every ACTIVE row of the
+  family becomes `REVOKED` (`TOKEN_REUSE`), and `reuse_detected_at` is set on the presented row. One outbox event per
+  incident, `identity.refresh_token.reuse_detected` with `{userId, tokenFamilyId, revokedSessions}`, lets
+  notifications tell the user (SD §9.3). No consumer exists yet. Rotated rows keep their status, so the chain stays
+  auditable.
+- **Grace window (ADR 0007 D8, SD §9.3 amendment).** A lost response on a slow network makes the client retry with the
+  token that was just rotated. With the presented row `P` (ROTATED) and its direct successor `S`
+  (`P.replaced_by_session_id`), the retry rotates again if **all** of these hold:
+  1. `qal.identity.tokens.refresh-reuse-grace` (default 30 s, `0` disables, at most 2 min) is not zero, and
+     `now < P.rotated_at + grace`. `rotated_at` is the **first** rotation of `P` and is never moved, so repeated
+     retries cannot extend the window past 30 s.
+  2. `P` is unexpired and `P.reuse_detected_at IS NULL`.
+  3. `S`, locked `FOR UPDATE` after `P`, is in the same family, `ACTIVE`, unexpired, has no successor
+     (`replaced_by_session_id IS NULL`), no `reuse_detected_at`, and `last_used_at IS NULL` (never presented).
+  4. The account checks of a normal rotation pass (deleted/merged revokes the family, suspended gives 403 and changes
+     nothing).
+
+  Then `S` becomes `REVOKED` with the new reason `SUPERSEDED_RETRY` (compare-and-set on `ACTIVE` and
+  `last_used_at IS NULL`), a new successor `S'` is inserted in the same family, and `P.replaced_by_session_id` moves
+  from `S` to `S'` (compare-and-set on the old pointer; `last_used_at` set). The answer is a normal 200 pair
+  (`qal.identity.sessions{event=rotated_grace}`, an INFO log with the family id). Every other case is reuse as above:
+  after the window, successor already rotated or presented, a token two or more generations old (its successor is
+  `ROTATED`), a successor already revoked (logout, reuse) or expired.
+- **Presenting a superseded successor is reuse.** `S` never reached the client that retried, so whoever presents it
+  later is a second holder of the family: the family is revoked and the event is published, like a `ROTATED` token.
+  Other revoked tokens still give `UNAUTHENTICATED`. This is why `SUPERSEDED_RETRY` is its own reason (V4) and not
+  `TOKEN_REUSE` or `LOGOUT`. It also bounds the accepted risk of the window: an attacker who replays a stolen `P`
+  within 30 s of the legitimate rotation, before the legitimate client uses `S`, gets `S'`, but the legitimate client's
+  next refresh with `S` revokes the family (and notifies the user). The access token returned with `S` stays valid
+  for its remaining lifetime (at most 15 min), like any revoked session's access token.
+- **Concurrency.** All refreshes of one family are serialised by the family lock; the row locks are taken in one
+  order (presented row, then its successor, then the family's ACTIVE rows), so no deadlock is possible between
+  refreshes. Two concurrent grace retries of `P` run one after the other: the second finds the first one's `S'`
+  unused and supersedes it, so exactly one ACTIVE successor remains (the first response's token is dead and presenting
+  it revokes the family). A retry racing the first use of `S` ends either as grace rotation followed by reuse (the use
+  presents a superseded token) or as reuse (the retry sees `S` rotated); both revoke the family, never two valid
+  tokens. The family lock also closes a READ COMMITTED gap of the original B2.4 code: a family revocation running
+  next to a rotation could miss the successor that rotation inserted (the `UPDATE`'s snapshot predates it). Logout
+  takes the family lock(s) (sorted, for "all devices") for the same reason.
+- With the window disabled (`0`) every presentation of a `ROTATED` token is reuse, as before: concurrent refreshes of
+  one token revoke the family, the winner's successor included.
 - Other outcomes: expired gives `TOKEN_EXPIRED` (the row is marked `EXPIRED`). Unknown or revoked gives
   `UNAUTHENTICATED`. A `DELETED`/`MERGED` account revokes the family and gives `UNAUTHENTICATED`. `SUSPENDED` gives
   403 `ACCOUNT_SUSPENDED` without revoking.
@@ -139,6 +177,9 @@ number, hash, IP or code is ever a tag or log argument. A test captures every lo
   notifications) and actuator health ignore `Authorization` (callbacks may send their own, and refresh must work next
   to an expired access token). `/partner/v1/**` is closed until API keys exist, and user tokens are never accepted
   there. Everything else, unknown paths included, needs a token. ERROR dispatches are permitted.
+- An invalid or expired bearer token on a `[{}, bearerAuth]` operation stays a 401 and is never downgraded to
+  anonymous (ADR 0007 D9): a client must not silently lose its identity (for example the guest merge on verify). The
+  contract declares that 401 on every such operation.
 - 401/403 are written as contract Problems with correlation id by the new platform `ProblemResponseWriter`, which
   shares the body builder with `ProblemExceptionHandler`. 401 carries an RFC 6750 `WWW-Authenticate` that never
   echoes the token.
@@ -148,25 +189,26 @@ number, hash, IP or code is ever a tag or log argument. A test captures every lo
 ## Consequences
 - V3 adds `otp_challenges.phone_ciphertext BYTEA NOT NULL` (+ length CHECK). No purge job for expired challenges yet
   (retention scheduler, B6.3). The V1 comment says "purged shortly after expiry".
+- V4 replaces the `user_sessions.revoked_reason` CHECK to allow `SUPERSEDED_RETRY` (V1 is immutable) and documents
+  `last_used_at`. Rows written before this change have `last_used_at = created_at` and therefore never qualify as an
+  unused successor (fail-safe: reuse as before).
 - Multi-instance deployments need the distributed rate-limit store first (see above).
-- Each authenticated request costs one ECDSA verification and no database access. Each refresh costs one locked row
-  read, one insert and one update.
+- Each authenticated request costs one ECDSA verification and no database access. Each refresh costs one unlocked
+  read, one advisory lock, one locked row read, one insert and one update (a grace retry: one more locked read and
+  update).
 - Client IP = `getRemoteAddr()`. Behind a proxy, configure the container to trust `X-Forwarded-For` from the load
   balancer only (`server.forward-headers-strategy`). The application never parses it.
 
+## Resolved by the B2.4 follow-up (ADR 0007 D8/D9)
+- Grace window for lost refresh responses: see "Refresh tokens, families, reuse" (SD §9.3 amended).
+- Contract: `OtpStartRequest.installationId` (optional) added; per-device start limit `start-per-device` (10/h).
+- Contract: 403 (`ACCOUNT_SUSPENDED`, shared `Forbidden`) declared on `otp/verify` and `auth/refresh`; 400 on
+  `auth/refresh`; 401 on every optional-bearer operation (an invalid bearer stays a 401).
+- Contract: `UserProfile.marketSource` enum is now `USER_SELECTED, STOREFRONT, SIM_COUNTRY, BILLING, ADMIN`, the
+  `users.market_source` CHECK list (SQL is canonical). Market fields are still omitted from the profile until
+  something resolves the market.
+
 ## Open
-- Contract: `OtpStartRequest` has no installation id, so there is no per-device limit on start (only verify, or a
-  guest bearer token's device after B2.3/B2.5).
-- Contract: verify declares no 403, but a suspended account gets 403 `ACCOUNT_SUSPENDED`.
-- Contract vs SQL: `UserProfile.marketSource` enum (`STORE_STOREFRONT`, `PHONE_NUMBER`, `BILLING_HISTORY`, `DEFAULT`)
-  differs from `users.market_source` (`STOREFRONT`, `SIM_COUNTRY`, `BILLING`, `ADMIN`). Market fields are omitted
-  from the profile until resolved.
 - OTP SMS text is English only. Localised templates need native review (G0).
-- Contract: the optional-bearer operations (`otp/start`, `/config`, `/languages`, …) declare no 401, yet an invalid
-  bearer token there is rejected with 401 (RFC 6750 behaviour). Either declare 401 or decide that invalid tokens are
-  ignored on those operations.
-- Contract: `/auth/refresh` declares only 401, but a suspended account gets 403 `ACCOUNT_SUSPENDED`.
-- SD §9.3 vs usability: should a refresh that loses a race within a few seconds of the rotation be exempt from reuse
-  detection (a grace window)? Today it revokes the family, as SD prescribes.
 - No consumer yet for `identity.refresh_token.reuse_detected` (notifications), and `did`/device binding waits for
   B2.5. Guest upgrade on verify (`mergedGuestUserId`) is B2.6.

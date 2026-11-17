@@ -45,6 +45,15 @@ it; `endBatchEdit`. The update's `candidates` go to the strip.
 `KeyboardImeService` starts a background thread: `PackStorage.create(context)` then `PackManager.load()`
 builds one core engine; until it is ready the keyboard types ABC (A1.3/A1.4 behaviour).
 
+- **Profile catalog (A1.5 seam):** after `load()` the service calls `LoadResult.installedProfiles()` (one
+  `ProfileRef` per language with an active `TRANSLITERATION_RULES` pack, from the core's `translit_profile`:
+  code = profile id upper-cased with `_`, version, approved flag) and
+  `SettingsRepository.applyInstalledProfiles(...)` on the loader thread. That publishes the catalog, runs
+  `applyProfileFallback` (F14) and raises `SettingsRepository.profileChanges`. If loading fails nothing is
+  published and the settings stay as they are. Per language, a saved profile code is replaced only when that
+  language has a loaded profile and the code differs from it; a language whose rules pack is missing or was
+  rejected keeps its saved code unflagged (a transient pack failure never erases a user choice). The
+  settings-screen banner is an `android/app` follow-up.
 - **Sources:** bundled `assets/packs/*.pack` (the file list is the asset directory, `seed-packs.json` is
   no longer read at run time) and the app-private `noBackupFilesDir/packs/installed/*.pack`, where A2.3
   will place downloaded packs (temp file, verify, rename to `.pack`). Per (language, resource type,

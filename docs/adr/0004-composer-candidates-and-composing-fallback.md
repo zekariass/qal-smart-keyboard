@@ -44,6 +44,23 @@ says "dictionary frequency picks the conventional spelling"). Both need native-s
 real frequencies (gate G0) before the order changes; the merge is in one function
 (`with_lexicon_candidates`) so it can change without touching hosts.
 
+### U6 amendment (ADR 0007 U6): homophone order and reserved completion slots
+The merge in `with_lexicon_candidates` now ranks homophones and protects completions:
+1. Index 0 stays the literal rule output (Space/commit unchanged).
+2. The transliteration alternatives follow sorted by dictionary frequency (`Lexicon::word_score`,
+   most frequent first). Alternatives absent from the lexicon come after the known ones in their C1.4
+   order; equal frequencies also keep C1.4 order (stable sort, so the result is deterministic).
+3. When the ranker offers any completion or correction (not already on the strip), at least
+   `RESERVED_COMPLETION_SLOTS` = 2 of the `max_candidates - 1` slots after index 0 are kept for them
+   (fewer if fewer exist); homophones fill the rest, then completions fill what is left.
+4. The session's internal list is replaced by the same merged list (`PhoneticSession::set_candidates`),
+   so `select_candidate(i)` commits exactly what the strip shows. All homophones (not only those that
+   fit `max_candidates`) take part in the ordering, so a frequent one is not lost to the C1.4 cut.
+Without a dictionary pack for the language nothing changes (C1.4 order, no reservation). Ranking still
+runs outside the state lock with the generation check. Consequence: with `max_candidates` = 2 the strip
+is literal + one completion (it was literal + first homophone). Still open: real frequencies and
+native-speaker review (gate G0) decide whether index 0 itself may ever be promoted.
+
 ## Decision 2: detecting hosts that reject composing text (Android `InputConnectionAdapter`)
 Each `EditorUpdate` is one batch edit: delete grapheme clusters (converted to UTF-16 with
 `BreakIterator` over `getTextBeforeCursor`), `commitText`, then `setComposingText` /

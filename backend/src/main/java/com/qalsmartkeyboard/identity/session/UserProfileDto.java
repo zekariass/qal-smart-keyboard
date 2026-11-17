@@ -7,8 +7,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.qalsmartkeyboard.identity.account.UserAccount;
 
 /**
- * {@code UserProfile} of the contract. {@code marketCountry}/{@code marketSource} are not filled yet: the contract's
- * {@code marketSource} values do not match the {@code users.market_source} CHECK list (reported with B2.1).
+ * {@code UserProfile} of the contract. {@code marketCountry}/{@code marketSource} are not filled yet: nothing sets
+ * {@code users.market_country_code}/{@code market_source} before market resolution exists. The contract's
+ * {@code marketSource} enum now equals the {@code users.market_source} CHECK list (ADR 0007 D9), so they can be mapped
+ * one to one when it does.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record UserProfileDto(UUID id, String accountType, String accountStatus, String displayName,

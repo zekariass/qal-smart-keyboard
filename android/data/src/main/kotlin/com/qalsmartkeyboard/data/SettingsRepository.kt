@@ -102,6 +102,22 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         return changes
     }
 
+    /** Profiles of the loaded packs (A1.6); unknown until [applyInstalledProfiles] runs. */
+    val profileCatalog = InstalledProfileCatalog()
+
+    /** Unacknowledged F14 fallbacks, for the settings screen. */
+    val profileChanges = ProfileChangeNotice()
+
+    /**
+     * Called by the pack loader (off the main thread) once the packs are loaded: publishes their
+     * transliteration profiles, replaces retired profile codes in the settings (F14) and raises
+     * [profileChanges] if anything changed. Not called when loading failed, so nothing changes.
+     */
+    suspend fun applyInstalledProfiles(profiles: List<ProfileRef>): List<ProfileChange> {
+        profileCatalog.publish(profiles)
+        return applyProfileFallback(profileCatalog).also { profileChanges.report(it) }
+    }
+
     companion object {
         private val VERSION = intPreferencesKey("schema_version")
         private val LANGUAGES = stringPreferencesKey("languages")
