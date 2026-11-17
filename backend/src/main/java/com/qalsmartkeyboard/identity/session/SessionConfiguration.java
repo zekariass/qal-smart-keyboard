@@ -26,6 +26,7 @@ class SessionConfiguration {
 			ObjectProvider<Clock> clock, ObjectProvider<MeterRegistry> meters) {
 		return new SessionService(new SessionStore(jdbc), accounts, accessTokens, new RefreshTokens(new SecureRandom()),
 				outbox, new TransactionTemplate(transactionManager), properties.refreshTokenTtl(),
+				properties.refreshReuseGrace(),
 				clock.getIfAvailable(Clock::systemUTC), meters.getIfAvailable());
 	}
 }

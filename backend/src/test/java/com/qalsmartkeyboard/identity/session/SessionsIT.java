@@ -1,149 +1,58 @@
 package com.qalsmartkeyboard.identity.session;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Callable;
 
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import com.jayway.jsonpath.JsonPath;
-import com.qalsmartkeyboard.identity.AuthenticatedUser;
-import com.qalsmartkeyboard.identity.token.AccessTokenService;
 import com.qalsmartkeyboard.identity.token.TestAccessTokens;
-import com.qalsmartkeyboard.notifications.OtpMessage;
-import com.qalsmartkeyboard.notifications.OtpSender;
 import com.qalsmartkeyboard.testsupport.logging.CapturedLogs;
 
 /**
  * B2.4 end to end on PostgreSQL with the real security chain: sign in by OTP, use the access token, rotate the refresh
- * token, detect reuse (the family is revoked), race concurrent refreshes, log out, expire.
+ * token, detect reuse (the family is revoked), the refresh grace window for lost responses (ADR 0007 D8, default 30 s,
+ * driven by the injected clock), concurrent retries, log out, expire. {@link RefreshGraceDisabledIT} covers the window
+ * switched off.
  */
 @SpringBootTest(properties = "qal.outbox.dispatcher-enabled=false")
 @AutoConfigureMockMvc
 @Testcontainers
-@Import(SessionsIT.WhoAmI.class)
-class SessionsIT {
+@Import({ SessionsITSupport.WhoAmI.class, SessionsITSupport.TestClock.class })
+class SessionsIT extends SessionsITSupport {
+
+	static final Duration GRACE = Duration.ofSeconds(30);
 
 	@Container
 	@ServiceConnection
 	static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
 			DockerImageName.parse(System.getProperty("qal.test.postgres-image", "postgres:18")));
 
-	/** A protected endpoint (no real one exists before B2.5). */
-	@RestController
-	static class WhoAmI {
-		@GetMapping("/api/v1/it-whoami")
-		Map<String, Object> me(@AuthenticationPrincipal AuthenticatedUser user) {
-			return Map.of("userId", user.userId().toString(), "sessionId", user.sessionId().toString());
-		}
-	}
-
-	@Autowired
-	MockMvc mvc;
-	@Autowired
-	JdbcTemplate jdbc;
-	@Autowired
-	AccessTokenService tokens;
-	@MockitoSpyBean
-	OtpSender sender;
-
-	record Session(String userId, String sessionId, String accessToken, String refreshToken) {
-	}
-
-	// ---------------------------------------------------------------- helpers
-
-	static String randomIp() {
-		ThreadLocalRandom r = ThreadLocalRandom.current();
-		return "10." + r.nextInt(256) + "." + r.nextInt(256) + "." + r.nextInt(1, 255);
-	}
-
-	static String newPhone() {
-		return "+2517" + String.format("%08d", ThreadLocalRandom.current().nextInt(100_000_000));
-	}
-
-	/** Phone OTP sign-in (anonymous endpoints) → session. */
-	Session signIn(String phone) throws Exception {
-		String ip = randomIp();
-		// a repeated sign-in of one number must not hit the resend cooldown: move earlier challenges into the past
-		jdbc.update("UPDATE otp_challenges SET created_at = created_at - interval '2 minutes', "
-				+ "expires_at = expires_at - interval '2 minutes'");
-		MvcResult started = mvc.perform(post("/api/v1/auth/otp/start").with(r -> {
-			r.setRemoteAddr(ip);
-			return r;
-		}).contentType(MediaType.APPLICATION_JSON).content("{\"phoneNumber\":\"" + phone + "\"}"))
-				.andExpect(status().isAccepted()).andReturn();
-		String challenge = JsonPath.read(started.getResponse().getContentAsString(), "$.challengeId");
-		ArgumentCaptor<OtpMessage> sent = ArgumentCaptor.forClass(OtpMessage.class);
-		verify(sender, atLeastOnce()).send(sent.capture());
-		String code = sent.getAllValues().stream().filter(m -> m.phoneE164().equals(phone)).reduce((a, b) -> b)
-				.orElseThrow().code();
-		MvcResult verified = mvc.perform(post("/api/v1/auth/otp/verify").with(r -> {
-			r.setRemoteAddr(ip);
-			return r;
-		}).contentType(MediaType.APPLICATION_JSON)
-				.content("{\"challengeId\":\"" + challenge + "\",\"code\":\"" + code + "\",\"ageConfirmed\":true}"))
-				.andExpect(status().isOk()).andReturn();
-		return session(verified);
-	}
-
-	Session session(MvcResult result) throws Exception {
-		String body = result.getResponse().getContentAsString();
-		String access = JsonPath.read(body, "$.accessToken");
-		return new Session(JsonPath.read(body, "$.user.id"), tokens.decoder().decode(access).getClaimAsString("sid"),
-				access, JsonPath.read(body, "$.refreshToken"));
-	}
-
-	ResultActions refresh(String refreshToken) throws Exception {
-		return mvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"refreshToken\":\"" + refreshToken + "\"}"));
-	}
-
-	ResultActions whoAmI(String accessToken) throws Exception {
-		return mvc.perform(get("/api/v1/it-whoami").header("Authorization", "Bearer " + accessToken));
-	}
-
-	List<Map<String, Object>> family(String sessionId) {
-		return jdbc.queryForList("SELECT * FROM user_sessions WHERE token_family_id = ?::uuid ORDER BY created_at",
-				sessionId);
-	}
-
-	static String sha256(String token) {
-		return RefreshTokens.hash(token);
+	/** Moves the injected clock past the grace window of every rotation so far. */
+	void leaveGraceWindow() {
+		clock.advance(GRACE.plusSeconds(1));
 	}
 
 	// ---------------------------------------------------------------- access tokens and the chain
@@ -173,6 +82,7 @@ class SessionsIT {
 		Map<String, Object> row = rows.get(0);
 		assertThat(row.get("refresh_token_hash")).isEqualTo(sha256(s.refreshToken()));
 		assertThat(row.get("session_status")).isEqualTo("ACTIVE");
+		assertThat(row.get("last_used_at")).as("never presented yet").isNull();
 		assertThat(row.values()).noneMatch(v -> v != null && v.toString().contains(s.refreshToken()));
 		assertThat(s.refreshToken()).hasSize(43); // 256 bits, base64url
 	}
@@ -189,26 +99,29 @@ class SessionsIT {
 		assertThat(second.sessionId()).isEqualTo(first.sessionId());
 		whoAmI(second.accessToken()).andExpect(status().isOk());
 
-		List<Map<String, Object>> rows = family(first.sessionId());
-		assertThat(rows).hasSize(2);
-		assertThat(rows.get(0).get("session_status")).isEqualTo("ROTATED");
-		assertThat(rows.get(0).get("replaced_by_session_id")).isEqualTo(rows.get(1).get("id"));
-		assertThat(rows.get(0).get("rotated_at")).isNotNull();
-		assertThat(rows.get(1).get("session_status")).isEqualTo("ACTIVE");
-		assertThat(rows.get(1).get("refresh_token_hash")).isEqualTo(sha256(second.refreshToken()));
+		Map<String, Object> old = row(first.refreshToken());
+		Map<String, Object> next = row(second.refreshToken());
+		assertThat(family(first.sessionId())).hasSize(2);
+		assertThat(old.get("session_status")).isEqualTo("ROTATED");
+		assertThat(old.get("replaced_by_session_id")).isEqualTo(next.get("id"));
+		assertThat(old.get("rotated_at")).isNotNull();
+		assertThat(old.get("last_used_at")).isNotNull();
+		assertThat(next.get("session_status")).isEqualTo("ACTIVE");
+		assertThat(next.get("last_used_at")).isNull();
 
 		// and again: every use rotates
 		session(refresh(second.refreshToken()).andExpect(status().isOk()).andReturn());
 		assertThat(family(first.sessionId())).hasSize(3);
 	}
 
-	/** The step's "done when": presenting an already-rotated token revokes the whole family. */
+	/** The step's "done when": presenting an already-rotated token (outside the grace window) revokes the family. */
 	@Test
 	void replayOfARotatedRefreshTokenRevokesTheFamily() throws Exception {
 		String phone = newPhone();
 		Session original = signIn(phone);
 		Session rotated = session(refresh(original.refreshToken()).andExpect(status().isOk()).andReturn());
 		Session otherDevice = signIn(phone); // a second, independent family of the same user
+		leaveGraceWindow();
 
 		try (CapturedLogs logs = new CapturedLogs()) {
 			refresh(original.refreshToken()).andExpect(status().isUnauthorized())
@@ -223,53 +136,184 @@ class SessionsIT {
 		refresh(original.refreshToken()).andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSED"));
 
-		List<Map<String, Object>> rows = family(original.sessionId());
-		assertThat(rows).noneMatch(r -> "ACTIVE".equals(r.get("session_status")));
-		assertThat(rows.get(0).get("reuse_detected_at")).isNotNull();
-		assertThat(rows.get(1).get("session_status")).isEqualTo("REVOKED");
-		assertThat(rows.get(1).get("revoked_reason")).isEqualTo("TOKEN_REUSE");
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_events WHERE event_type = ? AND aggregate_id = ?",
-				Integer.class, SessionService.REUSE_EVENT, original.sessionId())).as("one event per incident").isEqualTo(1);
+		assertThat(activeRows(original.sessionId())).isZero();
+		assertThat(row(original.refreshToken()).get("reuse_detected_at")).isNotNull();
+		assertThat(row(rotated.refreshToken()).get("session_status")).isEqualTo("REVOKED");
+		assertThat(row(rotated.refreshToken()).get("revoked_reason")).isEqualTo("TOKEN_REUSE");
+		assertThat(reuseEvents(original.sessionId())).as("one event per incident").isEqualTo(1);
 
 		// another sign-in of the same user is not affected
 		refresh(otherDevice.refreshToken()).andExpect(status().isOk());
 	}
 
-	@Test
-	void concurrentRefreshOfOneTokenNeverMintsTwoValidSuccessors() throws Exception {
-		Session s = signIn(newPhone());
-		int racers = 8;
-		ExecutorService pool = Executors.newFixedThreadPool(racers);
-		CountDownLatch go = new CountDownLatch(1);
-		List<Future<MvcResult>> results = new ArrayList<>();
-		for (int i = 0; i < racers; i++) {
-			results.add(pool.submit(() -> {
-				go.await();
-				return refresh(s.refreshToken()).andReturn();
-			}));
-		}
-		go.countDown();
-		List<MvcResult> done = new ArrayList<>();
-		for (Future<MvcResult> f : results) {
-			done.add(f.get(60, TimeUnit.SECONDS));
-		}
-		pool.shutdown();
+	// ---------------------------------------------------------------- grace window (ADR 0007 D8)
 
-		long ok = done.stream().filter(r -> r.getResponse().getStatus() == 200).count();
-		assertThat(ok).as("exactly one refresh wins").isEqualTo(1);
+	@Test
+	void retryWithinTheGraceWindowRotatesAgainAndKillsTheUnusedSuccessor() throws Exception {
+		Session s = signIn(newPhone());
+		Session lost = session(refresh(s.refreshToken()).andExpect(status().isOk()).andReturn()); // response "lost"
+		clock.advance(GRACE.minusSeconds(5));
+
+		Session retried = session(refresh(s.refreshToken()).andExpect(status().isOk())
+				.andExpect(jsonPath("$.user.id").value(s.userId())).andReturn());
+		assertThat(retried.sessionId()).isEqualTo(s.sessionId());
+		assertThat(retried.refreshToken()).isNotIn(s.refreshToken(), lost.refreshToken());
+		whoAmI(retried.accessToken()).andExpect(status().isOk());
+
+		Map<String, Object> presented = row(s.refreshToken());
+		Map<String, Object> superseded = row(lost.refreshToken());
+		Map<String, Object> current = row(retried.refreshToken());
+		assertThat(family(s.sessionId())).hasSize(3);
+		assertThat(presented.get("session_status")).isEqualTo("ROTATED");
+		assertThat(presented.get("replaced_by_session_id")).as("the chain continues from the retry")
+				.isEqualTo(current.get("id"));
+		assertThat(presented.get("reuse_detected_at")).isNull();
+		assertThat(superseded.get("session_status")).isEqualTo("REVOKED");
+		assertThat(superseded.get("revoked_reason")).isEqualTo("SUPERSEDED_RETRY");
+		assertThat(current.get("session_status")).isEqualTo("ACTIVE");
+		assertThat(reuseEvents(s.sessionId())).isZero();
+
+		// the new successor is a normal token
+		Session after = session(refresh(retried.refreshToken()).andExpect(status().isOk()).andReturn());
+		assertThat(after.sessionId()).isEqualTo(s.sessionId());
+		assertThat(activeRows(s.sessionId())).isOne();
+	}
+
+	@Test
+	void theWindowIsMeasuredFromTheFirstRotationSoRetriesDoNotExtendIt() throws Exception {
+		Session s = signIn(newPhone());
+		refresh(s.refreshToken()).andExpect(status().isOk());
+		clock.advance(Duration.ofSeconds(20));
+		refresh(s.refreshToken()).andExpect(status().isOk()); // within 30 s of the rotation
+		clock.advance(Duration.ofSeconds(11)); // 31 s after the rotation, 11 s after the retry
+		refresh(s.refreshToken()).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSED"));
+		assertThat(activeRows(s.sessionId())).isZero();
+	}
+
+	@Test
+	void presentingASupersededSuccessorRevokesTheFamily() throws Exception {
+		Session s = signIn(newPhone());
+		Session lost = session(refresh(s.refreshToken()).andExpect(status().isOk()).andReturn());
+		Session retried = session(refresh(s.refreshToken()).andExpect(status().isOk()).andReturn());
+
+		// the "lost" successor shows up after all: two parties hold tokens of this family
+		refresh(lost.refreshToken()).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSED"));
+		assertThat(activeRows(s.sessionId())).isZero();
+		assertThat(row(retried.refreshToken()).get("revoked_reason")).isEqualTo("TOKEN_REUSE");
+		assertThat(reuseEvents(s.sessionId())).isEqualTo(1);
+		refresh(retried.refreshToken()).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void retryAfterTheWindowRevokesTheFamily() throws Exception {
+		Session s = signIn(newPhone());
+		Session lost = session(refresh(s.refreshToken()).andExpect(status().isOk()).andReturn());
+		leaveGraceWindow();
+
+		refresh(s.refreshToken()).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSED"));
+		assertThat(activeRows(s.sessionId())).isZero();
+		assertThat(row(lost.refreshToken()).get("revoked_reason")).isEqualTo("TOKEN_REUSE");
+		assertThat(reuseEvents(s.sessionId())).isEqualTo(1);
+	}
+
+	@Test
+	void retryAfterTheSuccessorWasUsedRevokesTheFamily() throws Exception {
+		Session s = signIn(newPhone());
+		Session next = session(refresh(s.refreshToken()).andExpect(status().isOk()).andReturn());
+		Session nextButOne = session(refresh(next.refreshToken()).andExpect(status().isOk()).andReturn());
+
+		// well within the window, but the successor has been used: this is a replay, not a lost response
+		refresh(s.refreshToken()).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSED"));
+		assertThat(activeRows(s.sessionId())).isZero();
+		assertThat(row(nextButOne.refreshToken()).get("revoked_reason")).isEqualTo("TOKEN_REUSE");
+		assertThat(reuseEvents(s.sessionId())).isEqualTo(1);
+	}
+
+	@Test
+	void retryAfterTheSuccessorWasPresentedWithoutRotatingRevokesTheFamily() throws Exception {
+		Session s = signIn(newPhone());
+		Session next = session(refresh(s.refreshToken()).andExpect(status().isOk()).andReturn());
+		jdbc.update("UPDATE users SET account_status = 'SUSPENDED' WHERE id = ?::uuid", s.userId());
+		refresh(next.refreshToken()).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("ACCOUNT_SUSPENDED"));
+		jdbc.update("UPDATE users SET account_status = 'ACTIVE' WHERE id = ?::uuid", s.userId());
+		assertThat(row(next.refreshToken()).get("last_used_at")).as("presented").isNotNull();
+
+		refresh(s.refreshToken()).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSED"));
+		assertThat(activeRows(s.sessionId())).isZero();
+	}
+
+	@Test
+	void grandparentTokenRevokesTheFamily() throws Exception {
+		Session s = signIn(newPhone());
+		Session child = session(refresh(s.refreshToken()).andExpect(status().isOk()).andReturn());
+		Session grandchild = session(refresh(child.refreshToken()).andExpect(status().isOk()).andReturn());
+
+		// s is two generations old: its direct successor (child) is ROTATED, so no grace
+		refresh(s.refreshToken()).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSED"));
+		assertThat(activeRows(s.sessionId())).isZero();
+		refresh(grandchild.refreshToken()).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+	}
+
+	@Test
+	void concurrentGraceRetriesLeaveExactlyOneActiveSuccessor() throws Exception {
+		Session s = signIn(newPhone());
+		Session lost = session(refresh(s.refreshToken()).andExpect(status().isOk()).andReturn());
+		int racers = 8;
+		Callable<MvcResult> retry = () -> refresh(s.refreshToken()).andReturn();
+		List<MvcResult> done = race(Collections.nCopies(racers, retry));
+
+		// the family lock serialises them: each retry finds the previous one's successor unused and supersedes it
+		assertThat(done).allMatch(r -> r.getResponse().getStatus() == 200);
+		List<String> issued = new ArrayList<>();
 		for (MvcResult r : done) {
-			if (r.getResponse().getStatus() != 200) {
-				assertThat(r.getResponse().getStatus()).isEqualTo(401);
-				assertThat(r.getResponse().getContentAsString()).contains("REFRESH_TOKEN_REUSED");
-			}
+			issued.add(JsonPath.read(r.getResponse().getContentAsString(), "$.refreshToken"));
 		}
 		List<Map<String, Object>> rows = family(s.sessionId());
-		assertThat(rows).as("one successor only").hasSize(2);
-		// SD 9.3: the losers presented an already-rotated token, so the family (incl. the winner's successor) is revoked
-		assertThat(rows).noneMatch(r -> "ACTIVE".equals(r.get("session_status")));
-		String winnersRefresh = JsonPath.read(done.stream().filter(r -> r.getResponse().getStatus() == 200).findFirst()
-				.orElseThrow().getResponse().getContentAsString(), "$.refreshToken");
-		refresh(winnersRefresh).andExpect(status().isUnauthorized());
+		assertThat(rows).hasSize(2 + racers);
+		List<Map<String, Object>> active = rows.stream().filter(r -> "ACTIVE".equals(r.get("session_status"))).toList();
+		assertThat(active).as("exactly one valid successor").hasSize(1);
+		assertThat(row(s.refreshToken()).get("replaced_by_session_id")).isEqualTo(active.get(0).get("id"));
+		assertThat(rows).filteredOn(r -> "REVOKED".equals(r.get("session_status"))).hasSize(racers)
+				.allMatch(r -> "SUPERSEDED_RETRY".equals(r.get("revoked_reason")));
+		assertThat(row(lost.refreshToken()).get("revoked_reason")).isEqualTo("SUPERSEDED_RETRY");
+		String winner = issued.stream().filter(t -> sha256(t).equals(active.get(0).get("refresh_token_hash")))
+				.findFirst().orElseThrow();
+
+		// any other returned token is a superseded successor: presenting it revokes the family
+		String loser = issued.stream().filter(t -> !t.equals(winner)).findFirst().orElseThrow();
+		refresh(loser).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSED"));
+		assertThat(activeRows(s.sessionId())).isZero();
+		refresh(winner).andExpect(status().isUnauthorized());
+	}
+
+	/** A retry racing the first use of the successor: grace then reuse, or reuse; never two valid tokens. */
+	@Test
+	void retryRacingTheFirstUseOfTheSuccessorNeverLeavesTwoValidTokens() throws Exception {
+		for (int round = 0; round < 5; round++) {
+			Session s = signIn(newPhone());
+			Session next = session(refresh(s.refreshToken()).andExpect(status().isOk()).andReturn());
+			Callable<MvcResult> retryOld = () -> refresh(s.refreshToken()).andReturn();
+			Callable<MvcResult> useSuccessor = () -> refresh(next.refreshToken()).andReturn();
+			List<MvcResult> done = race(List.of(retryOld, useSuccessor));
+
+			assertThat(done).extracting(r -> r.getResponse().getStatus()).containsExactlyInAnyOrder(200, 401);
+			MvcResult rejected = done.stream().filter(r -> r.getResponse().getStatus() == 401).findFirst().orElseThrow();
+			assertThat(rejected.getResponse().getContentAsString()).contains("REFRESH_TOKEN_REUSED");
+			// either order ends with the family revoked, including the token the 200 handed out
+			assertThat(activeRows(s.sessionId())).isZero();
+			assertThat(reuseEvents(s.sessionId())).isEqualTo(1);
+			String handedOut = JsonPath.read(done.stream().filter(r -> r.getResponse().getStatus() == 200).findFirst()
+					.orElseThrow().getResponse().getContentAsString(), "$.refreshToken");
+			refresh(handedOut).andExpect(status().isUnauthorized());
+		}
 	}
 
 	// ---------------------------------------------------------------- logout, expiry, status
@@ -291,6 +335,10 @@ class SessionsIT {
 				.contentType(MediaType.APPLICATION_JSON).content("{\"allDevices\":true}")).andExpect(status().isNoContent());
 		refresh(b2.refreshToken()).andExpect(status().isUnauthorized());
 		refresh(c.refreshToken()).andExpect(status().isUnauthorized());
+		// within the window, but b's successor b2 was logged out: no grace for a dead family
+		refresh(b.refreshToken()).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSED"));
+		assertThat(activeRows(b.sessionId())).isZero();
 		// logging out twice is harmless (the access token is stateless and still valid for its lifetime)
 		mvc.perform(post("/api/v1/auth/logout").header("Authorization", "Bearer " + a.accessToken()))
 				.andExpect(status().isNoContent());

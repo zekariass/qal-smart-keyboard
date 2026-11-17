@@ -122,9 +122,10 @@ Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST 
   (`openssl rand -base64 32`). Without it startup fails. Tests use `qal.identity.otp.allow-ephemeral-secret-key=true`
   (dev/test only, refused under `prod`/`production`/`staging`).
 - **Rate limits** (`qal.identity.otp.limits.<name>.capacity|period`, PROVISIONAL): `start-per-ip` 30/1h,
-  `start-per-phone` 5/1h, `start-per-phone-daily` 10/24h, `verify-per-ip` 60/1h, `verify-per-device` 20/1h (device =
-  `device.installationId` of the verify request). 429 `RATE_LIMITED` with `Retry-After` and `RateLimit-*`; a successful
-  start returns the caller's per-IP `RateLimit-*`.
+  `start-per-device` 10/1h (only when the start request carries the optional `installationId`), `start-per-phone`
+  5/1h, `start-per-phone-daily` 10/24h, `verify-per-ip` 60/1h, `verify-per-device` 20/1h (device =
+  `device.installationId` of the verify request). The caller's IP and device budgets are checked before the number's.
+  429 `RATE_LIMITED` with `Retry-After` and `RateLimit-*`; a successful start returns the caller's per-IP `RateLimit-*`.
 - **Client IP** is `request.getRemoteAddr()`. Behind a load balancer set `server.forward-headers-strategy` so the
   container resolves `X-Forwarded-For` from the trusted proxy; never parse it in code.
 - **Metrics:** `qal.identity.otp.started{outcome,destination}`, `qal.identity.otp.verified{outcome}`,
@@ -150,19 +151,30 @@ Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST 
 - **Refresh token:** opaque, 256 random bits (43 base64url characters). Only its SHA-256 is stored, as
   `user_sessions.refresh_token_hash`. Lifetime `qal.identity.tokens.refresh-token-ttl` (60d), sliding: each rotation
   starts a new period. `POST /api/v1/auth/refresh` rotates on every use. A new row is created in the same
-  `token_family_id`, and the old row becomes `ROTATED` with `replaced_by_session_id`.
-- **Reuse detection:** presenting a `ROTATED` token gives 401 `REFRESH_TOKEN_REUSED`. Every `ACTIVE` row of the family
-  is revoked (`TOKEN_REUSE`), `reuse_detected_at` is set, and the outbox event `identity.refresh_token.reuse_detected`
-  is published (`userId`, `tokenFamilyId`; notifications will tell the user). Two concurrent refreshes of one token are
-  serialised by a row lock. The second one sees a rotated token and is handled as reuse (SD 9.3), so a race can never
-  leave two valid successors.
+  `token_family_id`, and the old row becomes `ROTATED` with `replaced_by_session_id`. `last_used_at` stays `NULL`
+  until a token is presented.
+- **Reuse detection:** presenting a `ROTATED` token (outside the grace window below) gives 401
+  `REFRESH_TOKEN_REUSED`. Every `ACTIVE` row of the family is revoked (`TOKEN_REUSE`), `reuse_detected_at` is set, and
+  the outbox event `identity.refresh_token.reuse_detected` is published (`userId`, `tokenFamilyId`; notifications will
+  tell the user).
+- **Grace window (ADR 0007 D8):** `qal.identity.tokens.refresh-reuse-grace` (default `30s`, `0` disables, at most
+  `2m`). A retry with a `ROTATED` token rotates again (200) instead of revoking the family if it comes within the
+  window of that token's **first** rotation and its direct successor is still `ACTIVE`, unexpired and was never
+  presented (`last_used_at IS NULL`, no successor of its own). The unused successor becomes `REVOKED`
+  (`SUPERSEDED_RETRY`, V4) and the rotated row points to the new one. Presenting a superseded successor later is
+  reuse (the family is revoked). Successor already used, a token two or more generations old, or a successor already
+  revoked/expired: reuse as above.
+- **Concurrency:** every refresh and logout of a family takes the family's advisory lock first (then the presented
+  row, then its successor), so refreshes of one family are serialised. Concurrent grace retries leave exactly one
+  `ACTIVE` successor; a retry racing the first use of the successor ends with the family revoked; a family
+  revocation never misses a successor inserted by a concurrent rotation.
 - Other refresh failures: expired gives `TOKEN_EXPIRED`. Unknown, revoked or a deleted/merged account gives
-  `UNAUTHENTICATED`. Suspended gives 403 `ACCOUNT_SUSPENDED`.
+  `UNAUTHENTICATED`. Suspended gives 403 `ACCOUNT_SUSPENDED`. A malformed body gives 400 `VALIDATION_FAILED`.
 - **Logout:** `POST /api/v1/auth/logout` (bearer) revokes the caller's family, or every family of the user with
   `{"allDevices": true}`.
 - **Principal:** controllers take `@AuthenticationPrincipal com.qalsmartkeyboard.identity.AuthenticatedUser`
   (`userId`, `sessionId`, `deviceId`, `accountType`).
-- **Metrics:** `qal.identity.sessions{event=issued|rotated|reuse_detected|expired|logout|logout_all}`.
+- **Metrics:** `qal.identity.sessions{event=issued|rotated|rotated_grace|reuse_detected|expired|logout|logout_all}`.
 
 ## Security chain (B2.4, OI-P11)
 
@@ -173,7 +185,9 @@ no form/basic login) and works as a resource server for the access tokens above.
   - **Bearer optional** (`[{}, bearerAuth]`): `POST /auth/attestation-nonces`, `/auth/otp/start`, `/auth/otp/verify`,
     `/auth/oauth/{provider}`, `/auth/email/register`, `/auth/email/login`; `GET /config`, `/ai/capabilities`,
     `/languages`, `/languages/{code}/transliteration-profiles`, `/language-resources`, `/language-resources/{id}`,
-    `/resource-signing-keys`. A bearer token sent there must be valid (otherwise 401).
+    `/resource-signing-keys`. A bearer token sent there must be valid: an invalid or expired one is a 401 and is
+    never downgraded to anonymous (ADR 0007 D9). The contract declares that 401 on each of these operations, so a
+    new optional-bearer operation must declare it too.
   - **No bearer** (`[{}]` / `[]`): `POST /auth/password/forgot`, `/auth/password/reset`, `/auth/refresh`,
     `/auth/guest`, `/billing/webhooks/{provider}/{account}`, `/billing/store-notifications/{provider}`, and
     `/actuator/health`. The `Authorization` header is ignored there.

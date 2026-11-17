@@ -514,6 +514,7 @@ When a guest signs in, the guest account is **merged**: preferences, consents an
 
 - **Access token:** JWT (EdDSA or ES256), 15 minutes, claims `sub`, `sid`, `did` (device), `plan` (hint only), `scope`.
 - **Refresh token:** opaque, 256-bit, stored as a SHA-256 hash, sliding 60 days. It **rotates on every use**, and `token_family_id` links the chain. If an already-rotated token is presented, the whole family is revoked and the user is notified.
+- **Grace window for lost responses (amendment, ADR 0007 D8):** on slow mobile networks a refresh response can be lost, and the client then retries with the token that was just rotated. Such a retry rotates again instead of revoking the family only if it arrives within a short window of that token's *first* rotation (default 30 s, at most 2 min, 0 disables) and the successor issued by the lost response has never been presented. The unused successor is revoked (`SUPERSEDED_RETRY`) and a new one is issued in the same family. Presenting a superseded successor later counts as reuse, because two parties then hold tokens of the family. Every other reuse (after the window, successor already used, a token two or more generations old) revokes the family as above. Clients still serialise refresh calls.
 - Tokens on the device live in Android Keystore-backed storage or the iOS Keychain (shared access group).
 - Logout revokes the session. "Sign out everywhere" revokes all of the user's families.
 
