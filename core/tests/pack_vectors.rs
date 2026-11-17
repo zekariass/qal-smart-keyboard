@@ -114,10 +114,10 @@ fn generate() -> Vec<Gen> {
     );
     let pretty = format!(
         "{{\n  \"resourceId\": \"{RESOURCE_ID}\",\n  \"languageCode\": \"ti\",\n  \
-         \"resourceType\": \"KEYBOARD_LAYOUT\",\n  \"version\": \"2.0.0-beta.1\",\n  \
+         \"resourceType\": \"DICTIONARY\",\n  \"version\": \"2.0.0-beta.1\",\n  \
          \"platform\": \"ANDROID\",\n  \"releaseChannel\": \"BETA\",\n  \
          \"minAppVersion\": \"1.4.0\",\n  \
-         \"artifactUrl\": \"https://cdn.example.com/packs/ti/layout/2.0.0-beta.1.pack\",\n  \
+         \"artifactUrl\": \"https://cdn.example.com/packs/ti/dictionary/2.0.0-beta.1.pack\",\n  \
          \"sha256\": \"{}\",\n  \"sizeBytes\": {},\n  \"baseResourceId\": null,\n  \
          \"deviceRequirements\": {{ \"minRamMb\": 0 }},\n  \"licenseCode\": \"LicenseRef-Qal-Test\",\n  \
          \"profile\": {{ \"code\": \"TI_TEST\", \"displayName\": \"ትግርኛ\", \"normalization\": \"NFC\" }},\n  \

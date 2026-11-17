@@ -279,6 +279,9 @@ pub enum PackRejectReason {
     Downgrade,
     /// The pack is a delta (`baseResourceId` set); deltas are applied by the host pack manager.
     DeltaNotSupported,
+    /// The pack verified, but its artifact is not a valid resource of the declared type (for
+    /// example a `KEYBOARD_LAYOUT` that fails layout validation).
+    InvalidArtifact,
 }
 
 impl PackRejectReason {
@@ -298,6 +301,7 @@ impl PackRejectReason {
             Self::ChecksumMismatch => "CHECKSUM_MISMATCH",
             Self::Downgrade => "DOWNGRADE",
             Self::DeltaNotSupported => "DELTA_NOT_SUPPORTED",
+            Self::InvalidArtifact => "INVALID_ARTIFACT",
         }
     }
 }

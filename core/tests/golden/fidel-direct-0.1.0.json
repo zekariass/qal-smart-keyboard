@@ -1,0 +1,134 @@
+{
+  "profile": "fidel-direct",
+  "profile_version": "0.1.0",
+  "notation": "keystrokes: C:<seriesId> FidelConsonant, V:<order> FidelVowel, T:<text> Char, or Backspace / Space / Enter / Commit",
+  "layouts": {
+    "am": "language-data/layouts/am-fidel-draft.json",
+    "ti": "language-data/layouts/ti-fidel-draft.json"
+  },
+  "vectors": [
+    {
+      "name": "selam-two-key",
+      "language": "am",
+      "keystrokes": ["C:S", "V:1", "C:L", "V:4", "C:M", "Commit"],
+      "steps": [
+        { "composing": "ስ", "commit": "" },
+        { "composing": "", "commit": "ሰ" },
+        { "composing": "ል", "commit": "" },
+        { "composing": "", "commit": "ላ" },
+        { "composing": "ም", "commit": "" },
+        { "composing": "", "commit": "ም" }
+      ],
+      "committed": "ሰላም"
+    },
+    {
+      "name": "consonant-after-consonant-commits-sixth-order",
+      "language": "am",
+      "keystrokes": ["C:S", "C:L", "Space"],
+      "steps": [
+        { "composing": "ስ", "commit": "" },
+        { "composing": "ል", "commit": "ስ" },
+        { "composing": "", "commit": "ል " }
+      ],
+      "committed": "ስል "
+    },
+    {
+      "name": "labialised-order-eight",
+      "language": "am",
+      "keystrokes": ["C:G", "V:8", "C:Q", "V:8", "C:K", "V:8", "C:L", "V:8"],
+      "steps": [
+        { "composing": "ግ", "commit": "" },
+        { "composing": "", "commit": "ጓ" },
+        { "composing": "ቅ", "commit": "" },
+        { "composing": "", "commit": "ቋ" },
+        { "composing": "ክ", "commit": "" },
+        { "composing": "", "commit": "ኳ" },
+        { "composing": "ል", "commit": "" },
+        { "composing": "", "commit": "ሏ" }
+      ],
+      "committed": "ጓቋኳሏ"
+    },
+    {
+      "name": "backspace-cancels-composition",
+      "language": "am",
+      "keystrokes": ["C:S", "Backspace", "C:S", "V:3"],
+      "steps": [
+        { "composing": "ስ", "commit": "" },
+        { "composing": "", "commit": "" },
+        { "composing": "ስ", "commit": "" },
+        { "composing": "", "commit": "ሲ" }
+      ],
+      "committed": "ሲ"
+    },
+    {
+      "name": "backspace-after-commit-deletes-one-cluster",
+      "language": "am",
+      "keystrokes": ["T:ሰ", "T:ላ", "Backspace"],
+      "steps": [
+        { "composing": "", "commit": "ሰ" },
+        { "composing": "", "commit": "ላ" },
+        { "composing": "", "commit": "", "delete_before": 1 }
+      ],
+      "committed": "ሰ"
+    },
+    {
+      "name": "long-press-punctuation-and-numerals",
+      "language": "am",
+      "keystrokes": ["T:ሰ", "T:ላ", "T:።", "T:፩", "T:፲"],
+      "steps": [
+        { "composing": "", "commit": "ሰ" },
+        { "composing": "", "commit": "ላ" },
+        { "composing": "", "commit": "።" },
+        { "composing": "", "commit": "፩" },
+        { "composing": "", "commit": "፲" }
+      ],
+      "committed": "ሰላ።፩፲"
+    },
+    {
+      "name": "char-flushes-pending-composition",
+      "language": "am",
+      "keystrokes": ["C:S", "T:፣"],
+      "steps": [
+        { "composing": "ስ", "commit": "" },
+        { "composing": "", "commit": "ስ፣" }
+      ],
+      "committed": "ስ፣"
+    },
+    {
+      "name": "enter-flushes-pending-composition",
+      "language": "am",
+      "keystrokes": ["C:B", "V:6", "C:B", "Enter"],
+      "steps": [
+        { "composing": "ብ", "commit": "" },
+        { "composing": "", "commit": "ብ" },
+        { "composing": "ብ", "commit": "" },
+        { "composing": "", "commit": "ብ\n" }
+      ],
+      "committed": "ብብ\n"
+    },
+    {
+      "name": "series-missing-from-amharic-layout-is-ignored",
+      "language": "am",
+      "keystrokes": ["C:QH", "V:1"],
+      "steps": [
+        { "composing": "", "commit": "" },
+        { "composing": "", "commit": "" }
+      ],
+      "committed": ""
+    },
+    {
+      "name": "tigrinya-qhe-and-xe-series",
+      "language": "ti",
+      "keystrokes": ["C:QH", "V:1", "C:KX", "V:5", "C:QH", "V:8"],
+      "steps": [
+        { "composing": "ቕ", "commit": "" },
+        { "composing": "", "commit": "ቐ" },
+        { "composing": "ኽ", "commit": "" },
+        { "composing": "", "commit": "ኼ" },
+        { "composing": "ቕ", "commit": "" },
+        { "composing": "", "commit": "ቛ" }
+      ],
+      "committed": "ቐኼቛ"
+    }
+  ]
+}

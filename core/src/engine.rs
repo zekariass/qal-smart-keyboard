@@ -1,5 +1,6 @@
 //! The FFI-facing engine object and its data types.
 
+use crate::composer::{DirectFidel, FidelLayout, Layout};
 use crate::error::CoreError;
 use crate::pack::{
     self, KeyRing, PackInfo, PackLimits, PackPlatform, PackRejectReason, ResourceType, TrustedKey,
@@ -33,7 +34,19 @@ pub enum InputMode {
 /// A key event from the host keyboard.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum KeyEvent {
-    Char { text: String },
+    /// A character or text chosen by the user: a letter in ABC mode, a long-press popup choice
+    /// in DirectFidel (a syllable, punctuation or an Ethiopic numeral). Committed as NFC text.
+    Char {
+        text: String,
+    },
+    /// DirectFidel TWO_KEY: a consonant key. `series_id` is `FidelKey::series_id`.
+    FidelConsonant {
+        series_id: String,
+    },
+    /// DirectFidel TWO_KEY: a vowel-order key. `order` is `FidelVowelKey::order` (1..=9).
+    FidelVowel {
+        order: u8,
+    },
     Backspace,
     Space,
     Enter,
@@ -63,7 +76,8 @@ pub struct EditorUpdate {
     pub composing: String,
     /// Text to commit to the editor.
     pub commit: String,
-    /// Number of characters before the cursor the host should delete first.
+    /// Number of grapheme clusters before the cursor the host should delete first (never UTF-16
+    /// code units; one Fidel syllable is one cluster).
     pub delete_before: u32,
     pub candidates: Vec<Candidate>,
 }
@@ -72,6 +86,8 @@ pub struct EditorUpdate {
 struct State {
     mode: InputMode,
     composing: String,
+    /// Active direct-Fidel session; `Some` exactly when `mode` is `DirectFidel`.
+    direct: Option<DirectFidel>,
 }
 
 /// Rollback-protection slot: one loaded pack per (language, resource type, platform).
@@ -83,6 +99,8 @@ pub struct KeyboardEngine {
     state: Mutex<State>,
     /// Verified packs. Separate lock so pack loading never blocks the key path.
     packs: Mutex<HashMap<PackSlot, Arc<VerifiedPack>>>,
+    /// Parsed `KEYBOARD_LAYOUT` artifacts by language (lock order: `packs` before `layouts`).
+    layouts: Mutex<HashMap<String, Arc<Layout>>>,
     key_ring: KeyRing,
     pack_limits: PackLimits,
     #[allow(dead_code)] // max_candidates is used by the ranker from C1.7
@@ -104,8 +122,10 @@ impl KeyboardEngine {
             state: Mutex::new(State {
                 mode: InputMode::Abc,
                 composing: String::new(),
+                direct: None,
             }),
             packs: Mutex::new(HashMap::new()),
+            layouts: Mutex::new(HashMap::new()),
             key_ring,
             pack_limits,
             config,
@@ -120,6 +140,8 @@ impl KeyboardEngine {
     /// - rollback protection per (language, resource type, platform): a lower version, or the
     ///   same version with a different artifact, is rejected with `Downgrade`; reloading the
     ///   identical pack is an idempotent success;
+    /// - a `KEYBOARD_LAYOUT` artifact must parse and validate as a layout for the manifest's
+    ///   language (`InvalidArtifact` otherwise) before the pack is activated;
     /// - delta packs (`baseResourceId` set) are verified, then rejected with
     ///   `DeltaNotSupported`: the host pack manager applies deltas and loads the full result.
     pub fn load_pack(&self, bytes: Vec<u8>) -> Result<PackInfo, CoreError> {
@@ -131,6 +153,22 @@ impl KeyboardEngine {
                 detail: "delta packs are applied by the host pack manager".to_string(),
             });
         }
+        let layout = if verified.manifest().resource_type == ResourceType::KeyboardLayout {
+            let parsed =
+                Layout::parse(verified.artifact()).map_err(|e| CoreError::PackRejected {
+                    reason: PackRejectReason::InvalidArtifact,
+                    detail: e.to_string(),
+                })?;
+            if parsed.language() != verified.manifest().language_code {
+                return Err(CoreError::PackRejected {
+                    reason: PackRejectReason::InvalidArtifact,
+                    detail: "layout language differs from the manifest language".to_string(),
+                });
+            }
+            Some(Arc::new(parsed))
+        } else {
+            None
+        };
         let info = verified.info();
         let m = verified.manifest();
         let slot = (m.language_code.clone(), m.resource_type, m.platform);
@@ -148,6 +186,10 @@ impl KeyboardEngine {
                         .to_string(),
                 });
             }
+        }
+        if let Some(layout) = layout {
+            self.lock_layouts()
+                .insert(info.language_code.clone(), layout);
         }
         packs.insert(slot, Arc::new(verified));
         Ok(info)
@@ -182,19 +224,57 @@ impl KeyboardEngine {
                 reason: format!("{mode:?} is not available in this build"),
             });
         }
+        // DirectFidel is data-driven: it needs a verified KEYBOARD_LAYOUT for the language.
+        let direct = if mode == InputMode::DirectFidel {
+            let layout = self.lock_layouts().get(&language_code).cloned();
+            let layout = layout.ok_or_else(|| CoreError::InvalidState {
+                reason: format!("no keyboard layout is loaded for {language_code}"),
+            })?;
+            Some(DirectFidel::new(layout))
+        } else {
+            None
+        };
         let mut s = self.lock();
         s.mode = mode;
         s.composing.clear();
+        s.direct = direct;
         Ok(())
+    }
+
+    /// The direct-Fidel layout loaded for `language_code`, for the host to render.
+    /// `InvalidState` when no `KEYBOARD_LAYOUT` pack is loaded for it.
+    pub fn fidel_layout(&self, language_code: String) -> Result<FidelLayout, CoreError> {
+        if !SUPPORTED_LANGUAGES.contains(&language_code.as_str()) {
+            return Err(CoreError::UnsupportedLanguage {
+                code: language_code,
+            });
+        }
+        let layout = self.lock_layouts().get(&language_code).cloned();
+        layout
+            .map(|l| l.to_ffi())
+            .ok_or_else(|| CoreError::InvalidState {
+                reason: format!("no keyboard layout is loaded for {language_code}"),
+            })
     }
 
     pub fn on_key(&self, event: KeyEvent) -> EditorUpdate {
         let mut s = self.lock();
+        if s.mode == InputMode::DirectFidel {
+            return s
+                .direct
+                .as_mut()
+                .map(|d| d.on_key(event))
+                .unwrap_or_default();
+        }
         if !matches!(s.mode, InputMode::Abc | InputMode::English) {
-            // Unreachable today: set_input_mode refuses modes that have not landed (C1.3 to C1.5).
+            // Unreachable today: set_input_mode refuses modes that have not landed (C1.4, C1.5).
             return EditorUpdate::default();
         }
         match event {
+            // Two-key Fidel events only mean something in DirectFidel.
+            KeyEvent::FidelConsonant { .. } | KeyEvent::FidelVowel { .. } => {
+                EditorUpdate::default()
+            }
             KeyEvent::Char { text } => EditorUpdate {
                 commit: text,
                 ..Default::default()
@@ -231,7 +311,11 @@ impl KeyboardEngine {
     }
 
     pub fn reset(&self) -> EditorUpdate {
-        self.lock().composing.clear();
+        let mut s = self.lock();
+        s.composing.clear();
+        if let Some(d) = s.direct.as_mut() {
+            d.reset();
+        }
         EditorUpdate::default()
     }
 
@@ -251,16 +335,25 @@ fn mode_fits_language(mode: InputMode, language_code: &str) -> bool {
     }
 }
 
-/// Modes implemented in this build. Extend as C1.3 (DirectFidel), C1.4 (PhoneticLatin)
-/// and C1.5 (Qubee) land.
+/// Modes implemented in this build. DirectFidel is implemented (C1.3) but additionally needs a
+/// loaded layout, checked in `set_input_mode`. Extend as C1.4 (PhoneticLatin) and C1.5 (Qubee)
+/// land.
 fn mode_available(mode: InputMode) -> bool {
-    matches!(mode, InputMode::Abc | InputMode::English)
+    matches!(
+        mode,
+        InputMode::Abc | InputMode::English | InputMode::DirectFidel
+    )
 }
 
 impl KeyboardEngine {
     fn lock(&self) -> MutexGuard<'_, State> {
         // A poisoned lock only means another thread panicked; the state is still usable.
         self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn lock_layouts(&self) -> MutexGuard<'_, HashMap<String, Arc<Layout>>> {
+        // Entries are only inserted after full validation, so a poisoned map is still valid.
+        self.layouts.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     fn lock_packs(&self) -> MutexGuard<'_, HashMap<PackSlot, Arc<VerifiedPack>>> {

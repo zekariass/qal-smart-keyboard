@@ -111,7 +111,7 @@ jobs:
         run: ./gradlew --no-daemon :app:assemblePlayDebug :app:assembleDirectDebug testDebugUnitTest
 
   language-data:
-    name: Language data eval harness
+    name: Language data (eval harness, Fidel table)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -120,6 +120,10 @@ jobs:
           python-version: "3.12"
       - name: Unit tests (stdlib only)
         run: python -m unittest discover -s language-data/eval/tests -v
+      - name: Fidel table generator is up to date
+        run: |
+          python -I language-data/scripts/gen_fidel_table.py --check
+          python -I -m unittest discover -s language-data/scripts -p "test_*.py" -v
 
   core:
     name: Rust keyboard-core

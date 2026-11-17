@@ -68,14 +68,14 @@
 | Phase | Name | Steps | 🟩 Done | 🟦 In progress | 🟥 Blocked | ⬜ Todo | % |
 |---|---|---|---|---|---|---|---|
 | Phase 0 | Foundations (M0) | 6 | 6 | 0 | 0 | 0 | 100% |
-| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 2 | 0 | 0 | 20 | 9% |
+| Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 3 | 0 | 0 | 19 | 14% |
 | Phase 2 | Backend + P0 AI (M2) | 39 | 0 | 0 | 0 | 39 | 0% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
 | Phase 4 | Monetisation (M4) | 10 | 0 | 0 | 0 | 10 | 0% |
 | Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
 | Phase 6 | Differentiation (M6) | 8 | 0 | 0 | 0 | 8 | 0% |
 | Phase 7 | Expansion + B2B (M7) | 5 | 0 | 0 | 0 | 5 | 0% |
-| **Total** | | **109** | 8 | 0 | 0 | 101 | 7% |
+| **Total** | | **109** | 9 | 0 | 0 | 100 | 8% |
 
 ### Human gates
 
@@ -101,7 +101,8 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 | 2026-11-17 | F0.5 | 🟩 DONE | 160ab8f | `docs/adr/0001-open-items.md`: 24 OPEN items (12 from SD §26.2 verbatim, 7 review risks, 5 Phase 0 findings) with owner, due milestone and blocked plan steps. Human gate G0 still open. |
 | 2026-11-17 | F0.6 | 🟩 DONE | 160ab8f | `language-data/eval/`: stdlib-only Python harness (`python -m qal_eval run`), JSON configs (keys only via env var names), `mock_http` adapter + registry, chrF/chrF++/WER/CER/script-ok/latency metrics, CSV output; 22 unit tests (also in CI). Ran end to end against WireMock incl. error/slow scenarios. Open: sample references are synthetic and not native-reviewed; chrF averaging not verified against sacrebleu; dataset licences in README to verify. |
 | 2026-11-17 | C1.1 | 🟩 DONE | caf044a | Rust 1.91.0 crate `qal-keyboard-core` (UniFFI 0.32 proc-macros; lib/cdylib/staticlib); module stubs per SD §7; FFI API `KeyboardEngine` (new, load_pack, set_input_mode, on_key, select_candidate, reset, version) + records/enums/`CoreError`. `set_input_mode` refuses modes that do not fit the language or are not implemented, so keys are never silently swallowed. 10 tests; Kotlin + Swift bindings generate; built in Docker (`rust:1.91`), Rust not installed locally. Release profile uses `strip = "debuginfo"` (full strip removes UniFFI metadata). Proceeded with Rust per design recommendation; OI-12 still OPEN. |
-| 2026-11-17 | C1.2 | 🟩 DONE | see git log | Pack container v1 (`docs/specs/pack-format-v1.md`, ADR 0002): signature over exact manifest bytes with domain separation, strict Ed25519, pinned keys with revocation, SHA-256 + size, limits, downgrade protection, deltas verified but host-applied. API: fallible `KeyboardEngine::new`, `EngineConfig.trusted_keys/pack_limits`, richer `PackInfo`, `PackRejectReason`, `loaded_packs()`. 63 tests (exhaustive bit-flip/truncation, proptest), 20 cross-language vectors (independently reproduced with OpenSSL), cargo-fuzz 2 targets ~76 s each, 0 crashes. OpenAPI `LanguageResourceManifest` now discovery-only (no `signature`, + `containerSizeBytes`). Hosts must persist installed versions (A1.6/A2.3/I5.2). |
+| 2026-11-17 | C1.2 | 🟩 DONE | 5784269, 5ad22df | Pack container v1 (`docs/specs/pack-format-v1.md`, ADR 0002): signature over exact manifest bytes with domain separation, strict Ed25519, pinned keys with revocation, SHA-256 + size, limits, downgrade protection, deltas verified but host-applied. API: fallible `KeyboardEngine::new`, `EngineConfig.trusted_keys/pack_limits`, richer `PackInfo`, `PackRejectReason`, `loaded_packs()`. 63 tests (exhaustive bit-flip/truncation, proptest), 20 cross-language vectors (independently reproduced with OpenSSL), cargo-fuzz 2 targets ~76 s each, 0 crashes. OpenAPI `LanguageResourceManifest` now discovery-only (no `signature`, + `containerSizeBytes`). Hosts must persist installed versions (A1.6/A2.3/I5.2). |
+| 2026-11-17 | C1.3 | 🟩 DONE | see git log | Fidel syllable table generated from Unicode names (`language-data/scripts/gen_fidel_table.py`: 78 series, 481 forms; reviewer re-checked every form against its Unicode name), mirrored into `core/src/composer/fidel_table.rs` with a staleness test (in CI). Layout format `docs/specs/keyboard-layout-v1.md`; DRAFT am (34 series) and ti (35, + ቐ) layouts in `language-data/layouts/`. Core: `KEYBOARD_LAYOUT` packs validated after signature check (`INVALID_ARTIFACT`), `fidel_layout()`, `KeyEvent::FidelConsonant/FidelVowel`, LONG_PRESS + TWO_KEY (default 6th order), DirectFidel only when a layout is loaded. 93 Rust tests + 8 Python tests. Open for G0 panel: ኸ in Amharic, homophone series on main keys, default order 6 vs 1. Fuzz crate not rebuilt this step. |
 
 ---
 
@@ -132,7 +133,7 @@ Goal: a fully offline Android keyboard for Amharic, Tigrinya, Afaan Oromoo and E
 |---|---|---|---|---|
 | C1.1 | Crate scaffold: modules `composer, translit, segmenter, lexicon, ranker, langid, calendar`; public API surface designed for UniFFI (no lifetimes across FFI). | F0.1 | `cargo test` passes; `uniffi-bindgen` generates Kotlin and Swift. | 🟩 DONE |
 | C1.2 | **Pack format + loader**: versioned binary/JSON pack with manifest, Ed25519 signature verify, size limits. Reject unsigned/malformed. | C1.1 | Fuzz target on parser; tampered pack rejected in tests. | 🟩 DONE |
-| C1.3 | **Direct Fidel input** model (fidel layout data, 7 orders, labialised forms) driven by data, not hard-coded. | C1.2 | Golden vectors pass. | ⬜ TODO |
+| C1.3 | **Direct Fidel input** model (fidel layout data, 7 orders, labialised forms) driven by data, not hard-coded. | C1.2 | Golden vectors pass. | 🟩 DONE |
 | C1.4 | **Phonetic Latin→Ge'ez transliteration engine** driven by profile data (rules, longest-match, composing buffer, alternatives, backspace, protected tokens). Load AM and TI DRAFT profiles from `language-data/`. | C1.2 | Golden corpus per profile version: keystrokes → composing → committed → alternatives, 100% pass. | ⬜ TODO |
 | C1.5 | Qubee (Afaan Oromoo Latin) and English handling; ABC passthrough mode. | C1.1 | Unit tests. | ⬜ TODO |
 | C1.6 | **Lexicon**: compact trie/FST from wordlists, prefix lookup, user dictionary overlay. | C1.2 | Lookup meets §17.1 latency budget in benchmark. | ⬜ TODO |

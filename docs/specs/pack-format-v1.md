@@ -248,7 +248,9 @@ Rejections surface as `CoreError::PackRejected { reason: PackRejectReason, detai
 is machine-readable (codes in §6 and §8: `MALFORMED`, `TOO_LARGE`,
 `UNSUPPORTED_FORMAT_VERSION`, `UNKNOWN_KEY`, `REVOKED_KEY`, `BAD_SIGNATURE`,
 `INVALID_MANIFEST`, `UNSUPPORTED_RESOURCE_TYPE`, `KEY_MISMATCH`, `SIZE_MISMATCH`,
-`CHECKSUM_MISMATCH`, `DOWNGRADE`, `DELTA_NOT_SUPPORTED`). `detail` is a fixed English sentence
+`CHECKSUM_MISMATCH`, `DOWNGRADE`, `DELTA_NOT_SUPPORTED`, and `INVALID_ARTIFACT` for a verified
+pack whose artifact fails validation for its resource type, e.g. a `KEYBOARD_LAYOUT` per
+`keyboard-layout-v1.md`). `detail` is a fixed English sentence
 and never contains pack content, key ids or parser messages (N2). Hosts may log the reason
 code.
 

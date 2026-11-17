@@ -1,0 +1,41 @@
+{
+ "format": "qal-keyboard-layout",
+ "formatVersion": 1,
+ "language": "ti",
+ "layoutId": "ti-fidel",
+ "layoutVersion": "0.1.0",
+ "status": "DRAFT",
+ "interaction": ["LONG_PRESS", "TWO_KEY"],
+ "defaultOrder": 6,
+ "popupOrders": [1, 2, 3, 4, 5, 6, 7, 8],
+ "vowelKeys": [
+  {"order": 1, "label": "ሀ"},
+  {"order": 2, "label": "ሁ"},
+  {"order": 3, "label": "ሂ"},
+  {"order": 4, "label": "ሃ"},
+  {"order": 5, "label": "ሄ"},
+  {"order": 6, "label": "ህ"},
+  {"order": 7, "label": "ሆ"},
+  {"order": 8, "label": "ዋ"}
+ ],
+ "rows": [
+  [{"series": "H", "label": "ሀ"}, {"series": "L", "label": "ለ"}, {"series": "HH", "label": "ሐ"}, {"series": "M", "label": "መ"}, {"series": "SZ", "label": "ሠ"}, {"series": "R", "label": "ረ"}, {"series": "S", "label": "ሰ"}],
+  [{"series": "SH", "label": "ሸ"}, {"series": "Q", "label": "ቀ", "labialized": "QW"}, {"series": "QH", "label": "ቐ", "labialized": "QHW"}, {"series": "B", "label": "በ"}, {"series": "V", "label": "ቨ"}, {"series": "T", "label": "ተ"}, {"series": "C", "label": "ቸ"}],
+  [{"series": "X", "label": "ኀ", "labialized": "XW"}, {"series": "N", "label": "ነ"}, {"series": "NY", "label": "ኘ"}, {"series": "GLOTTAL", "label": "አ"}, {"series": "K", "label": "ከ", "labialized": "KW"}, {"series": "KX", "label": "ኸ", "labialized": "KXW"}, {"series": "W", "label": "ወ"}],
+  [{"series": "PHARYNGEAL", "label": "ዐ"}, {"series": "Z", "label": "ዘ"}, {"series": "ZH", "label": "ዠ"}, {"series": "Y", "label": "የ"}, {"series": "D", "label": "ደ"}, {"series": "J", "label": "ጀ"}, {"series": "G", "label": "ገ", "labialized": "GW"}],
+  [{"series": "TH", "label": "ጠ"}, {"series": "CH", "label": "ጨ"}, {"series": "PH", "label": "ጰ"}, {"series": "TS", "label": "ጸ"}, {"series": "TZ", "label": "ፀ"}, {"series": "F", "label": "ፈ"}, {"series": "P", "label": "ፐ"}]
+ ],
+ "punctuation": ["።", "፣", "፤", "፥", "፦", "፧", "፨", "፡"],
+ "digits": [
+  {"digit": "1", "alternatives": ["፩", "፲"]},
+  {"digit": "2", "alternatives": ["፪", "፳"]},
+  {"digit": "3", "alternatives": ["፫", "፴"]},
+  {"digit": "4", "alternatives": ["፬", "፵"]},
+  {"digit": "5", "alternatives": ["፭", "፶"]},
+  {"digit": "6", "alternatives": ["፮", "፷"]},
+  {"digit": "7", "alternatives": ["፯", "፸"]},
+  {"digit": "8", "alternatives": ["፰", "፹"]},
+  {"digit": "9", "alternatives": ["፱", "፺"]},
+  {"digit": "0", "alternatives": ["፻", "፼"]}
+ ]
+}

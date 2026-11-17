@@ -97,11 +97,17 @@ fn every_resource_type_and_platform_is_accepted() {
     let e = engine();
     for t in types {
         for p in ["SHARED", "ANDROID", "IOS"] {
-            let mut m = manifest_value(&a, ARTIFACT);
+            // A KEYBOARD_LAYOUT artifact is validated as a layout after verification (C1.3).
+            let artifact: &[u8] = if t == "KEYBOARD_LAYOUT" {
+                include_bytes!("../../language-data/layouts/am-fidel-draft.json")
+            } else {
+                ARTIFACT
+            };
+            let mut m = manifest_value(&a, artifact);
             m.insert("resourceType".into(), json!(t));
             m.insert("platform".into(), json!(p));
             let info = e
-                .load_pack(signed_raw(&a, &serde_json::to_vec(&m).unwrap(), ARTIFACT))
+                .load_pack(signed_raw(&a, &serde_json::to_vec(&m).unwrap(), artifact))
                 .unwrap();
             assert_eq!(info.resource_type.as_wire(), t);
             assert_eq!(info.platform.as_wire(), p);
