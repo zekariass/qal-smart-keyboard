@@ -124,7 +124,7 @@ jobs:
           cargo install cargo-ndk --locked
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" >/dev/null
       - name: Assemble and unit test
-        run: ./gradlew --no-daemon :app:assemblePlayDebug :app:assembleDirectDebug testDebugUnitTest
+        run: ./gradlew --no-daemon :app:assemblePlayDebug :app:assembleDirectDebug testDebugUnitTest :app:testPlayDebugUnitTest :app:testDirectDebugUnitTest
 
   language-data:
     name: Language data (eval harness, Fidel table)
