@@ -22,6 +22,7 @@ System state is re-read in `MainActivity.onResume` and `onWindowFocusChanged` (t
 |---|---|
 | `OnboardingModel.kt` | Android-free state machine (`OnboardingFlow` step rules, `LanguageDraft`, `OnboardingModel` over `SettingsRepository`). JVM-tested. |
 | `OnboardingViewModel.kt` | Thin `ViewModel` (survives rotation) and `ImeStatusReader` (system facts). |
+| `OnboardingSaver.kt` | Keeps the step and the language draft in the `SavedStateHandle` (ADR 0007 D12), so the flow resumes the same step after process death (for example after enabling the keyboard in system settings). The IME status is re-read on resume; restoring is lenient (garbage falls back to defaults). |
 | `OnboardingScreen.kt` | Compose UI: scrollable content with pinned Back/Continue, content descriptions, status as text (not colour only); works in portrait, landscape and large text. |
 
 ## Personal dictionary (A1.8)

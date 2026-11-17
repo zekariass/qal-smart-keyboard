@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.qalsmartkeyboard.app.onboarding.ImeStatusReader
@@ -36,7 +37,7 @@ class MainActivity : ComponentActivity() {
     private val repository by lazy { SettingsRepository.get(applicationContext) }
 
     private val onboarding: OnboardingViewModel by viewModels {
-        viewModelFactory { initializer { OnboardingViewModel(SettingsRepository.get(applicationContext)) } }
+        viewModelFactory { initializer { OnboardingViewModel(SettingsRepository.get(applicationContext), createSavedStateHandle()) } }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
