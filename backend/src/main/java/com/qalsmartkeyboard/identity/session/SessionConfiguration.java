@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.qalsmartkeyboard.identity.DeviceRegistrar;
 import com.qalsmartkeyboard.identity.account.UserAccountStore;
 import com.qalsmartkeyboard.identity.token.AccessTokenService;
 import com.qalsmartkeyboard.identity.token.TokenProperties;
@@ -21,10 +22,10 @@ import io.micrometer.core.instrument.MeterRegistry;
 class SessionConfiguration {
 
 	@Bean
-	SessionService sessionService(JdbcClient jdbc, UserAccountStore accounts, AccessTokenService accessTokens,
+	SessionService sessionService(ObjectProvider<DeviceRegistrar> devices, JdbcClient jdbc, UserAccountStore accounts, AccessTokenService accessTokens,
 			OutboxPublisher outbox, PlatformTransactionManager transactionManager, TokenProperties properties,
 			ObjectProvider<Clock> clock, ObjectProvider<MeterRegistry> meters) {
-		return new SessionService(new SessionStore(jdbc), accounts, accessTokens, new RefreshTokens(new SecureRandom()),
+		return new SessionService(devices, new SessionStore(jdbc), accounts, accessTokens, new RefreshTokens(new SecureRandom()),
 				outbox, new TransactionTemplate(transactionManager), properties.refreshTokenTtl(),
 				properties.refreshReuseGrace(),
 				clock.getIfAvailable(Clock::systemUTC), meters.getIfAvailable());

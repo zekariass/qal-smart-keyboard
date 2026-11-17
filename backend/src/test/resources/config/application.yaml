@@ -16,6 +16,10 @@ qal:
     tokens:
       signing-key:
         allow-ephemeral: true
+    # B2.3: the mock Play Integrity / App Attest verifiers (token format in MockAttestationTokens).
+    attestation:
+      mock:
+        enabled: true
   notifications:
     sms:
       provider: log

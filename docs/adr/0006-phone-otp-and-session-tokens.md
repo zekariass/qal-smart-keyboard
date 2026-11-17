@@ -1,7 +1,7 @@
 # ADR 0006 — Phone OTP sign-in and session tokens
 
 **Status:** Accepted · **Date:** 2026-11-17 · **Plan steps:** B2.1 (phone OTP), B2.4 (tokens), B2.4 follow-up
-(ADR 0007 D8/D9) · **Spec:** SD §9.2, §9.3, §18; contract `/api/v1/auth/otp/*`, `/auth/refresh`, `/auth/logout`;
+(ADR 0007 D8/D9), B2.5 (device binding) · **Spec:** SD §9.2, §9.3, §18; contract `/api/v1/auth/otp/*`, `/auth/refresh`, `/auth/logout`;
 V1 `otp_challenges`, `users`, `user_auth_identities`, `user_sessions`; V3, V4
 
 ## Context
@@ -208,7 +208,20 @@ number, hash, IP or code is ever a tag or log argument. A test captures every lo
   `users.market_source` CHECK list (SQL is canonical). Market fields are still omitted from the profile until
   something resolves the market.
 
+## Device binding (B2.5)
+- `user_sessions.device_id` and the access token's `did` come from the `devices` module, without a dependency from
+  identity on it: identity owns the port `identity.DeviceRegistrar` (implemented by `devices`) and the port
+  `identity.DeviceSessions` (implemented by `SessionService`, used by `devices`). Modulith sees `devices -> identity`
+  only.
+- A sign-in that carries a native `device` registers it in the sign-in transaction (an invalid registration fails the
+  sign-in and nothing, including the consumed OTP, is committed). The refresh chain keeps the device of the presented
+  row, so `did` stays stable across rotations.
+- `POST /devices` binds an existing device-less family (under the family lock, `ACTIVE` rows only). A family that already
+  has a device is never rebound.
+- Revoking a device locks every ACTIVE family bound to it (stable order), revokes them (`DEVICE_REVOKED`), then marks
+  the device REVOKED, all in one transaction. Their refresh tokens are dead at once; access tokens live on for their
+  remaining lifetime (stateless verification, as for logout).
+
 ## Open
 - OTP SMS text is English only. Localised templates need native review (G0).
-- No consumer yet for `identity.refresh_token.reuse_detected` (notifications), and `did`/device binding waits for
-  B2.5. Guest upgrade on verify (`mergedGuestUserId`) is B2.6.
+- No consumer yet for `identity.refresh_token.reuse_detected` or `devices.device.revoked` (notifications). Guest upgrade on verify (`mergedGuestUserId`) is B2.6.

@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.qalsmartkeyboard.identity.DeviceInfo;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -49,13 +50,19 @@ final class OtpDtos {
 	}
 
 	/**
-	 * {@code DeviceRegistration}. Only {@code installationId} is used before B2.5 (per-device verify limit); device rows
-	 * are registered by the devices module in B2.5.
+	 * {@code DeviceRegistration}. {@code installationId} keys the per-device verify limit; a native device is also
+	 * registered by the devices module while the session is issued (B2.5), so the session carries the device.
 	 */
 	record DeviceRegistrationDto(@NotNull UUID installationId,
 			@NotNull @Pattern(regexp = "^(ANDROID|IOS|WEB)$") String platform, @Size(max = 160) String deviceName,
 			@Size(max = 40) String appVersion, @Size(max = 80) String osVersion,
 			@Pattern(regexp = "^(FCM|APNS)$") String pushProvider, @Size(max = 4096) String pushToken) {
+
+		/** {@code appVersion} falls back to the {@code X-App-Version} header. */
+		DeviceInfo toDeviceInfo(String appVersionHeader) {
+			return new DeviceInfo(installationId, platform, deviceName, appVersion != null ? appVersion : appVersionHeader,
+					osVersion, pushProvider, pushToken);
+		}
 
 		@Override
 		public String toString() {

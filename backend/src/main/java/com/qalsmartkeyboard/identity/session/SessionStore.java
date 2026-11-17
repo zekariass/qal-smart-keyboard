@@ -154,6 +154,24 @@ class SessionStore {
 				""").param("userId", userId).query(UUID.class).list();
 	}
 
+	/** Families of the user with an ACTIVE row bound to the device, in a stable order (they are locked in this order). */
+	List<UUID> activeFamiliesOfDevice(UUID userId, UUID deviceId) {
+		return jdbc.sql("""
+				SELECT DISTINCT token_family_id FROM user_sessions
+				WHERE user_id = :userId AND device_id = :deviceId AND session_status = 'ACTIVE'
+				ORDER BY token_family_id
+				""").param("userId", userId).param("deviceId", deviceId).query(UUID.class).list();
+	}
+
+	/** Binds the ACTIVE rows of a family that have no device yet. @return rows bound */
+	int bindDevice(UUID familyId, UUID userId, UUID deviceId) {
+		return jdbc.sql("""
+				UPDATE user_sessions SET device_id = :deviceId
+				WHERE token_family_id = :familyId AND user_id = :userId AND session_status = 'ACTIVE'
+				  AND device_id IS NULL
+				""").param("deviceId", deviceId).param("familyId", familyId).param("userId", userId).update();
+	}
+
 	int revokeAllOfUser(UUID userId, String reason, Instant now) {
 		return jdbc.sql("""
 				UPDATE user_sessions SET session_status = 'REVOKED', revoked_at = :now, revoked_reason = :reason

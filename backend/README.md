@@ -176,6 +176,70 @@ Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST 
   (`userId`, `sessionId`, `deviceId`, `accountType`).
 - **Metrics:** `qal.identity.sessions{event=issued|rotated|rotated_grace|reuse_detected|expired|logout|logout_all}`.
 
+## Devices (B2.5, ADR 0006)
+
+Module `devices` owns `user_devices`: `POST /api/v1/devices` (`registerDevice`), `PATCH /api/v1/devices/{deviceId}`
+(`updateDevice`) and `DELETE /api/v1/devices/{deviceId}` (`revokeDevice`); all need an access token.
+
+- **Register** is idempotent per user and installation id (`ux_user_device_installation`): the same row comes back and
+  the reported fields are refreshed (`null` keeps the stored value). Platform must be `ANDROID` or `IOS` (`WEB` has no
+  devices: 400), an installation never changes platform (400 `PLATFORM_MISMATCH`), and a present `X-Client-Platform`
+  header must equal the body's platform. `X-App-Version` fills `appVersion` when the body has none (also on PATCH).
+  A REVOKED device registered again becomes ACTIVE with its attestation reset. `distribution_channel` stays `OTHER`
+  (the contract carries no channel).
+- **List:** the contract has no `GET /devices`, so there is no endpoint; `DeviceService.list(userId)` exists for it.
+- **Ownership:** every lookup is by device id and the caller's user id. A foreign, unknown or (for PATCH) revoked device is
+  the same 404 `NOT_FOUND`. DELETE of an already revoked device is 204 again.
+- **Push token:** write-only (never returned, never logged), stored in `push_token` as the V1 column defines it (plain:
+  the unique active-token index must recognise a token that moves between accounts; it is a delivery address, not user
+  content, so it is not sealed with `UserDataEncryption`). Provider is derived from the platform (`FCM`/`APNS`) and a
+  mismatching `pushProvider` is a 400. An empty `pushToken` on PATCH clears it. A token already held by another ACTIVE
+  device moves to the newest registration. Revocation drops the token.
+- **Device and session (`did`):** identity depends on no devices code. `identity.DeviceRegistrar` (port, implemented by
+  `devices`) is called while a sign-in issues its session, so OTP verify with a `device` member registers it and the
+  session row, and every access token of that family, carry the device (`AuthSession.deviceId`, claim `did`); `WEB`
+  devices are skipped. `POST /devices` binds the caller's session family when it has no device yet (the next refresh
+  returns a token with `did`; the current access token is not reissued). `DELETE` calls `identity.DeviceSessions` in
+  the same transaction: every family bound to the device is revoked (`DEVICE_REVOKED`), so its refresh token gets
+  `UNAUTHENTICATED`. Access tokens already issued still verify for up to 15 minutes. The outbox event
+  `devices.device.revoked` (`userId`, `deviceId`, `revokedSessions`) has no consumer yet.
+- **Metrics:** `qal.devices{event=registered|refreshed|updated|revoked}`, `qal.identity.sessions{event=device_revoked}`.
+
+## Identity: attestation nonces and guest accounts (B2.3, ADR 0008)
+
+`POST /api/v1/auth/attestation-nonces` (anonymous, or with a valid bearer), `POST /api/v1/auth/guest` (anonymous) and
+`POST /api/v1/devices/{deviceId}/attestations` (bearer).
+
+- **Nonce:** 256 random bits (43 base64url characters), valid `qal.identity.attestation.nonce-ttl` (5m, the contract's
+  value and the maximum), stored only as SHA-256 in `attestation_nonces` (V5). Bound to the caller when a bearer token is
+  sent (only that user can spend it) and to `X-Client-Platform` when sent. Single use: one atomic `UPDATE` marks it
+  consumed, in its own committed transaction, so a replayed verdict and a failed verdict both burn it. 429 per client IP
+  (`limits.nonce-per-ip`, 120/h). The contract has no body on this call, so a nonce cannot be bound to an installation id.
+- **Verifier ports** (`identity.attestation`): `PlayIntegrityVerifier`, `AppAttestVerifier`, combined by the
+  `AttestationVerifier` strategy by platform (`ANDROID` uses Play Integrity, `IOS` uses App Attest). An adapter returns
+  VALID (genuine, and it covers the expected nonce), REJECTED or UNAVAILABLE and never throws for a bad token; an adapter
+  that throws counts as UNAVAILABLE. **No real adapter exists yet.** A real adapter is any bean of the port type.
+- **Mock adapters** (development and tests only): `QAL_ATTESTATION_MOCK=true` /
+  `qal.identity.attestation.mock.enabled=true`; refused at startup under `prod`/`production`/`staging`. Token format
+  (`MockAttestationTokens`): `mock-play-integrity.v1.<nonce>.valid` (provider `PLAY_INTEGRITY`) and
+  `mock-app-attest.v1.<nonce>.valid` (provider `APP_ATTEST`, `keyId` required). The nonce in the token and the evidence's
+  `nonce` must both equal the server's nonce; any other string, verdict word or part count is rejected.
+- **Fail closed:** without an adapter for a platform (the default, hence production until the real adapters exist) every
+  verdict is UNAVAILABLE: nonces are still issued, `POST /auth/guest` is always 403 `GUEST_NOT_ALLOWED`, and
+  `POST /devices/{id}/attestations` answers `UNSUPPORTED` and leaves the device unattested.
+- **Guest:** order is platform (`ANDROID`/`IOS`, else 400), per-IP (`guest-per-ip`, 10/h) and per-installation
+  (`guest-per-installation`, 5/h) limits (429), attestation, then one transaction that creates the `GUEST` user (no
+  identity rows, `ACTIVE`), registers the device with the VALID verdict and issues the session (`accountType=GUEST` and
+  `did` in the access token). **Every attestation failure is 403 `GUEST_NOT_ALLOWED`** with a generic detail (missing or
+  empty attestation, unknown/expired/replayed/foreign nonce, wrong provider, rejected verdict, no verifier, installation
+  already has a guest). One guest per installation, no resume (ADR 0008).
+- **Plan:** a GUEST account's effective plan is `GUEST` while it has no subscription (SD 15.5), so no subscription row is
+  written; the `GUEST` plan and its `plan_entitlements` are V1 seed data (TRANSLATE 3/day and so on).
+- **Device attestation:** the verdict (`VALID`/`FAILED`; `UNSUPPORTED` if no verifier is available, which never overwrites
+  an earlier VALID/FAILED) is stored on `user_devices` (provider, status, `attestation_checked_at`).
+- **Metrics:** `qal.identity.attestation.nonces{outcome}`, `qal.identity.attestation.verdicts{outcome}`,
+  `qal.identity.guest{outcome}`. Tokens and nonces are never logged.
+
 ## Security chain (B2.4, OI-P11)
 
 `identity.security.ApiSecurityConfiguration` is the only `SecurityFilterChain`. It is stateless (no session, no CSRF,
@@ -255,4 +319,5 @@ Android and iOS client generation are added with their own steps (A2.1, I-steps)
 `DB_URL` (default `localhost:5434`); `*IT` classes use Testcontainers and need Docker. Running the application
 (`./mvnw spring-boot:run`) also needs the KMS, OTP secret, SMS provider and access-token key settings above, e.g.
 `QAL_KMS_PROVIDER=local QAL_LOCAL_KMS_KEK=$(openssl rand -base64 32) QAL_OTP_SECRET_KEY=$(openssl rand -base64 32) QAL_SMS_PROVIDER=log`
+(plus `QAL_ATTESTATION_MOCK=true` for `POST /auth/guest` to work locally)
 plus `QAL_JWT_PRIVATE_KEY`/`QAL_JWT_PUBLIC_KEY` from the openssl commands in "Identity: sessions and tokens".
