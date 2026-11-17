@@ -99,6 +99,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AttestationNonce' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
   /api/v1/auth/otp/start:
     post:
@@ -107,7 +108,7 @@ paths:
       summary: Send a one-time code to a phone number
       description: |
         Starts phone sign-in. Responds identically whether or not the number is registered.
-        Rate-limited per number, device and IP.
+        Rate-limited per number, IP and (when `installationId` is sent) device.
       security:
         - {}
         - bearerAuth: []
@@ -130,6 +131,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/OtpChallenge' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
   /api/v1/auth/otp/verify:
     post:
@@ -139,7 +141,8 @@ paths:
       description: |
         Exchanges a valid code for a session. **Guest upgrade:** if the request carries a guest
         bearer token, the guest's data (preferences, usage, history) is merged into the
-        registered account and `mergedGuestUserId` is returned.
+        registered account and `mergedGuestUserId` is returned. A suspended account gets 403
+        `ACCOUNT_SUSPENDED`.
       security:
         - {}
         - bearerAuth: []
@@ -156,6 +159,7 @@ paths:
               schema: { $ref: '#/components/schemas/AuthSession' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
   /api/v1/auth/oauth/{provider}:
     post:
@@ -208,6 +212,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AuthSession' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/auth/email/login:
     post:
@@ -271,6 +276,13 @@ paths:
         Every refresh issues a new refresh token and invalidates the presented one. Tokens belong
         to a token family; presenting an already-rotated token is treated as theft and **revokes
         the whole family** (`REFRESH_TOKEN_REUSED`). Access tokens live 10–15 minutes.
+
+        **Grace window (lost responses):** a retry with the token just rotated, sent within a short
+        server-configured window (default 30 s) of that rotation while the refresh token issued by
+        the lost response has never been used, rotates again (200) and invalidates that unused
+        token instead of revoking the family. Clients must still serialise refresh calls and must
+        only keep the newest refresh token they received. A suspended account gets 403
+        `ACCOUNT_SUSPENDED`.
       security:
         - {}
       requestBody:
@@ -284,7 +296,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuthSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /api/v1/auth/logout:
     post:
       tags: [Auth]
@@ -571,6 +585,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ClientConfig' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
   /api/v1/ai/capabilities:
     get:
@@ -590,6 +605,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AiCapabilities' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   # ---------------------------------------------------------------- Languages
@@ -613,6 +629,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/Language' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
   /api/v1/languages/{languageCode}/transliteration-profiles:
     parameters:
@@ -637,6 +654,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/TransliterationProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/language-resources:
     get:
@@ -685,6 +703,7 @@ paths:
                     items: { $ref: '#/components/schemas/LanguageResourceManifest' }
                   nextCursor: { $ref: '#/components/schemas/NextCursor' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/language-resources/{resourceId}:
     parameters:
       - $ref: '#/components/parameters/ResourceId'
@@ -701,6 +720,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LanguageResourceManifest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/resource-signing-keys:
     get:
@@ -725,6 +745,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/SigningKey' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   # ---------------------------------------------------------------- Preferences
@@ -2712,7 +2733,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Short-lived (10–15 min) user access token from `/auth/*`. Guest tokens carry `accountType = GUEST`.
+      description: |
+        Short-lived (10–15 min) user access token from `/auth/*`. Guest tokens carry `accountType = GUEST`.
+        Where the token is optional (`security: [{}, bearerAuth]`), a token that is sent must be valid:
+        an invalid or expired one gets 401 and is never silently ignored.
     partnerApiKey:
       type: http
       scheme: bearer
@@ -2914,7 +2938,7 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Forbidden:
-      description: Authenticated but not allowed (`FEATURE_NOT_ENTITLED`, `CONSENT_REQUIRED`, `GUEST_NOT_ALLOWED`, `ATTESTATION_REQUIRED`, `BILLING_POLICY_DENIED`, `API_SCOPE_MISSING`, ...).
+      description: Authenticated but not allowed (`FEATURE_NOT_ENTITLED`, `CONSENT_REQUIRED`, `GUEST_NOT_ALLOWED`, `ATTESTATION_REQUIRED`, `BILLING_POLICY_DENIED`, `API_SCOPE_MISSING`, `ACCOUNT_SUSPENDED`, ...).
       headers:
         X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
       content:
@@ -3259,6 +3283,10 @@ components:
           type: string
           enum: [SMS, VOICE_CALL]
           default: SMS
+        installationId:
+          type: string
+          format: uuid
+          description: 'Optional. Random per-install ID, the same value as `device.installationId` on verify (not a hardware identifier). When present, the per-device rate limit applies.'
         attestation: { $ref: '#/components/schemas/AttestationEvidence' }
     OtpChallenge:
       type: object
@@ -3413,7 +3441,8 @@ components:
         marketCountry: { $ref: '#/components/schemas/CountryCode' }
         marketSource:
           type: string
-          enum: [USER_SELECTED, STORE_STOREFRONT, PHONE_NUMBER, BILLING_HISTORY, DEFAULT]
+          description: 'How the market was determined (the values of users.market_source).'
+          enum: [USER_SELECTED, STOREFRONT, SIM_COUNTRY, BILLING, ADMIN]
         uiLocale: { type: string, maxLength: 35 }
         timeZone: { type: string, maxLength: 64, description: "IANA zone, e.g. Africa/Addis_Ababa." }
         createdAt: { type: string, format: date-time, readOnly: true }

@@ -43,15 +43,16 @@ record OtpProperties(String secretKey, @DefaultValue("false") boolean allowEphem
 
 	/**
 	 * Fixed-window limits (requests per period). Starts: per client IP (generous: mobile carriers put many users behind
-	 * one CGNAT address), per number (hourly and daily, the SMS-cost guard). Verifies: per client IP and per device
-	 * ({@code device.installationId} of the verify request). Brute force on a single challenge is bounded separately by
-	 * {@code maxAttempts}.
+	 * one CGNAT address), per device when the request names its {@code installationId}, per number (hourly and daily,
+	 * the SMS-cost guard). Verifies: per client IP and per device ({@code device.installationId} of the verify request).
+	 * Brute force on a single challenge is bounded separately by {@code maxAttempts}.
 	 */
-	record Limits(Limit startPerIp, Limit startPerPhone, Limit startPerPhoneDaily, Limit verifyPerIp,
-			Limit verifyPerDevice) {
+	record Limits(Limit startPerIp, Limit startPerDevice, Limit startPerPhone, Limit startPerPhoneDaily,
+			Limit verifyPerIp, Limit verifyPerDevice) {
 
 		Limits {
 			startPerIp = startPerIp != null ? startPerIp : new Limit(30, Duration.ofHours(1));
+			startPerDevice = startPerDevice != null ? startPerDevice : new Limit(10, Duration.ofHours(1));
 			startPerPhone = startPerPhone != null ? startPerPhone : new Limit(5, Duration.ofHours(1));
 			startPerPhoneDaily = startPerPhoneDaily != null ? startPerPhoneDaily : new Limit(10, Duration.ofDays(1));
 			verifyPerIp = verifyPerIp != null ? verifyPerIp : new Limit(60, Duration.ofHours(1));

@@ -34,7 +34,8 @@ import com.qalsmartkeyboard.platform.ratelimit.RateLimiter;
 /**
  * Phone OTP sign-in (SD 9.2): start sends a 6-digit code, verify exchanges it for a session.
  *
- * <p><b>Start</b>: number rules (400) → per-IP limit → [transaction: per-number advisory lock → resend cooldown →
+ * <p><b>Start</b>: number rules (400) → per-IP limit → per-device limit (only when the request names its
+ * {@code installationId}) → [transaction: per-number advisory lock → resend cooldown →
  * per-number limits → new challenge, which supersedes earlier ones] → SMS after commit (SD 8.3: no external call inside
  * a transaction). A delivery failure is counted and logged, and the response stays 202 ("code sent or silently
  * suppressed"): the response never depends on whether the number has an account.
@@ -104,6 +105,7 @@ class OtpService {
 	private final OtpMetrics metrics;
 
 	private final RateLimitPolicy startPerIp;
+	private final RateLimitPolicy startPerDevice;
 	private final List<RateLimitPolicy> startPerPhone;
 	private final RateLimitPolicy verifyPerIp;
 	private final RateLimitPolicy verifyPerDevice;
@@ -124,6 +126,7 @@ class OtpService {
 		this.metrics = metrics;
 		OtpProperties.Limits limits = properties.limits();
 		this.startPerIp = limits.startPerIp().policy("otp.start.ip");
+		this.startPerDevice = limits.startPerDevice().policy("otp.start.device");
 		this.startPerPhone = List.of(limits.startPerPhone().policy("otp.start.phone"),
 				limits.startPerPhoneDaily().policy("otp.start.phone-daily"));
 		this.verifyPerIp = limits.verifyPerIp().policy("otp.verify.ip");
@@ -132,7 +135,10 @@ class OtpService {
 
 	// ------------------------------------------------------------------ start
 
-	StartedChallenge start(String phoneE164, String clientIp, String uiLocale) {
+	/**
+	 * @param deviceKey the request's {@code installationId}, or {@code null}
+	 */
+	StartedChallenge start(String phoneE164, String clientIp, String deviceKey, String uiLocale) {
 		Optional<String> rejection = PhoneNumbers.rejectionReason(phoneE164);
 		if (rejection.isPresent()) {
 			metrics.started("invalid_number", phoneE164 != null && phoneE164.startsWith("+251") ? "ET" : "INTL");
@@ -140,11 +146,18 @@ class OtpService {
 					List.of(new ApiFieldError("phoneNumber", "INVALID_PHONE_NUMBER", rejection.get())), Map.of());
 		}
 		String destination = PhoneNumbers.destination(phoneE164);
-		// The caller's own budget first, so a blocked client cannot drain a victim number's budget.
+		// The caller's own budgets (IP, then device) first, so a blocked client cannot drain a victim number's budget.
 		RateLimitDecision ipDecision = limiter.tryConsume(startPerIp, clientIp);
 		if (!ipDecision.allowed()) {
 			metrics.started("rate_limited", destination);
 			throw ipDecision.toProblem();
+		}
+		if (deviceKey != null) {
+			RateLimitDecision deviceDecision = limiter.tryConsume(startPerDevice, deviceKey);
+			if (!deviceDecision.allowed()) {
+				metrics.started("rate_limited", destination);
+				throw deviceDecision.toProblem();
+			}
 		}
 		String phoneHash = secrets.phoneHash(phoneE164);
 		StartOutcome outcome = transactions.execute(status -> {

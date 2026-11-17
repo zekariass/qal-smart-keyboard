@@ -42,7 +42,7 @@ class AccessTokenServiceTest {
 
 	static TokenProperties props(TokenProperties.SigningKey key, List<TokenProperties.VerificationKey> previous) {
 		return new TokenProperties("qal-smart-keyboard", "qal-api", Duration.ofMinutes(15), Duration.ofSeconds(30),
-				Duration.ofDays(60), key, previous);
+				Duration.ofDays(60), Duration.ofSeconds(30), key, previous);
 	}
 
 	static final TokenProperties EPHEMERAL = props(new TokenProperties.SigningKey("dev-1", null, null, true), null);
@@ -235,7 +235,21 @@ class AccessTokenServiceTest {
 	@Test
 	void accessTokenLifetimeIsCappedAtFifteenMinutes() {
 		assertThatThrownBy(() -> new TokenProperties("i", "a", Duration.ofMinutes(16), Duration.ofSeconds(30),
-				Duration.ofDays(60), new TokenProperties.SigningKey("k", null, null, true), null))
+				Duration.ofDays(60), Duration.ofSeconds(30), new TokenProperties.SigningKey("k", null, null, true), null))
 				.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	void refreshReuseGraceIsBetweenZeroAndTwoMinutes() {
+		TokenProperties.SigningKey key = new TokenProperties.SigningKey("k", null, null, true);
+		assertThat(new TokenProperties("i", "a", Duration.ofMinutes(15), Duration.ofSeconds(30), Duration.ofDays(60),
+				Duration.ZERO, key, null).refreshReuseGrace()).isZero();
+		assertThat(new TokenProperties("i", "a", Duration.ofMinutes(15), Duration.ofSeconds(30), Duration.ofDays(60),
+				Duration.ofMinutes(2), key, null).refreshReuseGrace()).isEqualTo(Duration.ofMinutes(2));
+		for (Duration bad : new Duration[] { Duration.ofSeconds(-1), Duration.ofSeconds(121) }) {
+			assertThatThrownBy(() -> new TokenProperties("i", "a", Duration.ofMinutes(15), Duration.ofSeconds(30),
+					Duration.ofDays(60), bad, key, null)).isInstanceOf(IllegalArgumentException.class)
+					.hasMessageContaining("refresh-reuse-grace");
+		}
 	}
 }

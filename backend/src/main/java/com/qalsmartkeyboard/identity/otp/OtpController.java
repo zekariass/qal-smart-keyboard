@@ -47,7 +47,9 @@ class OtpController {
 	ResponseEntity<OtpChallengeDto> start(@Valid @RequestBody OtpStartRequest body,
 			@RequestHeader(name = HttpHeaders.ACCEPT_LANGUAGE, required = false) String acceptLanguage,
 			HttpServletRequest request) {
-		StartedChallenge started = service.start(body.phoneNumber(), request.getRemoteAddr(), uiLocale(acceptLanguage));
+		String deviceKey = body.installationId() == null ? null : body.installationId().toString();
+		StartedChallenge started = service.start(body.phoneNumber(), request.getRemoteAddr(), deviceKey,
+				uiLocale(acceptLanguage));
 		HttpHeaders headers = new HttpHeaders();
 		started.callerLimit().headers().forEach(headers::set);
 		return ResponseEntity.status(HttpStatus.ACCEPTED).headers(headers).body(new OtpChallengeDto(
