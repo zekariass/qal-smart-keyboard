@@ -211,3 +211,14 @@ system document picker and a provider writing the file, a visual check of every 
 `SharedPreferences` flag read by the keyboard, sign-out and wipe on real Keystore files, polling while the app is backgrounded, and an
 end-to-end run against the backend (history actually saved after enabling, the export archive opened, deletion and cancel after a second
 sign-in). Placeholders: `terms_url` and `privacy_notice_url` in `strings.xml`.
+
+## Themes (package `themes`)
+Settings > Theme shows the current theme and opens `ThemesScreen` (route state `themesOpen` in `MainActivity`). Free section (System, then the free themes) and Premium section of cards, each with a miniature keyboard (`KeyboardThemePreview`, drawn from the IME's own `KeyboardTheme` tokens), a Premium badge with a padlock while locked, and "Applied" on the current one. A tap opens a larger preview; **preview never changes the keyboard**: Apply writes the id into the `theme` setting (synced as `keyboardTheme`), a locked premium theme shows "Unlock with Premium", which opens the plans screen. When the applied theme is premium but not available the screen says why (signed out, plan without themes, or "connect once to check your plan") and which free theme the keyboard shows meanwhile. Access comes from `ThemeAccessHolder` (`QalApplication` registers `AiGraph.themeAccess`, `ServerThemeAccess` in `:ai-client`).
+
+| File | Role |
+|---|---|
+| `ThemePickerModel.kt` | Android-free logic: preview state (never writes), `apply` (refuses premium without access), `ThemeStore`. JVM-tested. |
+| `ThemePreview.kt` | `KeyboardThemePreview` canvas and the padlock icon. |
+| `ThemesScreen.kt` | Cards, large preview, locked banner; `ThemesHost` wires model, store and entitlement. |
+
+**Add a theme:** add a catalogue entry in `:ime` (`ime/README.md`, "Themes"); the picker lists it under its tier automatically.

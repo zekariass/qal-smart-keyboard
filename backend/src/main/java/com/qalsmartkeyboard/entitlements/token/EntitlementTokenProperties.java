@@ -25,7 +25,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties("qal.entitlements.token")
 public record EntitlementTokenProperties(@DefaultValue("qal-smart-keyboard") String issuer,
 		@DefaultValue("qal-keyboard") String audience, @DefaultValue("24h") Duration ttl,
-		@DefaultValue("72h") Duration offlineGrace, @DefaultValue("ON_DEVICE_AI_MODELS") List<String> offlineFeatures,
+		@DefaultValue("72h") Duration offlineGrace, @DefaultValue({ "ON_DEVICE_AI_MODELS", "PREMIUM_THEMES" }) List<String> offlineFeatures,
 		@DefaultValue SigningKey signingKey, List<VerificationKey> previousKeys) {
 
 	/** SD 15.5: tokens are valid for 24 h. */

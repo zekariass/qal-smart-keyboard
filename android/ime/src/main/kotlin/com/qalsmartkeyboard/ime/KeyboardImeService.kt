@@ -23,6 +23,11 @@ import com.qalsmartkeyboard.ime.ai.AiLink
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
 import com.qalsmartkeyboard.ime.ai.AiToolbarView
 import com.qalsmartkeyboard.ime.ai.EditorAiAccess
+import com.qalsmartkeyboard.ime.theme.PremiumThemeAccess
+import com.qalsmartkeyboard.ime.theme.ResolvedTheme
+import com.qalsmartkeyboard.ime.theme.ThemeAccess
+import com.qalsmartkeyboard.ime.theme.ThemeAccessHolder
+import com.qalsmartkeyboard.ime.theme.ThemeResolver
 import com.qalsmartkeyboard.ime.userdict.UserDictionary
 import com.qalsmartkeyboard.ime.packs.PackRuntime
 import com.qalsmartkeyboard.ime.packs.PackStorage
@@ -71,6 +76,59 @@ class KeyboardImeService : InputMethodService() {
             val type = currentInputEditorInfo?.inputType ?: return 0
             return if (type == InputType.TYPE_NULL) 0 else ic?.getCursorCapsMode(reqModes) ?: 0
         }
+    }
+
+    // Themes: the stored choice (settings snapshot) resolved against the premium entitlement (a port the app injects).
+    @Volatile private var themeAccess: ThemeAccess? = null
+    private var themeAccessHandle: AutoCloseable? = null
+    private var overlayView: PopupOverlay? = null
+
+    /** The theme being drawn right now (premium choices fall back to a free theme without the entitlement). */
+    var resolvedTheme: ResolvedTheme = ThemeResolver.resolve(null, false, PremiumThemeAccess.NEEDS_CHECK)
+        private set
+
+    /** True when the drawn theme is a light one (navigation bar icon appearance follows it). */
+    val isLightTheme: Boolean get() = resolvedTheme.theme.isLight
+
+    /**
+     * Resolves the chosen theme and hands it to the views; the next draw uses it (no restart). Main thread. Cheap:
+     * it reads the cached settings snapshot and the in-memory entitlement answer, never the disk or the network.
+     */
+    private fun applyTheme() {
+        val dark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val access = themeAccess?.premium ?: PremiumThemeAccess.NEEDS_CHECK
+        val resolved = ThemeResolver.resolve(snapshot.current.theme, dark, access)
+        resolvedTheme = resolved
+        val t = resolved.theme
+        surface?.theme = t
+        strip?.theme = t
+        overlayView?.theme = t
+        aiView?.theme = t
+    }
+
+    private fun attachThemeAccessInBackground() {
+        Thread({
+            val access = try {
+                ThemeAccessHolder.create()
+            } catch (e: Exception) {
+                Log.w(TAG, "theme access unavailable: ${e.javaClass.simpleName}")
+                null
+            }
+            if (access != null) {
+                main.post {
+                    themeAccess = access
+                    themeAccessHandle?.close()
+                    themeAccessHandle = access.addListener { main.post { applyTheme() } }
+                    applyTheme()
+                }
+            }
+        }, "qal-theme-access").start()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyTheme() // "System" follows the device's dark mode
     }
 
     private val adapter = InputConnectionAdapter { if (currentInputConnection != null) editorOps else null }
@@ -138,8 +196,9 @@ class KeyboardImeService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         attachAiInBackground()
+        attachThemeAccessInBackground()
         adapter.onCompositionAbandoned = { controller.onCompositionAbandoned() }
-        snapshot.onChange = { main.post { controller.onPreferencesChanged() } }
+        snapshot.onChange = { main.post { controller.onPreferencesChanged(); applyTheme() } }
         snapshot.start()
         loadCoreInBackground()
     }
@@ -226,6 +285,8 @@ class KeyboardImeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        themeAccessHandle?.close()
+        themeAccessHandle = null
         snapshot.stop()
         aiToolbar?.release()
         engine?.let { userDictionary.detach(it) }
@@ -257,7 +318,7 @@ class KeyboardImeService : InputMethodService() {
             it.onLink = ::openCompanion
             aiView = it
         }
-        val overlay = PopupOverlay(this)
+        val overlay = PopupOverlay(this).also { overlayView = it }
         val k = KeyboardSurface(this).also {
             it.controller = controller
             it.overlay = overlay
@@ -275,6 +336,7 @@ class KeyboardImeService : InputMethodService() {
             addView(column)
             addView(overlay)
             inputRoot = this
+            applyTheme()
             ai.render()
             refreshViews()
         }
@@ -317,6 +379,7 @@ class KeyboardImeService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         checkPackUpdates()
+        applyTheme() // the entitlement token may have expired since the last time
         controller.refreshAutoCapital()
         refreshViews()
     }

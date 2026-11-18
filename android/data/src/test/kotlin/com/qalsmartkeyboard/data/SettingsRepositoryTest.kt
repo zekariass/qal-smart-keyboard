@@ -82,7 +82,7 @@ class SettingsRepositoryTest {
         first.update {
             it.copy(
                 numeralStyle = NumeralStyle.ETHIOPIC,
-                theme = ThemeMode.DARK,
+                theme = ThemeIds.CLASSIC_DARK,
                 hapticsEnabled = false,
                 keyHeightPercent = 115,
             )
@@ -103,7 +103,7 @@ class SettingsRepositoryTest {
         assertEquals(listOf("en", "am", "om"), s.enabledLanguages)
         assertEquals(listOf("en", "am", "ti", "om"), s.languages.map { it.languageCode })
         assertEquals(NumeralStyle.ETHIOPIC, s.numeralStyle)
-        assertEquals(ThemeMode.DARK, s.theme)
+        assertEquals(ThemeIds.CLASSIC_DARK, s.theme)
         assertFalse(s.hapticsEnabled)
         assertEquals(115, s.keyHeightPercent)
         val am = s.language("am")!!
@@ -158,11 +158,38 @@ class SettingsRepositoryTest {
             it[intPreferencesKey("key_height_percent")] = -4
         }
         val s = SettingsRepository(store).current()
-        assertEquals(ThemeMode.SYSTEM, s.theme)
+        assertEquals(ThemeIds.SYSTEM, s.theme)
         assertEquals(80, s.keyHeightPercent)
         assertEquals(listOf("am", "ti", "om", "en"), s.languages.map { it.languageCode })
         assertEquals(InputMode.PHONETIC_LATIN_TO_NATIVE, s.language("am")!!.inputMode)
         assertTrue(s.enabledLanguages.isNotEmpty())
+    }
+
+    // ---------------------------------------------------------------- themes
+
+    @Test fun oldThemeValuesAreMigratedToIds() = runBlocking {
+        val cases = mapOf(
+            "SYSTEM" to "system", "LIGHT" to "classic_light", "DARK" to "classic_dark",
+            "midnight" to "midnight", "premium_purple" to "premium_purple", "NEON" to "system", "" to "system",
+            "a".repeat(41) to "system", "Bad Id" to "system",
+        )
+        for ((stored, expected) in cases) {
+            val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "theme-${stored.hashCode()}.preferences_pb")
+            store.edit { it[stringPreferencesKey("theme")] = stored }
+            assertEquals("stored '$stored'", expected, SettingsRepository(store).current().theme)
+        }
+        assertEquals("system", ThemeIds.normalize(null))
+        assertEquals("system", KeyboardSettings.DEFAULT.theme)
+    }
+
+    @Test fun chosenThemePersistsAcrossRestart() = runBlocking {
+        open().update { it.copy(theme = "aurora") }
+        closeAll()
+        assertEquals("aurora", open().current().theme)
+        closeAll()
+        open().update { it.copy(theme = "Not A Theme!") } // a malformed value is never stored
+        closeAll()
+        assertEquals(ThemeIds.SYSTEM, open().current().theme)
     }
 
     // ---------------------------------------------------------------- F14

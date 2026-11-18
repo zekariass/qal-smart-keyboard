@@ -12,8 +12,31 @@ enum class UnknownTokenBehavior { PRESERVE_LATIN, SUGGEST_ONLY }
 /** Contract preferences `numeralStyle`. */
 enum class NumeralStyle { WESTERN, ETHIOPIC }
 
-/** Keyboard theme. The contract's `keyboardTheme` is a free string (max 40); we use these names. */
-enum class ThemeMode { SYSTEM, LIGHT, DARK }
+/**
+ * Keyboard theme ids. The contract's `keyboardTheme` is a free string (max 40) and carries the id of a theme from
+ * the IME's catalogue (`classic_light`, `midnight`, ...). `:data` does not know the catalogue (the IME depends on it,
+ * not the other way round): it only keeps ids well formed and migrates the old enum names. The IME resolves an id it
+ * does not know to the system theme.
+ */
+object ThemeIds {
+    /** Follows the device's dark mode (Classic Light / Classic Dark). The default. */
+    const val SYSTEM = "system"
+    const val CLASSIC_LIGHT = "classic_light"
+    const val CLASSIC_DARK = "classic_dark"
+
+    const val MAX_LENGTH = 40
+    private val WELL_FORMED = Regex("[a-z][a-z0-9_]{0,${MAX_LENGTH - 1}}")
+
+    /** Old `ThemeMode` names (SYSTEM, LIGHT, DARK) become ids; a malformed value becomes [SYSTEM]. */
+    fun normalize(raw: String?): String = when {
+        raw == null -> SYSTEM
+        raw == "SYSTEM" -> SYSTEM
+        raw == "LIGHT" -> CLASSIC_LIGHT
+        raw == "DARK" -> CLASSIC_DARK
+        WELL_FORMED.matches(raw) -> raw
+        else -> SYSTEM
+    }
+}
 
 /** Language-pack release channel (A2.3); names match the contract's `ReleaseChannel`. STABLE unless a tester opts in. */
 enum class PackChannel { STABLE, BETA, INTERNAL }
@@ -75,7 +98,8 @@ data class TypingLanguageSyncItem(
 data class KeyboardSettings(
     val languages: List<TypingLanguageSetting> = defaultLanguages(),
     val numeralStyle: NumeralStyle = NumeralStyle.WESTERN,
-    val theme: ThemeMode = ThemeMode.SYSTEM,
+    /** Id of the chosen keyboard theme ([ThemeIds]); stored under `theme`, synced as `keyboardTheme`. */
+    val theme: String = ThemeIds.SYSTEM,
     /** Contract `hapticsEnabled`. */
     val hapticsEnabled: Boolean = true,
     /** Key height as a percentage of the default row height. */
@@ -132,6 +156,7 @@ data class KeyboardSettings(
         }
         return copy(
             languages = cleaned,
+            theme = ThemeIds.normalize(theme),
             keyHeightPercent = keyHeightPercent.coerceIn(KEY_HEIGHT_MIN, KEY_HEIGHT_MAX),
             lastModes = lastModes.filter { (k, v) -> LanguageRules.isKnown(k) && MODE_TOKEN.matches(v) },
         )

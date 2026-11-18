@@ -1,14 +1,17 @@
 package com.qalsmartkeyboard.ime
 
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Canvas
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Shader
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import com.qalsmartkeyboard.ime.theme.KeyboardTheme
+import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -34,15 +37,33 @@ class KeyboardSurface(context: Context) : View(context) {
     private val pressed = HashMap<Int, Placed>() // pointer id -> key
     private val d = resources.displayMetrics.density
     private val gap = 3f * d
-    private val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    /** The colours and shapes to draw with. Set by the service when the chosen theme changes; the next draw uses it. */
+    var theme: KeyboardTheme = ThemeCatalog.classic(
+        (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) != android.content.res.Configuration.UI_MODE_NIGHT_YES,
+    )
+        set(value) {
+            if (field === value) return
+            field = value
+            bgShader = null
+            borderPaint.strokeWidth = value.borderWidthDp * d
+            invalidate()
+        }
 
-    private val bg = if (dark) 0xFF1B1B1F.toInt() else 0xFFE4E5EA.toInt()
-    private val keyColor = if (dark) 0xFF3A3B40.toInt() else 0xFFFFFFFF.toInt()
-    private val specialColor = if (dark) 0xFF2A2B30.toInt() else 0xFFC9CBD3.toInt()
-    private val pressedColor = if (dark) 0xFF5A5C66.toInt() else 0xFFA9ABB5.toInt()
-    private val accent = 0xFF2E7D32.toInt()
-    private val textColor = if (dark) 0xFFF1F1F4.toInt() else 0xFF1B1B1F.toInt()
-    private val dimColor = if (dark) 0xFF9A9BA3.toInt() else 0xFF6B6C75.toInt()
+    private val dark get() = !theme.isLight
+    private val bg get() = theme.bgTop
+    private val keyColor get() = theme.key
+    private val specialColor get() = theme.special
+    private val pressedColor get() = theme.pressed
+    private val accent get() = theme.accent
+    private val onAccent get() = theme.onAccent
+    private val accentText get() = theme.accentText
+    private val textColor get() = theme.keyText
+    private val specialText get() = theme.specialText
+    private val dimColor get() = theme.hintText
+
+    private var bgShader: LinearGradient? = null
+    private val bgPaint = Paint()
+    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
@@ -122,6 +143,7 @@ class KeyboardSurface(context: Context) : View(context) {
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         placed = emptyList()
+        bgShader = null
     }
 
     private fun fitText(label: String, maxWidth: Float, size: Float) {
@@ -130,8 +152,23 @@ class KeyboardSurface(context: Context) : View(context) {
         if (w > maxWidth) text.textSize = size * maxWidth / w
     }
 
+    private fun drawBackground(canvas: Canvas) {
+        if (!theme.isGradient) {
+            canvas.drawColor(bg)
+            return
+        }
+        // The gradient shader is built once per theme and size, never per frame.
+        var shader = bgShader
+        if (shader == null) {
+            shader = LinearGradient(0f, 0f, 0f, height.toFloat(), theme.bgTop, theme.bgBottom, Shader.TileMode.CLAMP)
+            bgShader = shader
+            bgPaint.shader = shader
+        }
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+    }
+
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(bg)
+        drawBackground(canvas)
         if (placed.isEmpty()) place()
         val c = controller ?: return
         val down = pressed.values.toSet()
@@ -146,7 +183,21 @@ class KeyboardSurface(context: Context) : View(context) {
                 key.kind == KeyKind.SHIFT && c.shift != ShiftState.OFF -> pressedColor
                 else -> specialColor
             }
-            canvas.drawRoundRect(p.rect, 6f * d, 6f * d, fill)
+            val r = p.rect
+            val radius = theme.cornerRadiusDp * d
+            if (theme.hasShadow) {
+                val keyFill = fill.color
+                fill.color = theme.shadow
+                val dy = theme.shadowDyDp * d
+                canvas.drawRoundRect(r.left, r.top + dy, r.right, r.bottom + dy, radius, radius, fill)
+                fill.color = keyFill
+            }
+            canvas.drawRoundRect(r, radius, radius, fill)
+            if (theme.hasBorder) {
+                val hw = borderPaint.strokeWidth / 2f
+                borderPaint.color = theme.border
+                canvas.drawRoundRect(r.left + hw, r.top + hw, r.right - hw, r.bottom - hw, radius, radius, borderPaint)
+            }
             val label = when (key.kind) {
                 KeyKind.ENTER -> enterText(c.profile.enterLabel)
                 KeyKind.SHIFT -> if (c.shift == ShiftState.LOCKED) "⇪" else "⇧"
@@ -155,9 +206,10 @@ class KeyboardSurface(context: Context) : View(context) {
                 else -> key.label
             }
             text.color = when {
-                key.kind == KeyKind.ENTER -> 0xFFFFFFFF.toInt()
+                key.kind == KeyKind.ENTER -> onAccent
                 key.kind == KeyKind.SPACE || dead -> dimColor
-                else -> textColor
+                key.kind == KeyKind.CHAR || key.kind == KeyKind.FIDEL_CONSONANT -> textColor
+                else -> specialText
             }
             val base = when {
                 key.kind == KeyKind.SPACE -> 13f
@@ -173,7 +225,7 @@ class KeyboardSurface(context: Context) : View(context) {
                 canvas.drawText(key.hint, p.rect.right - 7f * d, p.rect.top + 11f * d, text)
             }
             if (key.draftBadge) {
-                text.color = accent
+                text.color = accentText
                 text.textSize = 8f * d
                 canvas.drawText("DRAFT", p.rect.centerX(), p.rect.top + 10f * d, text)
             }

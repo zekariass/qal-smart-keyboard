@@ -1,11 +1,12 @@
 package com.qalsmartkeyboard.ime
 
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.View
+import com.qalsmartkeyboard.ime.theme.KeyboardTheme
+import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 
 /**
  * Draws the long-press popup of [KeyboardSurface] (ADR 0003 follow-up). It covers the whole input
@@ -15,11 +16,23 @@ import android.view.View
  */
 class PopupOverlay(context: Context) : View(context) {
     private val d = resources.displayMetrics.density
-    private val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-    private val panel = if (dark) 0xFF2A2B30.toInt() else 0xFFFFFFFF.toInt()
-    private val edge = if (dark) 0xFF5A5C66.toInt() else 0xFFB5B7C0.toInt()
-    private val accent = 0xFF2E7D32.toInt()
-    private val textColor = if (dark) 0xFFF1F1F4.toInt() else 0xFF1B1B1F.toInt()
+    /** The colours to draw with. Set by the service when the chosen theme changes; the next draw uses it. */
+    var theme: KeyboardTheme = ThemeCatalog.classic(
+        (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) != android.content.res.Configuration.UI_MODE_NIGHT_YES,
+    )
+        set(value) {
+            if (field === value) return
+            field = value
+            invalidate()
+        }
+
+    private val dark get() = !theme.isLight
+    private val panel get() = theme.popupBg
+    private val edge get() = theme.popupBorder
+    private val accent get() = theme.accent
+    private val onAccent get() = theme.onAccent
+    private val accentText get() = theme.accentText
+    private val textColor get() = theme.popupText
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
 
@@ -72,8 +85,8 @@ class PopupOverlay(context: Context) : View(context) {
                 canvas.drawRoundRect(cell.left + 2 * d, cell.top + 2 * d, cell.right - 2 * d, cell.bottom - 2 * d, r, r, fill)
             }
             text.color = when {
-                i == sel -> 0xFFFFFFFF.toInt()
-                item.selected -> accent
+                i == sel -> onAccent
+                item.selected -> accentText
                 else -> textColor
             }
             text.textSize = 20f * d

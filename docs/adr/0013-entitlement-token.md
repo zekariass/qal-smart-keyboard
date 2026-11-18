@@ -51,7 +51,7 @@ at the contract instead of its older `plan` / `offline_grace_until`. `iat` is tr
 exact. Plan display names, allowances, usage, credits, phone and e-mail are never in the token.
 
 ### D3. Which features are offline gates
-`qal.entitlements.token.offline-features`, default `[ON_DEVICE_AI_MODELS]` (SD 15.5 and 11.9: "currently
+`qal.entitlements.token.offline-features`, default `[ON_DEVICE_AI_MODELS, PREMIUM_THEMES]` (V18 adds the premium keyboard themes gate; SD 15.5 and 11.9: "currently
 `ON_DEVICE_AI_MODELS` and premium on-device packs"; premium packs have no feature code in the catalogue yet, so they
 will be gated by `ON_DEVICE_AI_MODELS` or by a new catalogue code added to this list). Whatever is configured, only
 **gated features with unit `NONE`** are written: a metered feature (a server AI allowance) or an ungated or unknown code

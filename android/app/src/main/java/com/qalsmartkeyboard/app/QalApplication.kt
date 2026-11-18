@@ -3,6 +3,7 @@ package com.qalsmartkeyboard.app
 import android.app.Application
 import com.qalsmartkeyboard.app.ai.AiGraph
 import com.qalsmartkeyboard.ime.ai.AiActionsHolder
+import com.qalsmartkeyboard.ime.theme.ThemeAccessHolder
 
 /**
  * Registers what the keyboard service cannot know itself (A2.5): the system creates
@@ -15,5 +16,6 @@ class QalApplication : Application() {
         super.onCreate()
         val context = applicationContext
         AiActionsHolder.factory = { AiGraph.get(context).actions }
+        ThemeAccessHolder.factory = { AiGraph.get(context).themeAccess }
     }
 }

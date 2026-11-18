@@ -1,7 +1,6 @@
 package com.qalsmartkeyboard.ime
 
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
@@ -10,6 +9,8 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import com.qalsmartkeyboard.ime.theme.KeyboardTheme
+import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 
 /**
  * Candidate strip above the keys (SD 6.2 `KeyboardSurface`; custom View per ADR 0003). Shows the
@@ -32,20 +33,29 @@ class CandidateStripView(context: Context) : View(context) {
     private val hits = ArrayList<Pair<RectF, Int>>()
 
     private val d = resources.displayMetrics.density
-    private val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-    private val bg = if (dark) 0xFF1B1B1F.toInt() else 0xFFE4E5EA.toInt()
-    private val textColor = if (dark) 0xFFF1F1F4.toInt() else 0xFF1B1B1F.toInt()
-    private val divider = if (dark) 0xFF3A3B40.toInt() else 0xFFC9CBD3.toInt()
-    private val draftColor = 0xFFB26A00.toInt()
+    /** The colours to draw with. Set by the service when the chosen theme changes; the next draw uses it. */
+    var theme: KeyboardTheme = ThemeCatalog.classic(
+        (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) != android.content.res.Configuration.UI_MODE_NIGHT_YES,
+    )
+        set(value) {
+            if (field === value) return
+            field = value
+            invalidate()
+        }
+
+    private val dark get() = !theme.isLight
+    private val bg get() = theme.stripBg
+    private val textColor get() = theme.stripText
+    private val divider get() = theme.stripDivider
+    private val draftColor get() = theme.warn
 
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 18f * d }
     private val bold = Paint(text).apply { typeface = Typeface.DEFAULT_BOLD }
     private val tag = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 10f * d
         typeface = Typeface.DEFAULT_BOLD
-        color = draftColor
     }
-    private val line = Paint().apply { color = divider; strokeWidth = 1f * d }
+    private val line = Paint().apply { strokeWidth = 1f * d }
     private val tagLabel = context.getString(R.string.candidate_strip_draft)
 
     fun show(candidates: List<Suggestion>, isDraft: Boolean) {
@@ -61,6 +71,8 @@ class CandidateStripView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         canvas.drawColor(bg)
+        tag.color = draftColor
+        line.color = divider
         hits.clear()
         val pad = 14f * d
         var x = 8f * d
