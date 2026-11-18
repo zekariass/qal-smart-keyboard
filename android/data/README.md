@@ -1,6 +1,6 @@
 # android/data
 
-Local data for the keyboard: settings (A1.5). The API client, pack manager and sync land here in A1.6 and A2.x.
+Local data for the keyboard: settings (A1.5). The API client lives in the separate `:api` module (A2.1, keeps this module free of network code); the pack manager and sync land in `:ime` and A2.x.
 
 ## Settings store (A1.5)
 Preferences DataStore (`keyboard_settings`), wrapped by `SettingsRepository`. Preferences rather than Proto DataStore: the model is small and flat, Proto needs the protobuf Gradle plugin and generated code, and a hand-written codec lets us validate and migrate in plain Kotlin. Every read is decoded leniently (unknown or missing values take their default) and every write goes through `KeyboardSettings.sanitized()`.
