@@ -25,7 +25,8 @@ import jakarta.validation.Valid;
 
 /**
  * {@code listDestinationProfiles}, {@code createDestinationProfile}, {@code updateDestinationProfile},
- * {@code deleteDestinationProfile}, {@code getAppDestinationRules} and {@code replaceAppDestinationRules}. Any valid
+ * {@code deleteDestinationProfile}, {@code getAppDestinationRules}, {@code getAppDestinationRuleKey} and
+ * {@code replaceAppDestinationRules}. Any valid
  * access token may use them, guests included (the data moves to the account on sign-in, ADR 0010). Responses are
  * {@code no-store}.
  */
@@ -68,6 +69,12 @@ class DestinationController {
 	@GetMapping("/api/v1/me/app-destination-rules")
 	ResponseEntity<RulesDocument> getRules(@AuthenticationPrincipal AuthenticatedUser caller) {
 		return noStore(rules.get(caller.userId()));
+	}
+
+	/** ADR 0007 D24: the per-account HMAC key. {@code no-store}; neither the key nor its id is ever logged. */
+	@GetMapping("/api/v1/me/app-destination-rules/key")
+	ResponseEntity<AppRuleKeys.RuleKey> getRuleKey(@AuthenticationPrincipal AuthenticatedUser caller) {
+		return noStore(rules.key(caller.userId()));
 	}
 
 	@PutMapping(path = "/api/v1/me/app-destination-rules", consumes = MediaType.APPLICATION_JSON_VALUE)

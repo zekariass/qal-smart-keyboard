@@ -26,15 +26,16 @@ encrypting). Responses decrypt for the owner. No plaintext copy, no search index
   directly, so crypto-shred makes it unreadable with everything else. If B3.6 introduces a dedicated HMAC key store, this
   key can move there without changing the hashes. Caveat: a data-key rotation must re-encrypt this row (as for every
   ciphertext column; rotation re-encryption is not implemented yet, ADR 0005), never regenerate the key.
-- It is created with the first non-empty rules document, so "has rules" implies "has a key".
+- It is created on the first key read (`GET /me/app-destination-rules/key`) or with the first non-empty rules document,
+  whichever is first, so "has rules" implies "has a key".
 - **Stated limit:** the server can decrypt the key, so an actor with database plus KMS access could test known package
   names against stored hashes. The guarantee is "no raw package name or reversible app list is stored or sent": a database
   dump, backup or log leak reveals nothing without the user's data key. A key the server cannot read would need a
   user-held secret, which phone/Google accounts do not have.
-- **Delivery (contract gap):** no operation returns the key. Needed: for example `GET /me/app-destination-rules/key`
-  (authenticated, no-store, rate limited) or a `ruleKey` member on `AppDestinationRulesDocument`. Until the contract has
-  one, the key is created and stored but not exposed over HTTP (`AppRuleKeys.getOrCreate`). Clients must not invent a
-  local key in the meantime: a locally generated key is lost on reinstall and differs per device.
+- **Delivery (ADR 0007 D24):** `GET /me/app-destination-rules/key` returns `{keyId, key}` (standard base64 of the 32
+  bytes; `keyId` = first 8 bytes of SHA-256(key) in hex), bearer required (registered or guest), `Cache-Control:
+  no-store`, never logged, **create on first read** and idempotent (same key every time, under the per-user advisory
+  lock). Not rate limited. Clients must not invent a local key: it would be lost on reinstall and differ per device.
 
 ### D3. Guest merge (resolves the ADR 0010 open question)
 - Both accounts have a key: the guest's rules cannot be re-hashed (the server never sees package names), so they are
@@ -57,8 +58,9 @@ contract `Tone` has no NATURAL while V1 defaults the column to it: an absent ton
 Glossary: only the caller's own glossaries are accepted (organisation glossaries are not referenced from profiles yet).
 
 ## Consequences / open
-- Contract gaps: key delivery (above); `DestinationProfile` is `allOf` of two members without `additionalProperties: true`,
-  which makes the contract validator reject every correct response (tests overlay it in memory); no `isDefault` field;
-  no limit stated for profile count; profile PUT has no 409; 401/403 not declared on the writes (D20 batch).
+- Contract gaps closed in the D20 batch: key delivery; `DestinationProfile` is now a flat schema (the `allOf` made the
+  validator reject correct responses; the test overlay is gone); 401 declared on the writes; `Tone` documents that
+  `NATURAL` is deliberately omitted. Still open: no `isDefault` field; no limit stated for profile count; profile PUT has
+  no 409.
 - Merge drops guest rules when both accounts have keys: acceptable because rules are cheap to re-create and local recency
   stays on device (SD §10.3).

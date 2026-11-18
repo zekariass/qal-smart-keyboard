@@ -46,8 +46,8 @@ import com.qalsmartkeyboard.testsupport.contract.ContractValidated;
  * B3.3 on PostgreSQL 18 through the real security chain, every response validated against the contract: the revision
  * protocol of both documents, the concurrent-write guarantees (same revision: exactly one winner; N retrying writers: the
  * revision ends at base + N, nothing lost), validation, F14 (a retired profile never blocks a reorder), guests and the
- * guest merge of the two documents. The consent check (403, which the contract does not list for this operation) is
- * exercised on the service.
+ * guest merge of the two documents. The consent check (403 CONSENT_REQUIRED, declared on this operation) is exercised
+ * end to end in ConsentIT.
  */
 @SpringBootTest(properties = "qal.outbox.dispatcher-enabled=false")
 @AutoConfigureMockMvc

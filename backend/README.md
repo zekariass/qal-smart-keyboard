@@ -117,8 +117,8 @@ Module `languages`: the five read operations `GET /languages`, `GET /languages/{
 
 - **Pack discovery** returns `LanguageResourceManifest` (discovery only, no signature: the signed manifest travels inside the
   `.pack`, `docs/specs/pack-format-v1.md`). Served rows: `publication_status = PUBLISHED`, active language, a signing key that is
-  not `REVOKED` (`ACTIVE` and `RETIRING` verify), a known `size_bytes`, and a resource type the contract can express (`GLOSSARY`
-  is not in the contract enum, so it is never listed). `appVersion` (required) must be at least `min_app_version` (SemVer
+  not `REVOKED` (`ACTIVE` and `RETIRING` verify), a known `size_bytes`, and a resource type of the contract enum (which equals the V1 CHECK
+  list, `GLOSSARY` included since ADR 0007 D20). `appVersion` (required) must be at least `min_app_version` (SemVer
   precedence, `1.10.0 > 1.9.0`); `platform` ANDROID sees SHARED and ANDROID packs, IOS sees SHARED and IOS, WEB sees SHARED.
 - **Release channels:** `channel` defaults to `STABLE`; a channel also sees every more stable one (BETA sees BETA and STABLE),
   because a client wants the newest valid pack per (language, type, platform) and picks it itself. `INTERNAL` needs a valid access
@@ -208,8 +208,10 @@ table `user_app_rule_revisions` and the per-account key table `user_app_rule_key
   before it reaches a query, log or row. At most 200 rules, unique hashes, exactly one of `destinationProfileId` (the
   caller's) or `destinationLanguage` (active), `enabled` default true.
 - **Rule key.** The client computes `HMAC-SHA256(accountRuleKey, packageName)`. The key is per account (not per device), 256
-  random bits created server-side with the first non-empty rules document and stored only as ciphertext
-  (`user_app_rule_keys`). The contract has no operation that delivers it to a device yet (reported gap, ADR 0012).
+  random bits created server-side on the first `GET /me/app-destination-rules/key` (or the first non-empty rules document) and stored only
+  as ciphertext (`user_app_rule_keys`). The key operation (ADR 0007 D24) returns `{keyId, key}` (`key` is standard base64 of 32
+  bytes, `keyId` a truncated SHA-256 of it), `Cache-Control: no-store`, any valid token including guests; repeated reads return
+  the same key. It is never logged.
 - **Guest merge.** Profiles move with re-encrypted labels. Both accounts have a rule key: the guest's rules are dropped
   (different key, cannot be re-hashed server-side). Only the guest has one: it becomes the target's (re-encrypted), so the
   moved rules keep matching. The target's rules revision is bumped when rules moved. A guest key never survives the merge.
@@ -234,8 +236,9 @@ guests included. Code in `com.qalsmartkeyboard.privacy`.
 - **Withdrawal.** Publishes `ConsentChanged` in the same transaction. Preferences listens and switches `historyEnabled` off
   (a revisioned write) when `SAVE_AI_HISTORY` is withdrawn; existing history is kept (contract: "stops new history writes and
   offers deletion"), so no purge event is published. Billing (later) cancels mandates on `PAYMENT_MANDATE` the same way.
-- **History.** `ConsentService.history(userId, type)` (package-private Java API, oldest first) for the data export; the
-  contract has no history operation.
+- **History.** `GET /me/consents/history` (`listConsentHistory`, ADR 0007 D23) pages the caller's own decisions oldest first
+  (`consentCode`, `cursor`, `limit` 1..100; keyset on `recorded_at, id`); `ConsentService.history(userId, type)` is the
+  unpaged Java form for the data export. `details.surface` is stored in the record's metadata and never interpreted.
 - **Guest merge** (`PrivacyGuestMerge`, ADR 0010) is unchanged: it must preserve the guest's `recorded_at` and version, which
   the PUT path does not.
 
@@ -414,8 +417,9 @@ is linked. Code: `identity.merge.GuestMergeService`; module rules: `identity.Gue
 
 - **Who may link:** a valid guest access token whose account is `GUEST`/`ACTIVE` and whose session family still has an
   ACTIVE refresh token (not logged out, not revoked for reuse). Checked after the code / ID token, before any write.
-  Anything else is 401 `UNAUTHENTICATED` with `WWW-Authenticate: Bearer error="invalid_token"`, nothing written, the
-  OTP code not consumed (the client drops the guest token and retries).
+  Anything else is 401 `GUEST_SESSION_INVALID` (ADR 0007 D20) with `WWW-Authenticate: Bearer error="invalid_token"`, nothing
+  written, the OTP code not consumed (the client drops the guest token and retries). The security chain gives the same code
+  to any guest token whose account is no longer an active guest, on every endpoint.
 - **New phone number / Google subject: upgrade in place.** The guest row becomes the `REGISTERED` account (identity,
   phone or display name, `age_confirmed_at`; `ageConfirmed: true` is required as for any new account). Same user id, so
   devices, verdicts, usage, history and keys stay; `isNewUser: true`, `mergedGuestUserId` = `user.id`. The guest's own
@@ -477,8 +481,8 @@ organisations have no Java API yet).
 - **Cache:** `resolve(userId)` is cached per user for `qal.entitlements.cache-ttl` (30s, `0s` = off), never beyond the winning
   source's validity end (`effectiveUntil`, plus the renewal lag for an ACTIVE source); `resolve(userId, at)` always computes. Billing/organisation code must call
   `invalidate(userId)` after changing a user's sources or overrides (otherwise visible after the TTL).
-- **Contract mapping:** `Entitlements.plan.source` only has DEFAULT, SUBSCRIPTION, ORGANIZATION_SEAT; use
-  `PlanSource.contractValue()` (STORE_PURCHASE and PARTNER map to SUBSCRIPTION).
+- **Contract mapping:** `Entitlements.plan.source` has one value per `PlanSource`; use
+  `PlanSource.contractValue()` (ADR 0007 D20 added STORE_PURCHASE and PARTNER to the contract enum; it equals the enum name).
 - **Tests:** `EntitlementSeedMatrixTest` (5 plans x 24 features read from `V1__baseline.sql`), `EntitlementResolverTest`
   (precedence, edges, grace, accounts, overrides, cache), `EntitlementResolverIT` (real seed and source tables).
 

@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -29,7 +30,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
@@ -55,7 +55,6 @@ import com.qalsmartkeyboard.testsupport.contract.ContractValidated;
 @SpringBootTest(properties = "qal.outbox.dispatcher-enabled=false")
 @AutoConfigureMockMvc
 @ContractValidated
-@Import(DestinationContract.class)
 @Testcontainers
 class DestinationIT {
 
@@ -243,6 +242,29 @@ class DestinationIT {
 	}
 
 	// -------------------------------------------------------------------------------------------------- rules
+
+	/** ADR 0007 D24: the key is delivered over HTTP, created on first read, stable, per account, never cached. */
+	@Test
+	void theRuleKeyIsDeliveredNoStoreCreatedOnFirstReadAndStablePerAccount() throws Exception {
+		User a = user();
+		User b = guest();
+		assertThat(ruleKeys.exists(a.id())).isFalse();
+		String first = mvc.perform(get("/api/v1/me/app-destination-rules/key").header("Authorization", a.bearer()))
+				.andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+				.andExpect(jsonPath("$.keyId").isNotEmpty()).andReturn().getResponse().getContentAsString();
+		assertThat(ruleKeys.exists(a.id())).isTrue();
+		String key = com.jayway.jsonpath.JsonPath.read(first, "$.key");
+		assertThat(Base64.getDecoder().decode(key)).hasSize(32);
+		// stable across reads and across the first rules PUT (which no longer has to create it)
+		putRules(a, 0, ruleToLanguage(hmac(TELEGRAM), "en")).andExpect(status().isOk());
+		mvc.perform(get("/api/v1/me/app-destination-rules/key").header("Authorization", a.bearer()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.key").value(key))
+				.andExpect(jsonPath("$.keyId").value((String) com.jayway.jsonpath.JsonPath.read(first, "$.keyId")));
+		// a guest may read its own; another account never gets the same key
+		mvc.perform(get("/api/v1/me/app-destination-rules/key").header("Authorization", b.bearer()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.key").value(org.hamcrest.Matchers.not(key)));
+		mvc.perform(get("/api/v1/me/app-destination-rules/key")).andExpect(status().isUnauthorized());
+	}
 
 	@Test
 	void rulesRevisionProtocolAndValidation() throws Exception {

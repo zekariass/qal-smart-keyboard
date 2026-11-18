@@ -139,10 +139,17 @@ paths:
       operationId: verifyPhoneOtp
       summary: Verify a phone code and obtain a session
       description: |
-        Exchanges a valid code for a session. **Guest upgrade:** if the request carries a guest
-        bearer token, the guest's data (preferences, usage, history) is merged into the
-        registered account and `mergedGuestUserId` is returned. A suspended account gets 403
-        `ACCOUNT_SUSPENDED`.
+        Exchanges a valid code for a session. **Guest upgrade:** if the request carries the bearer
+        token of a live guest, that guest is linked. For a **new** phone number the guest account
+        is upgraded in place (same user id, nothing moves; `isNewUser` is true and
+        `mergedGuestUserId` equals `user.id`). For a number that already has an account the
+        guest's data (devices, preferences, consents, languages, usage) is merged into that
+        account and `mergedGuestUserId` is the guest's id. A guest links **at most once**: after
+        the merge or upgrade its bearer token and refresh tokens stop working. A guest bearer
+        that can no longer link (already merged, upgraded or ended, including a lost race) is 401
+        `GUEST_SESSION_INVALID`; nothing is consumed, so the client discards the guest token and
+        retries the same code without it. A registered bearer token is ignored for linking. A
+        suspended account gets 403 `ACCOUNT_SUSPENDED`.
       security:
         - {}
         - bearerAuth: []
@@ -168,7 +175,9 @@ paths:
       summary: Sign in with a Google or Apple ID token
       description: |
         Verifies the provider ID token (signature, audience, nonce, expiry) server-side.
-        Same guest-upgrade merge behaviour as OTP verification. The account is found or created by
+        Same guest-upgrade merge behaviour as OTP verification (upgrade in place for a new
+        identity, at-most-once merge into an existing account, 401 `GUEST_SESSION_INVALID` for a
+        guest bearer that can no longer link). The account is found or created by
         the provider and its `sub` claim only; an e-mail address never links to another account.
         A provider the server cannot verify yet (Apple until its adapter exists) is a 400
         `VALIDATION_FAILED` on `provider`. A rejected token is 401 `UNAUTHENTICATED`; a suspended
@@ -417,6 +426,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Device' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Devices]
@@ -424,6 +434,7 @@ paths:
       summary: Revoke a device and its sessions
       responses:
         '204': { description: Revoked. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/devices/{deviceId}/attestations:
     parameters:
@@ -445,6 +456,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AttestationResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/devices/{deviceId}/resource-installations:
     parameters:
@@ -462,6 +474,7 @@ paths:
       responses:
         '204': { description: Recorded. }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ---------------------------------------------------------------- Me
@@ -572,6 +585,38 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/Consent' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/me/consents/history:
+    get:
+      tags: [Me]
+      operationId: listConsentHistory
+      summary: List the caller's own consent decisions
+      description: |
+        Every grant and withdrawal the caller recorded, **oldest first** (append-only history),
+        optionally for one `consentCode`. Cursor-paginated. Only the caller's own records are
+        returned. `grantedAt` is the time of a grant record; `revokedAt` the time of a
+        withdrawal record.
+      parameters:
+        - name: consentCode
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/ConsentCode' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of decisions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Consent' }
+                  nextCursor: { $ref: '#/components/schemas/NextCursor' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/me/consents/{consentCode}:
     parameters:
       - name: consentCode
@@ -585,7 +630,13 @@ paths:
       description: |
         Appends a consent record (append-only history). Revoking `SAVE_AI_HISTORY` stops new
         history writes and offers deletion; revoking `PAYMENT_MANDATE` cancels linked mandates.
-        `TERMS_ACCEPTANCE` and `PRIVACY_NOTICE` cannot be revoked (delete the account instead).
+        `TERMS_ACCEPTANCE` and `PRIVACY_NOTICE` cannot be revoked (delete the account instead):
+        withdrawing one is 422 `VALIDATION_FAILED` with the field error `isGranted` / code
+        `CONSENT_NOT_REVOCABLE`. Re-sending an identical decision appends another record
+        (re-acceptance is evidence). `details` is stored with the record and never interpreted;
+        the client sets `details.surface` to where the decision was made (for example
+        `onboarding` or `settings`). A guest may record consents; they move to the account on
+        sign-in.
       requestBody:
         required: true
         content:
@@ -598,6 +649,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Consent' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   # ---------------------------------------------------------------- Config
@@ -671,8 +723,13 @@ paths:
     get:
       tags: [Languages]
       operationId: listTransliterationProfiles
-      summary: List ACTIVE transliteration profiles for a language
-      description: Profiles are metadata; mappings live in signed TRANSLITERATION_RULES resources executed on-device.
+      summary: List ACTIVE and RETIRED transliteration profiles for a language
+      description: |
+        Returns the language's `ACTIVE` and `RETIRED` profiles, each with its `status` (a client
+        keeps a RETIRED profile working for users who selected it but offers only ACTIVE ones;
+        `DRAFT` profiles are never returned). An unknown, inactive or malformed language code is
+        404. Profiles are metadata; mappings live in signed TRANSLITERATION_RULES resources
+        executed on-device.
       security:
         - {}
         - bearerAuth: []
@@ -697,7 +754,11 @@ paths:
       summary: List signed language-resource manifests for this client
       description: |
         Returns manifests compatible with the platform, app version and release channel, filtered
-        by staged-rollout bucket. Clients verify the Ed25519 manifest signature against pinned
+        by staged-rollout bucket. **Rollout bucketing is server-side:** the server hashes the
+        caller's device id (else user id) with the resource id into a stable bucket 0-99 and
+        shows a resource below 100 % only to authenticated callers whose bucket is under the
+        percentage; anonymous callers never see a partial rollout. Clients must not bucket or
+        filter by rollout themselves. Clients verify the Ed25519 manifest signature against pinned
         keys **and** the artifact SHA-256 before atomically activating a resource; the last
         known-good version is kept for rollback. Delta resources name `baseResourceId`.
       security:
@@ -754,6 +815,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LanguageResourceManifest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/resource-signing-keys:
@@ -799,7 +861,10 @@ paths:
       tags: [Preferences]
       operationId: replacePreferences
       summary: Replace user preferences
-      description: Optimistic concurrency via `revision`; a stale revision returns 409 `REVISION_CONFLICT`.
+      description: |
+        Optimistic concurrency via `revision`; a stale revision returns 409 `REVISION_CONFLICT`
+        (with `currentRevision`). Turning on `historyEnabled` requires the `SAVE_AI_HISTORY`
+        consent; without it the call is 403 `CONSENT_REQUIRED` (extension member `consentCode`).
       requestBody:
         required: true
         content:
@@ -812,6 +877,8 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Preferences' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/me/typing-languages:
     get:
@@ -865,6 +932,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/TypingLanguagesDocument' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
   /api/v1/me/destination-profiles:
@@ -905,6 +973,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DestinationProfile' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/Unprocessable' }
   /api/v1/me/destination-profiles/{profileId}:
     parameters:
@@ -925,6 +994,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DestinationProfile' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Preferences]
@@ -933,6 +1003,7 @@ paths:
       description: App rules that point at this profile are removed too.
       responses:
         '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/me/app-destination-rules:
     get:
@@ -966,7 +1037,31 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AppDestinationRulesDocument' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/me/app-destination-rules/key:
+    get:
+      tags: [Preferences]
+      operationId: getAppDestinationRuleKey
+      summary: Get the per-account key for app-rule hashes
+      description: |
+        Returns the 256-bit key behind `appPackageHmac = HMAC-SHA256(key, packageName)`. One key
+        per account, shared by all of its devices, created on the first read and never
+        regenerated (idempotent: every call returns the same key). Any valid access token may
+        read it, guests included; a guest's key moves to the account on sign-in when the account
+        has none. The response is `Cache-Control: no-store`; keep the key in the Keystore and
+        never log it or send it anywhere. Clients must not invent a local key.
+      responses:
+        '200':
+          description: The account's rule key.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppDestinationRuleKey' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/me/style-profiles/{languageCode}:
     parameters:
       - $ref: '#/components/parameters/LanguageCodePath'
@@ -1586,6 +1681,10 @@ paths:
         organisation seats (allowances are not summed). `entitlementToken` is an Ed25519 JWS
         valid 24 h with 72 h offline grace; clients may use it **only** for offline gates such as
         on-device premium models. Server-metered features are always re-checked server-side.
+        A subscription in `GRACE_PERIOD` keeps its plan for the grace period (default 3 days
+        after the period end when no explicit end is set). An ACTIVE subscription just past its
+        period end keeps access for a 24 h renewal lag so late store notifications do not cut
+        off paying users (ADR 0007 D22).
       responses:
         '200':
           description: Entitlements.
@@ -2787,7 +2886,10 @@ components:
       in: header
       required: true
       description: |
-        Client-generated UUID, unique per logical operation, retained for 24 h per user/API client.
+        Client-generated UUID, unique per logical operation, retained for at least 24 h per user/API client.
+        Reusing a key after the original request **failed** (or its reservation was released)
+        returns that original failed/released outcome, not a fresh attempt: the client must use
+        a **new key** for every new attempt.
         - **At-most-once charging:** usage, credits, orders, attempts, mandates and store fulfilment
           are applied at most once per key.
         - **AI results:** a retry with the same key and body returns the original result from an
@@ -2965,7 +3067,7 @@ components:
                 code: REQUIRED
                 message: destinationLanguage is required.
     Unauthorized:
-      description: Missing/invalid/expired credentials (`UNAUTHENTICATED`, `TOKEN_EXPIRED`, `REFRESH_TOKEN_REUSED`, `OTP_INVALID`, `API_KEY_INVALID`).
+      description: Missing/invalid/expired credentials (`UNAUTHENTICATED`, `GUEST_SESSION_INVALID`, `TOKEN_EXPIRED`, `REFRESH_TOKEN_REUSED`, `OTP_INVALID`, `API_KEY_INVALID`).
       headers:
         X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
       content:
@@ -2986,13 +3088,23 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
-      description: State conflict (`IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS`, `REVISION_CONFLICT`, `ORDER_NOT_PAYABLE`, `STORE_PURCHASE_ALREADY_LINKED`, ...).
+      description: |
+        State conflict (`IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS`, `REVISION_CONFLICT`, `ORDER_NOT_PAYABLE`, `STORE_PURCHASE_ALREADY_LINKED`, ...).
+        A `REVISION_CONFLICT` Problem carries the extension member `currentRevision` (integer):
+        re-read the document, merge, and retry with that revision.
       headers:
         X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
         Retry-After: { $ref: '#/components/headers/Retry-After' }
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://api.example.com/problems/revision-conflict
+            title: Revision conflict
+            status: 409
+            code: REVISION_CONFLICT
+            correlationId: 3f2a6f0e-7c1b-4d2e-9a53-5b8c0d1e2f34
+            currentRevision: 7
     Unprocessable:
       description: Semantically invalid for current state (`PROFILE_NOT_ACTIVE`, `PRICE_NOT_AVAILABLE`, `PAYMENT_METHOD_UNAVAILABLE`, `MANDATE_NOT_SUPPORTED`, `STORE_PURCHASE_INVALID`, `OUTPUT_GUARDRAIL_FAILED`, ...).
       headers:
@@ -3193,13 +3305,32 @@ components:
         remaining:
           type: integer
           description: Remaining plan allowance in this period (absent if unlimited/not applicable).
-        creditBalance: { type: number, minimum: 0 }
+        creditBalance: { type: number, minimum: 0, description: Remaining credits after this charge and rounded down to a whole credit for display (SD 15.4). }
+        creditsCharged:
+          type: number
+          minimum: 0
+          description: |
+            Credits charged for this request (up to 6 decimal places). Present when credits paid
+            all or part of the request. For a mixed charge `usageSource` is `AI_CREDITS`,
+            `allowanceUnitsCharged` is the part the plan allowance covered and `creditsCharged`
+            the part credits covered.
+        allowanceUnitsCharged:
+          type: integer
+          minimum: 0
+          description: Units covered by the plan allowance when a request was paid partly by allowance and partly by credits (`unitsCharged` is the total).
         resetsAt: { type: string, format: date-time }
 
     # ------------------------------------------------------------ errors
     Problem:
       type: object
-      description: RFC 9457 Problem Details with extension members.
+      description: |
+        RFC 9457 Problem Details with extension members. Known extension members: `consentCode`
+        on 403 `CONSENT_REQUIRED` (the consent to request), `currentRevision` on 409
+        `REVISION_CONFLICT` (the revision the client should re-read), `featureCode`, `resetAt`,
+        `creditBalance` and `upgradeOptions` on 429 `QUOTA_EXCEEDED`.
+        `GUEST_SESSION_INVALID` (401, `WWW-Authenticate: Bearer error="invalid_token"`) means the
+        guest bearer token's account was merged, upgraded, ended or suspended: discard the guest
+        session (do not refresh it) and sign in or create a new guest session.
       required: [type, title, status, code, correlationId]
       properties:
         type: { type: string, format: uri, description: 'Problem type URI, or `about:blank`.' }
@@ -3211,7 +3342,7 @@ components:
           type: string
           description: |
             Stable machine-readable code. Clients switch on `code`, never on `title`.
-            VALIDATION_FAILED, INPUT_TOO_LONG, UNAUTHENTICATED, TOKEN_EXPIRED, REFRESH_TOKEN_REUSED,
+            VALIDATION_FAILED, INPUT_TOO_LONG, UNAUTHENTICATED, GUEST_SESSION_INVALID, TOKEN_EXPIRED, REFRESH_TOKEN_REUSED,
             OTP_INVALID, OTP_EXPIRED, OTP_TOO_MANY_ATTEMPTS, EMAIL_ALREADY_REGISTERED,
             ATTESTATION_REQUIRED, ATTESTATION_FAILED, ACCOUNT_SUSPENDED, DELETION_PENDING,
             GUEST_NOT_ALLOWED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, NOT_ACCEPTABLE,
@@ -3247,7 +3378,7 @@ components:
           properties:
             featureCode: { $ref: '#/components/schemas/FeatureCode' }
             resetAt: { type: string, format: date-time }
-            creditBalance: { type: number, minimum: 0 }
+            creditBalance: { type: number, minimum: 0, description: Remaining credits and rounded down to a whole credit for display (SD 15.4). }
             upgradeOptions:
               type: array
               items:
@@ -3403,8 +3534,8 @@ components:
         refreshToken: { type: string, readOnly: true, description: Store in Keystore/Keychain only; shared with the iOS extension via keychain access group (Full Access). }
         refreshTokenExpiresAt: { type: string, format: date-time }
         deviceId: { type: string, format: uuid }
-        isNewUser: { type: boolean }
-        mergedGuestUserId: { type: string, format: uuid, description: Present when a guest account was merged into this account. }
+        isNewUser: { type: boolean, description: True when this sign-in created the registered account (including by upgrading a guest in place). }
+        mergedGuestUserId: { type: string, format: uuid, description: "Present when a guest was linked by this sign-in. Equals `user.id` for an upgrade in place (new identity); the guest's own id when its data was merged into an existing account. Absent when no guest was linked." }
         user: { $ref: '#/components/schemas/UserProfile' }
 
     # ------------------------------------------------------------ devices / me
@@ -3560,7 +3691,10 @@ components:
         isGranted: { type: boolean }
         details:
           type: object
-          description: Consent-specific context, e.g. mandate amount/frequency shown to the user.
+          description: |
+            Consent-specific context, e.g. mandate amount/frequency shown to the user. The
+            conventional member `surface` names where the decision was made (`onboarding`,
+            `settings`, ...). Stored with the record; at most 2000 characters serialised.
           additionalProperties: true
 
     # ------------------------------------------------------------ config
@@ -3621,6 +3755,10 @@ components:
         isLaunchLanguage: { type: boolean }
         inputModes:
           type: array
+          description: |
+            Input modes the language offers. Read from `supported_languages.metadata.inputModes`
+            (an array of `InputMode` values; unknown values are dropped). Absent when the
+            catalogue row has none: treat absence as "no declared modes", not as "none supported".
           items: { $ref: '#/components/schemas/InputMode' }
     TransliterationProfile:
       type: object
@@ -3654,6 +3792,7 @@ components:
         - AUTOCORRECTION_MODEL
         - PROTECTED_TERMS
         - EMOJI_KEYWORDS
+        - GLOSSARY
         - PRONUNCIATION
         - SPELL_MODEL
         - LANGUAGE_ID_MODEL
@@ -3688,6 +3827,11 @@ components:
         licenseCode: { type: string, description: SPDX or internal licence code; non-commercial licences are never published. }
         deviceRequirements:
           type: object
+          description: |
+            The names below are canonical. For rows written with the older column-comment names
+            the server also accepts `wifiOnly` (as `wifiOnlyDefault`) and `iosExtensionAllowed`
+            (as `iosExtensionCompatible`) and always answers with the canonical names. Members of
+            the wrong type are omitted.
           properties:
             minRamMb: { type: integer, minimum: 0 }
             minFreeStorageMb: { type: integer, minimum: 0 }
@@ -3738,6 +3882,9 @@ components:
       enum: [LITERAL, NATURAL, POLITE, PROFESSIONAL, FRIENDLY]
     Tone:
       type: string
+      description: |
+        The database default `NATURAL` (no tone chosen) is deliberately not a value: a profile
+        without a tone omits `defaultTone` in responses, and requests must omit it too.
       enum: [FRIENDLY, POLITE, PROFESSIONAL, CONCISE, APOLOGETIC, HONORIFIC]
     Preferences:
       type: object
@@ -3830,14 +3977,21 @@ components:
         glossaryId: { type: string, format: uuid }
         sortOrder: { type: integer }
     DestinationProfile:
-      allOf:
-        - $ref: '#/components/schemas/DestinationProfileInput'
-        - type: object
-          required: [id]
-          properties:
-            id: { type: string, format: uuid, readOnly: true }
-            createdAt: { type: string, format: date-time, readOnly: true }
-            updatedAt: { type: string, format: date-time, readOnly: true }
+      type: object
+      required: [id, label, destinationLanguage, sortOrder, createdAt, updatedAt]
+      description: A `DestinationProfileInput` plus server-assigned members (flat, so every member is validated together).
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        label: { type: string, minLength: 1, maxLength: 80, description: Encrypted at rest with the user data key. }
+        destinationLanguage: { $ref: '#/components/schemas/LanguageCode' }
+        formality: { $ref: '#/components/schemas/Formality' }
+        addresseeGender: { $ref: '#/components/schemas/AddresseeGender' }
+        defaultTone: { $ref: '#/components/schemas/Tone' }
+        defaultStyle: { $ref: '#/components/schemas/TranslationStyle' }
+        glossaryId: { type: string, format: uuid }
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
     AppDestinationRule:
       type: object
       required: [appPackageHmac]
@@ -3856,6 +4010,12 @@ components:
           type: array
           maxItems: 200
           items: { $ref: '#/components/schemas/AppDestinationRule' }
+    AppDestinationRuleKey:
+      type: object
+      required: [keyId, key]
+      properties:
+        keyId: { type: string, maxLength: 64, description: Opaque identifier of this key (a truncated digest and safe to log). }
+        key: { type: string, format: byte, description: Standard base64 of the 32 key bytes. Secret and never logged. }
     StyleProfile:
       type: object
       required: [languageCode, enabled]
@@ -4452,7 +4612,11 @@ components:
             planRank: { type: integer }
             source:
               type: string
-              enum: [DEFAULT, SUBSCRIPTION, ORGANIZATION_SEAT]
+              description: |
+                Where the plan comes from: `SUBSCRIPTION` (payment, promotion or admin grant),
+                `STORE_PURCHASE` (Google Play or App Store), `ORGANIZATION_SEAT`, `PARTNER`
+                (partner-contract grant) or `DEFAULT` (FREE for registered users, GUEST for guests).
+              enum: [DEFAULT, SUBSCRIPTION, STORE_PURCHASE, ORGANIZATION_SEAT, PARTNER]
             subscriptionId: { type: string, format: uuid }
             organizationId: { type: string, format: uuid }
             effectiveUntil: { type: string, format: date-time }

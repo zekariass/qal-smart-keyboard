@@ -21,14 +21,10 @@ public enum PlanSource {
 	DEFAULT;
 
 	/**
-	 * The value for {@code Entitlements.plan.source} in the contract, which only knows DEFAULT, SUBSCRIPTION and
-	 * ORGANIZATION_SEAT (contract gap: STORE_PURCHASE and PARTNER are reported as SUBSCRIPTION).
+	 * The value for {@code Entitlements.plan.source} in the contract, which has one value per source (ADR 0007 D20 added
+	 * {@code STORE_PURCHASE} and {@code PARTNER}); it equals {@link #name()}.
 	 */
 	public String contractValue() {
-		return switch (this) {
-			case DEFAULT -> "DEFAULT";
-			case ORGANIZATION_SEAT -> "ORGANIZATION_SEAT";
-			case SUBSCRIPTION, STORE_PURCHASE, PARTNER -> "SUBSCRIPTION";
-		};
+		return name();
 	}
 }
