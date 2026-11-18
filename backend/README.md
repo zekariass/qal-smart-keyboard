@@ -185,7 +185,7 @@ guests included (their documents move to the account on sign-in, ADR 0010). Resp
 
 `GET/POST /api/v1/me/destination-profiles`, `PUT/DELETE /api/v1/me/destination-profiles/{profileId}` and
 `GET/PUT /api/v1/me/app-destination-rules` (module `preferences`). Any valid access token, guests included. Responses are
-`Cache-Control: no-store`. V10 adds `default_style` and `glossary_id` (profiles), `is_enabled` (rules), the rules revision
+`Cache-Control: no-store`. V8 adds `default_style` and `glossary_id` (profiles), `is_enabled` (rules), the rules revision
 table `user_app_rule_revisions` and the per-account key table `user_app_rule_keys`.
 
 - **Label = ciphertext only.** `label_ciphertext` is `UserDataEncryption` output bound to user, key version,

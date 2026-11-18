@@ -46,12 +46,12 @@ encrypting). Responses decrypt for the owner. No plaintext copy, no search index
 - A sign-in that merely upgrades the guest in place (new phone/Google subject) keeps the same user id and key.
 
 ### D4. Validation and concurrency
-Hash must match `^[0-9a-f]{64}$` (a package name never does). Rules use a `revision` document (V10
+Hash must match `^[0-9a-f]{64}$` (a package name never does). Rules use a `revision` document (V8
 `user_app_rule_revisions`); profiles have no revision in the contract, so PUT is last-writer-wins. A per-user advisory lock
 serialises profile create/delete and the rules PUT (cap, no rule for a vanishing profile). The cap of 100 profiles per
 user is a server choice (neither contract nor SD defines one).
 
-### D5. Schema gaps closed in V10
+### D5. Schema gaps closed in V8
 The contract carries `defaultStyle`, `glossaryId` and rule `enabled`, V1 had no columns: added (nullable/defaulted). The
 contract `Tone` has no NATURAL while V1 defaults the column to it: an absent tone is stored NATURAL and omitted on read.
 Glossary: only the caller's own glossaries are accepted (organisation glossaries are not referenced from profiles yet).
