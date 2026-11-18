@@ -151,6 +151,36 @@ Module `languages`: the five read operations `GET /languages`, `GET /languages/{
 - Migration `V6__language_resource_discovery.sql` adds `language_resources.container_size_bytes` and the two endorsement columns
   of `resource_signing_keys`.
 
+## Preferences and typing languages (B3.3)
+
+`GET/PUT /api/v1/me/preferences` and `GET/PUT /api/v1/me/typing-languages` (module `preferences`). Any valid access token,
+guests included (their documents move to the account on sign-in, ADR 0010). Responses are `Cache-Control: no-store`.
+
+- **Replace + revision.** A PUT replaces the whole document (omitted optional members go back to their defaults) and
+  carries the `revision` the client read. No document yet = revision 0 (preferences: the documented defaults; typing
+  languages: an empty list); the first write sends 0. Success returns the stored document with `revision + 1`. A stale,
+  future or "first write on an existing document" revision is **409 `REVISION_CONFLICT`** with the extension member
+  `currentRevision` (the client re-reads, merges, retries). The contract defines no `If-Match`/ETag; `revision` is the only
+  mechanism.
+- **Concurrency.** Preferences: one statement, `UPDATE ... SET revision = revision + 1 WHERE user_id = ? AND revision = ?`
+  (first write: `INSERT ... ON CONFLICT DO NOTHING`); typing languages: the same `UPDATE` on the per-user row of
+  `user_typing_language_revisions` (V7), which row-locks the user's list until the transaction ends; the list rows are
+  rewritten under that lock in the same transaction. Of any number of writers that read the same revision exactly one wins.
+- **Validation (400).** Shapes per the contract; `LANGUAGE_NOT_SUPPORTED` for an unknown or inactive language (any
+  language member, also in preferences); typing languages: unique language codes and `sortOrder` (default 100), at most one
+  `isPrimary`, at most 20 items, input mode fits the language (am/ti: all three modes; others: `LATIN_PASSTHROUGH`), a
+  profile code exactly when the mode is `PHONETIC_LATIN_TO_NATIVE`. `historyEnabled: true` needs the latest
+  `SAVE_AI_HISTORY` consent to be granted (403 `CONSENT_REQUIRED`).
+- **F14 / profiles (422 `PROFILE_NOT_ACTIVE`).** A profile code resolves to the newest ACTIVE profile of that language
+  and code. If none is active, the row keeps the profile it already has when that has the same code (RETIRED or older
+  version), so reordering, disabling or adding languages never fails because a profile was retired; rows are updated in
+  place so the V1 trigger (validates only when mode/profile/language change) stays quiet. Any other code that is not ACTIVE
+  (unknown, DRAFT, other language) is 422. A GET returns the stored code; the fallback to a newer active profile and the
+  notice are the client's (System Design 10.2).
+- **Guest merge.** `PreferencesGuestMerge` moves the guest's preferences row with its revision (never below 1) and the
+  list when the target has none; it deletes the guest's list revision row and increments the target's list revision when a
+  list moved, so a target device that cached the old document gets a `REVISION_CONFLICT`.
+
 ## Identity: phone OTP (B2.1, ADR 0006)
 
 Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST /api/v1/auth/otp/verify` (200

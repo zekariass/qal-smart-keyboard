@@ -25,9 +25,11 @@ import com.qalsmartkeyboard.platform.crypto.UserDataEncryption;
  * guest's leftovers are deleted.
  *
  * <ul>
- * <li>{@code user_preferences} (one row per user): moved if the target has none.</li>
+ * <li>{@code user_preferences} (one row per user): moved if the target has none, with its {@code revision} (always at least
+ * 1, so a target device that cached "no document" = revision 0 gets a {@code REVISION_CONFLICT} on its next write).</li>
  * <li>{@code user_typing_languages} (one ordered list, at most one primary): the guest's whole list is moved if the
- * target has none; lists are never interleaved.</li>
+ * target has none; lists are never interleaved. The guest's list revision row is dropped; if a list moved, the target's
+ * revision is incremented (created at 1 when absent) so the target's devices re-read it.</li>
  * <li>{@code user_style_profiles} (one per language): moved per language the target has no profile for; the encrypted
  * sign-off and phrases are re-encrypted for the target.</li>
  * <li>{@code user_destination_profiles}: all moved, labels re-encrypted; a moved profile stays the default only if the
@@ -73,6 +75,15 @@ class PreferencesGuestMerge implements GuestMergeParticipant {
 				WHERE user_id = :guest AND NOT EXISTS (SELECT 1 FROM user_typing_languages WHERE user_id = :target)
 				""").param("target", target).param("guest", guest).param("now", ts).update();
 		jdbc.sql("DELETE FROM user_typing_languages WHERE user_id = :guest").param("guest", guest).update();
+		jdbc.sql("DELETE FROM user_typing_language_revisions WHERE user_id = :guest").param("guest", guest).update();
+		if (languages > 0) {
+			// the target's list changed under it: a device that cached the old revision must hit a REVISION_CONFLICT
+			jdbc.sql("""
+					INSERT INTO user_typing_language_revisions (user_id, revision, updated_at) VALUES (:target, 1, :now)
+					ON CONFLICT (user_id) DO UPDATE SET revision = user_typing_language_revisions.revision + 1,
+					    updated_at = EXCLUDED.updated_at
+					""").param("target", target).param("now", ts).update();
+		}
 
 		int styles = mergeStyleProfiles(guest, target, ts);
 		int profiles = mergeDestinationProfiles(guest, target, ts);
