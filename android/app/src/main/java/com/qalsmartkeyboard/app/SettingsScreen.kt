@@ -47,6 +47,8 @@ fun SettingsScreen(
     onRunSetup: () -> Unit = {},
     /** The account card (A2.2), supplied by the host that owns the sign-in state. */
     accountContent: @Composable () -> Unit = {},
+    /** The sync card (A2.4: personal-dictionary sync consent), supplied by the host that owns the account state. */
+    syncContent: @Composable () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -59,6 +61,7 @@ fun SettingsScreen(
             }
         }
         accountContent()
+        syncContent()
         Text("Languages (top = first on the globe key)", style = MaterialTheme.typography.titleMedium)
         val onlyOneEnabled = settings.enabledLanguages.size <= 1
         settings.languages.forEachIndexed { i, l ->
