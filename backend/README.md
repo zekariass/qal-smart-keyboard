@@ -786,6 +786,52 @@ an ordered provider list and returns a `RouteResult<T>`: `outcome` (`SUCCEEDED`,
 - **Metrics:** `qal.ai.provider.calls|latency`, `qal.ai.route.outcome|failovers|skipped`, `qal.ai.circuit.state|transitions`,
   `qal.ai.cost.micros|spend.micros|alerts` (tags: provider, feature, outcome, reason only). Logs carry provider codes,
   attempt numbers and error kinds, never text.
+- **Request filters (B5.3):** `RouteRequest.pinnedTo(code)` (one attempt on that provider) and `excluding(codes)`;
+  `RouteResult.capability()` is the capability row that matched the serving provider (quality tier, model code).
+
+## AI gateway: request pipeline (B5.3, ADR 0017, SD 11.1/11.4/11.5)
+
+`AiPipeline.execute(AiCommand)` runs one explicit AI action; `AiCommand.Translate` / `Transform` (GRAMMAR_CORRECTION,
+REWRITE, TONE_ADJUST) / `Detect` mirror the contract request bodies and `AiResult.TranslateResponse` /
+`TransformResponse` / `DetectLanguageResponse` the response bodies (JSON-ready; `toString()` prints lengths only). The
+endpoints are B5.5. Must not be called inside a transaction (throws `IllegalStateException`).
+
+1. **Account:** only ACTIVE accounts (403 `ACCOUNT_SUSPENDED`, 403 `DELETION_PENDING` per ADR 0007 D22, 401
+   `GUEST_SESSION_INVALID` / `UNAUTHENTICATED`). `AI_PROCESSING` consent only with
+   `qal.ai.pipeline.require-ai-processing-consent=true` (off: SD does not require it for explicit actions).
+2. **Validation** before any charge: text <= 5,000 code points (detect 1,000) else `INPUT_TOO_LONG`; languages active in
+   `supported_languages` else `LANGUAGE_NOT_SUPPORTED`; option enums, required tone, mode per task, destination profile
+   ownership, `Idempotency-Key` present else `VALIDATION_FAILED`.
+3. **Entitlement:** 403 `FEATURE_NOT_ENTITLED` (a REJECTED `ai_requests` row without the key).
+4. **Reserve** (`Metering.reserve`, own transaction) with the key; estimate 1 (REQUEST) or input characters (CHARACTER).
+   `QUOTA_EXCEEDED` calls no provider (REJECTED row, key not stored so it can be retried). DETECT_LANGUAGE is unmetered.
+5. **Idempotency seam:** a replayed key goes to the `AiIdempotency` bean (B5.4 replaces `ReplayWithoutCache`): in flight
+   = 409 `REQUEST_IN_PROGRESS` + `Retry-After`; settled = recompute without a charge (`usageSource UNMETERED`); released =
+   the original error code again (D25).
+6. **Prompt:** before routing, for every candidate provider the active `ai_prompt_templates` row (APPROVED +
+   `is_active`) for (feature, language, model family) is rendered; exact language beats `*`, then exact family
+   (`ai_models.configuration->>'modelFamily'`, else the model code) beats `*`. Placeholders (`PromptRenderer.PLACEHOLDERS`)
+   are option codes, language names, `addresseeInstruction`, `culturalInstruction` and Ethiopian-calendar context
+   (`todayEthiopian`, `calendarContext`; `EthiopianDate`, user time zone). There is no placeholder for user text; a
+   template with an unknown placeholder is skipped. No active template = no instructions (allowed by the SPI; metric
+   `qal.ai.prompt.template.missing`). Nothing is seeded: operators add and approve templates.
+7. **Route** (`AiRouter`), all provider calls sharing `qal.ai.pipeline.deadline` (8 s).
+8. **Guardrails** (`pipeline/Guardrails`): empty output, script share (>= `min-script-ratio` 0.9 of letters in the
+   destination's `script_code`, protected tokens excluded; transforms keep about the input's share), English-for-Oromo
+   language check, per-feature length bounds, no-op, refusal phrases, lost URLs/e-mails/numbers, echoed instructions. A
+   failure gets one retry on the same provider, then one fallback route over providers not yet tried; then 422
+   `OUTPUT_GUARDRAIL_FAILED`, released.
+9. **Settle** with the serving provider's `ProviderUsage.units(...)`; **release** on every failure (FAILED) and on
+   cancellation (CANCELLED; `AiRequestCancelledException`, no body, interrupt flag restored).
+10. **`ai_requests`** row: id = reservation id (else UUIDv7), feature, surface, languages, provider, model, template id,
+    status, usage source, units, credits, character and token counts, provider duration, guardrail flag names,
+    idempotency key (only for the reserving request), error code. Never text.
+
+Settings `qal.ai.pipeline.*`: `deadline` (8s), `require-ai-processing-consent` (false), `catalog-cache-ttl` (30s, prompt
+templates and language catalogue), `min-script-ratio` (0.9), `max-text-characters` (5000), `max-detect-characters`
+(1000). Metrics: `qal.ai.pipeline.requests{feature,outcome}`, `qal.ai.guardrail.failures{feature,check}`,
+`qal.ai.requests.write-failures`. Proof: `AiPipelineIT` (PG18, mock providers, log capture, contract validation of the
+responses).
 
 ## Contract tests
 

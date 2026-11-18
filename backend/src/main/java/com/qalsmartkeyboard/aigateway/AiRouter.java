@@ -21,6 +21,7 @@ import com.qalsmartkeyboard.aigateway.routing.RoutingMetrics;
 import com.qalsmartkeyboard.aigateway.routing.RoutingPolicies;
 import com.qalsmartkeyboard.aigateway.routing.RoutingPolicy;
 import com.qalsmartkeyboard.aigateway.spi.DataPolicyRequirement;
+import com.qalsmartkeyboard.aigateway.spi.ProviderCapability;
 import com.qalsmartkeyboard.aigateway.spi.ProviderException;
 import com.qalsmartkeyboard.aigateway.spi.ProviderException.Kind;
 import com.qalsmartkeyboard.aigateway.spi.ProviderUsage;
@@ -45,6 +46,9 @@ import com.qalsmartkeyboard.aigateway.spi.RouteQuery;
  * falls back (every remaining candidate was matched to the pair by the registry) without touching health;
  * CONTENT_REJECTED ends the route (a refusal is not a provider fault and is not shopped around); CANCELLED ends it as a
  * client abort.</li>
+ * <li><b>Request filters</b> ({@link RouteRequest#onlyProviders()}, {@link RouteRequest#excludedProviders()}) narrow the
+ * candidates further; B5.3 uses them for the guardrail retry on the same provider and the fallback to another one. A
+ * request whose filters leave no candidate fails with PROVIDER_UNAVAILABLE.</li>
  * </ol>
  * Nothing here sees user text: it is inside the request closure and the result value, and the router logs only
  * provider codes, attempt numbers and error kinds. A request thread interrupt is the cancellation signal (SPI contract).
@@ -103,8 +107,10 @@ public class AiRouter {
 		List<ResolvedProvider> lastResort = registry.resolveLastResort(query);
 		Optional<RoutingPolicy.Plan> plan = plan(query);
 		List<Candidate> candidates = new ArrayList<>();
-		order(active, plan).forEach(p -> candidates.add(new Candidate(p, false)));
-		order(lastResort, plan).forEach(p -> candidates.add(new Candidate(p, true)));
+		order(active, plan).stream().filter(p -> request.allows(p.code()))
+				.forEach(p -> candidates.add(new Candidate(p, false)));
+		order(lastResort, plan).stream().filter(p -> request.allows(p.code()))
+				.forEach(p -> candidates.add(new Candidate(p, true)));
 		if (candidates.isEmpty()) {
 			return finish(noRoute(query, active, lastResort), null, null, false, attempts, skipped, null, start,
 					feature);
@@ -158,7 +164,8 @@ public class AiRouter {
 				if (number > 1) {
 					metrics.failover(feature);
 				}
-				return finish(Outcome.SUCCEEDED, value, code, c.lastResort(), attempts, skipped, null, start, feature);
+				return finish(Outcome.SUCCEEDED, value, code, c.lastResort(), attempts, skipped, null, start, feature,
+						c.provider().capability());
 			} catch (ProviderException e) {
 				Duration latency = Duration.ofNanos(System.nanoTime() - t0);
 				Kind kind = e.kind();
@@ -284,8 +291,13 @@ public class AiRouter {
 
 	private <T> RouteResult<T> finish(Outcome outcome, T value, String code, boolean lastResort, List<Attempt> attempts,
 			List<Skip> skipped, Kind kind, long start, String feature) {
+		return finish(outcome, value, code, lastResort, attempts, skipped, kind, start, feature, null);
+	}
+
+	private <T> RouteResult<T> finish(Outcome outcome, T value, String code, boolean lastResort, List<Attempt> attempts,
+			List<Skip> skipped, Kind kind, long start, String feature, ProviderCapability capability) {
 		metrics.outcome(feature, outcome.name());
 		return new RouteResult<>(outcome, value, code, lastResort, List.copyOf(attempts), List.copyOf(skipped), kind,
-				Duration.ofNanos(System.nanoTime() - start));
+				Duration.ofNanos(System.nanoTime() - start), capability);
 	}
 }

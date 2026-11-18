@@ -13,10 +13,26 @@ import com.qalsmartkeyboard.aigateway.adapter.MockAiProvider;
  * @param mock deterministic in-process provider (dev/test only; refused under prod, production, staging)
  * @param http HTTP/JSON adapter pointed at the local WireMock stubs (dev/test only, same refusal)
  * @param routing router limits, circuit breaker, kill switch and cost cap caches (B5.2)
+ * @param pipeline the request pipeline (B5.3)
  */
 @ConfigurationProperties("qal.ai")
 record AiGatewayProperties(@DefaultValue("30s") Duration registryCacheTtl, @DefaultValue Mock mock,
-		@DefaultValue Http http, @DefaultValue Routing routing) {
+		@DefaultValue Http http, @DefaultValue Routing routing, @DefaultValue Pipeline pipeline) {
+
+	/**
+	 * @param deadline                   time budget for all provider calls of one request (route, guardrail retry and
+	 *                                   fallback together)
+	 * @param requireAiProcessingConsent demand the AI_PROCESSING consent for server AI (off: the System Design does not
+	 *                                   require it for explicit actions)
+	 * @param catalogCacheTtl            how long the prompt template and language snapshots are reused
+	 * @param minScriptRatio             share of output letters that must be in the destination script
+	 * @param maxTextCharacters          translate/transform text limit (contract maxLength)
+	 * @param maxDetectCharacters        detect-language text limit (contract maxLength)
+	 */
+	record Pipeline(@DefaultValue("8s") Duration deadline, @DefaultValue("false") boolean requireAiProcessingConsent,
+			@DefaultValue("30s") Duration catalogCacheTtl, @DefaultValue("0.9") double minScriptRatio,
+			@DefaultValue("5000") int maxTextCharacters, @DefaultValue("1000") int maxDetectCharacters) {
+	}
 
 	record Mock(@DefaultValue("false") boolean enabled, @DefaultValue("mock") String code,
 			@DefaultValue("0ms") Duration latency, @DefaultValue("NONE") MockAiProvider.FailureMode failure) {
