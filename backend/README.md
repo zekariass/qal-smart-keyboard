@@ -530,8 +530,8 @@ try {
 - **Expiry sweep:** db-scheduler task `usage-reservation-sweeper` (`qal.usage.sweep-interval` 1m,
   `qal.usage.sweep-batch-size` 100, `qal.usage.sweeper-enabled`) releases RESERVED rows past `expires_at` with reason
   `EXPIRED`, one transaction per row with `FOR UPDATE SKIP LOCKED`: idempotent, safe next to a concurrent settle.
-- **Credits port:** `CreditWallet` (`balance`, `hold`, `settle(held, charged)`), joins the engine's transaction. Until B4.3
-  the bean is `NoCreditWallet` (always empty: nothing is paid with credits). B4.3 replaces the bean.
+- **Credits port:** `CreditWallet` (`balance`, `hold`, `settle(held, charged)`), joins the engine's transaction. B4.3 implements it on
+  credit lots (below).
 - **Guest merge** (`UsageGuestMerge`, ADR 0010): the guest's current `used + reserved` goes into the counter of the
   window the engine computes for the *target* now, so a guest window that overlaps but differs from the target's (other
   zone, DAILY vs anchored MONTHLY) is neither lost nor counted twice.
@@ -541,6 +541,26 @@ try {
   credits, settle/over-settle/release, idempotency, sweep with a locked row, DST/midnight/month-end windows, upgrade
   options, DB guards, guest carry-over), `UsageSweeperSchedulerIT` (the scheduled task end to end). Tests switch the
   sweeper off globally (`src/test/resources/config/application.yaml`).
+
+## Usage: credits (B4.3, ADR 0011 "Credits (B4.3)", SD 15.4)
+
+`usage.Credits` (implemented with the `CreditWallet` by the package-private `JdbcCredits`; V1 tables, no migration):
+
+```java
+CreditLot lot = credits.grant(userId, new BigDecimal("500"), CreditSource.PURCHASE, paymentOrderId, expiresAt); // idempotent by (user, source, ref)
+CreditBalance b = credits.balance(userId, Instant.now());   // exact (6 dp) and display (rounded down); expired lots excluded
+credits.reverse(userId, CreditSource.PURCHASE, paymentOrderId);        // refund: REVERSAL of the unconsumed remainder
+credits.adjust(userId, lot.id(), new BigDecimal("-2"), "support-17", "goodwill");  // ADJUSTMENT
+```
+
+- **Consumption:** the metering wallet draws from lots FIFO by earliest expiry (then grant time, id; no expiry last),
+  all or nothing, one `CONSUMPTION` ledger row per lot; `settle` returns the unused part to the lots it came from (latest
+  expiry first) as `ADJUSTMENT` rows. Ledger rows are only inserted (V1 trigger); lot remainders and the account
+  balance are updated with them.
+- **Expiry:** a lot stops counting at `expires_at` (exclusive end); db-scheduler task `usage-credit-expiry`
+  (`qal.usage.credit-expiry-interval` 1h, `credit-expiry-batch-size` 100, `credit-expiry-enabled`) writes `EXPIRY` rows.
+- **Locking:** account row, then lots in FIFO order, in every writer. Tests: `CreditsIT` (FIFO, expiry, parallel
+  holds, append-only ledger, refunds, metering end to end), `MeteringIT` on the real wallet.
 
 ## Security chain (B2.4, OI-P11)
 

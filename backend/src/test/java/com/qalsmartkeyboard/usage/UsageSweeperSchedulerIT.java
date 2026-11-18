@@ -21,7 +21,8 @@ import org.testcontainers.utility.DockerImageName;
  * dispatcher switched off, and releases an abandoned reservation without anybody calling it.
  */
 @SpringBootTest(properties = { "qal.outbox.dispatcher-enabled=false", "qal.outbox.poll-interval=200ms",
-		"qal.usage.sweeper-enabled=true", "qal.usage.sweep-interval=200ms", "qal.usage.reservation-ttl=1s" })
+		"qal.usage.sweeper-enabled=true", "qal.usage.sweep-interval=200ms", "qal.usage.reservation-ttl=1s",
+		"qal.usage.credit-expiry-enabled=true", "qal.usage.credit-expiry-interval=200ms" })
 @Testcontainers
 class UsageSweeperSchedulerIT {
 
@@ -34,6 +35,8 @@ class UsageSweeperSchedulerIT {
 	Metering metering;
 	@Autowired
 	JdbcTemplate jdbc;
+	@Autowired
+	Credits credits;
 
 	@Test
 	void anAbandonedReservationIsReleasedByTheScheduledSweeper() {
@@ -52,5 +55,22 @@ class UsageSweeperSchedulerIT {
 				UsageConfiguration.SWEEPER_TASK)).isOne();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM scheduled_tasks WHERE task_name = 'outbox-dispatcher'",
 				Integer.class)).isZero();
+	}
+
+	@Test
+	void anExpiredCreditLotIsSweptByTheScheduledJob() {
+		UUID user = jdbc.queryForObject(
+				"INSERT INTO users (account_type, account_status) VALUES ('REGISTERED', 'ACTIVE') RETURNING id",
+				UUID.class);
+		CreditLot lot = credits.grant(user, new java.math.BigDecimal("3"), CreditSource.GRANT, "short",
+				java.time.Instant.now().plusSeconds(1));
+
+		await().atMost(Duration.ofSeconds(30)).until(() -> jdbc.queryForObject(
+				"SELECT remaining_units FROM ai_credit_lots WHERE id = ?", java.math.BigDecimal.class, lot.id())
+				.signum() == 0);
+		assertThat(jdbc.queryForList("SELECT delta_units::text FROM ai_credit_transactions WHERE lot_id = ? "
+				+ "AND transaction_type = 'EXPIRY'", String.class, lot.id())).containsExactly("-3.000000");
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM scheduled_tasks WHERE task_name = ?", Integer.class,
+				UsageConfiguration.CREDIT_EXPIRY_TASK)).isOne();
 	}
 }

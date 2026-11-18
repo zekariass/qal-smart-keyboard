@@ -35,7 +35,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
@@ -90,12 +89,6 @@ class MeteringIT {
 				}
 			};
 		}
-
-		@Bean
-		@Primary
-		BalanceOnlyCreditWallet balanceOnlyCreditWallet(JdbcClient jdbc) {
-			return new BalanceOnlyCreditWallet(jdbc);
-		}
 	}
 
 	@Autowired
@@ -103,13 +96,18 @@ class MeteringIT {
 	@Autowired
 	JdbcMetering engine;
 	@Autowired
-	BalanceOnlyCreditWallet wallet;
+	JdbcCredits wallet;
 	@Autowired
 	UsageGuestMerge guestMerge;
 	@Autowired
 	JdbcTemplate jdbc;
 	@Autowired
 	PlatformTransactionManager txManager;
+
+	/** Gives the user a lot that never expires, through the real credit lots. */
+	private void fund(UUID user, BigDecimal amount) {
+		wallet.grant(user, amount, CreditSource.GRANT, UUID.randomUUID().toString(), null);
+	}
 
 	@AfterEach
 	void realTime() {
@@ -167,7 +165,7 @@ class MeteringIT {
 	@Test
 	void creditsPayAfterTheAllowanceAndAreNeverOverspentUnderConcurrency() throws Exception {
 		UUID user = user("REGISTERED", "Africa/Addis_Ababa");
-		wallet.fund(user, new BigDecimal("5.000000"));
+		fund(user, new BigDecimal("5.000000"));
 		List<Object> outcomes = parallel(30, i -> metering.reserve(user, "TRANSLATE", 1, key()));
 		List<Reservation> ok = reservations(outcomes);
 		assertThat(ok).hasSize(15); // 10 from the allowance + 5 paid with 1 credit each
@@ -197,7 +195,7 @@ class MeteringIT {
 		UUID user = user("REGISTERED", "Africa/Addis_Ababa");
 		Reservation most = metering.reserve(user, "SPEECH_TO_TEXT", 590, key());
 		assertThat(most.allowanceUnits()).isEqualTo(590);
-		wallet.fund(user, new BigDecimal("10"));
+		fund(user, new BigDecimal("10"));
 
 		// 10 s left in the allowance, 20 s on credits at 0.166667/s
 		Reservation split = metering.reserve(user, "SPEECH_TO_TEXT", 30, key());
@@ -267,7 +265,7 @@ class MeteringIT {
 	void overSettleUsesCreditsAfterTheAllowance() {
 		UUID user = user("REGISTERED", "Africa/Addis_Ababa");
 		metering.reserve(user, "SPEECH_TO_TEXT", 580, key());
-		wallet.fund(user, new BigDecimal("1"));
+		fund(user, new BigDecimal("1"));
 		Reservation r = metering.reserve(user, "SPEECH_TO_TEXT", 10, key());
 		// 30 s used: its 10 s, 10 s more from the allowance, 5 s of credits (1 credit / 0.166667 = 5.99 s), 5 s uncovered
 		Settlement s = metering.settle(r.id(), 30);
@@ -356,7 +354,7 @@ class MeteringIT {
 		String key = key();
 		assertThatThrownBy(() -> metering.reserve(user, "TRANSLATE", 1, key)).isInstanceOf(QuotaExceededException.class);
 		assertThat(count("SELECT count(*) FROM usage_reservations WHERE idempotency_key = ?", key)).isZero();
-		wallet.fund(user, BigDecimal.ONE);
+		fund(user, BigDecimal.ONE);
 		Reservation paid = metering.reserve(user, "TRANSLATE", 1, key);
 		assertThat(paid.replayed()).isFalse();
 		assertThat(paid.creditUnits()).isOne();
@@ -372,7 +370,7 @@ class MeteringIT {
 		UUID user = user("REGISTERED", "Africa/Addis_Ababa");
 		Instant t0 = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
 		NOW.set(t0);
-		wallet.fund(user, BigDecimal.ONE);
+		fund(user, BigDecimal.ONE);
 		metering.reserve(user, "TRANSLATE", 10, key());
 		Reservation withCredit = metering.reserve(user, "TRANSLATE", 1, key());
 		assertThat(withCredit.creditUnits()).isOne();
@@ -485,7 +483,7 @@ class MeteringIT {
 		assertThat(none.resetAt()).isNull();
 		assertThat(none.extensions()).doesNotContainKey("resetAt");
 
-		wallet.fund(user, new BigDecimal("2"));
+		fund(user, new BigDecimal("2"));
 		Reservation r = metering.reserve(user, "TONE_ADJUST", 2, key());
 		assertThat(r.window()).isEqualTo(UsageWindow.LIFETIME);
 		assertThat(r.allowanceUnits()).isZero();
@@ -503,7 +501,7 @@ class MeteringIT {
 	void quotaExceededCarriesResetCreditsAndUpgradeOptions() {
 		UUID user = user("REGISTERED", "Africa/Addis_Ababa");
 		metering.reserve(user, "SPEECH_TO_TEXT", 600, key());
-		wallet.fund(user, new BigDecimal("4.9"));
+		fund(user, new BigDecimal("4.9"));
 		jdbc.update("UPDATE billing_products SET product_status = 'ACTIVE' WHERE product_code IN ('PLAN_PREMIUM', 'CREDITS_500')");
 		try {
 			QuotaExceededException q = quota(() -> metering.reserve(user, "SPEECH_TO_TEXT", 30, key())); // 5.00001

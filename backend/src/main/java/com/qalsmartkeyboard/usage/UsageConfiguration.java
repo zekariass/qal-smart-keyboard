@@ -25,13 +25,15 @@ class UsageConfiguration {
 	/** db-scheduler task name of the expiry sweeper. */
 	static final String SWEEPER_TASK = "usage-reservation-sweeper";
 
-	/**
-	 * Until B4.3 provides credit lots the wallet is empty (ADR 0011). B4.3 replaces this bean; tests provide their own
-	 * as {@code @Primary}.
-	 */
+	/** db-scheduler task name of the credit lot expiry job. */
+	static final String CREDIT_EXPIRY_TASK = "usage-credit-expiry";
+
+	/** Credit lots and ledger (B4.3): the {@link Credits} API and the metering engine's {@link CreditWallet}. */
 	@Bean
-	CreditWallet emptyCreditWallet() {
-		return new NoCreditWallet();
+	JdbcCredits credits(JdbcClient jdbc, PlatformTransactionManager transactionManager, UsageProperties properties,
+			ObjectProvider<Clock> clock) {
+		return new JdbcCredits(jdbc, new TransactionTemplate(transactionManager), clock.getIfAvailable(Clock::systemUTC),
+				properties.creditExpiryBatchSize());
 	}
 
 	@Bean
@@ -51,5 +53,17 @@ class UsageConfiguration {
 	RecurringTask<Void> usageReservationSweeper(JdbcMetering metering, UsageProperties properties) {
 		return Tasks.recurring(SWEEPER_TASK, FixedDelay.of(properties.sweepInterval()))
 				.execute((instance, context) -> metering.releaseExpired());
+	}
+
+	/**
+	 * Expires credit lots past their end (SD 15.4 "a daily job expires lots") and writes EXPIRY ledger rows. Balances
+	 * already ignore expired lots at the instant they end; the job only settles the books. Idempotent.
+	 */
+	@Bean
+	@ConditionalOnProperty(prefix = "qal.usage", name = "credit-expiry-enabled", havingValue = "true",
+			matchIfMissing = true)
+	RecurringTask<Void> usageCreditExpiry(JdbcCredits credits, UsageProperties properties) {
+		return Tasks.recurring(CREDIT_EXPIRY_TASK, FixedDelay.of(properties.creditExpiryInterval()))
+				.execute((instance, context) -> credits.expireDue());
 	}
 }
