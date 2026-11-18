@@ -36,7 +36,7 @@ import com.qalsmartkeyboard.platform.ratelimit.RateLimiter;
 /**
  * Phone OTP sign-in (SD 9.2): start sends a 6-digit code, verify exchanges it for a session.
  *
- * <p><b>Start</b>: number rules (400) → per-IP limit → per-device limit (only when the request names its
+ * <p><b>Start</b>: number rules (400) → per-IP limit → allowed prefixes (400 {@code PHONE_REGION_NOT_SUPPORTED}) → per-device limit (only when the request names its
  * {@code installationId}) → [transaction: per-number advisory lock → resend cooldown →
  * per-number limits → new challenge, which supersedes earlier ones] → SMS after commit (SD 8.3: no external call inside
  * a transaction). A delivery failure is counted and logged, and the response stays 202 ("code sent or silently
@@ -118,6 +118,7 @@ class OtpService {
 	private final SecureRandom random;
 	private final OtpMetrics metrics;
 	private final GuestMergeService merges;
+	private final List<String> allowedPrefixes;
 
 	private final RateLimitPolicy startPerIp;
 	private final RateLimitPolicy startPerDevice;
@@ -127,7 +128,8 @@ class OtpService {
 
 	OtpService(OtpChallengeStore challenges, OtpSecrets secrets, UserAccountStore accounts, SessionIssuer sessions,
 			OtpSender sender, RateLimiter limiter, OtpProperties properties, TransactionTemplate transactions,
-			Clock clock, SecureRandom random, OtpMetrics metrics, GuestMergeService merges) {
+			Clock clock, SecureRandom random, OtpMetrics metrics, GuestMergeService merges,
+			List<String> allowedPrefixes) {
 		this.challenges = challenges;
 		this.secrets = secrets;
 		this.accounts = accounts;
@@ -140,6 +142,7 @@ class OtpService {
 		this.random = random;
 		this.metrics = metrics;
 		this.merges = merges;
+		this.allowedPrefixes = List.copyOf(allowedPrefixes);
 		OtpProperties.Limits limits = properties.limits();
 		this.startPerIp = limits.startPerIp().policy("otp.start.ip");
 		this.startPerDevice = limits.startPerDevice().policy("otp.start.device");
@@ -167,6 +170,22 @@ class OtpService {
 		if (!ipDecision.allowed()) {
 			metrics.started("rate_limited", destination);
 			throw ipDecision.toProblem();
+		}
+		// ADR 0007 D48: only allowed prefixes get a code. The attempt still counted against the caller's IP budget (so
+		// probing is not free), but no per-number state, challenge or SMS is created.
+		switch (PhoneNumbers.eligibility(phoneE164, allowedPrefixes)) {
+			case CARRIER_NOT_SUPPORTED -> {
+				metrics.started("carrier_not_supported", destination);
+				throw new ApiException(ApiErrorCode.PHONE_CARRIER_NOT_SUPPORTED, HttpStatus.BAD_REQUEST,
+						"This carrier cannot receive sign-in codes yet. Use an Ethio telecom number or Google sign-in.");
+			}
+			case REGION_NOT_SUPPORTED -> {
+				metrics.started("region_not_supported", destination);
+				throw new ApiException(ApiErrorCode.PHONE_REGION_NOT_SUPPORTED, HttpStatus.BAD_REQUEST,
+						"Phone sign-in is for Ethiopian numbers. Use Google sign-in instead.");
+			}
+			case ALLOWED -> {
+			}
 		}
 		if (deviceKey != null) {
 			RateLimitDecision deviceDecision = limiter.tryConsume(startPerDevice, deviceKey);

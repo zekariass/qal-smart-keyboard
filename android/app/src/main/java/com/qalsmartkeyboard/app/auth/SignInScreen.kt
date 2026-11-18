@@ -52,7 +52,8 @@ class SignInActions(
 @Composable
 private fun messageText(m: SignInMessage): String = when (m) {
     SignInMessage.PhoneEmpty -> stringResource(R.string.si_err_phone_empty)
-    SignInMessage.PhoneInvalid -> stringResource(R.string.si_err_phone_invalid)
+    SignInMessage.PhoneRegionNotSupported -> stringResource(R.string.si_err_phone_region)
+    SignInMessage.PhoneCarrierNotSupported -> stringResource(R.string.si_err_phone_carrier)
     SignInMessage.PhoneNotEthiopianMobile -> stringResource(R.string.si_err_phone_mobile)
     SignInMessage.CodeIncomplete -> stringResource(R.string.si_err_code_incomplete)
     SignInMessage.OtpInvalid -> stringResource(R.string.si_err_otp_invalid)
@@ -127,10 +128,14 @@ private fun OptionsStep(
         label = { Text(stringResource(R.string.si_phone_label)) },
         placeholder = { Text(stringResource(R.string.si_phone_hint)) },
         singleLine = true,
+        leadingIcon = { Text(PhoneInput.DEFAULT_PREFIX) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
         modifier = Modifier.fillMaxWidth(),
     )
-    Text(stringResource(R.string.si_phone_help), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.si_phone_region_help), style = MaterialTheme.typography.bodySmall)
+    if (googleAvailable) {
+        TextButton(onClick = actions.onGoogle, enabled = idle) { Text(stringResource(R.string.si_phone_use_google)) }
+    }
     AgeConfirm(state, actions)
     Button(onClick = actions.onSendCode, enabled = idle, modifier = Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.si_send_code))

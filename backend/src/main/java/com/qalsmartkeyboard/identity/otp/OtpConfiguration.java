@@ -31,7 +31,7 @@ import io.micrometer.core.instrument.MeterRegistry;
  * {@code prod}, {@code production} and {@code staging} profiles.
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(OtpProperties.class)
+@EnableConfigurationProperties({ OtpProperties.class, PhoneAuthProperties.class })
 class OtpConfiguration {
 
 	static final String PRODUCTION_LIKE_PROFILES = "prod | production | staging";
@@ -42,10 +42,12 @@ class OtpConfiguration {
 	@Bean
 	OtpService otpService(JdbcClient jdbc, OtpProperties properties, Environment environment, UserAccountStore accounts,
 			SessionIssuer sessions, OtpSender sender, RateLimiter limiter, PlatformTransactionManager transactionManager,
-			ObjectProvider<Clock> clock, ObjectProvider<MeterRegistry> meters, GuestMergeService merges) {
+			ObjectProvider<Clock> clock, ObjectProvider<MeterRegistry> meters, GuestMergeService merges,
+			PhoneAuthProperties phoneAuth) {
 		return new OtpService(new OtpChallengeStore(jdbc), secrets(properties, environment, random), accounts, sessions,
 				sender, limiter, properties, new TransactionTemplate(transactionManager),
-				clock.getIfAvailable(Clock::systemUTC), random, new OtpMetrics(meters.getIfAvailable()), merges);
+				clock.getIfAvailable(Clock::systemUTC), random, new OtpMetrics(meters.getIfAvailable()), merges,
+				phoneAuth.allowedPrefixes());
 	}
 
 	static OtpSecrets secrets(OtpProperties properties, Environment environment, SecureRandom random) {
