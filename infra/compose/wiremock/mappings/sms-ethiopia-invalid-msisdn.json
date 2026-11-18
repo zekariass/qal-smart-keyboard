@@ -1,0 +1,15 @@
+{
+  "name": "sms-ethiopia: 400 Error Code 10000 when msisdn is not 2519 + 8 digits",
+  "priority": 3,
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v2/sms/send",
+    "headers": { "KEY": { "matches": ".+" } },
+    "bodyPatterns": [ { "matchesJsonPath": { "expression": "$.msisdn", "doesNotMatch": "^2519[0-9]{8}$" } } ]
+  },
+  "response": {
+    "status": 400,
+    "headers": { "Content-Type": "application/json; charset=utf-8" },
+    "jsonBody": { "error_message": "Invalid MSISDN, it must start with 2519 and be 12 digits. Error Code :: 10000" }
+  }
+}

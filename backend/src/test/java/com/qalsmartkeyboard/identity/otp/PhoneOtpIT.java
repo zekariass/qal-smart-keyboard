@@ -323,6 +323,39 @@ class PhoneOtpIT {
 				.andExpect(jsonPath("$.errors[0].code").value("INVALID_PHONE_NUMBER"));
 	}
 
+	/** ADR 0007 D48: other countries get 400 PHONE_REGION_NOT_SUPPORTED, no SMS and no challenge. */
+	@Test
+	void nonEthiopianNumbersAreRefusedWithoutSmsOrChallenge() throws Exception {
+		Integer before = jdbc.queryForObject("SELECT count(*) FROM otp_challenges", Integer.class);
+		for (String phone : List.of("+447700900123", "+12025550123")) {
+			start(phone, newIp()).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("PHONE_REGION_NOT_SUPPORTED"));
+		}
+		verify(sender, org.mockito.Mockito.never()).send(org.mockito.ArgumentMatchers
+				.argThat(m -> m.phoneE164().startsWith("+44") || m.phoneE164().startsWith("+1")));
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM otp_challenges", Integer.class)).isEqualTo(before);
+	}
+
+	@Test
+	void refusedRegionStillCountsAgainstTheIpBudget() throws Exception {
+		String ip = newIp();
+		for (int i = 0; i < 4; i++) {
+			start("+447700900123", ip).andExpect(status().isBadRequest());
+		}
+		start("+447700900123", ip).andExpect(status().isTooManyRequests());
+	}
+
+	@Test
+	void safaricomNumbersAreRefusedWithTheirOwnCodeAndNoSms() throws Exception {
+		Integer before = jdbc.queryForObject("SELECT count(*) FROM otp_challenges", Integer.class);
+		String phone = "+2517" + String.format("%08d", ThreadLocalRandom.current().nextInt(100_000_000));
+		start(phone, newIp()).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("PHONE_CARRIER_NOT_SUPPORTED"));
+		verify(sender, org.mockito.Mockito.never())
+				.send(org.mockito.ArgumentMatchers.argThat(m -> m.phoneE164().equals(phone)));
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM otp_challenges", Integer.class)).isEqualTo(before);
+	}
+
 	/** DoD: the V3 guard the flow relies on (every challenge carries its sealed number) rejects bad rows. */
 	@Test
 	void schemaRejectsChallengesWithoutASealedNumber() {

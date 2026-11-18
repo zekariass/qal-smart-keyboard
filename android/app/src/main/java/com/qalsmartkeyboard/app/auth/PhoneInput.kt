@@ -5,42 +5,55 @@ sealed interface PhoneResult {
     data class Valid(val e164: String) : PhoneResult
     data object Empty : PhoneResult
 
-    /** Not a number the contract accepts (`^\+[1-9][0-9]{6,14}$`). */
-    data object Invalid : PhoneResult
-
-    /** `+251` but not `+251` followed by 9 digits starting with 9 or 7 (the server's rule: no landlines). */
+    /** Not 9 digits starting with 9 or 7 (landline, wrong length, other prefix). */
     data object NotEthiopianMobile : PhoneResult
+
+    /** An Ethiopian mobile on another carrier (07..., Safaricom Ethiopia): it cannot receive sign-in codes yet. */
+    data object CarrierNotSupported : PhoneResult
+
+    /** An international number (`+` or `00` and not 251): phone sign-in is Ethiopia only. */
+    data object OutsideEthiopia : PhoneResult
 }
 
 /**
- * Phone number rules, the same as the server's (B2.1 `PhoneNumbers`): strict E.164 from the
- * contract, plus for `+251` a mobile number `^\+251[79][0-9]{8}$`. Input is normalised first with
- * Ethiopia as the default country: `0911 234 567`, `911234567`, `251911234567`,
- * `00251911234567` and `+251 91 123 4567` all become `+251911234567`. Other countries need `+`
- * (or `00`).
+ * Phone number rules (ADR 0007 D48), mirroring the server: only Ethio Telecom mobiles (`+2519XXXXXXXX`) get a code.
+ * The field has a fixed `+251` prefix and the user types the 9-digit national number (`911 234 567`). A leading `0`
+ * (`0911 234 567`) is stripped, and a pasted `251...`, `+251...` or `00251...` is accepted too. `07...`/`7...`
+ * (Safaricom Ethiopia) is refused with its own message, and a number with another country code with another one,
+ * both without calling the server.
  */
 object PhoneInput {
     const val DEFAULT_PREFIX = "+251"
-    private val E164 = Regex("^\\+[1-9][0-9]{6,14}$")
-    private val ETHIOPIAN_MOBILE = Regex("^\\+251[79][0-9]{8}$")
+    private val ETHIO_TELECOM = Regex("^9[0-9]{8}$")
+    private val SAFARICOM = Regex("^7[0-9]{8}$")
 
-    /** Keeps only what can belong to a phone number while typing (digits, one leading `+`, spaces, dashes, brackets). */
+    /** Keeps digits (and a leading `+`, so a pasted international number can be recognised) while typing. */
     fun sanitize(raw: String): String =
-        raw.filterIndexed { i, c -> c in '0'..'9' || c in " -()" || (c == '+' && i == 0) }.take(24)
+        raw.filterIndexed { i, c -> c in '0'..'9' || (c == '+' && i == 0) }.take(16)
+
+    /** The national significant digits: a pasted country code or a leading trunk `0` removed. */
+    fun national(raw: String): String {
+        val d = raw.filter { it in '0'..'9' }
+        return when {
+            d.startsWith("00251") -> d.drop(5)
+            d.startsWith("251") -> d.drop(3) // no national number starts with 2
+            d.startsWith("0") -> d.drop(1)
+            else -> d
+        }
+    }
 
     fun normalize(raw: String): PhoneResult {
-        val s = raw.filter { it in '0'..'9' || it == '+' }
-        if (s.isEmpty()) return PhoneResult.Empty
-        if (s.indexOf('+') > 0 || s.count { it == '+' } > 1) return PhoneResult.Invalid
-        val e164 = when {
-            s.startsWith("+") -> s
-            s.startsWith("00") -> "+" + s.drop(2)
-            s.startsWith("0") -> DEFAULT_PREFIX + s.drop(1)
-            s.startsWith("251") && s.length == 12 -> "+$s"
-            else -> DEFAULT_PREFIX + s
+        val t = raw.trim()
+        if (t.none { it in '0'..'9' }) return PhoneResult.Empty
+        val digits = t.filter { it in '0'..'9' }
+        val international = (t.startsWith("+") && !digits.startsWith("251")) ||
+            (digits.startsWith("00") && !digits.startsWith("00251"))
+        if (international && digits.length > 2) return PhoneResult.OutsideEthiopia
+        val n = national(t)
+        return when {
+            ETHIO_TELECOM.matches(n) -> PhoneResult.Valid(DEFAULT_PREFIX + n)
+            SAFARICOM.matches(n) -> PhoneResult.CarrierNotSupported
+            else -> PhoneResult.NotEthiopianMobile
         }
-        if (!E164.matches(e164)) return PhoneResult.Invalid
-        if (e164.startsWith(DEFAULT_PREFIX) && !ETHIOPIAN_MOBILE.matches(e164)) return PhoneResult.NotEthiopianMobile
-        return PhoneResult.Valid(e164)
     }
 }

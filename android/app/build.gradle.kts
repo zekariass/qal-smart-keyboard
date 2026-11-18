@@ -13,6 +13,8 @@ plugins {
 //   qal.entitlementJwksFile        JWK Set (the format of /.well-known/jwks.json) of the entitlement-token public keys pinned in this build
 //                                  (ADR 0013). Without it the set is empty: tokens never verify and no offline gate opens (fail closed).
 //   qal.mockAttestation            true/false, debug builds only: use MockAttestationProvider (default true for debug)
+//   qal.sentryDsn                  Sentry DSN for content-free crash reports (ADR 0024); also env QAL_SENTRY_DSN_ANDROID.
+//                                  Blank (the default: local, CI, tests): Sentry is never started and nothing is sent.
 val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.isFile) f.inputStream().use { load(it) }
@@ -20,6 +22,8 @@ val localProps = Properties().apply {
 fun deployProp(name: String): String? = providers.gradleProperty(name).orNull ?: localProps.getProperty(name)
 // The pinned entitlement keys (ADR 0013 D4.2): compiled in, never fetched. A path is resolved against android/.
 val entitlementJwks: String = deployProp("qal.entitlementJwksFile")?.let { rootProject.file(it).readText() } ?: "{\"keys\":[]}"
+// A DSN is not a secret (it only allows sending events), but it differs per environment and must stay out of git.
+val sentryDsn: String = (deployProp("qal.sentryDsn") ?: providers.environmentVariable("QAL_SENTRY_DSN_ANDROID").orNull).orEmpty().trim()
 fun quoted(v: String) = "\"" + v.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
@@ -41,6 +45,7 @@ android {
 
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", quoted(deployProp("qal.googleWebClientId").orEmpty()))
         buildConfigField("String", "ENTITLEMENT_JWKS", quoted(entitlementJwks.replace(Regex("\\s+"), " ")))
+        buildConfigField("String", "SENTRY_DSN", quoted(sentryDsn))
         buildConfigField("long", "PLAY_INTEGRITY_PROJECT_NUMBER", (deployProp("qal.playIntegrityProjectNumber")?.toLongOrNull() ?: 0L).toString() + "L")
     }
 
@@ -101,6 +106,7 @@ dependencies {
     implementation(project(":sync"))
     implementation(project(":ai-client"))
     implementation(libs.androidx.work.runtime)
+    implementation(libs.sentry.android.core) // ADR 0024; started only with a DSN and the user's consent switch on
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)

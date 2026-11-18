@@ -1,5 +1,6 @@
 package com.qalsmartkeyboard.identity.otp;
 
+import java.util.Collection;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -34,6 +35,25 @@ final class PhoneNumbers {
 			return Optional.of("Must be an Ethiopian mobile number: +251 followed by 9 digits starting with 9 or 7.");
 		}
 		return Optional.empty();
+	}
+
+	/** Why a well-formed number does not get a sign-in code (ADR 0007 D48). */
+	enum Eligibility {
+		ALLOWED, CARRIER_NOT_SUPPORTED, REGION_NOT_SUPPORTED
+	}
+
+	/**
+	 * A number starting with one of {@code allowedPrefixes} (default {@code +2519}, Ethio Telecom) is allowed. Another
+	 * Ethiopian mobile (e.g. +2517, Safaricom Ethiopia) is a carrier that cannot receive codes yet; anything else is
+	 * outside the supported region. Call with a number that already passed {@link #rejectionReason}.
+	 */
+	static Eligibility eligibility(String e164, Collection<String> allowedPrefixes) {
+		for (String prefix : allowedPrefixes) {
+			if (e164.startsWith(prefix)) {
+				return Eligibility.ALLOWED;
+			}
+		}
+		return e164.startsWith("+251") ? Eligibility.CARRIER_NOT_SUPPORTED : Eligibility.REGION_NOT_SUPPORTED;
 	}
 
 	/** Low-cardinality metric tag: {@code ET} for +251, otherwise {@code INTL}. */

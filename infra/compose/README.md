@@ -39,16 +39,21 @@ MinIO console: http://localhost:9001 (root credentials above). S3 endpoint: `htt
 Base URL `http://localhost:8089`. Each group has its own prefix so an adapter can use it as a base URL.
 Request bodies are not validated beyond what is noted; responses are fixed samples.
 
-### SMS: `/sms`
+### SMS: SMS Ethiopia v2 (`/api/v2/sms/send`)
+
+Shape of the real vendor API (`docs/vendors/sms-ethiopia-api.md`, ADR 0025). Use with the backend's
+`QAL_SMS_PROVIDER=sms-ethiopia QAL_SMS_ETHIOPIA_API_KEY=dev QAL_SMS_ETHIOPIA_BASE_URL=http://localhost:8089/`.
 
 ```bash
-# Send OTP (202, returns message_id, echoes "to")
-curl -X POST localhost:8089/sms/v1/messages -H 'Content-Type: application/json' \
-  -d '{"to":"+251911000001","text":"Your Qal code is 123456"}'
+# Accepted (200, random ULID-like id); needs a KEY header and msisdn 2519 + 8 digits, no plus
+curl -X POST localhost:8089/api/v2/sms/send -H 'Content-Type: application/json' -H 'KEY: dev' \
+  -d '{"msisdn":"251911000001","text":"Your Qal code is 123456"}'
 
-# Provider failure: magic number +251900000503 returns 503
-curl -i -X POST localhost:8089/sms/v1/messages -H 'Content-Type: application/json' \
-  -d '{"to":"+251900000503","text":"x"}'
+# Errors: missing KEY -> 401; msisdn not 2519XXXXXXXX -> 400 Error Code :: 10000;
+# magic numbers 251900010005 -> 400 10005 (insufficient balance), 251900010007 -> 400 10007 (not whitelisted),
+# 251900000429 -> 429 (Retry-After: 30), 251900000500 -> 500
+curl -i -X POST localhost:8089/api/v2/sms/send -H 'Content-Type: application/json' -H 'KEY: dev' \
+  -d '{"msisdn":"251900010005","text":"x"}'
 ```
 
 ### AI: `/ai`

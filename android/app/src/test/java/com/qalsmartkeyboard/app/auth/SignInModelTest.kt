@@ -181,11 +181,38 @@ class SignInModelTest {
         model.setPhone("0111234567")
         model.submitPhone()
         assertEquals(SignInMessage.PhoneNotEthiopianMobile, st().message)
-        model.setPhone("+12")
+        model.setPhone("447700900123") // another country: no server call
         model.submitPhone()
-        assertEquals(SignInMessage.PhoneInvalid, st().message)
+        assertEquals(SignInMessage.PhoneNotEthiopianMobile, st().message)
         assertTrue(requests.isEmpty())
         assertEquals(SignInStep.OPTIONS, st().step)
+    }
+
+    @Test fun serverRegionRefusalShowsTheEthiopiaOnlyMessage() = run {
+        routes = { problem(400, "PHONE_REGION_NOT_SUPPORTED") }
+        model.setPhone("911234567")
+        model.submitPhone()
+        assertEquals(SignInMessage.PhoneRegionNotSupported, st().message)
+        assertEquals(SignInStep.OPTIONS, st().step)
+        assertNull(st().busy)
+    }
+
+    @Test fun serverCarrierRefusalShowsTheSafaricomMessage() = run {
+        routes = { problem(400, "PHONE_CARRIER_NOT_SUPPORTED") }
+        model.setPhone("911234567")
+        model.submitPhone()
+        assertEquals(SignInMessage.PhoneCarrierNotSupported, st().message)
+        assertEquals(SignInStep.OPTIONS, st().step)
+    }
+
+    @Test fun safaricomAndInternationalNumbersAreRefusedOnTheDevice() = run {
+        model.setPhone("0711234567")
+        model.submitPhone()
+        assertEquals(SignInMessage.PhoneCarrierNotSupported, st().message)
+        model.setPhone("+447700900123")
+        model.submitPhone()
+        assertEquals(SignInMessage.PhoneRegionNotSupported, st().message)
+        assertTrue(requests.isEmpty())
     }
 
     @Test fun resendCooldownComesFromTheServerAndGatesTheButton() = run {

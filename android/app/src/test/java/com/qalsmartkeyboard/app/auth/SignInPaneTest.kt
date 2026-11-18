@@ -5,6 +5,11 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Modifier
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -22,15 +27,31 @@ class SignInPaneTest {
     private val challenge = OtpChallengeInfo(UUID.randomUUID(), 6, 0, 0)
 
     private fun show(state: SignInState, actions: SignInActions = SignInActions(), google: Boolean = true, guest: Boolean = true, hasGuest: Boolean = false) =
-        compose.setContent { SignInPane(state, actions, google, guest, hasGuest) }
+        compose.setContent {
+            Column(Modifier.verticalScroll(rememberScrollState())) { SignInPane(state, actions, google, guest, hasGuest) }
+        }
 
     @Test fun optionsShowPhoneGoogleAndGuest() {
         var guestTaps = 0
         show(SignInState(), SignInActions(onGuest = { guestTaps++ }))
         compose.onNodeWithText("Send code").assertIsEnabled()
         compose.onNodeWithText("Continue with Google").assertIsEnabled()
-        compose.onNodeWithText("Continue as guest").performClick()
+        compose.onNodeWithText("Continue as guest").performScrollTo().performClick()
         assertEquals(1, guestTaps)
+    }
+
+    @Test fun phoneFieldIsEthiopiaOnlyWithAGoogleShortcut() {
+        var google = 0
+        show(SignInState(), SignInActions(onGoogle = { google++ }))
+        compose.onNodeWithText("+251").assertExists()
+        compose.onNodeWithText("Ethiopian numbers only (Ethio telecom). Outside Ethiopia? Use Google.").assertExists()
+        compose.onNodeWithText("Use Google sign-in").performScrollTo().performClick()
+        assertEquals(1, google)
+    }
+
+    @Test fun noGoogleShortcutWhenGoogleIsUnavailable() {
+        show(SignInState(), google = false)
+        compose.onNodeWithText("Use Google sign-in").assertDoesNotExist()
     }
 
     @Test fun buttonsTheBuildCannotServeAreHidden() {
@@ -53,7 +74,7 @@ class SignInPaneTest {
 
     @Test fun errorMessagesAreShownAsText() {
         show(SignInState(message = SignInMessage.PhoneNotEthiopianMobile))
-        compose.onNodeWithText("Enter an Ethiopian mobile number: 09… or 07…, or +251 9… or +251 7….").assertExists()
+        compose.onNodeWithText("Enter a 9-digit Ethio telecom mobile number starting with 9, for example 911 234 567.").assertExists()
     }
 
     @Test fun codeStepShowsAttemptsAndTheCooldown() {

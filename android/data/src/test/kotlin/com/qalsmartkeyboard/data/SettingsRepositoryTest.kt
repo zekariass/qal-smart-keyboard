@@ -76,6 +76,25 @@ class SettingsRepositoryTest {
         assertTrue(s.hapticsEnabled)
         assertTrue(s.keyPreviewEnabled)
         assertEquals(100, s.keyHeightPercent)
+        assertTrue(s.crashReports) // ADR 0024: on by default, reports carry no content
+    }
+
+    @Test fun crashReportsSwitchPersistsAcrossRestart() = runBlocking {
+        open().update { it.copy(crashReports = false) }
+        closeAll()
+        assertFalse(open().current().crashReports)
+    }
+
+    @Test fun filesWrittenBeforeCrashReportsDecodeToOn() = runBlocking {
+        // A store written by the previous version: no crash_reports key at all.
+        val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "old-crash.preferences_pb")
+        store.edit {
+            it[intPreferencesKey("schema_version")] = 1
+            it[intPreferencesKey("key_height_percent")] = 110
+        }
+        val s = SettingsRepository(store).current()
+        assertTrue(s.crashReports)
+        assertEquals(110, s.keyHeightPercent)
     }
 
     @Test fun persistedAcrossRestart() = runBlocking {

@@ -12,14 +12,54 @@ import com.qalsmartkeyboard.aigateway.adapter.MockAiProvider;
  * @param registryCacheTtl how long the provider descriptor snapshot is reused before the next lookup reloads it
  * @param mock deterministic in-process provider (dev/test only; refused under prod, production, staging)
  * @param http HTTP/JSON adapter pointed at the local WireMock stubs (dev/test only, same refusal)
+ * @param openai OpenAI adapter (ADR 0007 D46, ADR 0023); the bean exists only when the key is set
+ * @param googleTranslate Google Cloud Translation (Basic, v2) adapter; the bean exists only when the key is set
  * @param routing router limits, circuit breaker, kill switch and cost cap caches (B5.2)
  * @param pipeline the request pipeline (B5.3)
  * @param idempotency the encrypted replay cache and request fingerprints (B5.4)
  */
 @ConfigurationProperties("qal.ai")
 record AiGatewayProperties(@DefaultValue("30s") Duration registryCacheTtl, @DefaultValue Mock mock,
-		@DefaultValue Http http, @DefaultValue Routing routing, @DefaultValue Pipeline pipeline,
-		@DefaultValue Idempotency idempotency) {
+		@DefaultValue Http http, @DefaultValue OpenAi openai, @DefaultValue GoogleTranslate googleTranslate,
+		@DefaultValue Routing routing, @DefaultValue Pipeline pipeline, @DefaultValue Idempotency idempotency) {
+
+	/**
+	 * OpenAI (ADR 0023). Keys come from the environment only and are redacted in toString.
+	 *
+	 * @param apiKey          {@code QAL_OPENAI_API_KEY}; blank = no adapter bean
+	 * @param model           {@code QAL_OPENAI_MODEL}, the vendor model id; required when the key is set (startup fails)
+	 * @param baseUrl         API root including {@code /v1} (tests point it at a local stub)
+	 * @param connectTimeout  TCP/TLS connect timeout; the read timeout is the router's per-call deadline
+	 * @param maxOutputTokens {@code max_completion_tokens} (includes reasoning tokens), 0 = not sent
+	 * @param reasoningEffort {@code reasoning_effort} for reasoning models (for example {@code low}); blank = model default
+	 */
+	record OpenAi(@DefaultValue("") String apiKey, @DefaultValue("") String model,
+			@DefaultValue("https://api.openai.com/v1") String baseUrl, @DefaultValue("2s") Duration connectTimeout,
+			@DefaultValue("4096") int maxOutputTokens, @DefaultValue("") String reasoningEffort) {
+
+		@Override
+		public String toString() {
+			return "OpenAi[model=" + model + ", baseUrl=" + baseUrl + ", apiKey=<redacted>]";
+		}
+	}
+
+	/**
+	 * Google Cloud Translation - Basic (ADR 0023).
+	 *
+	 * @param apiKey         {@code QAL_GOOGLE_TRANSLATE_API_KEY}, an API key restricted to the Cloud Translation API;
+	 *                       blank = no adapter bean
+	 * @param baseUrl        API root (tests point it at a local stub)
+	 * @param connectTimeout TCP/TLS connect timeout
+	 */
+	record GoogleTranslate(@DefaultValue("") String apiKey,
+			@DefaultValue("https://translation.googleapis.com") String baseUrl,
+			@DefaultValue("2s") Duration connectTimeout) {
+
+		@Override
+		public String toString() {
+			return "GoogleTranslate[baseUrl=" + baseUrl + ", apiKey=<redacted>]";
+		}
+	}
 
 	/**
 	 * B5.4 (plan rule N5, SD 8.3, SD 11.6, contract {@code IdempotencyKey}).
