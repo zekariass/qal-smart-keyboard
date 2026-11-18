@@ -1138,11 +1138,15 @@ paths:
       tags: [Preferences]
       operationId: pullDictionaryChanges
       summary: Pull personal-dictionary changes since a sync token
-      description: Requires `DICTIONARY_SYNC` consent and entitlement. Words are decrypted server-side for delivery over TLS only.
+      description: |
+        Requires the `DICTIONARY_SYNC` entitlement and consent (403 `CONSENT_REQUIRED` when the consent is not granted or was
+        withdrawn) and a registered account (403 `GUEST_NOT_ALLOWED` for guests). Words are decrypted server-side for delivery
+        over TLS only. Changes come oldest first. A deleted word is delivered as a `DELETE` tombstone that still carries the
+        word. On download `clientChangeId` is the id of the dictionary entry. Words are NFC-normalised.
       parameters:
         - name: since
           in: query
-          description: Opaque sync token from a previous response; omit for a full sync.
+          description: Opaque sync token from a previous response; omit for a full sync. An unknown token is 400.
           schema: { type: string, maxLength: 128 }
         - $ref: '#/components/parameters/Limit'
       responses:
@@ -1151,12 +1155,20 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DictionaryChangesPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Preferences]
       operationId: pushDictionaryChanges
       summary: Push a batch of personal-dictionary changes
-      description: Idempotent per `clientChangeId`. Stored as ciphertext plus keyed HMAC for de-duplication.
+      description: |
+        Idempotent per `clientChangeId` (a re-uploaded change counts as applied and changes nothing). Stored as ciphertext
+        plus a keyed HMAC for de-duplication. Last writer wins per word in server arrival order: `ADD` of a live word and
+        `DELETE` of an absent word are no-ops. Words are NFC-normalised; a word with whitespace or control characters is
+        rejected with code `INVALID_WORD` and an unknown or inactive language with `LANGUAGE_NOT_SUPPORTED`. The returned
+        `syncToken` is the high-water mark after this batch; a client that did not pull up to the previous version keeps its
+        own pull cursor. Same gates as the pull operation.
       requestBody:
         required: true
         content:
@@ -1169,6 +1181,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DictionaryChangesResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
   # ---------------------------------------------------------------- AI
