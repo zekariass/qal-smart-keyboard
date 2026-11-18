@@ -12,6 +12,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
@@ -68,17 +69,31 @@ public class ApiSecurityConfiguration {
 	}
 
 	/**
-	 * The authentication of a verified access token. A <b>guest</b> token is honoured only while its account is still
-	 * an active guest (one primary-key lookup per guest request, B2.6/ADR 0010): once the guest is merged into or
-	 * upgraded to a registered account (or suspended or deleted), its remaining access tokens are refused at once rather
-	 * than at expiry, so they can neither act on the merged guest nor trigger a second merge. Registered tokens stay
-	 * fully stateless (their revocation window is the 15 minute lifetime, see {@code AuthenticatedUser}). Without the
-	 * account store (MVC slice tests only) guest tokens are refused: fail closed.
+	 * The authentication of a verified access token, with one primary-key lookup of the account:
+	 * <ul>
+	 * <li>A <b>guest</b> token is honoured only while its account is an active guest, or a guest whose deletion is
+	 * pending (B2.6/ADR 0010, ADR 0015): once the guest is merged into or upgraded to a registered account (or suspended
+	 * or deleted), its remaining access tokens are refused at once rather than at expiry
+	 * ({@code GUEST_SESSION_INVALID}), so they can neither act on the merged guest nor trigger a second merge.</li>
+	 * <li>A <b>registered</b> token is refused ({@code UNAUTHENTICATED}, {@code invalid_token}) once its account is
+	 * deleted (from the moment the deletion executor starts, B6.2/ADR 0015) or merged, so nothing can write rows for a
+	 * deleted account after its data was purged. Otherwise registered tokens are stateless (a revoked session's access
+	 * token lives out its 15 minutes, see {@code AuthenticatedUser}); a token whose account row does not exist is left
+	 * to the endpoint (it never resolves to any data).</li>
+	 * </ul>
+	 * Without the account store (MVC slice tests only) guest tokens are refused (fail closed) and registered tokens pass.
 	 */
 	static AccessTokenAuthentication authenticate(Jwt jwt, UserAccountStore accounts) {
 		AuthenticatedUser principal = AccessTokenService.principal(jwt);
-		if (principal.isGuest() && (accounts == null || !accounts.isActiveGuest(principal.userId()))) {
-			throw new GuestSessionInvalidException();
+		UserAccountStore.AccountState state = accounts == null ? null
+				: accounts.state(principal.userId()).orElse(null);
+		if (principal.isGuest()) {
+			if (state == null || !state.acceptsGuestToken()) {
+				throw new GuestSessionInvalidException();
+			}
+		}
+		else if (state != null && state.isClosed()) {
+			throw new InvalidBearerTokenException("The account is closed");
 		}
 		return new AccessTokenAuthentication(principal);
 	}
