@@ -41,3 +41,11 @@ qal:
     mock:
       enabled: true
     registry-cache-ttl: 0s
+  # B3.2: the interim admin surface is on and packs are re-signed with a random per-JVM key (PackPublishingIT registers
+  # it); object storage stays unconfigured unless a test supplies MinIO.
+  admin:
+    enabled: true
+  languages:
+    publishing:
+      signing:
+        allow-ephemeral: true
