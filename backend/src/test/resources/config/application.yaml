@@ -44,3 +44,11 @@ qal:
     # B5.4: the replay cache sweeper (a db-scheduler task) is off in tests; AiReplayCacheIT calls the sweep directly.
     idempotency:
       sweeper-enabled: false
+  # B3.2: the interim admin surface is on and packs are re-signed with a random per-JVM key (PackPublishingIT registers
+  # it); object storage stays unconfigured unless a test supplies MinIO.
+  admin:
+    enabled: true
+  languages:
+    publishing:
+      signing:
+        allow-ephemeral: true

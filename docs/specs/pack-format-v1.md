@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Status | Normative. Implemented by `core/src/pack` (plan step C1.2). |
-| Implementations | Verifier: `keyboard-core` (Rust). Signers: `pack::builder` (Rust, feature `builder`, used by L1.1) and the backend publisher (Java, B3.2). |
+| Implementations | Verifiers: `keyboard-core` (Rust) and the backend publisher (Java, `languages.pack.PackVerifier`, B3.2). Signers: `pack::builder` (Rust, feature `builder`, used by L1.1) and the backend publisher (Java, B3.2, ADR 0019). |
 | Test vectors | `core/tests/vectors/pack-v1/*.json` (§11) |
 | Related | System Design §7.6, §18; DB tables `resource_signing_keys`, `language_resources`; plan rules N1, N2, N10, N11 |
 
@@ -130,6 +130,11 @@ header. If present, it is an unknown member and ignored.
 `language_resources.manifest_json` stores the manifest; the backend MUST also keep the exact
 signed bytes (or the whole container) because the signature covers bytes, not JSON values.
 
+The backend publisher (B3.2, ADR 0019) re-signs every pack it stages or publishes with the server
+key: it sets `releaseChannel`, `minAppVersion` and `signatureKeyId` for the channel it serves the
+pack on and drops `artifactUrl`. `resourceId`, `version` and the artifact (`sha256`, `sizeBytes`)
+never change, so a host treats the re-signed pack as the same pack (§8.1).
+
 ## 6. Verification procedure
 
 A verifier performs these steps **in order** and stops at the first failure, reporting the
@@ -195,7 +200,33 @@ to `REVOKED` (or drops it) instead.
 4. On suspected compromise, mark the key `REVOKED` immediately and push the new trusted set to
    apps. Keys announced by `GET /resource-signing-keys` are accepted by the host only when the
    announcement is endorsed by an already-trusted key (OpenAPI `endorsementSignature`; host
-   side, A2.3).
+   side, A2.3; format in §7.4).
+
+### 7.4 Key endorsements
+
+Defined by B3.2 (ADR 0019). An endorsement lets an already trusted key vouch for an additional key:
+
+```
+message   = "QAL-KEY-ENDORSEMENT-v1" || 0x00 || u8 len(keyId) || keyId || publicKey
+signature = Ed25519-Sign(endorsing private key, message)          // RFC 8032 "pure" Ed25519
+```
+
+- `keyId` is the endorsed key id (ASCII, same syntax as the header `key_id`, so its length fits
+  in one byte); `publicKey` is its raw 32-byte Ed25519 public key.
+- `GET /resource-signing-keys` carries the endorsing key id in `endorsedByKeyId` and the 64
+  signature bytes, standard base64 with padding, in `endorsementSignature`.
+- A host accepts an announced key only if the endorsing key is one it already trusts and is not
+  `REVOKED`, the signature verifies **strictly** (§4), and the announced key passes the §7.1
+  checks (valid point, not small order, no id or public key already listed).
+- The endorsement covers the key id and public key, not the status. A host may apply a
+  `REVOKED` status from any announcement (that only removes trust); it never trusts a key, or
+  lifts a revocation, without an endorsement.
+- The context prefix differs from §4 (`QAL-PACK-MANIFEST-v1`), so a pack signature can never
+  pass as an endorsement or the other way round.
+- The backend endorses with its signing key when a key is registered
+  (`POST /admin/v1/resource-signing-keys`). Keys registered with `endorse: false` (for example a
+  build pipeline key that may only sign uploads) have no endorsement and are never trusted by
+  hosts.
 
 ## 8. Engine policy (activation)
 
