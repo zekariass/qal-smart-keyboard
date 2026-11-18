@@ -235,7 +235,7 @@ preferences, but the table, the guest-merge and the deletion participants are he
   per-change rejections `INVALID_WORD` / `LANGUAGE_NOT_SUPPORTED` in `rejected`.
 - **Merge/deletion:** guest merge recomputes `word_hmac` under the target's key; account deletion deletes the entries, the
   applied-change ids and the key row.
-- **V14** adds `user_dictionary_sync_state` and `user_dictionary_applied_changes`.
+- **V13** adds `user_dictionary_sync_state` and `user_dictionary_applied_changes`.
 
 ## Consents (B3.5)
 

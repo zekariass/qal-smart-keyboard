@@ -60,7 +60,7 @@ consent blocks pull and push and purges nothing (SD 19.3, contract); the words s
 
 ### D6. Placement and migration
 Code is in `languages` (owns `user_dictionary_entries` and already holds the merge and deletion participants); SD §24 lists
-the endpoint under preferences, but all its tables are languages'. **V14** adds `user_dictionary_sync_state` (key, key
+the endpoint under preferences, but all its tables are languages'. **V13** adds `user_dictionary_sync_state` (key, key
 version, counter) and `user_dictionary_applied_changes`.
 
 ## Contract
