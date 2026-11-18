@@ -21,6 +21,8 @@ public enum ApiErrorCode {
 	OTP_INVALID(HttpStatus.UNAUTHORIZED, "One-time code is invalid"),
 	OTP_EXPIRED(HttpStatus.UNAUTHORIZED, "One-time code expired"),
 	OTP_TOO_MANY_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "Too many one-time code attempts"),
+	PHONE_REGION_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "Phone sign-in is not available for this number's country"),
+	PHONE_CARRIER_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "Phone sign-in is not available for this carrier"),
 	EMAIL_ALREADY_REGISTERED(HttpStatus.CONFLICT, "Email is already registered"),
 	ATTESTATION_REQUIRED(HttpStatus.FORBIDDEN, "Device attestation required"),
 	ATTESTATION_FAILED(HttpStatus.FORBIDDEN, "Device attestation failed"),

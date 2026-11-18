@@ -29,4 +29,26 @@ class PhoneNumbersTest {
 		assertThat(PhoneNumbers.destination(number)).isEqualTo("ET");
 		assertThat(PhoneNumbers.destination("+447700900123")).isEqualTo("INTL");
 	}
+
+	private static final java.util.List<String> DEFAULT = java.util.List.of("+2519");
+
+	@org.junit.jupiter.api.Test
+	void defaultAllowsOnlyEthioTelecomMobiles() {
+		assertThat(PhoneNumbers.eligibility("+251911234567", DEFAULT)).isEqualTo(PhoneNumbers.Eligibility.ALLOWED);
+		assertThat(PhoneNumbers.eligibility("+251711234567", DEFAULT))
+				.isEqualTo(PhoneNumbers.Eligibility.CARRIER_NOT_SUPPORTED);
+		assertThat(PhoneNumbers.eligibility("+447700900123", DEFAULT))
+				.isEqualTo(PhoneNumbers.Eligibility.REGION_NOT_SUPPORTED);
+		assertThat(PhoneNumbers.eligibility("+12025550123", DEFAULT))
+				.isEqualTo(PhoneNumbers.Eligibility.REGION_NOT_SUPPORTED);
+	}
+
+	@org.junit.jupiter.api.Test
+	void configuredPrefixesWiden() {
+		java.util.List<String> wide = java.util.List.of("+2519", "+2517", "+44");
+		assertThat(PhoneNumbers.eligibility("+251711234567", wide)).isEqualTo(PhoneNumbers.Eligibility.ALLOWED);
+		assertThat(PhoneNumbers.eligibility("+447700900123", wide)).isEqualTo(PhoneNumbers.Eligibility.ALLOWED);
+		assertThat(PhoneNumbers.eligibility("+12025550123", wide))
+				.isEqualTo(PhoneNumbers.Eligibility.REGION_NOT_SUPPORTED);
+	}
 }

@@ -17,8 +17,12 @@ enum class Busy { PHONE, CODE, RESEND, GOOGLE, GUEST }
 /** One user-visible problem; the UI maps each to a string (no server text is shown). */
 sealed interface SignInMessage {
     data object PhoneEmpty : SignInMessage
-    data object PhoneInvalid : SignInMessage
+    /** The server refused a non-Ethiopian number (`PHONE_REGION_NOT_SUPPORTED`). */
+    data object PhoneRegionNotSupported : SignInMessage
     data object PhoneNotEthiopianMobile : SignInMessage
+
+    /** Safaricom Ethiopia (07...): no sign-in codes yet (`PHONE_CARRIER_NOT_SUPPORTED`, or refused on the device). */
+    data object PhoneCarrierNotSupported : SignInMessage
     data object CodeIncomplete : SignInMessage
     data object OtpInvalid : SignInMessage
     data object OtpExpired : SignInMessage
@@ -99,8 +103,9 @@ class SignInModel(
         val e164 = when (val r = PhoneInput.normalize(s.phoneInput)) {
             is PhoneResult.Valid -> r.e164
             PhoneResult.Empty -> return fail(SignInMessage.PhoneEmpty)
-            PhoneResult.Invalid -> return fail(SignInMessage.PhoneInvalid)
             PhoneResult.NotEthiopianMobile -> return fail(SignInMessage.PhoneNotEthiopianMobile)
+            PhoneResult.CarrierNotSupported -> return fail(SignInMessage.PhoneCarrierNotSupported)
+            PhoneResult.OutsideEthiopia -> return fail(SignInMessage.PhoneRegionNotSupported)
         }
         sendCode(e164, Busy.PHONE)
     }
@@ -200,6 +205,8 @@ class SignInModel(
         val field = (e as? ApiError.Http)?.fieldErrors?.any { it.field == "ageConfirmed" } == true
         return when {
             e is ApiError.UpdateRequired -> SignInMessage.Unexpected // the update screen takes over (updateRequired flag)
+            e.code == ProblemCodes.PHONE_REGION_NOT_SUPPORTED -> SignInMessage.PhoneRegionNotSupported
+            e.code == ProblemCodes.PHONE_CARRIER_NOT_SUPPORTED -> SignInMessage.PhoneCarrierNotSupported
             e.code == ProblemCodes.OTP_INVALID -> SignInMessage.OtpInvalid
             e.code == ProblemCodes.OTP_EXPIRED -> SignInMessage.OtpExpired
             e.code == ProblemCodes.OTP_TOO_MANY_ATTEMPTS -> SignInMessage.OtpTooManyAttempts
