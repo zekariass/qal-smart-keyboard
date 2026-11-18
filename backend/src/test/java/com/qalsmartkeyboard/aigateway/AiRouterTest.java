@@ -99,6 +99,31 @@ class AiRouterTest {
 		return router.route(RouteRequest.translate(TranslateRequest.of("hello", "en", "am"), null, null));
 	}
 
+	// ------------------------------------------------------------------------------------------------ B5.3 filters
+
+	@Test
+	void requestFiltersPinOrExcludeProvidersAndTheServedCapabilityIsReported() {
+		RouteRequest<TranslateResult> base = RouteRequest.translate(TranslateRequest.of("hello", "en", "am"), null,
+				null);
+		RouteResult<TranslateResult> pinned = router.route(base.pinnedTo("beta"));
+		assertThat(pinned.providerCode()).isEqualTo("beta");
+		assertThat(pinned.capability().qualityTier()).isEqualTo(QualityTier.BETA);
+		assertThat(alpha.callCount()).isZero();
+
+		alpha.setBehavior(Behavior.failing(FailureMode.UNAVAILABLE));
+		RouteResult<TranslateResult> pinnedFailing = router.route(base.pinnedTo("alpha"));
+		assertThat(pinnedFailing.outcome()).isEqualTo(Outcome.PROVIDER_UNAVAILABLE);
+		assertThat(pinnedFailing.attempts()).extracting(RouteResult.Attempt::providerCode).containsExactly("alpha");
+		assertThat(pinnedFailing.capability()).isNull();
+		assertThat(beta.callCount()).isEqualTo(1);
+
+		alpha.setBehavior(Behavior.ok());
+		assertThat(router.route(base.excluding(List.of("alpha"))).providerCode()).isEqualTo("beta");
+		RouteResult<TranslateResult> none = router.route(base.excluding(List.of("alpha", "beta")));
+		assertThat(none.outcome()).isEqualTo(Outcome.PROVIDER_UNAVAILABLE);
+		assertThat(none.attempts()).isEmpty();
+	}
+
 	// ------------------------------------------------------------------------------------------------ failover
 
 	@Test
