@@ -10,6 +10,15 @@ docker compose -f infra/compose/docker-compose.yml down       # stop, keep data
 docker compose -f infra/compose/docker-compose.yml down -v    # stop and RESET all data (pgdata, miniodata)
 ```
 
+## Running the backend against this stack
+
+`infra/scripts/run-backend-dev.sh` starts the Spring Boot backend (profile `dev`, DEV ONLY) against the Postgres here
+(`localhost:5434`), starting that one service if it is down. Only `postgres` is needed for the backend; MinIO and WireMock are optional
+(`provider=capture` replaces the SMS stub for sign-in). It generates a dev KEK in `infra/scripts/.dev-state/kek` (git-ignored) and
+refuses to run with a `prod`/`production`/`staging` profile. Then, from `android/`:
+`./gradlew :api:localStackTest -PlocalStack=true -PlocalStackUrl=http://localhost:8080` (reads the OTP from `/dev/sms/last`).
+See `backend/README.md`, "Local development launcher".
+
 After editing files under `wiremock/`, run `docker compose -f infra/compose/docker-compose.yml restart wiremock`.
 
 ## Services

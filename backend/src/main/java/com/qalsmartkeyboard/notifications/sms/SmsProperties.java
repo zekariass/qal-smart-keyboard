@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 /**
  * {@code qal.notifications.sms.*}.
  *
- * @param provider which {@link SmsProvider} sends SMS: {@code log} (development/tests only). No default: startup fails
+ * @param provider which {@link SmsProvider} sends SMS: {@code log} or {@code capture} (development/tests only). No default: startup fails
  *                 if unset. A real aggregator adapter is added when OI-11 is decided.
  * @param log      settings of the {@code log} provider
  */
