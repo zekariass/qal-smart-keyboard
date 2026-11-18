@@ -160,7 +160,13 @@ class EntitlementResolverIT {
 		UUID user = user("REGISTERED", "ACTIVE");
 		subscription(user, "PREMIUM", "PAYMENT", "ACTIVE", end.minus(Duration.ofDays(30)), end, null);
 		assertThat(resolver.resolve(user, end.minusNanos(1_000)).plan().orElseThrow().planCode()).isEqualTo("PREMIUM");
-		assertThat(resolver.resolve(user, end).plan().orElseThrow().planCode()).isEqualTo("FREE");
+		// D22: the default 24 h renewal lag keeps the ACTIVE row valid past its end
+		assertThat(resolver.resolve(user, end).plan().orElseThrow().planCode()).isEqualTo("PREMIUM");
+		assertThat(resolver.resolve(user, end).plan().orElseThrow().effectiveUntil()).isEqualTo(end);
+		assertThat(resolver.resolve(user, end.plus(Duration.ofHours(24)).minusNanos(1_000)).plan().orElseThrow()
+				.planCode()).isEqualTo("PREMIUM");
+		assertThat(resolver.resolve(user, end.plus(Duration.ofHours(24))).plan().orElseThrow().planCode())
+				.isEqualTo("FREE");
 
 		UUID graceUser = user("REGISTERED", "ACTIVE");
 		Instant periodEnd = Instant.now().minus(Duration.ofDays(1)).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
