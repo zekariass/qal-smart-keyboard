@@ -6,6 +6,7 @@ import com.qalsmartkeyboard.aiclient.DestinationSource
 import com.qalsmartkeyboard.aiclient.EntitlementManager
 import com.qalsmartkeyboard.aiclient.EntitlementTokenStore
 import com.qalsmartkeyboard.aiclient.EntitlementTokenVerifier
+import com.qalsmartkeyboard.aiclient.LastDestinationStore
 import com.qalsmartkeyboard.aiclient.PinnedKeys
 import com.qalsmartkeyboard.aiclient.ServerAiActions
 import com.qalsmartkeyboard.aiclient.SessionAccessInfo
@@ -68,6 +69,7 @@ class AiGraph private constructor(context: Context) {
         destinationSource = DestinationSource.of(SyncGraph.get(context).destinations),
         entitlements = entitlements,
         updateRequired = { updateRequired || auth.updateRequired.value },
+        lastDestinations = LastDestinationStore(files),
     )
 
     companion object {

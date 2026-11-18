@@ -52,7 +52,6 @@ class AiTypingLatencyTest {
             if (wired) {
                 toolbar = AiToolbarController(actions, EditorAiAccess(adapter) { c.commitComposition() }, { it() }, {}).also {
                     it.onFieldStarted(profile, "com.example")
-                    it.onKeyboardShown()
                     ed.commitText("Hello world")
                     it.onTask(AiTaskKind.TRANSLATE) // a request stays in flight while the user types
                 }

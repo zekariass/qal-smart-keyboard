@@ -21,6 +21,10 @@ class FakeAiActions : AiActions {
 
     override fun defaultDestination(packageName: String?) = defaultFor(packageName)
 
+    val remembered = ArrayList<Pair<String?, AiDestination>>()
+
+    override fun rememberDestination(packageName: String?, destination: AiDestination) { remembered += packageName to destination }
+
     override fun submit(request: AiRequest, onOutcome: (AiOutcome) -> Unit): AiCall {
         val s = Submitted(request, onOutcome)
         submitted += s

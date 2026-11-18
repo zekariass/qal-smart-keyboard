@@ -9,8 +9,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 import okio.ByteString.Companion.decodeBase64
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
-import org.bouncycastle.crypto.signers.Ed25519Signer
+import uniffi.qal_keyboard_core.verifyEd25519
 
 /**
  * The Ed25519 public keys of the entitlement token, **pinned in the app build** (ADR 0013 D4.2, D7):
@@ -73,7 +72,7 @@ sealed interface TokenVerdict {
  * 1. three base64url parts without padding, at most 8 KiB;
  * 2. `alg` exactly `EdDSA` and `typ` exactly `qal-ent+jwt` (checked before any key lookup); no
  *    `crit`, `jwk`, `jku`, `x5u`, `x5c`; `kid` in the **pinned** set;
- * 3. the Ed25519 signature over `ASCII(header.payload)`;
+ * 3. the strict Ed25519 signature (keyboard-core `verifyEd25519`) over `ASCII(header.payload)`;
  * 4. `iss`, `aud`, `ver = 1`; `sub` is the signed-in user; `deviceId`, when present, is this device;
  *    `iat < exp <= iat + 24 h`; `exp <= offlineGraceUntil <= exp + 72 h`; `features` an object of
  *    booleans; `planCode` and `jti` present; `iat` at most 5 minutes in the future.
@@ -99,9 +98,12 @@ class EntitlementTokenVerifier(
         val sig = parts[2].decodeBase64()?.toByteArray() ?: return reject(TokenRejection.MALFORMED)
         if (sig.size != 64) return reject(TokenRejection.BAD_SIGNATURE)
         val signed = "${parts[0]}.${parts[1]}".toByteArray(Charsets.US_ASCII)
+        // Strict Ed25519 in keyboard-core (the same rules as pack signatures); a failure to call it fails closed.
         val ok = try {
-            Ed25519Signer().apply { init(false, Ed25519PublicKeyParameters(key, 0)); update(signed, 0, signed.size) }.verifySignature(sig)
+            verifyEd25519(key, signed, sig)
         } catch (e: RuntimeException) {
+            false
+        } catch (e: UnsatisfiedLinkError) {
             false
         }
         if (!ok) return reject(TokenRejection.BAD_SIGNATURE)

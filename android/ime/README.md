@@ -166,8 +166,10 @@ port (pure Kotlin); `:ai-client` implements it and `:app` registers the factory 
 `AiActionsHolder`). The service builds the actions on a background thread.
 
 - **Explicit action only.** `AiActions.submit` is called only from a tap (`AiToolbarController.onTask` / `retry`).
-  The editor is read only then. Typing, selection changes and focus send and read nothing. The keyboard-shown
-  `refresh()` carries no text. The result enters the editor only via Replace or Insert; nothing presses Send.
+  The editor is read only then. Typing, selection changes and focus send and read nothing. The keyboard never
+  refreshes plan state by itself: `refresh()` (no text) runs on the first toolbar interaction (picker or action tap,
+  `AiToolbarController.onToolbarOpened`, at most once per 5 minutes) and from the app's background worker; showing
+  or hiding the keyboard makes no network call (ADR 0007 D40). The result enters the editor only via Replace or Insert; nothing presses Send.
 - **Target text.** The selection if there is one, else the sentence before the cursor (after the previous
   `. ! ? ... ። ፧ ፨` or line break; a sentence that just ended counts; trailing whitespace is kept). Text after the
   cursor is never read. Longer than 5000 chars: refused, not cut.
@@ -176,5 +178,10 @@ port (pure Kotlin); `:ai-client` implements it and `:app` registers the factory 
 - **One request at a time**: a tap while one is in flight is ignored; Cancel aborts the call. Typing keeps working.
   Retry after a network error/timeout/503/`REQUEST_IN_PROGRESS` reuses the `Idempotency-Key`; any other retry or
   "another result" uses a new one. A field change or keyboard hide cancels and drops the answer.
+- **Destination chip default:** `AiActions.defaultDestination(package)`: the app's A2.4 rule, else the last destination
+  picked in that app (`rememberDestination`, device-local), else the first profile, else English. Choosing a
+  destination in the picker calls `rememberDestination`.
+- **Links:** a failure's link button starts the companion app's launcher activity with
+  `EXTRA_OPEN_LINK` = `AiLink.name`; `:app`'s `DeepLinks` routes it (sign-in, settings, plans, update).
 - Replace re-checks that the original text is still there; if not, the result is inserted at the cursor instead.
 - Tests: `ai/` (controller, targets, `AiTypingLatencyTest` benchmark + no-call-on-keystroke test).

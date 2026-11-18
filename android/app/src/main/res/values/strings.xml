@@ -167,4 +167,6 @@
     <string name="upd_body">This version of Qal Smart Keyboard is too old to talk to the server. Typing still works; update to sign in and use online features.</string>
     <string name="upd_button">Open the store page</string>
     <string name="upd_dismiss">Not now</string>
+    <string name="plans_title">Plans</string>
+    <string name="plans_body">Plans and upgrades will be available here soon. Typing and the on-device features keep working in the meantime.</string>
 </resources>
