@@ -61,3 +61,13 @@ qal:
       secret-key: ${QAL_PACKS_S3_SECRET_KEY:}
       url-ttl: ${QAL_PACKS_S3_URL_TTL:15m}
       path-style: ${QAL_PACKS_S3_PATH_STYLE:true}
+  # AI provider SPI (B5.1, ADR 0014). No real vendor adapter exists until gate G0. The mock and the WireMock-shaped HTTP
+  # adapter are for development only (refused under prod/production/staging); the API key comes from the environment.
+  ai:
+    registry-cache-ttl: ${QAL_AI_REGISTRY_CACHE_TTL:30s}
+    mock:
+      enabled: ${QAL_AI_MOCK:false}
+    http:
+      enabled: ${QAL_AI_HTTP:false}
+      base-url: ${QAL_AI_HTTP_BASE_URL:http://localhost:8089}
+      api-key: ${QAL_AI_HTTP_API_KEY:}
