@@ -86,6 +86,16 @@ class CoreTypingTest {
         assertTrue(s.c.candidates.isEmpty())
     }
 
+    @Test fun digraphsReachShAndKhThroughTheRealKeys() {
+        // User report: ሽ and ኽ "missing". Typed key by key through the layout, controller and adapter.
+        val s = Session()
+        s.mode(AM_PH)
+        s.type("sh")
+        assertEquals("ሽ", s.ed.composing)
+        s.type("iro kh beteseb ")
+        assertEquals("ሺሮ ኽ በተሰብ ", s.ed.text.toString())
+    }
+
     @Test fun tigrinyaModeUsesItsOwnProfile() {
         val s = Session()
         s.mode(TypingMode("ti", LayoutKind.PHONETIC))

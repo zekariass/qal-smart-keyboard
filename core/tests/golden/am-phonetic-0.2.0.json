@@ -1,6 +1,6 @@
 {
   "profile": "am-phonetic",
-  "profile_version": "0.1.0",
+  "profile_version": "0.2.0",
   "status": "DRAFT",
   "profile_source": "language-data/profiles/am-phonetic-draft.json",
   "notation": "keystrokes: one character = Char key; Backspace / Space / Enter / Commit; Select:<n> = select_candidate(n). steps[].after = number of keystrokes applied; composing/commit/delete_before(default 0)/alternatives (candidates without the default) are checked after that keystroke. Per vector: composing, alternatives and committed are checked after the last keystroke; committed is the text left after applying all commits and deletions.",
@@ -30,7 +30,7 @@
       "name": "two-words",
       "keystrokes": ["e", "n", "e", "Space", "d", "e", "h", "n", "a"],
       "steps": [
-        { "after": 3, "composing": "እነ", "commit": "", "alternatives": ["አነ", "ዕነ"] },
+        { "after": 3, "composing": "እነ", "commit": "", "alternatives": ["አነ", "ዕነ", "ዐነ", "ኧነ"] },
         { "after": 4, "composing": "", "commit": "እነ " }
       ],
       "composing": "ደህና",
@@ -41,21 +41,21 @@
       "name": "initial-a-is-glottal-first-order",
       "keystrokes": ["a", "m", "a", "n"],
       "composing": "አማን",
-      "alternatives": ["ኣማን", "ዐማን"],
+      "alternatives": ["ኣማን", "ዐማን", "ዓማን"],
       "committed": ""
     },
     {
       "name": "initial-vowels-all-orders",
       "keystrokes": ["a", "u", "e", "e", "i", "o"],
       "steps": [
-        { "after": 1, "composing": "አ", "commit": "", "alternatives": ["ኣ", "ዐ"] },
+        { "after": 1, "composing": "አ", "commit": "", "alternatives": ["ኣ", "ዐ", "ዓ"] },
         { "after": 2, "composing": "አኡ", "commit": "" },
         { "after": 3, "composing": "አኡእ", "commit": "" },
         { "after": 4, "composing": "አኡኤ", "commit": "" },
         { "after": 5, "composing": "አኡኤኢ", "commit": "" }
       ],
       "composing": "አኡኤኢኦ",
-      "alternatives": ["ኣኡኤኢኦ", "ዐኡኤኢኦ", "አዑኤኢኦ", "አኡዔኢኦ"],
+      "alternatives": ["ኣኡኤኢኦ", "ዐኡኤኢኦ", "ዓኡኤኢኦ", "አዑኤኢኦ"],
       "committed": ""
     },
     {
@@ -125,7 +125,7 @@
       "name": "case-folding-sentence-capital",
       "keystrokes": ["S", "e", "l", "a", "m"],
       "composing": "ሰላም",
-      "alternatives": ["ሠላም"],
+      "alternatives": ["ሠላም", "ጸላም"],
       "committed": ""
     },
     {
@@ -162,7 +162,7 @@
       "name": "lowercase-w-is-the-consonant",
       "keystrokes": ["g", "w", "a"],
       "composing": "ግዋ",
-      "alternatives": [],
+      "alternatives": ["ጓ"],
       "committed": ""
     },
     {
@@ -293,12 +293,12 @@
       "committed": "አብ12"
     },
     {
-      "name": "unmapped-letter-is-committed-as-typed",
+      "name": "x-is-sh-not-an-unmapped-letter",
       "keystrokes": ["a", "x", "b"],
-      "steps": [{ "after": 2, "composing": "", "commit": "አx" }],
-      "composing": "ብ",
-      "alternatives": [],
-      "committed": "አx"
+      "steps": [{ "after": 2, "composing": "አሽ", "commit": "" }],
+      "composing": "አሽብ",
+      "alternatives": ["ኣሽብ", "ዐሽብ", "ዓሽብ"],
+      "committed": ""
     },
     {
       "name": "enter-and-commit-flush",
@@ -377,6 +377,133 @@
       "composing": "ሰ",
       "alternatives": ["ሠ"],
       "committed": "ሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰሰ"
+    },
+    {
+      "name": "report-sh-and-kh-sixth-order",
+      "keystrokes": ["s", "h", "Space", "k", "h", "Space", "b", "e", "t", "e", "s", "e", "b"],
+      "steps": [
+        {"after": 2, "composing": "ሽ", "commit": ""},
+        {"after": 3, "composing": "", "commit": "ሽ "},
+        {"after": 5, "composing": "ኽ", "commit": ""},
+        {"after": 6, "composing": "", "commit": "ኽ "}
+      ],
+      "composing": "በተሰብ",
+      "alternatives": ["በተሠብ"],
+      "committed": "ሽ ኽ "
+    },
+    {
+      "name": "shiro-digraph-then-vowels",
+      "keystrokes": ["s", "h", "i", "r", "o"],
+      "composing": "ሺሮ",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "x-gives-the-sh-series",
+      "keystrokes": ["x", "e", "Space", "x", "i", "r", "o"],
+      "steps": [
+        {"after": 1, "composing": "ሽ", "commit": "", "alternatives": []}
+      ],
+      "composing": "ሺሮ",
+      "alternatives": [],
+      "committed": "ሸ "
+    },
+    {
+      "name": "capital-k-offers-kx",
+      "keystrokes": ["K", "Space", "K", "e"],
+      "steps": [
+        {"after": 1, "composing": "ክ", "commit": "", "alternatives": ["ኽ"]}
+      ],
+      "composing": "ከ",
+      "alternatives": ["ኸ"],
+      "committed": "ክ "
+    },
+    {
+      "name": "c-gives-the-ch-series",
+      "keystrokes": ["c", "a", "w"],
+      "composing": "ቻው",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "capital-ejective-alternatives",
+      "keystrokes": ["T", "e", "n", "a"],
+      "composing": "ተና",
+      "alternatives": ["ጠና"],
+      "committed": ""
+    },
+    {
+      "name": "apostrophe-ejectives-c-k-s",
+      "keystrokes": ["c", "'", "a", "Space", "k", "'", "e", "Space", "s", "'", "e"],
+      "composing": "ጸ",
+      "alternatives": ["ፀ"],
+      "committed": "ጫ ቀ "
+    },
+    {
+      "name": "labialised-h-is-xw",
+      "keystrokes": ["h", "W", "a", "l", "a"],
+      "steps": [
+        {"after": 2, "composing": "ኍ", "commit": ""}
+      ],
+      "composing": "ኋላ",
+      "alternatives": ["ሗላ"],
+      "committed": ""
+    },
+    {
+      "name": "lowercase-w-offers-labialised-first",
+      "keystrokes": ["h", "w", "a", "l", "a"],
+      "composing": "ህዋላ",
+      "alternatives": ["ኋላ", "ሗላ", "ሕዋላ", "ኅዋላ"],
+      "committed": ""
+    },
+    {
+      "name": "lowercase-w-kwas",
+      "keystrokes": ["k", "w", "a", "s"],
+      "composing": "ክዋስ",
+      "alternatives": ["ኳስ", "ክዋሥ"],
+      "committed": ""
+    },
+    {
+      "name": "lowercase-w-after-gemination",
+      "keystrokes": ["g", "g", "w", "a"],
+      "composing": "ግዋ",
+      "alternatives": ["ጓ"],
+      "committed": ""
+    },
+    {
+      "name": "backtick-pharyngeal",
+      "keystrokes": ["`", "a", "m", "e", "t"],
+      "steps": [
+        {"after": 1, "composing": "ዕ", "commit": ""}
+      ],
+      "composing": "ዓመት",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "backtick-homophones",
+      "keystrokes": ["`", "s", "e", "Space", "`", "h", "e", "Space", "`", "t", "s", "e"],
+      "steps": [
+        {"after": 3, "composing": "ሠ", "commit": "", "alternatives": ["ሰ"]},
+        {"after": 7, "composing": "ኀ", "commit": "", "alternatives": ["ሀ", "ሐ"]}
+      ],
+      "composing": "ፀ",
+      "alternatives": ["ጸ"],
+      "committed": "ሠ ኀ "
+    },
+    {
+      "name": "initial-a-offers-ayin-fourth-order",
+      "keystrokes": ["a", "m", "e", "t"],
+      "composing": "አመት",
+      "alternatives": ["ኣመት", "ዐመት", "ዓመት"],
+      "committed": ""
+    },
+    {
+      "name": "initial-e-offers-glottal-wa",
+      "keystrokes": ["e", "r", "e"],
+      "composing": "እረ",
+      "alternatives": ["አረ", "ዕረ", "ዐረ", "ኧረ"],
+      "committed": ""
     }
   ]
 }

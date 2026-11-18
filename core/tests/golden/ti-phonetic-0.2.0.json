@@ -1,9 +1,9 @@
 {
   "profile": "ti-phonetic",
-  "profile_version": "0.1.0",
+  "profile_version": "0.2.0",
   "status": "DRAFT",
   "profile_source": "language-data/profiles/ti-phonetic-draft.json",
-  "notation": "same as am-phonetic-0.1.0.json (see tests/golden/README.md)",
+  "notation": "same as am-phonetic-0.2.0.json (see tests/golden/README.md)",
   "vectors": [
     {
       "name": "tigray",
@@ -65,7 +65,7 @@
       "name": "initial-vowels-and-gemination",
       "keystrokes": ["e", "t", "t", "a"],
       "composing": "እታ",
-      "alternatives": ["አታ", "ዕታ"],
+      "alternatives": ["አታ", "ዕታ", "ዐታ", "ኧታ"],
       "committed": ""
     },
     {
@@ -114,6 +114,48 @@
       "composing": "",
       "alternatives": [],
       "committed": "ቐ"
+    },
+    {
+      "name": "x-stays-kx-in-tigrinya",
+      "keystrokes": ["x", "Space", "k", "h", "a"],
+      "composing": "ኻ",
+      "alternatives": [],
+      "committed": "ኽ "
+    },
+    {
+      "name": "c-and-c-apostrophe",
+      "keystrokes": ["c", "e", "Space", "c", "'", "e"],
+      "composing": "ጨ",
+      "alternatives": [],
+      "committed": "ቸ "
+    },
+    {
+      "name": "lowercase-w-offers-labialised",
+      "keystrokes": ["k", "w", "a"],
+      "composing": "ክዋ",
+      "alternatives": ["ኳ"],
+      "committed": ""
+    },
+    {
+      "name": "labialised-qh",
+      "keystrokes": ["q", "h", "W", "a"],
+      "composing": "ቛ",
+      "alternatives": ["ቋ"],
+      "committed": ""
+    },
+    {
+      "name": "backtick-pharyngeal",
+      "keystrokes": ["`", "a"],
+      "composing": "ዓ",
+      "alternatives": [],
+      "committed": ""
+    },
+    {
+      "name": "capital-k-offers-kx",
+      "keystrokes": ["K", "e"],
+      "composing": "ከ",
+      "alternatives": ["ኸ"],
+      "committed": ""
     }
   ]
 }

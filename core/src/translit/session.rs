@@ -17,6 +17,8 @@ const MAX_RAW_CHARS: usize = 48;
 const MAX_PROTECTED_CHARS: usize = 256;
 /// Most alternatives generated for one composition.
 const MAX_ALTERNATIVES: usize = 8;
+/// The sixth order: what a consonant shows before any vowel is typed.
+const BARE_ORDER: u8 = 6;
 
 /// One transliterated unit of the buffer.
 struct Tok {
@@ -25,6 +27,23 @@ struct Tok {
     alts: Vec<String>,
     /// Series of a consonant that has no vowel yet (candidate for gemination collapsing).
     bare: Option<usize>,
+    /// Consonant rule of a bare consonant (its homophones give more labialised alternatives).
+    rule: Option<usize>,
+    /// Replacements of this token together with the next one: the labialised reading of a bare
+    /// consonant followed by the profile's `labialAltMarker` syllable (`g` + `wa` also gives ጓ).
+    merge_next: Vec<String>,
+}
+
+impl Tok {
+    fn plain(text: String) -> Self {
+        Self {
+            text,
+            alts: Vec::new(),
+            bare: None,
+            rule: None,
+            merge_next: Vec::new(),
+        }
+    }
 }
 
 enum Hit {
@@ -235,11 +254,21 @@ impl PhoneticSession {
         let primary: String = toks.iter().map(|t| t.text.as_str()).collect();
         let mut alts = Vec::new();
         'outer: for (i, tok) in toks.iter().enumerate() {
-            for a in &tok.alts {
+            // A merge replaces this token and the next one; other alternatives replace one.
+            let merges = tok.merge_next.iter().map(|a| (a, 2));
+            for (a, span) in merges.chain(tok.alts.iter().map(|a| (a, 1))) {
                 let s: String = toks
                     .iter()
                     .enumerate()
-                    .map(|(k, x)| if k == i { a.as_str() } else { x.text.as_str() })
+                    .map(|(k, x)| {
+                        if k == i {
+                            a.as_str()
+                        } else if k > i && k < i + span {
+                            ""
+                        } else {
+                            x.text.as_str()
+                        }
+                    })
                     .collect();
                 if s != primary && !alts.contains(&s) {
                     alts.push(s);
@@ -299,17 +328,31 @@ impl PhoneticSession {
                 best = Some(((len, exact), hit));
             }
         };
+        // Rule inputs are validated ASCII: a rule can only match if its first byte is the key
+        // or (case folding) its lowercase form. Cheap pre-check on the per-key hot path.
+        let &key = raw.get(i)?;
+        let lower = key.to_ascii_lowercase();
+        let may_start = |input: &str| {
+            let f = char::from(input.as_bytes()[0]);
+            f == key || f == lower
+        };
         if all {
-            if p.separator == Some(raw[i]) {
+            if p.separator == Some(key) {
                 consider(1, true, Hit::Separator);
             }
             for (k, c) in p.consonants.iter().enumerate() {
+                if !may_start(&c.input) {
+                    continue;
+                }
                 if let Some(e) = self.matches_at(raw, i, &c.input) {
                     consider(c.input.len(), e, Hit::Consonant(k));
                 }
             }
         }
         for (k, v) in p.vowels.iter().enumerate() {
+            if !may_start(&v.input) {
+                continue;
+            }
             if let Some(e) = self.matches_at(raw, i, &v.input) {
                 consider(v.input.len(), e, Hit::Vowel(k));
             }
@@ -322,14 +365,15 @@ impl PhoneticSession {
         let mut toks: Vec<Tok> = Vec::new();
         let mut i = 0;
         while i < raw.len() {
-            match self.best_at(raw, i, true) {
+            let hit = self.best_at(raw, i, true);
+            // A merge offered by the previous token was with a token that is replaced now.
+            if let Some(prev) = toks.last_mut() {
+                prev.merge_next.clear();
+            }
+            match hit {
                 Some((Hit::Separator, n)) => {
                     // Splits a sequence that would otherwise combine; shows nothing.
-                    toks.push(Tok {
-                        text: String::new(),
-                        alts: Vec::new(),
-                        bare: None,
-                    });
+                    toks.push(Tok::plain(String::new()));
                     i += n;
                 }
                 Some((Hit::Consonant(k), n)) => {
@@ -339,8 +383,19 @@ impl PhoneticSession {
                     {
                         // Fidel does not mark gemination: a doubled consonant is one letter.
                         toks.pop();
+                        if let Some(prev) = toks.last_mut() {
+                            prev.merge_next.clear();
+                        }
                     }
-                    let (tok, used) = self.consonant(raw, i + n, rule);
+                    let (mut tok, used, plain_order) = self.consonant(raw, i + n, rule);
+                    if tok.bare.is_some() {
+                        tok.rule = Some(k);
+                    }
+                    if let (Some(order), true) = (plain_order, p.labial_alt_rule == Some(k)) {
+                        if let Some(prev) = toks.last_mut() {
+                            prev.merge_next = self.labial_merges(prev, order);
+                        }
+                    }
                     toks.push(tok);
                     i += n + used;
                 }
@@ -349,11 +404,7 @@ impl PhoneticSession {
                     i += n;
                 }
                 None => {
-                    toks.push(Tok {
-                        text: raw[i].to_string(),
-                        alts: Vec::new(),
-                        bare: None,
-                    });
+                    toks.push(Tok::plain(raw[i].to_string()));
                     i += 1;
                 }
             }
@@ -361,9 +412,28 @@ impl PhoneticSession {
         toks
     }
 
-    /// A consonant whose rule matched just before `at`. Returns the token and how many further
-    /// characters (labial marker, vowel) it consumed.
-    fn consonant(&self, raw: &[char], at: usize, rule: &ConsonantRule) -> (Tok, usize) {
+    /// Labialised readings of the bare consonant `prev` followed by a `labialAltMarker` syllable
+    /// in vowel `order`: its own form first, then its homophones' (ጓ for `g` + `wa`).
+    fn labial_merges(&self, prev: &Tok, order: u8) -> Vec<String> {
+        let p = &self.profile;
+        let Some(rule) = prev.rule.map(|r| &p.consonants[r]) else {
+            return Vec::new();
+        };
+        let mut out: Vec<String> = Vec::new();
+        for s in std::iter::once(rule.series).chain(rule.alt.iter().copied()) {
+            if let Some(g) = p.glyph(s, order, true).map(String::from) {
+                if !out.contains(&g) {
+                    out.push(g);
+                }
+            }
+        }
+        out
+    }
+
+    /// A consonant whose rule matched just before `at`. Returns the token, how many further
+    /// characters (labial marker, vowel) it consumed, and its vowel order when it was read
+    /// without the labial marker.
+    fn consonant(&self, raw: &[char], at: usize, rule: &ConsonantRule) -> (Tok, usize, Option<u8>) {
         let p = &self.profile;
         let literal = |len: usize| -> String { raw[at - len..at].iter().collect() };
         let build = |order: u8, labial: bool| -> Option<Tok> {
@@ -375,9 +445,8 @@ impl PhoneticSession {
                 .map(String::from)
                 .collect();
             Some(Tok {
-                text,
                 alts,
-                bare: None,
+                ..Tok::plain(text)
             })
         };
 
@@ -389,24 +458,22 @@ impl PhoneticSession {
                     .vowel_at(raw, k)
                     .map_or((6, 0), |(v, len)| (p.vowels[v].order, len));
                 if let Some(tok) = build(order, true) {
-                    return (tok, m.len() + vlen);
+                    return (tok, m.len() + vlen, None);
                 }
             }
         }
         let vowel = self.vowel_at(raw, at);
         if let Some((v, len)) = vowel {
-            if let Some(tok) = build(p.vowels[v].order, false) {
-                return (tok, len);
+            let order = p.vowels[v].order;
+            if let Some(tok) = build(order, false) {
+                return (tok, len, Some(order));
             }
         }
         // Bare consonant: the sixth order. (The series was validated to have one.)
-        let mut tok = build(6, false).unwrap_or_else(|| Tok {
-            text: literal(rule.input.len()),
-            alts: Vec::new(),
-            bare: None,
-        });
+        let mut tok =
+            build(BARE_ORDER, false).unwrap_or_else(|| Tok::plain(literal(rule.input.len())));
         tok.bare = Some(rule.series);
-        (tok, 0)
+        (tok, 0, Some(BARE_ORDER))
     }
 
     /// A vowel typed with no consonant: a glottal-series syllable (`a` gives አ).
@@ -419,27 +486,30 @@ impl PhoneticSession {
             .find(|o| o.input == v.input)
             .map_or((v.order, &[][..]), |o| (o.order, o.alt_orders.as_slice()));
         let Some(text) = p.glyph(p.initial_series, order, false) else {
-            return Tok {
-                text: typed.iter().collect(),
-                alts: Vec::new(),
-                bare: None,
-            };
+            return Tok::plain(typed.iter().collect());
         };
-        let mut alts: Vec<String> = alt_orders
-            .iter()
-            .filter_map(|o| p.glyph(p.initial_series, *o, false))
-            .chain(
-                p.initial_alt_series
-                    .iter()
-                    .filter_map(|s| p.glyph(*s, order, false)),
-            )
-            .map(String::from)
-            .collect();
-        alts.retain(|a| *a != text.to_string());
+        // The first other order, then the alternative series in the same order, then each other
+        // order in the initial and the alternative series (`a`: ኣ, ዐ, ዓ; `e`: አ, ዕ, ዐ, ኧ).
+        let first = alt_orders.first().map(|o| (p.initial_series, *o));
+        let same = p.initial_alt_series.iter().map(|s| (*s, order));
+        let further = alt_orders.iter().enumerate().flat_map(|(i, o)| {
+            std::iter::once(p.initial_series)
+                .chain(p.initial_alt_series.iter().copied())
+                .skip(usize::from(i == 0))
+                .map(move |s| (s, *o))
+        });
+        let mut alts: Vec<String> = Vec::new();
+        for (s, o) in first.into_iter().chain(same).chain(further) {
+            if let Some(g) = p.glyph(s, o, false).filter(|g| *g != text) {
+                let g = g.to_string();
+                if !alts.contains(&g) {
+                    alts.push(g);
+                }
+            }
+        }
         Tok {
-            text: text.to_string(),
             alts,
-            bare: None,
+            ..Tok::plain(text.to_string())
         }
     }
 }
