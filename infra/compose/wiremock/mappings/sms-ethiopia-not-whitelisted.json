@@ -1,0 +1,15 @@
+{
+  "name": "sms-ethiopia: 400 Error Code 10007 (test campaign, number not whitelisted) for magic number 251900010007",
+  "priority": 2,
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v2/sms/send",
+    "headers": { "KEY": { "matches": ".+" } },
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.msisdn == '251900010007')]" } ]
+  },
+  "response": {
+    "status": 400,
+    "headers": { "Content-Type": "application/json; charset=utf-8" },
+    "jsonBody": { "error_message": "Recipient is not whitelisted for the test campaign. Error Code :: 10007" }
+  }
+}
