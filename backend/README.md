@@ -277,6 +277,11 @@ preferences, but the table, the guest-merge and the deletion participants are he
 - **Merge/deletion:** guest merge recomputes `word_hmac` under the target's key; account deletion deletes the entries, the
   applied-change ids and the key row.
 - **V13** adds `user_dictionary_sync_state` and `user_dictionary_applied_changes`.
+- **Tombstone retention (B6.3, D31):** tombstones are purged 180 days after the delete. The purge raises
+  `user_dictionary_sync_state.tombstone_floor` (V16); a pull whose cursor is behind a purged tombstone gets **410
+  `SYNC_CURSOR_EXPIRED`** and the client downloads again without `since`. Tokens that carry a floor are `v2.` +
+  base64url(`version:floor`) (the plain `v1.` form while no tombstone was purged). See ADR 0020 D4 and
+  `DictionaryResyncIT`.
 
 ## Consents (B3.5)
 
@@ -332,6 +337,31 @@ guests included. Code in `com.qalsmartkeyboard.privacy`.
   per-user table must handle it in its `UserDeletionParticipant` in the same change.
 - **Re-registration:** identities are deleted and the row anonymised, so the same phone number or Google account later
   creates a new, empty account; the deleted account can never be signed in to again.
+
+## Retention (B6.3, ADR 0020, SD 19.2)
+
+A daily db-scheduler task `privacy-retention` (`qal.retention.cron`, default `0 0 3 * * *` UTC; `qal.retention.enabled`,
+off in tests) purges every data class past its period. Registry and job are in `com.qalsmartkeyboard.privacy`
+(`RetentionPolicy`, `RetentionJob`, `RetentionProperties`); each module owns its rules and SQL through a
+`platform.retention.RetentionParticipant` (identity, privacy, platform, AI gateway, usage, languages, administration; the
+module-less tables are held by `UnownedTablesRetention`). The class, period, action and source of every rule, including the
+ones the SD leaves undefined and the ones that are kept (financial), are the table in ADR 0020.
+
+- **Configuration:** `qal.retention.periods.<rule-code>` overrides a default (`QAL_RETENTION_PERIODS_OTP_CHALLENGES=48h`);
+  `batch-size` (1000) and `max-batches-per-rule` (1000) bound a run. An unknown code or an override of a kept (financial) or
+  owner-deleted class stops the application at start.
+- **Batches and locking:** one transaction per batch, `DELETE ... WHERE key IN (SELECT ... LIMIT n FOR UPDATE SKIP LOCKED)`,
+  a per-rule transaction advisory lock so two instances never purge the same rule at once; idempotent and resumable (the
+  next run continues the backlog). Append-only ledgers (`audit_events`, `user_consents`) are purged under
+  `app.retention_purge = 'on'`, only inside the job.
+- **Metrics** (rule codes only): `qal.retention.purged{rule,action}`, `qal.retention.failures{rule}` (alert),
+  `qal.retention.skipped{rule}`, timer `qal.retention.run`. Logs carry the rule code and a row count, never row content.
+- **Users:** `MERGED` guests and `DELETED` tombstones are deleted 30 days later unless an `ON DELETE RESTRICT` foreign key
+  (financial rows) points at them; the blocking tables are read from the catalogue.
+- **New table with a retention need:** add a `RetentionRule` and its SQL to the module's participant in the same change, and
+  a row to ADR 0020. Financial and ledger classes (`financial-records`, `ai-credit-ledger`, `usage-events`) are kept.
+- **V16** adds `tombstone_floor` and the purge indexes. Tests: `RetentionIT` (every rule just inside/outside, idempotence,
+  resume, two instances, financial tables untouched), `DictionaryResyncIT` (D31).
 
 ## Identity: phone OTP (B2.1, ADR 0006)
 

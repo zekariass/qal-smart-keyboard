@@ -71,6 +71,7 @@ public enum ApiErrorCode {
 	APP_VERSION_UNSUPPORTED(HttpStatus.UPGRADE_REQUIRED, "App version is no longer supported"),
 	PACK_REJECTED(HttpStatus.UNPROCESSABLE_CONTENT, "Language pack rejected"),
 	PUBLICATION_CONFLICT(HttpStatus.CONFLICT, "Publication state conflict"),
+	SYNC_CURSOR_EXPIRED(HttpStatus.GONE, "Sync cursor expired"),
 	APPROVAL_REQUIRED(HttpStatus.FORBIDDEN, "A second admin must approve this action"),
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
 

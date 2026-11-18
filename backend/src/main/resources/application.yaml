@@ -85,6 +85,13 @@ qal:
     deletion:
       grace-period: ${QAL_DELETION_GRACE_PERIOD:14d}
       executor-interval: ${QAL_DELETION_EXECUTOR_INTERVAL:5m}
+  # Retention (B6.3, ADR 0020): a daily db-scheduler task (cron, UTC) purges every data class past its period. Defaults
+  # come from SD 19.2 and are listed in ADR 0020; override one with qal.retention.periods.<rule-code>, for example
+  # QAL_RETENTION_PERIODS_OTP_CHALLENGES=48h. An unknown or kept (financial) rule code stops the application at start.
+  retention:
+    enabled: ${QAL_RETENTION_ENABLED:true}
+    cron: ${QAL_RETENTION_CRON:0 0 3 * * *}
+    batch-size: ${QAL_RETENTION_BATCH_SIZE:1000}
   # AI provider SPI (B5.1, ADR 0014). No real vendor adapter exists until gate G0. The mock and the WireMock-shaped HTTP
   # adapter are for development only (refused under prod/production/staging); the API key comes from the environment.
   ai:

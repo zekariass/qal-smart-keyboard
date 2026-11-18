@@ -52,6 +52,7 @@ final class ProbeContract {
 		responses.addApiResponse("405", shared.get("NotFound"));
 		responses.addApiResponse("406", shared.get("NotFound"));
 		responses.addApiResponse("409", shared.get("Conflict"));
+		responses.addApiResponse("410", shared.get("SyncCursorExpired"));
 		responses.addApiResponse("415", shared.get("NotFound"));
 		responses.addApiResponse("422", shared.get("Unprocessable"));
 		responses.addApiResponse("426", shared.get("NotFound"));

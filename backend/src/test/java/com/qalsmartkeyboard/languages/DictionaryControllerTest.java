@@ -110,7 +110,15 @@ class DictionaryControllerTest {
 		org.assertj.core.api.Assertions.assertThat(DictionarySyncService.parseToken(DictionarySyncService.token(42)))
 				.isEqualTo(42);
 		org.assertj.core.api.Assertions.assertThat(DictionarySyncService.parseToken(null)).isZero();
-		for (String bad : List.of("42", "v1.", "v1.!!", "v1.LTE", "x1.NDI")) {
+		// B6.3/D31: without a purged tombstone the token is the plain v1 form; with one it also carries the floor
+		org.assertj.core.api.Assertions.assertThat(DictionarySyncService.token(42, 0)).isEqualTo(DictionarySyncService.token(42));
+		String v2 = DictionarySyncService.token(42, 7);
+		org.assertj.core.api.Assertions.assertThat(v2).startsWith("v2.");
+		org.assertj.core.api.Assertions.assertThat(DictionarySyncService.parseCursor(v2))
+				.isEqualTo(new DictionarySyncService.Cursor(42, 7));
+		org.assertj.core.api.Assertions.assertThat(DictionarySyncService.parseCursor("v1.NDI"))
+				.isEqualTo(new DictionarySyncService.Cursor(42, 0));
+		for (String bad : List.of("42", "v1.", "v1.!!", "v1.LTE", "x1.NDI", "v2.", "v2.NDI", "v2.NDow", "v2.NDo")) {
 			org.assertj.core.api.Assertions.assertThatThrownBy(() -> DictionarySyncService.parseToken(bad))
 					.isInstanceOf(ApiException.class);
 		}

@@ -64,6 +64,7 @@ class DictionarySyncService {
 	private static final String FEATURE = "DICTIONARY_SYNC";
 	private static final Pattern BAD_CHARACTER = Pattern.compile("[\\p{Z}\\p{Cc}\\p{Cs}\\p{Cn}]");
 	private static final String TOKEN_PREFIX = "v1.";
+	private static final String TOKEN_PREFIX_V2 = "v2.";
 	static final int MAX_WORD = 64;
 
 	private final JdbcClient jdbc;
@@ -94,21 +95,54 @@ class DictionarySyncService {
 	}
 
 	static String token(long version) {
-		return TOKEN_PREFIX + Base64.getUrlEncoder().withoutPadding()
-				.encodeToString(Long.toString(version).getBytes(StandardCharsets.US_ASCII));
+		return token(version, 0);
+	}
+
+	/**
+	 * The token of a pull cursor. {@code floor} is the user's {@code tombstone_floor} when the token was issued (D31,
+	 * B6.3); it is 0 until a tombstone has been purged, and then the token is the plain {@code v1.} form, as before.
+	 */
+	static String token(long version, long floor) {
+		if (floor <= 0) {
+			return TOKEN_PREFIX + Base64.getUrlEncoder().withoutPadding()
+					.encodeToString(Long.toString(version).getBytes(StandardCharsets.US_ASCII));
+		}
+		return TOKEN_PREFIX_V2 + Base64.getUrlEncoder().withoutPadding()
+				.encodeToString((version + ":" + floor).getBytes(StandardCharsets.US_ASCII));
+	}
+
+	/** A parsed sync token: the last version the client has seen and the tombstone floor when it was issued. */
+	record Cursor(long version, long floor) {
 	}
 
 	/** @throws ApiException 400 {@code VALIDATION_FAILED} for a token this service did not issue */
 	static long parseToken(String token) {
+		return parseCursor(token).version();
+	}
+
+	/** @throws ApiException 400 {@code VALIDATION_FAILED} for a token this service did not issue */
+	static Cursor parseCursor(String token) {
 		if (token == null || token.isEmpty()) {
-			return 0;
+			return new Cursor(0, 0);
 		}
 		try {
 			if (token.startsWith(TOKEN_PREFIX)) {
 				long v = Long.parseLong(new String(Base64.getUrlDecoder().decode(token.substring(TOKEN_PREFIX.length())),
 						StandardCharsets.US_ASCII));
 				if (v >= 0) {
-					return v;
+					return new Cursor(v, 0);
+				}
+			}
+			else if (token.startsWith(TOKEN_PREFIX_V2)) {
+				String[] parts = new String(
+						Base64.getUrlDecoder().decode(token.substring(TOKEN_PREFIX_V2.length())),
+						StandardCharsets.US_ASCII).split(":", -1);
+				if (parts.length == 2) {
+					long v = Long.parseLong(parts[0]);
+					long f = Long.parseLong(parts[1]);
+					if (v >= 0 && f > 0) {
+						return new Cursor(v, f);
+					}
 				}
 			}
 		}
@@ -132,10 +166,17 @@ class DictionarySyncService {
 		consents.requireConsent(caller.userId(), ConsentType.DICTIONARY_SYNC);
 	}
 
-	/** Changes with {@code sync_version > since}, oldest first, at most {@code limit}; deletes are tombstones. */
+	/**
+	 * Changes with {@code sync_version > since}, oldest first, at most {@code limit}; deletes are tombstones. A cursor
+	 * that is behind a purged tombstone (D31, B6.3: tombstones are kept 180 days) gets 410 {@code SYNC_CURSOR_EXPIRED}:
+	 * the cursor's version is below the user's {@code tombstone_floor} and the floor has risen since the token was
+	 * issued (a token carries the floor it was issued under, so the pages of a full download started after the purge are
+	 * not refused; a pull without a token never is).
+	 */
 	ChangesPage pull(AuthenticatedUser caller, String since, int limit) {
 		gate(caller);
-		long from = parseToken(since);
+		Cursor cursor = parseCursor(since);
+		long from = cursor.version();
 		UUID user = caller.userId();
 		record Row(UUID id, String language, byte[] word, boolean deleted, Instant updatedAt, long version) {
 		}
@@ -147,6 +188,15 @@ class DictionarySyncService {
 				.query((rs, n) -> new Row(rs.getObject(1, UUID.class), rs.getString(2), rs.getBytes(3), rs.getBoolean(4),
 						rs.getTimestamp(5).toInstant(), rs.getLong(6)))
 				.list();
+		// D31: read the floor after the rows. A purge commits its deletes and the raised floor together, so a purge that
+		// ran before the rows were read is visible here too, and one that ran in between only makes this answer stricter.
+		long floor = jdbc.sql("SELECT tombstone_floor FROM user_dictionary_sync_state WHERE user_id = :user")
+				.param("user", user).query(Long.class).optional().orElse(0L);
+		if (from > 0 && floor > Math.max(cursor.floor(), from)) {
+			throw new ApiException(ApiErrorCode.SYNC_CURSOR_EXPIRED, HttpStatus.GONE,
+					"Deleted words this device has not seen were purged; discard the sync cursor and download the"
+							+ " dictionary again (pull without a since token).");
+		}
 		boolean more = rows.size() > limit;
 		List<Row> page = more ? rows.subList(0, limit) : rows;
 		List<Change> changes = new ArrayList<>(page.size());
@@ -162,7 +212,7 @@ class DictionarySyncService {
 				log.warn("Dictionary pull: entry {} does not decrypt and is skipped", row.id());
 			}
 		}
-		return new ChangesPage(changes, token(last), more);
+		return new ChangesPage(changes, token(last, floor), more);
 	}
 
 	ChangesResult push(AuthenticatedUser caller, List<Change> changes) {

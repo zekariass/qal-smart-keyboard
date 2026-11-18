@@ -1106,6 +1106,15 @@ There MUST NOT be synchronous disk or network access on the key path. Pack loadi
 | Audit events | Admin and security actions | PostgreSQL | 2 years (security), 7 years (financial admin actions) |
 | Webhook payloads | Redacted provider events | PostgreSQL | 18 months |
 | Operational logs | Redacted | Log store | 30 days |
+| Short-lived auth records | OTP challenges, attestation nonces, password reset tokens | PostgreSQL | 24 h / 1 h / 24 h after expiry |
+| Sessions | Refresh-token families | PostgreSQL | 30 days after the whole family expired |
+| Data export rows | Export request records | PostgreSQL (archive in object storage) | 30 days after link expiry (archive object: 7-day bucket lifecycle) |
+| Event infrastructure | Outbox events, processed-event ledger | PostgreSQL | Published 7 days, dead 30 days; processed events 35 days |
+| Metering state | Closed usage reservations | PostgreSQL | 13 months after closing |
+| Voice / realtime metadata | Job and session metadata (no audio) | PostgreSQL | 13 months |
+| Dictionary sync | Deleted-word tombstones, applied-change ledger | PostgreSQL (encrypted) | 180 days / 30 days |
+
+The rows after "Operational logs" are the defaults accepted in ADR 0007 D39. Every period is configurable (`qal.retention.periods.*`); the full class → period → action table and the enforcing job are in ADR 0020 (B6.3).
 
 ### 19.3 Consent
 
