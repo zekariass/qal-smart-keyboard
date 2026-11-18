@@ -38,9 +38,9 @@ class FlywayBaselineIT {
     @Test
     void baselineIsAppliedByTheBootedApplicationAndValidates() {
         MigrationInfo[] all = flyway.info().all();
-        assertEquals(11, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
+        assertEquals(12, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
                 + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up), V5 attestation nonces (B2.3), V6 language-resource discovery columns (B3.1), V7 preferences revisions (B3.3),"
-                + " V8 destination profiles and app rules (B3.4), V9 usage reservations (B4.2), V10 AI provider seeds (B5.1), V11 account deletion progress (B6.2)");
+                + " V8 destination profiles and app rules (B3.4), V9 usage reservations (B4.2), V10 AI provider seeds (B5.1), V11 account deletion progress (B6.2), V12 AI provider cost control (B5.2)");
         assertEquals("1", all[0].getVersion().getVersion());
         assertEquals("baseline", all[0].getDescription());
         assertEquals(MigrationState.SUCCESS, all[0].getState());
@@ -61,6 +61,8 @@ class FlywayBaselineIT {
         assertEquals(MigrationState.SUCCESS, all[7].getState());
         assertEquals("11", all[10].getVersion().getVersion());
         assertEquals(MigrationState.SUCCESS, all[10].getState());
+        assertEquals("12", all[11].getVersion().getVersion());
+        assertEquals(MigrationState.SUCCESS, all[11].getState());
         flyway.validate(); // throws if an applied migration was edited
     }
 
@@ -71,7 +73,8 @@ class FlywayBaselineIT {
                         + " and table_name <> 'flyway_schema_history'", Integer.class);
         // 86 baseline tables + scheduled_tasks and processed_events from V2 + attestation_nonces from V5
         // + user_typing_language_revisions from V7 + user_app_rule_revisions and user_app_rule_keys from V8 + usage_reservations from V9
-        assertEquals(93, tables);
+        // + ai_provider_prices, ai_provider_budgets and ai_provider_daily_spend from V12
+        assertEquals(96, tables);
         assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
                 "select success from flyway_schema_history where version='1'", Boolean.class)));
     }

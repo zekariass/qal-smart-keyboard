@@ -106,3 +106,86 @@ redact keys in `toString`.
   run the compose stubs in-process (`wiremock-standalone`, test scope) and cover success, slow, error and every status.
 - Open: `DEGRADED` routing; whether `Cancelled` should surface as a client-abort outcome; voice (ASR/TTS) operations;
   adding INACTIVE to the status vocabulary (not needed).
+
+## Routing (B5.2)
+
+`AiRouter` (aigateway root package, internals in `aigateway.routing`) executes one call over an ordered provider list.
+B5.3 calls it between reserve and settle/release (ADR 0011) and maps `RouteResult.contractCode()`.
+
+### Policy source and order
+`ai_routing_policies` (V1, enabled, valid now, SERVER, `traffic_weight > 0`), joined to the provider through the model and
+to language codes. `ProviderRegistry` still decides who may serve (ACTIVE, data policy, capability); a policy can only
+order and restrict that set, never add to it. Among matching rows the **most specific language scope wins** (en to am
+beats en to any beats any to any; no merging), then lowest `priority`, equal priorities by weighted random order on
+`traffic_weight` (key `u^(1/weight)`), a provider once at its best position. A matching policy is an allow-list: a
+provider it does not name is not tried. A row with `requires_zero_retention` never uses a non-ZDR provider. **With no
+matching row the registry order (provider code) applies** so a deployment without policy rows still works; production
+must have rows (the model column selects the provider; the adapter still picks its model). Snapshot cached
+`qal.ai.routing.policy-cache-ttl` (30 s), stale served on failure; unreadable at first use = registry order, logged.
+
+### Attempts, deadline, fallback
+At most `max-attempts` (3) calls and an overall `deadline` (8 s); each call gets `min(attempt-timeout (4 s), time left)`.
+A gated candidate (kill switch, hard cost cap, open breaker) is skipped and is not an attempt. A timeout caused only by the
+deadline shortening a call does not count against the provider. No same-provider retry (SD 19: retries only idempotent or
+transient; the next provider is the retry). Per error kind:
+
+| Kind | Fallback | Breaker | Final outcome if nothing succeeds |
+|---|---|---|---|
+| UNAVAILABLE, INVALID_RESPONSE | next provider | failure | PROVIDER_UNAVAILABLE |
+| TIMEOUT | next provider | failure (not if the deadline shortened it) | PROVIDER_TIMEOUT |
+| QUOTA_EXHAUSTED_AT_PROVIDER | next provider | failure and open for Retry-After (else open-duration) | PROVIDER_UNAVAILABLE |
+| AUTHENTICATION_FAILED | next provider | failure and open for open-duration, error log | PROVIDER_UNAVAILABLE |
+| UNSUPPORTED_LANGUAGE_PAIR | next provider (all candidates were matched to the pair by the registry) | none | LANGUAGE_PAIR_UNAVAILABLE if every attempt said so |
+| CONTENT_REJECTED | none, route ends | none | CONTENT_REJECTED |
+| CANCELLED / thread interrupted | none, route ends | permit returned | CANCELLED (client abort, D29: release, no body) |
+| other RuntimeException (SPI breach) | next provider | failure, class name logged | PROVIDER_UNAVAILABLE |
+
+Deadline exhausted: PROVIDER_TIMEOUT. No candidate at all: ZERO_RETENTION_UNAVAILABLE if zero retention was required and
+the same query without it has a provider; LANGUAGE_PAIR_UNAVAILABLE if the registry has none for the pair; otherwise
+(policy names nobody usable, everything gated) PROVIDER_UNAVAILABLE. Zero retention is never relaxed to reach a provider.
+
+### DEGRADED (D29)
+DEGRADED providers that pass the same contract, data-policy and capability checks are appended after all ACTIVE ones and
+are tried only when every ACTIVE candidate failed or was gated (a slight widening of "no ACTIVE provider fits": an ACTIVE
+provider that is down does not fit). `RouteResult.servedByLastResort` and `Attempt.lastResort` expose it.
+
+### Circuit breaker
+In-house `CircuitBreaker` per provider rather than Resilience4j: the project has no such dependency, the need is one small
+count-based state machine, and an injectable clock keeps open and half-open timing testable. Sliding window of the last
+`window-size` (20) calls; opens when failures reach `failure-rate-percent` (50) or slow successes reach
+`slow-call-rate-percent` (80) of at least `minimum-calls` (10); open `open-duration` (30 s); then `half-open-calls` (3)
+probes, all must succeed to close, any failure or slow probe reopens. Only kinds with `countsAgainstHealth` are failures.
+Metrics `qal.ai.circuit.state` (gauge) and `qal.ai.circuit.transitions`; transitions are logged at WARN.
+**State is per JVM.** Each node learns about a failing provider after its own `minimum-calls`; fine at pilot scale. The path
+to shared state is a Redis or PostgreSQL implementation of `CircuitBreakers.forProvider` that keeps window and open-until
+per provider (one row or hash), with the in-process breaker as the fallback when the store is unreachable. Operators can
+reset with `CircuitBreakers.resetAll()` (no endpoint yet).
+
+### Kill switch
+Without a deploy: BACKEND-scope `app_configurations` row `ai.kill_switch` =
+`{"providers": ["code"], "features": ["TRANSLATE"]}`, re-read every `kill-switch-cache-ttl` (5 s), which is the longest a
+switch takes to bite. It is a BACKEND row rather than `feature_flags` because `GET /config` serves every flag to clients.
+Static `qal.ai.routing.killed-providers` / `killed-features` cover a restart. A killed feature fails the route with
+PROVIDER_UNAVAILABLE and no call. A failed reload keeps the last snapshot; before the first successful read only the
+static sets apply (fail open: the larger harm is refusing all AI because the database blinked).
+
+### Cost cap (V12)
+V12 adds `ai_provider_prices` (micro-USD per unit: request, input/output character, input/output token, audio second;
+feature-specific rows override NULL-feature rows), `ai_provider_budgets` (daily soft and hard limit per provider) and
+`ai_provider_daily_spend` (estimated spend per provider and UTC day, fractional micros). The estimate of a successful call
+is the sum of `units x price` and is added to the day's total; failed calls cost nothing. Soft limit crossed: one WARN log
+and `qal.ai.cost.alerts{level=SOFT}` per provider and day (SD 19 cost anomaly alert); hard limit reached: the provider is
+skipped (`COST_CAP`) until the next UTC day or until the limit is raised, and `...{level=HARD}` fires once. The total is
+the database value at the last refresh (`cost-cache-ttl`, 10 s) plus this node's additions since, so the cap can be
+overshot by calls in flight and by other nodes inside one TTL; it is a budget guard, not a ledger. The ledger write is
+synchronous per priced call and a failed write is swallowed. No prices or budgets are seeded (gate G0): unpriced is free,
+unbudgeted is uncapped. Circuit state is not persisted (no health table).
+
+### Consequences
+- B5.3: `reserve`, then `route`, then settle with `result.value().usage()` on SUCCEEDED, release otherwise; answer with
+  `contractCode()` (CANCELLED has none: no response body). Quality notes use `ResolvedProvider.capability()` if needed.
+- `ai_requests` (B5.5) can record `Attempt`s (provider, latency, kind) without text.
+- Open: shared breaker state; an operator endpoint for kill switch, breaker reset and budgets (admin module); alert
+  delivery beyond log and metric; per-model routing (a policy row names a model but the adapter chooses); cost for voice
+  features (ASR/TTS) when V5 lands; real prices after G0.
+

@@ -25,8 +25,19 @@ public record ProviderDescriptor(String code, String displayName, ProviderType t
 	 * CHECK enforces the same; this repeats it so a hand-edited row cannot slip through).
 	 */
 	public boolean routable() {
-		return status == ProviderStatus.ACTIVE && !dataPolicy.trainsOnCustomerData()
-				&& (type == ProviderType.SELF_HOSTED || dataPolicy.dpaSigned());
+		return status == ProviderStatus.ACTIVE && contractOk();
+	}
+
+	/**
+	 * DEGRADED (operator-flagged as unhealthy) with the same contract checks: used by the router only as a last
+	 * resort when no ACTIVE provider can serve the request (ADR 0007 D29).
+	 */
+	public boolean lastResort() {
+		return status == ProviderStatus.DEGRADED && contractOk();
+	}
+
+	private boolean contractOk() {
+		return !dataPolicy.trainsOnCustomerData() && (type == ProviderType.SELF_HOSTED || dataPolicy.dpaSigned());
 	}
 
 	/** The highest-tier capability serving the query, if any. */

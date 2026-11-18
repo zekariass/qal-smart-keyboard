@@ -70,6 +70,18 @@ qal:
   # adapter are for development only (refused under prod/production/staging); the API key comes from the environment.
   ai:
     registry-cache-ttl: ${QAL_AI_REGISTRY_CACHE_TTL:30s}
+    # Routing (B5.2, ADR 0014): ordering from ai_routing_policies, failover limits, circuit breaker, kill switch, cost cap.
+    # Kill switch without a deploy: app_configurations row ai.kill_switch (BACKEND scope); the sets below are the
+    # restart-time emergency switch.
+    routing:
+      max-attempts: ${QAL_AI_ROUTING_MAX_ATTEMPTS:3}
+      attempt-timeout: ${QAL_AI_ROUTING_ATTEMPT_TIMEOUT:4s}
+      deadline: ${QAL_AI_ROUTING_DEADLINE:8s}
+      policy-cache-ttl: 30s
+      kill-switch-cache-ttl: 5s
+      cost-cache-ttl: 10s
+      killed-providers: ${QAL_AI_KILLED_PROVIDERS:}
+      killed-features: ${QAL_AI_KILLED_FEATURES:}
     mock:
       enabled: ${QAL_AI_MOCK:false}
     http:
