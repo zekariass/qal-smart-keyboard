@@ -302,8 +302,9 @@ Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST 
 - **Codes:** 6 digits from `SecureRandom`, valid `qal.identity.otp.code-ttl` (5m). Stored only as a keyed hash bound to
   the challenge id; the number only as a keyed hash plus an AES-GCM sealed copy (V3, needed to create the account on
   verify). At most 5 wrong codes per challenge (`OTP_TOO_MANY_ATTEMPTS`, the challenge is then locked). A used,
-  superseded (a newer challenge exists for the number) or unknown challenge is `OTP_INVALID`; an expired one
-  `OTP_EXPIRED`. New accounts need `ageConfirmed: true` (400 otherwise; the code stays usable).
+  superseded (a newer challenge exists for the number) or unknown challenge is `OTP_INVALID`; a **wrong code** of a
+  live challenge is `OTP_INVALID` with the extension member `attemptsRemaining` (1 to 4; ADR 0007 D32, absent for the
+  indistinguishable used/superseded/unknown cases); an expired one `OTP_EXPIRED`. New accounts need `ageConfirmed: true` (400 otherwise; the code stays usable).
 - **Resend cooldown:** `qal.identity.otp.resend-cooldown` (60s) per number, enforced in PostgreSQL: 429 `RATE_LIMITED`
   with `Retry-After`.
 - **Secret (required):** `qal.identity.otp.secret-key` / env `QAL_OTP_SECRET_KEY` = base64 of at least 32 random bytes
@@ -465,6 +466,10 @@ Module `devices` owns `user_devices`: `GET /api/v1/devices` (`listDevices`), `PO
 account that signs in, and return `mergedGuestUserId`. Without a bearer, or with a registered account's token, nothing
 is linked. Code: `identity.merge.GuestMergeService`; module rules: `identity.GuestMergeParticipant` beans.
 
+- **Never into a pending deletion (ADR 0007 D30):** when the account that signs in is `DELETION_PENDING`, the guest is
+  not merged: nothing moves, the guest stays an ACTIVE, separate guest (its token keeps working), the sign-in succeeds
+  and the response has no `mergedGuestUserId` (`GuestMergeService.mergeInto` returns `false`; metric
+  `qal.identity.guest_merge{outcome=refused}`).
 - **Who may link:** a valid guest access token whose account is `GUEST`/`ACTIVE` and whose session family still has an
   ACTIVE refresh token (not logged out, not revoked for reuse). Checked after the code / ID token, before any write.
   Anything else is 401 `GUEST_SESSION_INVALID` (ADR 0007 D20) with `WWW-Authenticate: Bearer error="invalid_token"`, nothing

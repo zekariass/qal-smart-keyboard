@@ -149,7 +149,14 @@ paths:
         that can no longer link (already merged, upgraded or ended, including a lost race) is 401
         `GUEST_SESSION_INVALID`; nothing is consumed, so the client discards the guest token and
         retries the same code without it. A registered bearer token is ignored for linking. A
-        suspended account gets 403 `ACCOUNT_SUSPENDED`.
+        suspended account gets 403 `ACCOUNT_SUSPENDED`. A guest is **never merged into an account
+        whose deletion is pending**: the sign-in succeeds without linking, `mergedGuestUserId` is
+        absent and the guest stays a separate, active guest session.
+
+        A wrong code is 401 `OTP_INVALID` with the extension member `attemptsRemaining` (integer,
+        at least 1): the wrong codes still allowed before the challenge locks
+        (429 `OTP_TOO_MANY_ATTEMPTS`). The member is absent when the challenge is unknown, already
+        used or replaced; clients show it when present and never count attempts themselves.
       security:
         - {}
         - bearerAuth: []
@@ -177,7 +184,8 @@ paths:
         Verifies the provider ID token (signature, audience, nonce, expiry) server-side.
         Same guest-upgrade merge behaviour as OTP verification (upgrade in place for a new
         identity, at-most-once merge into an existing account, 401 `GUEST_SESSION_INVALID` for a
-        guest bearer that can no longer link). The account is found or created by
+        guest bearer that can no longer link; no merge into an account whose deletion is pending,
+        the sign-in then proceeds without `mergedGuestUserId`). The account is found or created by
         the provider and its `sub` claim only; an e-mail address never links to another account.
         A provider the server cannot verify yet (Apple until its adapter exists) is a 400
         `VALIDATION_FAILED` on `provider`. A rejected token is 401 `UNAUTHENTICATED`; a suspended
@@ -3470,7 +3478,8 @@ components:
         RFC 9457 Problem Details with extension members. Known extension members: `consentCode`
         on 403 `CONSENT_REQUIRED` (the consent to request), `currentRevision` on 409
         `REVISION_CONFLICT` (the revision the client should re-read), `featureCode`, `resetAt`,
-        `creditBalance` and `upgradeOptions` on 429 `QUOTA_EXCEEDED`.
+        `creditBalance` and `upgradeOptions` on 429 `QUOTA_EXCEEDED`, `attemptsRemaining` (integer)
+        on 401 `OTP_INVALID` for a wrong code of a known challenge.
         `GUEST_SESSION_INVALID` (401, `WWW-Authenticate: Bearer error="invalid_token"`) means the
         guest bearer token's account was merged, upgraded, ended or suspended: discard the guest
         session (do not refresh it) and sign in or create a new guest session.

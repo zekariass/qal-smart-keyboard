@@ -219,13 +219,15 @@ class OtpControllerTest {
 		UUID challenge = UUID.randomUUID();
 		String body = "{\"challengeId\":\"" + challenge + "\",\"code\":\"000000\"}";
 		when(service.verify(any(), any(), anyBoolean(), any(), isNull(), any(), isNull()))
-				.thenThrow(new ApiException(ApiErrorCode.OTP_INVALID, HttpStatus.UNAUTHORIZED, "x"))
+				.thenThrow(new ApiException(ApiErrorCode.OTP_INVALID, HttpStatus.UNAUTHORIZED, "x", List.of(),
+						Map.of("attemptsRemaining", 3)))
 				.thenThrow(new ApiException(ApiErrorCode.OTP_EXPIRED, HttpStatus.UNAUTHORIZED, "x"))
 				.thenThrow(new ApiException(ApiErrorCode.OTP_TOO_MANY_ATTEMPTS, HttpStatus.TOO_MANY_REQUESTS, "x"))
 				.thenThrow(new ApiException(ApiErrorCode.VALIDATION_FAILED, HttpStatus.BAD_REQUEST, null,
 						List.of(new ApiFieldError("ageConfirmed", "REQUIRED", "ageConfirmed is required.")), Map.of()));
 		mvc.perform(post(VERIFY).contentType(MediaType.APPLICATION_JSON).content(body))
-				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("OTP_INVALID"));
+				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("OTP_INVALID"))
+				.andExpect(jsonPath("$.attemptsRemaining").value(3));
 		mvc.perform(post(VERIFY).contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("OTP_EXPIRED"));
 		mvc.perform(post(VERIFY).contentType(MediaType.APPLICATION_JSON).content(body))
