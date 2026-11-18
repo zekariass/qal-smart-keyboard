@@ -81,7 +81,8 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <li><b>Entitlement</b>: 403 {@code FEATURE_NOT_ENTITLED} when the plan does not give access.</li>
  * <li><b>Reserve</b> via {@link Metering} with the {@code Idempotency-Key} (estimate: 1 for REQUEST features, the input
  * characters for CHARACTER ones); 429 {@code QUOTA_EXCEEDED} calls no provider. Unmetered DETECT_LANGUAGE skips this.</li>
- * <li><b>Idempotency seam</b>: a replayed key goes to {@link AiIdempotency} (B5.4 cache) instead of a provider.</li>
+ * <li><b>Idempotency seam</b>: a new reservation is announced to {@link AiIdempotency#onReserved} (B5.4 request
+ * fingerprint); a replayed key goes to {@link AiIdempotency#onReplay} (B5.4 cache) instead of a provider.</li>
  * <li><b>Prompt</b>: per candidate provider, the active versioned template for (feature, language, model family) is
  * rendered with option codes, the addressee sentence and Ethiopian-calendar context; user text is never inside it.</li>
  * <li><b>Route</b> via {@link AiRouter} (failover, breaker, kill switch, cost cap).</li>
@@ -245,6 +246,14 @@ public class AiPipeline {
 		}
 
 		// (4) idempotency seam (B5.4)
+		if (!reservation.replayed()) {
+			try {
+				idempotency.onReserved(command, reservation);
+			} catch (RuntimeException e) {
+				log.warn("AI idempotency reserve hook failed: {}", e.getClass().getSimpleName());
+				increment("qal.ai.idempotency.hook-failures", feature);
+			}
+		}
 		if (reservation.replayed()) {
 			AiIdempotency.Decision decision = idempotency.onReplay(command, reservation);
 			return switch (decision) {
@@ -716,6 +725,7 @@ public class AiPipeline {
 				idempotency.onCompleted(p.command(), requestId, result);
 			} catch (RuntimeException e) {
 				log.warn("AI idempotency hook failed: {}", e.getClass().getSimpleName());
+				increment("qal.ai.idempotency.hook-failures", p.feature());
 			}
 		}
 		return result;

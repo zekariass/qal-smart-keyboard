@@ -41,3 +41,6 @@ qal:
     mock:
       enabled: true
     registry-cache-ttl: 0s
+    # B5.4: the replay cache sweeper (a db-scheduler task) is off in tests; AiReplayCacheIT calls the sweep directly.
+    idempotency:
+      sweeper-enabled: false

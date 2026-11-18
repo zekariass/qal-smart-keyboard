@@ -449,7 +449,7 @@ A language or mode is marked GA only when it has:
 | Contract | OpenAPI 3.1 (`Ethiopian_AI_Keyboard_OpenAPI_v2_0.yaml`); contract tests in CI; generated Kotlin/Swift clients |
 | Database | **PostgreSQL 18** recommended (17 is the minimum the schema supports); Flyway; HikariCP |
 | Async | Transactional outbox + db-scheduler (PostgreSQL-backed); no broker until measured need |
-| Cache / rate limiting | Bucket4j on PostgreSQL first; Redis/Valkey when measured load requires it; encrypted ephemeral AI-result cache (≤ 10 min TTL) needs Redis once AI idempotent replay is enabled |
+| Cache / rate limiting | Bucket4j on PostgreSQL first; Redis/Valkey when measured load requires it. The encrypted ephemeral AI-result cache (≤ 10 min TTL) starts in an **UNLOGGED** PostgreSQL table (B5.4, ADR 0017) and moves to Redis/Valkey only when load requires it |
 | Storage | S3-compatible object storage: language packs (behind the CDN), temporary audio (private bucket, 24 h lifecycle), data exports (private bucket, 7-day lifecycle) |
 | Secrets / keys | Cloud KMS + secret manager; envelope encryption for user data keys |
 | Observability | OpenTelemetry traces/metrics/logs; structured JSON logs with redaction |
@@ -635,9 +635,9 @@ Amharic and Tigrinya inflect verbs, pronouns and possessives for the addressee's
 This replaces v1.4, where the original-result promise contradicted the no-content rule (F3):
 
 - `Idempotency-Key` is required on every AI POST. Usage is reserved and settled **at most once per key**.
-- If an encrypted ephemeral result cache is deployed (Redis, ≤ 10 minutes, AES-GCM with a rotating server key, keyed by user + idempotency key), a retry returns the cached result.
+- An encrypted ephemeral result cache (≤ 10 minutes; AES-GCM under the **user's data key**, so crypto-shred covers it; keyed by user + idempotency key and checked against an encrypted request fingerprint; stored in an UNLOGGED PostgreSQL table so it never reaches WAL archives, backups or replicas) lets a retry return the cached result without a second provider call or charge (B5.4, ADR 0017).
 - If no cache entry exists, the server recomputes **without charging again**.
-- PostgreSQL never stores AI input or output text, except as encrypted opt-in history.
+- PostgreSQL never stores AI input or output text in plaintext. AI output exists only as ciphertext under the user's data key: in the ≤ 10-minute unlogged replay cache above, and in encrypted opt-in history.
 
 ### 11.7 History (opt-in)
 

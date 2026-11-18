@@ -826,9 +826,11 @@ endpoints are B5.5. Must not be called inside a transaction (throws `IllegalStat
 3. **Entitlement:** 403 `FEATURE_NOT_ENTITLED` (a REJECTED `ai_requests` row without the key).
 4. **Reserve** (`Metering.reserve`, own transaction) with the key; estimate 1 (REQUEST) or input characters (CHARACTER).
    `QUOTA_EXCEEDED` calls no provider (REJECTED row, key not stored so it can be retried). DETECT_LANGUAGE is unmetered.
-5. **Idempotency seam:** a replayed key goes to the `AiIdempotency` bean (B5.4 replaces `ReplayWithoutCache`): in flight
-   = 409 `REQUEST_IN_PROGRESS` + `Retry-After`; settled = recompute without a charge (`usageSource UNMETERED`); released =
-   the original error code again (D25).
+5. **Idempotency seam:** a new reservation is announced to `AiIdempotency.onReserved` (B5.4 stores the request
+   fingerprint); a replayed key goes to `AiIdempotency.onReplay` instead of a provider. Since B5.4 the bean is
+   `idempotency.EncryptedReplayCache` (next section); B5.3's `ReplayWithoutCache` (in flight = 409
+   `REQUEST_IN_PROGRESS` + `Retry-After`; settled = uncharged recompute; released = the original error code, D25) is
+   its fallback for in-flight and failed originals.
 6. **Prompt:** before routing, for every candidate provider the active `ai_prompt_templates` row (APPROVED +
    `is_active`) for (feature, language, model family) is rendered; exact language beats `*`, then exact family
    (`ai_models.configuration->>'modelFamily'`, else the model code) beats `*`. Placeholders (`PromptRenderer.PLACEHOLDERS`)
@@ -853,6 +855,44 @@ templates and language catalogue), `min-script-ratio` (0.9), `max-text-character
 (1000). Metrics: `qal.ai.pipeline.requests{feature,outcome}`, `qal.ai.guardrail.failures{feature,check}`,
 `qal.ai.requests.write-failures`. Proof: `AiPipelineIT` (PG18, mock providers, log capture, contract validation of the
 responses).
+
+## AI gateway: idempotency and replay cache (B5.4, ADR 0017 "Replay cache (B5.4)", N5, SD 8.3/11.6)
+
+At-most-once charging per `Idempotency-Key` is metering's (`usage_reservations` is unique per user and key, B4.2). B5.4
+(`aigateway.idempotency.EncryptedReplayCache`, the default `AiIdempotency` bean) adds:
+
+- **Request fingerprint** (`RequestFingerprint`): SHA-256 over a versioned, length-prefixed encoding of the body as the
+  client sent it: feature/task, languages, style, mode, tone, target length, addressee, cultural options,
+  preserveNames, glossary, destination profile and the exact text (headers are not part of it). Never stored as it is:
+  sealed with `UserDataEncryption` for the user (context `ai_request_fingerprints` / `fingerprint_ciphertext` / request
+  id) into `ai_request_fingerprints` by `onReserved`, i.e. after the reservation and **before** the provider call.
+  Kept `fingerprint-retention` (24 h, minimum 24 h). Request id = reservation id (unique per user and key).
+- **Replay cache:** after a settled success `onCompleted` serialises the response (contract JSON) and seals it for the
+  user (context `ai_replay_cache` / `response_ciphertext` / request id) into the **UNLOGGED** table `ai_replay_cache`
+  for `cache-ttl` (10 min, at most 10 min, `0s` = off; a CHECK enforces the ceiling). UNLOGGED: never in the WAL, so
+  never in WAL archives, PITR/base backups or replicas; a crash empties it (= recompute, uncharged). Logical dumps should
+  use `pg_dump --no-unlogged-table-data`.
+- **Replays** (`onReplay`), after comparing fingerprints (constant time): another body = 409 `IDEMPOTENCY_KEY_REUSED`
+  (in flight too; another feature is already refused by metering). RESERVED = 409 `REQUEST_IN_PROGRESS` +
+  `Retry-After: 2`. SETTLED = the cached response with `replayed: true` (same `requestId` and `usage`, no provider
+  call, no `ai_requests` row); cache expired, swept or unreadable = recompute with `usageSource UNMETERED`, which is never
+  cached; fingerprint expired (key older than 24 h) = 409 `IDEMPOTENCY_KEY_REUSED` (an unverifiable body never gets an
+  uncharged result). RELEASED = the cached response if the original succeeded uncharged, else the original failure
+  (D25).
+- **Expiry:** reads ignore rows past `expires_at` (application clock); db-scheduler task `ai-replay-cache-sweeper`
+  (every `sweep-interval`, 1 min; off in tests with `sweeper-enabled=false`) deletes expired cache rows and
+  fingerprints in batches of `sweep-batch-size` (1000).
+- **Account deletion:** `AiIdempotencyDeletion` (order `AI_GATEWAY`) deletes both tables' rows; they are ciphertext
+  under the already shredded key anyway. Guest merge moves nothing (the guest's keys and rows expire).
+- Failures never change a charge: a failed fingerprint or cache write is logged (`qal.ai.idempotency.hook-failures`)
+  and the request goes on; a KMS failure while reading a fingerprint fails that replay (500, nothing charged).
+
+Settings `qal.ai.idempotency.*`: `cache-ttl` (10m, `QAL_AI_REPLAY_CACHE_TTL`), `fingerprint-retention` (24h),
+`sweep-interval` (1m), `sweep-batch-size` (1000), `sweeper-enabled` (true). Metrics:
+`qal.ai.idempotency.replay-cache{outcome=hit|miss|stored|in_progress|released|key_reused|key_expired|unreadable|fingerprint_unreadable}`,
+`qal.ai.idempotency.swept{table}`. Schema: `V14__ai_replay_cache.sql`. Proof: `AiReplayCacheIT` (PG18, mock provider,
+injected clock: retry within the TTL, after expiry, concurrent duplicates, other bodies, failed originals, ciphertext
+scan, sweep, deletion), `RequestFingerprintTest`.
 
 ## Contract tests
 

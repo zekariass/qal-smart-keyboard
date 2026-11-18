@@ -14,10 +14,43 @@ import com.qalsmartkeyboard.aigateway.adapter.MockAiProvider;
  * @param http HTTP/JSON adapter pointed at the local WireMock stubs (dev/test only, same refusal)
  * @param routing router limits, circuit breaker, kill switch and cost cap caches (B5.2)
  * @param pipeline the request pipeline (B5.3)
+ * @param idempotency the encrypted replay cache and request fingerprints (B5.4)
  */
 @ConfigurationProperties("qal.ai")
 record AiGatewayProperties(@DefaultValue("30s") Duration registryCacheTtl, @DefaultValue Mock mock,
-		@DefaultValue Http http, @DefaultValue Routing routing, @DefaultValue Pipeline pipeline) {
+		@DefaultValue Http http, @DefaultValue Routing routing, @DefaultValue Pipeline pipeline,
+		@DefaultValue Idempotency idempotency) {
+
+	/**
+	 * B5.4 (plan rule N5, SD 8.3, SD 11.6, contract {@code IdempotencyKey}).
+	 *
+	 * @param cacheTtl             how long a settled response stays replayable from the encrypted cache; at most 10
+	 *                             minutes (SD 11.6), {@code 0s} turns the cache off (every replay recomputes, uncharged)
+	 * @param fingerprintRetention how long the request fingerprint of a key is kept to detect a reused key with another
+	 *                             body; at least 24 h (SD 8.3, contract "retained for at least 24 h")
+	 * @param sweepInterval        how often the sweeper deletes expired cache rows and fingerprints
+	 * @param sweepBatchSize       rows deleted per statement by the sweeper
+	 * @param sweeperEnabled       run the sweeper (a db-scheduler task); reads ignore expired rows either way
+	 */
+	record Idempotency(@DefaultValue("10m") Duration cacheTtl, @DefaultValue("24h") Duration fingerprintRetention,
+			@DefaultValue("1m") Duration sweepInterval, @DefaultValue("1000") int sweepBatchSize,
+			@DefaultValue("true") boolean sweeperEnabled) {
+
+		static final Duration MAX_CACHE_TTL = Duration.ofMinutes(10);
+		static final Duration MIN_FINGERPRINT_RETENTION = Duration.ofHours(24);
+
+		Idempotency {
+			if (cacheTtl == null || cacheTtl.isNegative() || cacheTtl.compareTo(MAX_CACHE_TTL) > 0) {
+				throw new IllegalArgumentException("qal.ai.idempotency.cache-ttl must be between 0s and 10m");
+			}
+			if (fingerprintRetention == null || fingerprintRetention.compareTo(MIN_FINGERPRINT_RETENTION) < 0) {
+				throw new IllegalArgumentException("qal.ai.idempotency.fingerprint-retention must be at least 24h");
+			}
+			if (sweepInterval == null || !sweepInterval.isPositive() || sweepBatchSize < 1) {
+				throw new IllegalArgumentException("invalid qal.ai.idempotency sweep settings");
+			}
+		}
+	}
 
 	/**
 	 * @param deadline                   time budget for all provider calls of one request (route, guardrail retry and

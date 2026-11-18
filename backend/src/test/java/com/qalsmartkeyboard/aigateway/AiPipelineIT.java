@@ -577,14 +577,17 @@ class AiPipelineIT {
 		UUID user = user("ACTIVE");
 		String k = key();
 		AiResult first = pipeline.execute(AiCommand.Translate.of(Caller.of(user, k), SECRET, "en", "om"));
+		int calls = mock.callCount();
+		// B5.4: answered from the encrypted replay cache (AiReplayCacheIT covers expiry, concurrency, reuse)
 		AiResult.TranslateResponse again = (AiResult.TranslateResponse) pipeline
 				.execute(AiCommand.Translate.of(Caller.of(user, k), SECRET, "en", "om"));
 		assertThat(again.translatedText()).isEqualTo(((AiResult.TranslateResponse) first).translatedText());
-		assertThat(again.usage().usageSource()).isEqualTo("UNMETERED");
-		assertThat(again.usage().unitsCharged()).isZero();
+		assertThat(again.requestId()).isEqualTo(((AiResult.TranslateResponse) first).requestId());
+		assertThat(again.replayed()).isTrue();
+		assertThat(mock.callCount()).isEqualTo(calls);
 		assertThat(counter(user, "TRANSLATE")).containsExactly(1, 0);
-		assertThat(requests(user)).extracting(row -> row.get("usage_source")).containsExactly("PLAN_ALLOWANCE",
-				"UNMETERED");
+		assertThat(requests(user)).extracting(row -> row.get("usage_source")).containsExactly("PLAN_ALLOWANCE");
+		assertMatchesContract("/api/v1/ai/translate", again);
 
 		// in flight: a reservation with the key exists and is still open
 		String open = key();
