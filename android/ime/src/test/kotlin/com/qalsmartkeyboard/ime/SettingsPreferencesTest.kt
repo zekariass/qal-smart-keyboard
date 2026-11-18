@@ -29,7 +29,7 @@ class SettingsPreferencesTest {
         val s = base.copy(
             languages = base.languages.map { if (it.languageCode == "ti") it.copy(inputMode = InputMode.DIRECT_SCRIPT_LAYOUT) else it },
             lastModes = mapOf("am" to "FIDEL", "om" to "ABC", "ti" to "QUBEE"),
-            numeralStyle = NumeralStyle.ETHIOPIC, hapticsEnabled = false, keyHeightPercent = 120,
+            numeralStyle = NumeralStyle.ETHIOPIC, hapticsEnabled = false, keyPreviewEnabled = false, keyHeightPercent = 120,
         )
         val p = prefs(s)
         assertEquals(LayoutKind.PHONETIC, p.preferredKind("am"))
@@ -40,6 +40,8 @@ class SettingsPreferencesTest {
         assertNull(p.lastNative("ti")) // a layout the language does not have is ignored
         assertTrue(p.ethiopicNumerals)
         assertFalse(p.hapticsEnabled)
+        assertFalse(p.keyPreviewEnabled)
+        assertTrue(prefs(KeyboardSettings.DEFAULT).keyPreviewEnabled)
         assertEquals(1.2f, p.keyHeightScale, 0.001f)
     }
 

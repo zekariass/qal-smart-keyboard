@@ -67,10 +67,56 @@ class PopupOverlay(context: Context) : View(context) {
         invalidate()
     }
 
+    // Key press preview bubble (one at a time). Plain fields, reused: nothing is allocated per frame.
+    private var previewText: String? = null
+    private var pvLeft = 0f
+    private var pvTop = 0f
+    private var pvW = 0f
+    private var pvH = 0f
+
+    /** Draws the key preview bubble of [text] at [left],[top] (overlay coordinates); redraws only the old and new bubble areas. */
+    fun showPreview(text: String, left: Float, top: Float, w: Float, h: Float) {
+        invalidatePreview()
+        previewText = text
+        pvLeft = left
+        pvTop = top
+        pvW = w
+        pvH = h
+        invalidatePreview()
+    }
+
+    fun hidePreview() {
+        if (previewText == null) return
+        invalidatePreview()
+        previewText = null
+    }
+
+    val previewShown: Boolean get() = previewText != null
+
+    private fun invalidatePreview() {
+        if (previewText == null) return
+        val pad = (2f * d).toInt() + 1
+        invalidate(pvLeft.toInt() - pad, pvTop.toInt() - pad, (pvLeft + pvW).toInt() + pad, (pvTop + pvH).toInt() + pad)
+    }
+
+    private fun drawPreview(canvas: Canvas, label: String) {
+        val r = 10f * d
+        fill.color = edge
+        canvas.drawRoundRect(pvLeft - d, pvTop - d, pvLeft + pvW + d, pvTop + pvH + d, r, r, fill)
+        fill.color = panel
+        canvas.drawRoundRect(pvLeft, pvTop, pvLeft + pvW, pvTop + pvH, r, r, fill)
+        text.color = textColor
+        text.textSize = PREVIEW_TEXT_DP * d
+        val w = text.measureText(label)
+        if (w > pvW - 8f * d) text.textSize = PREVIEW_TEXT_DP * d * (pvW - 8f * d) / w
+        canvas.drawText(label, pvLeft + pvW / 2f, pvTop + pvH / 2f - (text.descent() + text.ascent()) / 2f, text)
+    }
+
     // Never intercept touches.
     override fun onTouchEvent(event: android.view.MotionEvent) = false
 
     override fun onDraw(canvas: Canvas) {
+        previewText?.let { drawPreview(canvas, it) }
         if (items.isEmpty()) return
         val r = 8f * d
         val rows = (items.size + cols - 1) / cols
@@ -98,6 +144,8 @@ class PopupOverlay(context: Context) : View(context) {
         }
     }
 }
+
+private const val PREVIEW_TEXT_DP = 30f
 
 /**
  * Stacks the keyboard column (child 0, sized by its content) and the popup overlay (child 1, given

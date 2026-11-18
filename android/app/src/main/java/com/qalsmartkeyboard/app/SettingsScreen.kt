@@ -123,6 +123,10 @@ fun SettingsScreen(
             Switch(checked = settings.hapticsEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(hapticsEnabled = on) } } })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Key press preview", Modifier.weight(1f))
+            Switch(checked = settings.keyPreviewEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(keyPreviewEnabled = on) } } })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Update language packs on mobile data", Modifier.weight(1f))
             Switch(
                 checked = settings.packUpdatesOnMobileData,
