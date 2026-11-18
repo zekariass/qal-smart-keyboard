@@ -1,6 +1,7 @@
 package com.qalsmartkeyboard.ime.ai
 
 import android.content.Context
+import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.view.Gravity
@@ -10,7 +11,12 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.core.view.AccessibilityDelegateCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.qalsmartkeyboard.ime.R
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
@@ -18,13 +24,19 @@ import java.text.DateFormat
 import java.util.Date
 
 /**
- * The AI toolbar and its review panel (A2.5, SD 6-7, 11): a row above the candidate strip with
- * Translate (+ destination chip), Grammar and Rewrite (+ tone chip) and a plan hint, and below it
- * the picker, the working indicator or the review panel (original and result, alternatives,
- * Replace / Insert / Copy / Retry / Cancel). Plain Views like the rest of the keyboard (ADR 0003).
+ * The AI toolbar (A2.5, SD 6-7, 11) in two parts:
  *
- * It renders [AiToolbarController] state only when that changes (taps, results), never per key, and
- * holds user text only in its TextViews while the panel is open. Nothing here logs.
+ * - [actionsRow]: Translate (+ destination chip), Grammar and Rewrite (+ tone chip) and the plan
+ *   state (quota hint, or a "Sign in to use AI" / "Update needed" link, or "Offline"). It is not a
+ *   row of its own: [com.qalsmartkeyboard.ime.KeyboardBar] shows it in the middle of the one bar
+ *   above the keys when the user opens the AI entry. It scrolls sideways; no chip is ever truncated.
+ * - this view: the panel above that bar, shown only while there is something in it: the picker, the
+ *   working indicator, an error with its link, or the review panel (original and result,
+ *   alternatives, Replace / Insert / Copy / Retry / Cancel). The idle keyboard shows no panel.
+ *
+ * Plain Views like the rest of the keyboard (ADR 0003); each chip has the Button role for
+ * accessibility. It renders [AiToolbarController] state only when that changes (taps, results),
+ * never per key, and holds user text only in its TextViews while the panel is open. Nothing here logs.
  */
 class AiToolbarView(context: Context) : LinearLayout(context) {
     var controller: AiToolbarController? = null
@@ -56,52 +68,85 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     private val toolbar = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
     private val panelBox = LinearLayout(context).apply { orientation = VERTICAL }
 
+    /** The AI actions, laid out by the bar in its middle (transparent: the bar's background shows). */
+    val actionsRow: HorizontalScrollView = HorizontalScrollView(context).apply {
+        isHorizontalScrollBarEnabled = false
+        // Chips cut by the row's edge fade out, so they read as "scroll for more", not as truncated.
+        isHorizontalFadingEdgeEnabled = true
+        setFadingEdgeLength((24f * d).toInt())
+        addView(toolbar, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    }
+
+    /** Called after every [render] (the bar re-reads [AiToolbarController.visible]). */
+    var onRendered: () -> Unit = {}
+
     init {
         orientation = VERTICAL
         setBackgroundColor(bg)
-        addView(toolbar, LayoutParams(LayoutParams.MATCH_PARENT, (40f * d).toInt()))
         addView(panelBox, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         visibility = GONE
     }
 
-    /** Re-reads the controller and rebuilds the rows. Call on the main thread when the controller reports a change. */
+    /** Re-reads the controller and rebuilds the actions and the panel. Call on the main thread when the controller reports a change. */
     fun render() {
         val c = controller
         if (c == null || !c.visible) {
+            toolbar.removeAllViews()
+            panelBox.removeAllViews()
             visibility = GONE
+            onRendered()
             return
         }
-        visibility = VISIBLE
         renderToolbar(c)
         renderPanel(c)
+        visibility = if (panelBox.childCount > 0) VISIBLE else GONE
+        onRendered()
     }
 
     private fun renderToolbar(c: AiToolbarController) {
         toolbar.removeAllViews()
         val busy = c.inFlight
+        val state = status(c.availability)
+        // A block (signed out, update, offline) explains why the actions will not run: show it first.
+        val blocked = c.availability.block != AiBlock.NONE
+        if (blocked && state != null) toolbar.addView(state)
         toolbar.addView(chip(R.string.ai_translate, enabled = !busy) { c.onTask(AiTaskKind.TRANSLATE) })
         toolbar.addView(chip(c.destination.label, on = c.picker == AiPicker.DESTINATION, small = true) { c.openPicker(AiPicker.DESTINATION) })
         toolbar.addView(chip(R.string.ai_grammar, enabled = !busy) { c.onTask(AiTaskKind.GRAMMAR) })
         toolbar.addView(chip(R.string.ai_rewrite, enabled = !busy) { c.onTask(AiTaskKind.REWRITE) })
         toolbar.addView(chip(toneLabel(c.tone), on = c.picker == AiPicker.TONE, small = true) { c.openPicker(AiPicker.TONE) })
-        toolbar.addView(View(context), LayoutParams(0, 1, 1f))
-        toolbar.addView(status(c.availability))
+        if (!blocked && state != null) toolbar.addView(state)
     }
 
-    private fun status(a: AiAvailability): TextView {
-        val (text, color) = when (a.block) {
-            AiBlock.OFFLINE -> context.getString(R.string.ai_status_offline) to warn
-            AiBlock.SIGNED_OUT -> context.getString(R.string.ai_status_signed_out) to warn
-            AiBlock.UPDATE_REQUIRED -> context.getString(R.string.ai_status_update) to warn
-            AiBlock.NONE -> quotaText(a.quota[AiTaskKind.TRANSLATE]) to muted
+    /** The plan state: a link (sign in, update) where the user can fix it, else plain text; null when there is nothing to say. */
+    private fun status(a: AiAvailability): TextView? {
+        val text: String
+        val color: Int
+        var link: AiLink? = null
+        when (a.block) {
+            AiBlock.OFFLINE -> { text = context.getString(R.string.ai_status_offline); color = warn }
+            AiBlock.SIGNED_OUT -> { text = context.getString(R.string.ai_status_signed_out); color = warn; link = AiLink.SIGN_IN }
+            AiBlock.UPDATE_REQUIRED -> { text = context.getString(R.string.ai_status_update); color = warn; link = AiLink.UPDATE_APP }
+            AiBlock.NONE -> { text = quotaText(a.quota[AiTaskKind.TRANSLATE]); color = muted }
         }
+        if (text.isEmpty()) return null
+        val target = link
         return TextView(context).apply {
             this.text = text
             setTextColor(color)
-            textSize = 11f
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setPadding((6f * d).toInt(), 0, (10f * d).toInt(), 0)
+            textSize = 13f
+            isSingleLine = true
+            gravity = Gravity.CENTER_VERTICAL
+            minHeight = (32f * d).toInt()
+            setPadding((8f * d).toInt(), 0, (10f * d).toInt(), 0)
+            contentDescription = text
+            if (target != null) {
+                paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
+                isClickable = true
+                setOnClickListener { onLink(target) }
+                asButton(this)
+            }
+            layoutParams = LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
     }
 
@@ -298,8 +343,8 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
             textSize = if (small) 13f else 14f
             setTextColor(if (enabled) fg else muted)
             gravity = Gravity.CENTER
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
+            // One line, never ellipsized: every chip row scrolls sideways instead.
+            isSingleLine = true
             minHeight = (32f * d).toInt()
             setPadding((12f * d).toInt(), 0, (12f * d).toInt(), 0)
             background = GradientDrawable().apply {
@@ -309,12 +354,27 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
             }
             isEnabled = enabled
             isClickable = enabled
+            isSelected = on
             contentDescription = text
             setOnClickListener { click() }
+            asButton(this)
             layoutParams = LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 setMargins((3f * d).toInt(), (2f * d).toInt(), (3f * d).toInt(), (2f * d).toInt())
             }
         }
+
+    /** Gives a clickable TextView the Button role for accessibility services. */
+    private fun asButton(v: View) {
+        ViewCompat.setAccessibilityDelegate(
+            v,
+            object : AccessibilityDelegateCompat() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.className = Button::class.java.name
+                }
+            },
+        )
+    }
 
     /** A ScrollView that never grows past [maxPx]. */
     private class ScrollBox(context: Context, private val maxPx: Int) : ScrollView(context) {

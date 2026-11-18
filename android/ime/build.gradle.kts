@@ -109,6 +109,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true // Robolectric view tests (top bar, accessibility nodes)
+    }
 }
 
 // JVM unit tests that drive the real core (end-to-end typing over the bundled packs) load the
@@ -122,6 +125,8 @@ dependencies {
     implementation(project(":core-bindings"))
     implementation(project(":data"))
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.customview) // ExploreByTouchHelper: accessibility nodes of the drawn bar and keys
     testImplementation(libs.junit)
     testImplementation(libs.jna.jvm)
+    testImplementation(libs.robolectric)
 }

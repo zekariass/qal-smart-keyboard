@@ -373,4 +373,17 @@ class AiToolbarControllerTest {
         h.c.chooseDestination(mum)
         assertEquals("com.other", h.actions.remembered.last().first)
     }
+
+    @Test fun closingThePickerChoosesNothingAndSendsNothing() {
+        val h = H("Hello")
+        h.c.openPicker(AiPicker.TONE)
+        val before = h.changes
+        h.c.closePicker()
+        assertEquals(AiPicker.NONE, h.c.picker)
+        assertNull(h.c.tone)
+        assertEquals(before + 1, h.changes)
+        h.c.closePicker() // already closed: no repaint
+        assertEquals(before + 1, h.changes)
+        assertTrue(h.actions.submitted.isEmpty())
+    }
 }

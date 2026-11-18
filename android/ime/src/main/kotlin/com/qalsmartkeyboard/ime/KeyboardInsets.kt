@@ -19,7 +19,8 @@ data class InsetPadding(val left: Int = 0, val right: Int = 0, val bottom: Int =
  * navigation in portrait, a side with 3-button navigation in landscape) and the display-cutout sides
  * (landscape notches) as padding, while its background keeps running under those areas. On older
  * releases, or where the system already fits the window, the dispatched insets are zero (consumed by
- * the decor), so the same rule never pads twice.
+ * the decor), so the same rule never pads twice. A small fixed gap ([BOTTOM_GAP_DP]) is added under
+ * the bottom row in every case.
  */
 object KeyboardInsets {
     /**
@@ -30,20 +31,26 @@ object KeyboardInsets {
      * to other windows, so it never receives them; on a landscape phone with 3-button navigation the
      * strip is at the bottom while the system bar is on the side and the bottom inset is 0.
      */
-    fun padding(nav: IntArray, cutout: IntArray, imeNavBarPx: Int = 0): InsetPadding {
+    fun padding(nav: IntArray, cutout: IntArray, imeNavBarPx: Int = 0, density: Float = 1f): InsetPadding {
         require(nav.size == 4 && cutout.size == 4)
         return InsetPadding(
             left = max(nav[0], cutout[0]).coerceAtLeast(0),
             right = max(nav[2], cutout[2]).coerceAtLeast(0),
-            bottom = maxOf(nav[3], cutout[3], imeNavBarPx).coerceAtLeast(0),
+            bottom = maxOf(nav[3], cutout[3], imeNavBarPx).coerceAtLeast(0) + bottomGapPx(density),
         )
     }
 
     /**
-     * The window-relative top of the area the app must keep clear (content/visible insets): the
-     * bottom of the transparent popup headroom. Null while the view is not laid out (keep the
-     * system's values).
+     * Breathing room (dp) between the bottom key row and whatever is below the keyboard: the
+     * navigation bar, the IME back / switcher strip, or the screen edge. Without it the Enter key
+     * nearly touches the system's switcher icon. Always added, so the gap is the same with gesture,
+     * 3-button and fitted (older) navigation.
      */
+    const val BOTTOM_GAP_DP = 8f
+
+    /** [BOTTOM_GAP_DP] in px at [density], rounded, at least 1 px. */
+    fun bottomGapPx(density: Float): Int = maxOf(1, Math.round(BOTTOM_GAP_DP * density.coerceAtLeast(0.5f)))
+
     /**
      * Height of the transparent popup headroom: [maxPx] when the window has room, else what is
      * left of [availablePx] once the keyboard ([keyboardPx]) fits, never negative. The keyboard
@@ -52,6 +59,11 @@ object KeyboardInsets {
     fun headroomPx(maxPx: Int, availablePx: Int, keyboardPx: Int): Int =
         (availablePx - keyboardPx).coerceIn(0, maxOf(0, maxPx))
 
+    /**
+     * The window-relative top of the area the app must keep clear (content/visible insets): the
+     * bottom of the transparent popup headroom. Null while the view is not laid out (keep the
+     * system's values).
+     */
     fun contentTop(rootHeight: Int, headroomTopInWindow: Int, headroomHeight: Int): Int? =
         if (rootHeight <= 0) null else headroomTopInWindow + headroomHeight
 }
