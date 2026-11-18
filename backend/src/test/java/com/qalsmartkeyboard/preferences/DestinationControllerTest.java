@@ -35,7 +35,7 @@ import com.qalsmartkeyboard.testsupport.contract.ContractValidated;
 /** B3.4: the six operations against the contract (services mocked) behind the real security chain. */
 @WebMvcTest(DestinationController.class)
 @ContractValidated
-@Import({ ApiSecurityConfiguration.class, ServletProblemResponseWriter.class, DestinationContract.class })
+@Import({ ApiSecurityConfiguration.class, ServletProblemResponseWriter.class })
 class DestinationControllerTest {
 
 	static final String HASH = "a".repeat(64);

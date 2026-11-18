@@ -15,6 +15,7 @@ public enum ApiErrorCode {
 	VALIDATION_FAILED(HttpStatus.BAD_REQUEST, "Request validation failed"),
 	INPUT_TOO_LONG(HttpStatus.BAD_REQUEST, "Input is too long"),
 	UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "Authentication required"),
+	GUEST_SESSION_INVALID(HttpStatus.UNAUTHORIZED, "Guest session is no longer valid"),
 	TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "Token expired"),
 	REFRESH_TOKEN_REUSED(HttpStatus.UNAUTHORIZED, "Refresh token reuse detected"),
 	OTP_INVALID(HttpStatus.UNAUTHORIZED, "One-time code is invalid"),

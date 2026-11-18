@@ -227,7 +227,7 @@ class GuestMergeIT {
 	}
 
 	static void assertInvalidBearer(ResultActions result) throws Exception {
-		result.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+		result.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("GUEST_SESSION_INVALID"))
 				.andExpect(header().string("WWW-Authenticate", org.hamcrest.Matchers.containsString("invalid_token")));
 	}
 
@@ -664,7 +664,7 @@ class GuestMergeIT {
 				}
 				else {
 					assertThat(r.getResponse().getStatus()).isEqualTo(401);
-					assertThat(r.getResponse().getContentAsString()).contains("UNAUTHENTICATED");
+					assertThat(r.getResponse().getContentAsString()).contains("GUEST_SESSION_INVALID");
 					refused++;
 				}
 			}

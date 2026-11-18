@@ -132,7 +132,7 @@ Allowances are never summed. On the upgrade path the counters already belong to 
   upgrade, after the registered session (and its device registration) is issued.
 - A retry with the old guest token after a successful merge (for example after a lost response) is the same 401; the
   client drops the guest token and signs in without it (the data is already merged, the code is not consumed).
-- Stale guest token answer: 401 `UNAUTHENTICATED`, detail "The access token is not valid.", `WWW-Authenticate: Bearer
+- Stale guest token answer: 401 `GUEST_SESSION_INVALID` (ADR 0007 D20; it was `UNAUTHENTICATED`), `WWW-Authenticate: Bearer
   error="invalid_token"`, identical whether the security chain or the sign-in transaction notices it.
 
 ### Event, logs, metrics
@@ -151,7 +151,9 @@ Allowances are never summed. On the upgrade path the counters already belong to 
 - Participants hold the guest's rows in memory per table; fine for trial accounts, revisit if guests ever sync large
   histories.
 
-## Contract gaps (not changed here)
+## Contract gaps
+Items 1 and 2 were closed by the D20 contract batch (`GUEST_SESSION_INVALID`; `mergedGuestUserId`/`isNewUser` and the
+at-most-once merge are documented on `otp/verify`, `oauth/{provider}` and `AuthSession`). Items 3 and 4 remain.
 1. No error code distinguishes "the guest bearer can no longer be merged" from a rejected ID token: both are 401
    `UNAUTHENTICATED` on `oauth/{provider}`. Clients can tell them apart only by `WWW-Authenticate: Bearer
    error="invalid_token"` (and the detail). Suggest documenting this 401 on both operations, or a dedicated code.

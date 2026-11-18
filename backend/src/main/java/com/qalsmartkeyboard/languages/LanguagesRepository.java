@@ -35,10 +35,10 @@ class LanguagesRepository {
 			OffsetDateTime validUntil, String endorsedByKeyId, String endorsementSignature) {
 	}
 
-	/** Resource types of the contract's {@code ResourceType} (V1 also allows GLOSSARY, which the contract cannot express). */
+	/** Resource types of the contract's {@code ResourceType}; equals the V1 CHECK list (ADR 0007 D20 added GLOSSARY). */
 	static final List<String> CONTRACT_RESOURCE_TYPES = List.of("KEYBOARD_LAYOUT", "TRANSLITERATION_RULES", "DICTIONARY",
 			"FREQUENCY_LIST", "PREDICTION_MODEL", "AUTOCORRECTION_MODEL", "PROTECTED_TERMS", "EMOJI_KEYWORDS",
-			"PRONUNCIATION", "SPELL_MODEL", "LANGUAGE_ID_MODEL", "TRANSLATION_MODEL", "ASR_MODEL", "TTS_VOICE",
+			"GLOSSARY", "PRONUNCIATION", "SPELL_MODEL", "LANGUAGE_ID_MODEL", "TRANSLATION_MODEL", "ASR_MODEL", "TTS_VOICE",
 			"ON_DEVICE_LLM", "OTHER");
 
 	private static final String RESOURCE_SELECT = """
