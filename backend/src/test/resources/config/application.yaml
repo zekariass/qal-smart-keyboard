@@ -32,3 +32,8 @@ qal:
   # the metering ITs call the sweep directly.
   usage:
     sweeper-enabled: false
+  # B5.1: the in-process mock AI provider; descriptor cache off so ITs see provider row changes at once.
+  ai:
+    mock:
+      enabled: true
+    registry-cache-ttl: 0s

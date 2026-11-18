@@ -157,6 +157,13 @@
 			<version>${openapi-request-validator.version}</version>
 			<scope>test</scope>
 		</dependency>
+		<!-- B5.1: in-process WireMock (shaded) for the HTTP provider adapter tests; serves the infra/compose stubs -->
+		<dependency>
+			<groupId>org.wiremock</groupId>
+			<artifactId>wiremock-standalone</artifactId>
+			<version>3.13.1</version>
+			<scope>test</scope>
+		</dependency>
 		<dependency>
 			<groupId>org.awaitility</groupId>
 			<artifactId>awaitility</artifactId>
