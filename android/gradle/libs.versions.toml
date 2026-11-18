@@ -23,6 +23,8 @@ playIntegrity = "1.4.0"
 desugarJdkLibs = "2.1.5"
 robolectric = "4.16"
 work = "2.10.1"
+# Crash reporting (ADR 0024): the core Android SDK only (no NDK, replay, OkHttp, Fragment or Timber integrations).
+sentry = "8.62.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -59,6 +61,7 @@ play-integrity = { group = "com.google.android.play", name = "integrity", versio
 desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+sentry-android-core = { group = "io.sentry", name = "sentry-android-core", version.ref = "sentry" }
 
 jna-android = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 jna-jvm = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }

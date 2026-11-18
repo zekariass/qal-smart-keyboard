@@ -218,6 +218,8 @@ class MainActivity : ComponentActivity() {
                             onPlans = { showPlans = true },
                             modifier = Modifier.padding(innerPadding),
                             syncCard = { DictionarySyncSection(accountStatus) },
+                            crashReportsOn = settings.crashReports,
+                            onCrashReports = { on -> lifecycleScope.launch { repository.update { it.copy(crashReports = on) } } },
                         )
                         themesOpen && !showFlow -> ThemesHost(
                             appliedId = settings.theme,

@@ -235,6 +235,9 @@
     <string name="pv_export_button">Export my data</string>
     <string name="pv_delete_button">Delete my account</string>
     <string name="pv_deletion_banner">Your account is scheduled for deletion on %1$s.</string>
+    <string name="pv_crash_title">Crash reports</string>
+    <string name="pv_crash_switch">Send crash reports — no typed text, ever</string>
+    <string name="pv_crash_body">If the app or the keyboard crashes, we receive the technical details: the kind of error, where in our code it happened, the app version, and the phone model and Android version. Never what you typed, your clipboard, AI text, screenshots or your phone number. It works without an account.</string>
 
     <string name="pv_consents_title">Consents</string>
     <string name="pv_consents_intro">Each choice below is optional and can be changed at any time. Changing it takes effect at once, and every decision is recorded.</string>
