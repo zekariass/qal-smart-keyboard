@@ -92,6 +92,8 @@ dependencies {
     implementation(project(":ime"))
     implementation(project(":data"))
     implementation(project(":api"))
+    implementation(project(":packs-sync"))
+    implementation(libs.androidx.work.runtime)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)

@@ -55,8 +55,8 @@ builds one core engine; until it is ready the keyboard types ABC (A1.3/A1.4 beha
   rejected keeps its saved code unflagged (a transient pack failure never erases a user choice). The
   settings-screen banner is an `android/app` follow-up.
 - **Sources:** bundled `assets/packs/*.pack` (the file list is the asset directory, `seed-packs.json` is
-  no longer read at run time) and the app-private `noBackupFilesDir/packs/installed/*.pack`, where A2.3
-  will place downloaded packs (temp file, verify, rename to `.pack`). Per (language, resource type,
+  no longer read at run time) and the app-private `noBackupFilesDir/packs/installed/*.pack`, where the A2.3
+  updater (`:packs-sync`, below) places downloaded packs (temp file, verify, rename to `.pack`). Per (language, resource type,
   platform) the newest valid pack wins; on a tie the bundled one does. `no_backup` keeps a restored
   backup from bringing back packs without their version floor.
 - **Verification:** every candidate is first loaded on a throw-away engine (core: signature, key, size,
@@ -64,7 +64,7 @@ builds one core engine; until it is ready the keyboard types ABC (A1.3/A1.4 beha
   the final engine. A failing pack is skipped: an installed file is deleted, a bundled one cannot be.
   Logged as `pack <file> rejected: <REASON>` only (reason enum: core `PackRejectReason` plus
   `UNREADABLE`, `PAYLOAD_UNUSABLE`, `DOWNGRADE`, `SUPERSEDED`). A signed but unparsable dictionary or
-  bigram payload is `PAYLOAD_UNUSABLE` and treated as corrupt. `minAppVersion` is not enforced yet (A2.3).
+  bigram payload is `PAYLOAD_UNUSABLE` and treated as corrupt. `minAppVersion` is enforced by the updater before it installs a pack (A2.3), not by the manager.
 - **Trust keys** are generated at build time into `PackTrustConfig` by the `generate<Variant>PackTrustConfig`
   task in `build.gradle.kts`, never read from a file next to the packs. Debug: the DEV key of
   `seed-packs.json`. Release: `-Pqal.packTrustKeysFile=<keys.json>`
@@ -83,6 +83,26 @@ builds one core engine; until it is ready the keyboard types ABC (A1.3/A1.4 beha
 - **Last good model:** the core never drops a language's working lexicon or bigrams because of an
   unparsable payload (core README), and the manager additionally rejects such packs before loading.
 - **Debugging on a device:** with a debug build, `adb shell run-as com.qalsmartkeyboard.app ls no_backup/packs`.
+
+## Pack updates (A2.3, `:packs-sync` + `ime.packs.PackJournal`)
+`:ime` has no network code (`NoNetworkTest`). Updates are downloaded by `android/packs-sync` (used by `:app`'s
+WorkManager job), which only writes files that `:ime` reads. The two share the `PackJournal` (files under
+`noBackupFilesDir/packs/update/`):
+
+- **Reload signal:** after a swap the updater rewrites `update/reload.flag`. `KeyboardImeService.onStartInputView`
+  compares it with the token it last loaded under and, if it differs, reloads the packs on the loader thread
+  (`PackRuntime.load()`), swaps the engine on the main thread, re-attaches the personal dictionary and closes the old engine.
+- **`.prev` and the version floor:** the updater renames the current `upd-<lang>-<type>-<platform>.pack` to `<name>.pack.prev`
+  (not loaded: the manager only reads `*.pack`), then the verified temp file over `<name>.pack`, and records the swap in
+  `update/pending.txt` with the floor it had. It never changes `versions.txt`: the floor rises when the IME loads the pack (A1.6 rule).
+- **Health signal and rollback:** a pending swap is healthy when the pack loaded and won its slot (`PackJournal.afterLoad`) and the
+  engine built from it survived until the keyboard was first shown (`confirm`: `.prev` and the journal entry are dropped). If the
+  manager rejects the pack (it deletes the file), `.prev` is restored and `resourceId<TAB>version` goes to `update/blacklist.txt`
+  so it is never downloaded again. If a swap saw `maxUnconfirmedStarts` (2) loads without a confirmation (the process died: a native
+  crash on first use), the next load rolls it back before loading: `.prev` restored, version floor set back
+  (`VersionStore.restore`), blacklisted. Bundled packs remain the final fallback. Swaps the updater began but did not finish
+  are marked staged (ignored by the IME) and undone by the next update check.
+- Tests: `:packs-sync` `TamperTest` drives `PackJournal` and `PackRuntime` on the real core (`android/packs-sync/README.md`).
 
 ## Privacy
 Typed text goes only to the InputConnection and the strip; it is never logged, stored or sent (N1,

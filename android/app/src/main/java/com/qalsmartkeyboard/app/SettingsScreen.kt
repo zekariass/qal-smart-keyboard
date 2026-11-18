@@ -124,6 +124,13 @@ fun SettingsScreen(
             Text("Haptic feedback", Modifier.weight(1f))
             Switch(checked = settings.hapticsEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(hapticsEnabled = on) } } })
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Update language packs on mobile data", Modifier.weight(1f))
+            Switch(
+                checked = settings.packUpdatesOnMobileData,
+                onCheckedChange = { on -> scope.launch { repository.update { it.copy(packUpdatesOnMobileData = on) } } },
+            )
+        }
         Text("Key height: ${settings.keyHeightPercent}%", style = MaterialTheme.typography.titleMedium)
         Slider(
             value = settings.keyHeightPercent.toFloat(),
