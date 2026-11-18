@@ -63,8 +63,9 @@ class UserDictionaryTest {
         first.attach(engine1)
         val s1 = CoreTestEnv.Session(prefs = CoreTestEnv.FidelFirst(), dictionary = first, engine = engine1)
         s1.mode(amPhonetic)
-        s1.type("$newWordKeys ") // the word is finished by the space
-        assertEquals("$newWord ", s1.ed.text.toString())
+        s1.type("$newWordKeys ") // the first sighting: finished by the space, not yet learned
+        s1.type("$newWordKeys ") // the second sighting: learned
+        assertEquals("$newWord $newWord ", s1.ed.text.toString())
         assertEquals(listOf(newWord), first.words("am"))
         first.flush()
 
@@ -97,6 +98,7 @@ class UserDictionaryTest {
         assertTrue(d.add("am", "ሰላምታ"))
         assertTrue(d.add("en", "hello"))
         d.learn("am", "ቤተሰብ", "ሰላምታ")
+        d.learn("am", "ቤተሰብ", "ሰላምታ") // second sighting
         assertEquals(listOf("ሰላምታ", "ቤተሰብ").sorted(), d.words("am"))
         assertFalse(d.add("am", "two words"))
         d.flush()
@@ -128,6 +130,81 @@ class UserDictionaryTest {
         d.add("am", newWord)
         d.clear("am")
         assertFalse(engine.forgetUserWord("am", newWord))
+    }
+
+    // ------------------------------------------------------------------ second sighting (ADR 0007 D18)
+
+    @Test fun aFirstSightingIsNotLearnedOrSuggested() {
+        val d = open()
+        val engine = CoreTestEnv.freshEngine()
+        d.attach(engine)
+        val s = CoreTestEnv.Session(prefs = CoreTestEnv.FidelFirst(), dictionary = d, engine = engine)
+        s.mode(amPhonetic)
+        s.type("$newWordKeys ")
+        assertTrue(d.words("am").isEmpty())
+        s.type("lala")
+        assertFalse(s.c.candidates.any { it.text == newWord })
+    }
+
+    @Test fun aSingleSightingCountsAcrossARestart() {
+        val first = open()
+        val engine1 = CoreTestEnv.freshEngine()
+        first.attach(engine1)
+        CoreTestEnv.Session(prefs = CoreTestEnv.FidelFirst(), dictionary = first, engine = engine1).apply {
+            mode(amPhonetic)
+            type("$newWordKeys ")
+        }
+        first.flush()
+        assertTrue(file().exists()) // the pending sighting was saved
+        assertTrue(open().words("am").isEmpty())
+
+        val second = open()
+        val engine2 = CoreTestEnv.freshEngine()
+        second.attach(engine2)
+        val s2 = CoreTestEnv.Session(prefs = CoreTestEnv.FidelFirst(), dictionary = second, engine = engine2)
+        s2.mode(amPhonetic)
+        s2.type("$newWordKeys ")
+        assertEquals(listOf(newWord), second.words("am"))
+    }
+
+    @Test fun anExplicitAddIsImmediate() {
+        val d = open()
+        assertTrue(d.add("am", newWord))
+        assertEquals(listOf(newWord), d.words("am"))
+    }
+
+    @Test fun forgetClearsAPendingSighting() {
+        val d = open()
+        d.learn("am", newWord, null) // pending
+        assertFalse(d.forget("am", newWord)) // nothing learned to forget...
+        d.learn("am", newWord, null) // ...so this is a first sighting again
+        assertTrue(d.words("am").isEmpty())
+    }
+
+    @Test fun clearAllClearsPendingSightings() {
+        val d = open()
+        d.learn("am", newWord, null)
+        d.clearAll()
+        d.learn("am", newWord, null)
+        assertTrue(d.words("am").isEmpty())
+    }
+
+    @Test fun pendingSightingsAreBoundedAndTheOldestIsEvicted() {
+        val d = open()
+        fun synthetic(i: Int) = "q" + i.toString(36)
+        d.learn("en", synthetic(0), null) // the oldest pending word
+        for (i in 1..UserDictionary.MAX_PENDING) d.learn("en", synthetic(i), null) // one more evicts synthetic(0)
+        d.learn("en", synthetic(1), null) // still pending: its second sighting learns it
+        d.learn("en", synthetic(0), null) // evicted, so this is a first sighting again
+        assertEquals(listOf(synthetic(1)), d.words("en"))
+    }
+
+    @Test fun aPendingSightingIsEncryptedToo() {
+        val d = open()
+        d.learn("am", newWord, null)
+        d.flush()
+        val raw = file().readBytes()
+        assertEquals(-1, indexOf(raw, newWord.toByteArray(Charsets.UTF_8)))
     }
 
     @Test fun changesBeforeLoadAreIgnored() {

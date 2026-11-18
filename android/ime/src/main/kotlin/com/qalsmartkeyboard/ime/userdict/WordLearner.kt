@@ -4,7 +4,11 @@ import com.qalsmartkeyboard.ime.ComposerUpdate
 
 /** Where learned words go (the [UserDictionary]; a fake in tests). */
 fun interface WordLearningSink {
-    /** One committed [word] of [language]; [previous] is the committed word right before it, if any. */
+    /**
+     * One finished, learnable typed [word] of [language]; [previous] is the committed word right
+     * before it, if any. The sink decides when it counts: [UserDictionary] learns a word on its
+     * second sighting (ADR 0007 D18), so a single typo is never learned.
+     */
     fun learn(language: String, word: String, previous: String?)
 
     /** Explicit "add to dictionary". True if it was added. */
@@ -32,6 +36,8 @@ fun interface WordLearningSink {
  * - Deleting text (a backspace that reaches committed text) drops the open word and the previous
  *   word: what the user is correcting is not learned.
  * - The previous word is only kept across a plain space; sentence punctuation clears it.
+ * - Every finished, learnable word is passed to the sink; the sink, not this class, holds the
+ *   sighting count, because the count must survive a restart.
  * - Words typed in ABC mode are not learned for the Ethiopic languages (a Latin word is not an
  *   Amharic word).
  */
