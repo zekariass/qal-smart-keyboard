@@ -23,6 +23,11 @@ public sealed interface AiResult permits AiResult.TranslateResponse, AiResult.Tr
 	/** Contract {@code UsageSummary}; null on a response for an unmetered feature. */
 	UsageSummary usage();
 
+	/** The same response carrying the id of the history item stored for it (B5.7); detection has none. */
+	default AiResult withHistoryItemId(UUID historyItemId) {
+		return this;
+	}
+
 	/** Contract {@code UsageSummary}. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	record UsageSummary(String featureCode, long unitsCharged, String unit, String usageSource, Long remaining,
@@ -62,6 +67,12 @@ public sealed interface AiResult permits AiResult.TranslateResponse, AiResult.Tr
 			UUID historyItemId, UsageSummary usage) implements AiResult {
 
 		@Override
+		public AiResult withHistoryItemId(UUID id) {
+			return new TranslateResponse(requestId, sourceLanguage, detectedSourceLanguage, detectionConfidence,
+					destinationLanguage, translatedText, alternatives, notes, qualityTier, replayed, id, usage);
+		}
+
+		@Override
 		public String toString() {
 			return "TranslateResponse[" + requestId + ", " + sourceLanguage + "->" + destinationLanguage + ", "
 					+ length(translatedText) + " chars, " + qualityTier + ", " + usage + "]";
@@ -73,6 +84,12 @@ public sealed interface AiResult permits AiResult.TranslateResponse, AiResult.Tr
 	record TransformResponse(UUID requestId, String task, String language, String resultText, List<TextEdit> edits,
 			List<Alternative> alternatives, List<AiNote> notes, QualityTier qualityTier, boolean replayed,
 			UUID historyItemId, UsageSummary usage) implements AiResult {
+
+		@Override
+		public AiResult withHistoryItemId(UUID id) {
+			return new TransformResponse(requestId, task, language, resultText, edits, alternatives, notes,
+					qualityTier, replayed, id, usage);
+		}
 
 		@Override
 		public String toString() {

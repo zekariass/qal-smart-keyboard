@@ -95,11 +95,11 @@ class AiPipelineConfiguration {
 	AiPipeline aiPipeline(EntitlementResolver entitlements, ConsentGate consents, Metering metering, AiRouter router,
 			ProviderRegistry registry, PromptTemplates templates, PromptRenderer renderer, LanguageCatalog languages,
 			AiUserContext users, AiRequestLog requests, AiIdempotency idempotency, AiGatewayProperties properties,
-			ObjectProvider<Clock> clock, ObjectProvider<MeterRegistry> meters) {
+			ObjectProvider<AiHistorySink> history, ObjectProvider<Clock> clock, ObjectProvider<MeterRegistry> meters) {
 		AiGatewayProperties.Pipeline p = properties.pipeline();
 		return new AiPipeline(entitlements, consents, metering, router, registry, templates, renderer, languages,
 				users, new Guardrails(new Guardrails.Config(p.minScriptRatio())), requests, idempotency,
-				clock.getIfAvailable(Clock::systemUTC), meters.getIfAvailable(),
+				history.getIfAvailable(() -> AiHistorySink.NONE), clock.getIfAvailable(Clock::systemUTC), meters.getIfAvailable(),
 				new AiPipeline.Settings(p.deadline(), p.requireAiProcessingConsent(), p.maxTextCharacters(),
 						p.maxDetectCharacters()));
 	}

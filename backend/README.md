@@ -984,7 +984,8 @@ scan, sweep, deletion), `RequestFingerprintTest`.
 - **Mapping:** body bytes -> `AiRequestParser` -> `AiCommand` (`Translate` / `Transform` / `Detect`) -> `AiPipeline.execute`
   -> the `AiResult` record as the response (200, `Cache-Control: no-store`). `Idempotency-Key` is required (a UUID) on
   translate and transform; detect needs none. `X-Client-Surface` (KEYBOARD | COMPANION) sets the surface. Accepted and
-  ignored for now: `saveToHistory`, `applyStyleProfile`, `options.explainIn`, `options.sourceRomanization`. The tasks
+  ignored for now: `applyStyleProfile`, `options.explainIn`, `options.sourceRomanization` (`saveToHistory` is
+  honoured since B5.7, see below). The tasks
   SUMMARIZE, EXPLAIN_TEXT and SCRIPT_CONVERSION answer 400 `VALIDATION_FAILED` (`NOT_AVAILABLE` on `task`). SSE streaming
   (`Accept: text/event-stream`) is not implemented (406); `capabilities` says `supportsStreaming: false`.
 - **Bodies are read by hand** (`byte[]` + `AiRequestParser`), not bound by the framework: a binding error quotes the
@@ -1017,6 +1018,39 @@ scan, sweep, deletion), `RequestFingerprintTest`.
   distinctive input and provider output text must not appear in any log line (web loggers at DEBUG, exception class and
   message included), Problem body, metric name or tag, or any column of any table (plaintext or the hex of its bytes,
   covering `ai_requests`, `usage_events`, `usage_reservations`, `outbox_events`, `audit_events`, the replay cache).
+
+## AI feedback and history (B5.6, B5.7, ADR 0021)
+
+**Feedback** (`POST /api/v1/ai/feedback`, `aigateway.AiFeedback`, 202 without a body): `rating` is `POSITIVE` (stored +1) or
+`NEGATIVE` (-1) per the contract, plus `reasonCodes` (contract enum, V17 widens the V1 check). `aiRequestId` must be a
+`SUCCEEDED` `ai_requests` row of the caller, otherwise 404 (foreign, unknown and failed requests look the same). One rating
+per (request, user): sending it again **replaces** the earlier one (rating, reasons, comment, content), never 409. A
+`comment`, and with `includeContent` the client-supplied `inputText` / `outputText`, need a granted `FEEDBACK_TEXT` consent;
+without it the whole request is 403 `CONSENT_REQUIRED` (`consentCode`) and nothing is stored. Without `includeContent` the
+texts are ignored. Text is sealed per column and row (`ai_feedback`, `comment_ciphertext | input_ciphertext |
+output_ciphertext`, row id) and the row's `consent_record_id` is the grant it was stored under (V1 composite FK); V17 adds
+the two content columns. 60/min per user (`ai.feedback.user`, 429). The body is read by hand (no value in a binding error).
+
+**History** (module `personalization`): `AiHistorySink` (aigateway) is implemented by `AiHistoryRecorder`. **Off by default.**
+The pipeline offers a result after a settled success of the request that reserved its key and said `saveToHistory: true`
+(the contract default is false), before the replay cache keeps the response; the recorder keeps it only if the user has
+`user_preferences.ai_history_enabled`, a granted `SAVE_AI_HISTORY` consent **and** the `HISTORY_SYNC` entitlement (SD 11.7;
+guests have none). Failures, cache replays and uncharged recomputes write nothing; `UNIQUE (user_id, ai_request_id)` (V17)
+backs this. The row holds `input_ciphertext` and `output_ciphertext` (separate AAD per column and row), languages, feature,
+`ai_request_id` and `expires_at` = now + `history_retention_days` (1-365, default 30, from the preferences); the response's
+`historyItemId` names it (and is kept in the replay cache, so a replay returns the same id). A history failure is logged by
+class and counted (`qal.ai.history.write-failures`); it never fails the AI call.
+
+Endpoints (`HistoryController`, always `no-store`, caller's rows only, foreign id 404): `GET /me/history` (newest first, keyset
+cursor, `favorite` and `featureCode` filters, `limit` 1-100), `GET/PATCH/DELETE /me/history/{itemId}` (PATCH `{favorite}`:
+true removes the expiry, false starts a new one of `historyRetentionDays` from now), `DELETE /me/history` (all, favourites
+included). Items past `expires_at` are invisible at once and removed by the B6.3 job (`user-history-items`; favourites never
+expire). Listing and deleting work with history off or the consent withdrawn. Withdrawing `SAVE_AI_HISTORY` stops new writes
+(B3.5 switches the preference off; the recorder checks the consent itself); existing items stay until the person deletes them
+(the client offers that using `DELETE /me/history`). Account deletion and guest merge need no change: `PrivacyDeletion`
+already deletes `user_history_items` and `ai_feedback` (crypto-shredded), `PrivacyGuestMerge` re-encrypts history rows
+(same contexts, new user) and does not move `ai_feedback` (shredded with the guest, ADR 0010).
+Proof: `AiFeedbackHistoryIT` (PG18, 15 tests, contract-validated, DB scan of every table, log scrub of comment and history text).
 
 ## Contract tests
 
