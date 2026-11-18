@@ -30,6 +30,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.qalsmartkeyboard.identity.account.UserAccount;
+import com.qalsmartkeyboard.identity.merge.GuestMergeService.GuestCaller;
+import com.qalsmartkeyboard.identity.token.AccessTokenService;
 import com.qalsmartkeyboard.identity.security.ApiSecurityConfiguration;
 import com.qalsmartkeyboard.identity.otp.OtpService.StartedChallenge;
 import com.qalsmartkeyboard.identity.otp.OtpService.VerifiedSignIn;
@@ -57,6 +59,8 @@ class OtpControllerTest {
 
 	@Autowired
 	MockMvc mvc;
+	@Autowired
+	AccessTokenService tokens;
 
 	@MockitoBean
 	OtpService service;
@@ -138,7 +142,7 @@ class OtpControllerTest {
 	/** ADR 0007 D9 (2): verify declares 403 for a suspended account. */
 	@Test
 	void verifySuspendedAccountIs403() throws Exception {
-		when(service.verify(any(), any(), anyBoolean(), any(), isNull(), any()))
+		when(service.verify(any(), any(), anyBoolean(), any(), isNull(), any(), isNull()))
 				.thenThrow(new ApiException(ApiErrorCode.ACCOUNT_SUSPENDED, HttpStatus.FORBIDDEN, null));
 		mvc.perform(post(VERIFY).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"challengeId\":\"" + UUID.randomUUID() + "\",\"code\":\"123456\"}"))
@@ -155,8 +159,9 @@ class OtpControllerTest {
 				Instant.parse("2026-11-17T10:00:00Z"));
 		IssuedSession session = new IssuedSession("access.jwt.value", Instant.parse("2026-11-17T10:15:00Z"),
 				"refresh-token-value", Instant.parse("2027-01-16T10:00:00Z"), UUID.randomUUID(), null);
-		when(service.verify(eq(challenge), eq("123456"), eq(true), eq("127.0.0.1"), eq(installation.toString()), any()))
-				.thenReturn(new VerifiedSignIn(user, true, session));
+		when(service.verify(eq(challenge), eq("123456"), eq(true), eq("127.0.0.1"), eq(installation.toString()), any(),
+				isNull()))
+				.thenReturn(new VerifiedSignIn(user, true, session, null));
 		mvc.perform(post(VERIFY).contentType(MediaType.APPLICATION_JSON).content("""
 				{"challengeId":"%s","code":"123456","ageConfirmed":true,
 				 "device":{"installationId":"%s","platform":"ANDROID","appVersion":"2.0.0"}}
@@ -173,11 +178,47 @@ class OtpControllerTest {
 				.andExpect(content().string(not(containsString("911234567"))));
 	}
 
+	/** B2.6: a sign-in that linked a guest returns {@code mergedGuestUserId} (contract {@code AuthSession}). */
+	@Test
+	void verifyReturnsTheMergedGuestUserId() throws Exception {
+		UUID guest = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		UserAccount user = new UserAccount(userId, "REGISTERED", "ACTIVE", "+251911234567",
+				Instant.parse("2026-11-17T10:00:00Z"), null, null, "Africa/Addis_Ababa",
+				Instant.parse("2026-11-17T10:00:00Z"));
+		IssuedSession session = new IssuedSession("access.jwt.value", Instant.parse("2026-11-17T10:15:00Z"),
+				"refresh-token-value", Instant.parse("2027-01-16T10:00:00Z"), UUID.randomUUID(), null);
+		when(service.verify(any(), any(), anyBoolean(), any(), isNull(), any(), any()))
+				.thenReturn(new VerifiedSignIn(user, false, session, guest));
+		String registered = tokens.issue(UUID.randomUUID(), UUID.randomUUID(), null, "REGISTERED").value();
+		mvc.perform(post(VERIFY).header("Authorization", "Bearer " + registered).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"challengeId\":\"" + UUID.randomUUID() + "\",\"code\":\"123456\"}"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.mergedGuestUserId").value(guest.toString()))
+				.andExpect(jsonPath("$.isNewUser").value(false));
+		// a registered account's token in the guest position links nothing: the service gets no guest
+		verify(service).verify(any(), any(), anyBoolean(), any(), isNull(), any(), isNull());
+	}
+
+	/**
+	 * B2.6: a guest token is honoured only while its account is an active guest, which needs the account store; without
+	 * it (this MVC slice) every guest token is refused, never accepted unchecked (fail closed).
+	 */
+	@Test
+	void aGuestTokenIsRefusedWhenItsAccountCannotBeChecked() throws Exception {
+		String guest = tokens.issue(UUID.randomUUID(), UUID.randomUUID(), null, "GUEST").value();
+		mvc.perform(post(VERIFY).header("Authorization", "Bearer " + guest).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"challengeId\":\"" + UUID.randomUUID() + "\",\"code\":\"123456\"}"))
+				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+				.andExpect(header().string("WWW-Authenticate", containsString("invalid_token")));
+		verify(service, org.mockito.Mockito.never()).verify(any(), any(), anyBoolean(), any(), any(), any(),
+				any(GuestCaller.class));
+	}
+
 	@Test
 	void verifyFailuresAreContractProblems() throws Exception {
 		UUID challenge = UUID.randomUUID();
 		String body = "{\"challengeId\":\"" + challenge + "\",\"code\":\"000000\"}";
-		when(service.verify(any(), any(), anyBoolean(), any(), isNull(), any()))
+		when(service.verify(any(), any(), anyBoolean(), any(), isNull(), any(), isNull()))
 				.thenThrow(new ApiException(ApiErrorCode.OTP_INVALID, HttpStatus.UNAUTHORIZED, "x"))
 				.thenThrow(new ApiException(ApiErrorCode.OTP_EXPIRED, HttpStatus.UNAUTHORIZED, "x"))
 				.thenThrow(new ApiException(ApiErrorCode.OTP_TOO_MANY_ATTEMPTS, HttpStatus.TOO_MANY_REQUESTS, "x"))

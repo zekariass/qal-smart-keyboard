@@ -279,6 +279,37 @@ public class SessionService implements SessionIssuer, DeviceSessions {
 		count(allDevices ? "logout_all" : "logout");
 	}
 
+	/**
+	 * Ends every session family of a guest that is merged or upgraded into a registered account (B2.6, reason
+	 * {@code ACCOUNT_MERGED}), so no refresh token issued to the guest works afterwards. Joins the caller's transaction
+	 * and takes the family locks (stable order) before revoking, like logout-all.
+	 *
+	 * @param keepFamily the family of the registered session just issued under the same user id (in-place upgrade),
+	 *                   or {@code null}
+	 * @return the number of session rows revoked
+	 */
+	public int revokeAllForMerge(UUID userId, UUID keepFamily) {
+		List<UUID> families = store.activeFamiliesOfUser(userId).stream().filter(f -> !f.equals(keepFamily)).toList();
+		families.forEach(store::lockFamily);
+		Instant now = clock.instant();
+		int revoked = 0;
+		for (UUID family : families) {
+			revoked += store.revokeFamilyOfUser(family, userId, "ACCOUNT_MERGED", now);
+		}
+		if (revoked > 0) {
+			count("guest_merged");
+		}
+		return revoked;
+	}
+
+	/**
+	 * Whether the token family still has an ACTIVE row of the user, i.e. the session behind an access token has not been
+	 * logged out, revoked for reuse or by device revocation. A guest merge requires it (ADR 0010).
+	 */
+	public boolean isFamilyActive(UUID userId, UUID familyId) {
+		return store.hasActiveRow(familyId, userId);
+	}
+
 	/** Joins the caller's transaction. Family locks first (stable order), so a concurrent rotation cannot be missed. */
 	@Override
 	public int revokeDeviceSessions(UUID userId, UUID deviceId) {

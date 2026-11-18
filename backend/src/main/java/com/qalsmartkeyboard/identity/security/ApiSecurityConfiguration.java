@@ -3,18 +3,23 @@ package com.qalsmartkeyboard.identity.security;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 
+import com.qalsmartkeyboard.identity.AuthenticatedUser;
+import com.qalsmartkeyboard.identity.account.UserAccountStore;
 import com.qalsmartkeyboard.identity.token.AccessTokenService;
 import com.qalsmartkeyboard.identity.token.TokenConfiguration;
 import com.qalsmartkeyboard.platform.ApiErrorCode;
@@ -35,8 +40,8 @@ import jakarta.servlet.DispatcherType;
  * handler) written by the platform's {@link ProblemResponseWriter}.</li>
  * </ul>
  * The access token is verified statelessly (signature, claims, expiry); see {@code AuthenticatedUser} for the
- * revocation window this implies. The app-version gate (B1.6) is an MVC interceptor and therefore runs after
- * authentication.
+ * revocation window this implies. Guest tokens are the exception: see {@link #authenticate}. The app-version gate
+ * (B1.6) is an MVC interceptor and therefore runs after authentication.
  */
 @Configuration(proxyBeanMethods = false)
 @Import(TokenConfiguration.class)
@@ -44,7 +49,7 @@ public class ApiSecurityConfiguration {
 
 	@Bean
 	SecurityFilterChain apiSecurityFilterChain(HttpSecurity http, JwtDecoder accessTokenDecoder,
-			ProblemResponseWriter problems) throws Exception {
+			ProblemResponseWriter problems, ObjectProvider<UserAccountStore> accounts) throws Exception {
 		ApiAuthenticationEntryPoint entryPoint = new ApiAuthenticationEntryPoint(problems);
 		AccessDeniedHandler accessDenied = accessDeniedHandler(problems);
 		return http.csrf(csrf -> csrf.disable())
@@ -57,11 +62,26 @@ public class ApiSecurityConfiguration {
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(o -> o.bearerTokenResolver(bearerTokenResolver())
 						.jwt(j -> j.decoder(accessTokenDecoder)
-								.jwtAuthenticationConverter(jwt -> new AccessTokenAuthentication(
-										AccessTokenService.principal(jwt))))
+								.jwtAuthenticationConverter(jwt -> authenticate(jwt, accounts.getIfAvailable())))
 						.authenticationEntryPoint(entryPoint).accessDeniedHandler(accessDenied))
 				.exceptionHandling(e -> e.authenticationEntryPoint(entryPoint).accessDeniedHandler(accessDenied))
 				.build();
+	}
+
+	/**
+	 * The authentication of a verified access token. A <b>guest</b> token is honoured only while its account is still
+	 * an active guest (one primary-key lookup per guest request, B2.6/ADR 0010): once the guest is merged into or
+	 * upgraded to a registered account (or suspended or deleted), its remaining access tokens are refused at once rather
+	 * than at expiry, so they can neither act on the merged guest nor trigger a second merge. Registered tokens stay
+	 * fully stateless (their revocation window is the 15 minute lifetime, see {@code AuthenticatedUser}). Without the
+	 * account store (MVC slice tests only) guest tokens are refused: fail closed.
+	 */
+	static AccessTokenAuthentication authenticate(Jwt jwt, UserAccountStore accounts) {
+		AuthenticatedUser principal = AccessTokenService.principal(jwt);
+		if (principal.isGuest() && (accounts == null || !accounts.isActiveGuest(principal.userId()))) {
+			throw new InvalidBearerTokenException("The guest account is no longer active");
+		}
+		return new AccessTokenAuthentication(principal);
 	}
 
 	/** 403 {@code FORBIDDEN} Problem for an authenticated caller that the chain does not allow. */

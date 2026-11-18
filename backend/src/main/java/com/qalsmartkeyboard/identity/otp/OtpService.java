@@ -17,6 +17,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.qalsmartkeyboard.identity.account.UserAccount;
 import com.qalsmartkeyboard.identity.account.UserAccountStore;
 import com.qalsmartkeyboard.identity.account.UserAccountStore.PhoneSignIn;
+import com.qalsmartkeyboard.identity.merge.GuestMergeService;
+import com.qalsmartkeyboard.identity.merge.GuestMergeService.GuestCaller;
 import com.qalsmartkeyboard.identity.otp.OtpChallengeStore.Challenge;
 import com.qalsmartkeyboard.identity.session.IssuedSession;
 import com.qalsmartkeyboard.identity.session.SessionContext;
@@ -42,8 +44,14 @@ import com.qalsmartkeyboard.platform.ratelimit.RateLimiter;
  *
  * <p><b>Verify</b>: per-IP and per-device limits → [transaction: per-number lock → challenge row lock → reject if
  * consumed (replay), superseded, expired or locked → constant-time code check; a wrong code increments
- * {@code attempts} and the limit locks the challenge → consume → find or create the account → issue the session].
- * Failures return normally from the transaction so the attempt counter commits, then become Problems.
+ * {@code attempts} and the limit locks the challenge → (guest bearer: lock the guest, refuse a stale one) → consume →
+ * find or create the account (or upgrade the guest in place) → merge the guest into an existing account → issue the
+ * session]. Failures return normally from the transaction so the attempt counter commits, then become Problems.
+ *
+ * <p><b>Guest upgrade (B2.6, ADR 0010):</b> a request with the bearer token of a live guest links that guest: a number
+ * without an account turns the guest itself into the registered account, a number with an account receives the guest's
+ * data ({@link GuestMergeService}). Either way the response carries {@code mergedGuestUserId}. A guest token that can no
+ * longer link (merged, upgraded or ended meanwhile) is a 401 and the code is not consumed.
  */
 class OtpService {
 
@@ -54,7 +62,8 @@ class OtpService {
 			RateLimitDecision callerLimit) {
 	}
 
-	record VerifiedSignIn(UserAccount user, boolean created, IssuedSession session) {
+	/** @param mergedGuestUserId the guest linked by this sign-in, or {@code null} */
+	record VerifiedSignIn(UserAccount user, boolean created, IssuedSession session, UUID mergedGuestUserId) {
 	}
 
 	private sealed interface StartOutcome {
@@ -75,7 +84,7 @@ class OtpService {
 	enum VerifyFailure {
 		UNKNOWN_CHALLENGE("unknown_challenge"), REPLAYED("replayed"), SUPERSEDED("superseded"), EXPIRED("expired"),
 		TOO_MANY_ATTEMPTS("too_many_attempts"), INVALID("invalid"), AGE_REQUIRED("age_required"),
-		SUSPENDED("suspended"), UNAVAILABLE("unavailable");
+		SUSPENDED("suspended"), UNAVAILABLE("unavailable"), GUEST_STALE("guest_stale");
 
 		final String metric;
 
@@ -103,6 +112,7 @@ class OtpService {
 	private final Clock clock;
 	private final SecureRandom random;
 	private final OtpMetrics metrics;
+	private final GuestMergeService merges;
 
 	private final RateLimitPolicy startPerIp;
 	private final RateLimitPolicy startPerDevice;
@@ -112,7 +122,7 @@ class OtpService {
 
 	OtpService(OtpChallengeStore challenges, OtpSecrets secrets, UserAccountStore accounts, SessionIssuer sessions,
 			OtpSender sender, RateLimiter limiter, OtpProperties properties, TransactionTemplate transactions,
-			Clock clock, SecureRandom random, OtpMetrics metrics) {
+			Clock clock, SecureRandom random, OtpMetrics metrics, GuestMergeService merges) {
 		this.challenges = challenges;
 		this.secrets = secrets;
 		this.accounts = accounts;
@@ -124,6 +134,7 @@ class OtpService {
 		this.clock = clock;
 		this.random = random;
 		this.metrics = metrics;
+		this.merges = merges;
 		OtpProperties.Limits limits = properties.limits();
 		this.startPerIp = limits.startPerIp().policy("otp.start.ip");
 		this.startPerDevice = limits.startPerDevice().policy("otp.start.device");
@@ -222,9 +233,10 @@ class OtpService {
 
 	/**
 	 * @param deviceKey the request's {@code device.installationId}, or {@code null}
+	 * @param guest     the caller's guest bearer token, or {@code null} (no bearer, or a registered one: not linked)
 	 */
 	VerifiedSignIn verify(UUID challengeId, String code, boolean ageConfirmed, String clientIp, String deviceKey,
-			SessionContext session) {
+			SessionContext session, GuestCaller guest) {
 		RateLimitDecision ip = limiter.tryConsume(verifyPerIp, clientIp);
 		if (!ip.allowed()) {
 			metrics.verified("rate_limited");
@@ -238,7 +250,7 @@ class OtpService {
 			}
 		}
 		VerifyOutcome outcome = transactions.execute(status -> verifyInTransaction(challengeId, code, ageConfirmed,
-				session));
+				session, guest));
 		return switch (outcome) {
 			case VerifyOutcome.Success s -> {
 				metrics.verified("success");
@@ -255,7 +267,7 @@ class OtpService {
 	}
 
 	private VerifyOutcome verifyInTransaction(UUID challengeId, String code, boolean ageConfirmed,
-			SessionContext session) {
+			SessionContext session, GuestCaller guest) {
 		Optional<String> phoneHash = challenges.findPhoneHash(challengeId);
 		if (phoneHash.isEmpty()) {
 			return new VerifyOutcome.Failure(VerifyFailure.UNKNOWN_CHALLENGE, false);
@@ -283,8 +295,12 @@ class OtpService {
 			return attempts >= challenge.maxAttempts() ? new VerifyOutcome.Failure(VerifyFailure.TOO_MANY_ATTEMPTS, true)
 					: new VerifyOutcome.Failure(VerifyFailure.INVALID, false);
 		}
+		if (guest != null && !merges.lockMergeableGuest(guest)) {
+			// nothing consumed: the client drops the stale guest token and retries with the same code
+			return new VerifyOutcome.Failure(VerifyFailure.GUEST_STALE, false);
+		}
 		String phone = secrets.openPhone(challenge.id(), challenge.phoneCiphertext());
-		PhoneSignIn signIn = accounts.signInWithPhone(phone, ageConfirmed, now);
+		PhoneSignIn signIn = accounts.signInWithPhone(phone, ageConfirmed, now, guest == null ? null : guest.userId());
 		if (signIn instanceof PhoneSignIn.AgeConfirmationRequired) {
 			// nothing consumed or counted: the client asks for the age confirmation and retries with the same code
 			return new VerifyOutcome.Failure(VerifyFailure.AGE_REQUIRED, false);
@@ -293,8 +309,19 @@ class OtpService {
 		return switch (signIn) {
 			case PhoneSignIn.Suspended s -> new VerifyOutcome.Failure(VerifyFailure.SUSPENDED, false);
 			case PhoneSignIn.Unavailable u -> new VerifyOutcome.Failure(VerifyFailure.UNAVAILABLE, false);
-			case PhoneSignIn.SignedIn s -> new VerifyOutcome.Success(
-					new VerifiedSignIn(s.user(), s.created(), sessions.issue(s.user(), session)));
+			case PhoneSignIn.SignedIn s -> {
+				boolean upgraded = guest != null && s.created();
+				if (guest != null && !upgraded) {
+					merges.mergeInto(guest.userId(), s.user().id(), "PHONE", now);
+				}
+				// after a merge the guest's device belongs to the account, so the registration finds it
+				IssuedSession issued = sessions.issue(s.user(), session);
+				if (upgraded) {
+					merges.completeUpgrade(s.user().id(), "PHONE", issued.sessionId());
+				}
+				yield new VerifyOutcome.Success(new VerifiedSignIn(s.user(), s.created(), issued,
+						guest == null ? null : guest.userId()));
+			}
 			case PhoneSignIn.AgeConfirmationRequired a -> throw new IllegalStateException("handled above");
 		};
 	}
@@ -314,6 +341,7 @@ class OtpService {
 					Map.of());
 			case SUSPENDED -> new ApiException(ApiErrorCode.ACCOUNT_SUSPENDED, HttpStatus.FORBIDDEN, null);
 			case UNAVAILABLE -> new ApiException(ApiErrorCode.UNAUTHENTICATED, HttpStatus.UNAUTHORIZED, null);
+			case GUEST_STALE -> GuestMergeService.staleGuestToken();
 		};
 	}
 }

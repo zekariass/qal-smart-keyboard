@@ -159,6 +159,40 @@ class DeviceStore {
 				""").param("id", id).param("now", Timestamp.from(now)).update();
 	}
 
+	// ------------------------------------------------------------------ guest merge (B2.6)
+
+	/** Every device row of the user, ACTIVE and REVOKED, in installation order (they are locked in this order). */
+	List<DeviceRow> allOfUserForUpdate(UUID userId) {
+		return jdbc.sql("SELECT " + COLUMNS
+				+ " FROM user_devices WHERE user_id = :userId ORDER BY installation_id, id FOR UPDATE")
+				.param("userId", userId).query(DeviceStore::map).list();
+	}
+
+	/** Rebinds a device row to another user; everything else (attestation, push token, versions) stays. */
+	void moveToUser(UUID id, UUID fromUserId, UUID toUserId, Instant now) {
+		jdbc.sql("UPDATE user_devices SET user_id = :to, updated_at = :now WHERE id = :id AND user_id = :from")
+				.param("to", toUserId).param("now", Timestamp.from(now)).param("id", id).param("from", fromUserId)
+				.update();
+	}
+
+	/**
+	 * Copies the attestation verdict of {@code fromId} onto the ACTIVE device {@code toId} of the same platform when it
+	 * is a real verdict (VALID or FAILED) and newer than the one stored there.
+	 *
+	 * @return whether the verdict was copied
+	 */
+	boolean adoptNewerAttestation(UUID toId, UUID fromId, Instant now) {
+		return jdbc.sql("""
+				UPDATE user_devices t SET attestation_provider = g.attestation_provider,
+				       attestation_status = g.attestation_status, attestation_checked_at = g.attestation_checked_at,
+				       updated_at = :now
+				FROM user_devices g
+				WHERE t.id = :toId AND g.id = :fromId AND t.device_status = 'ACTIVE' AND g.platform = t.platform
+				  AND g.attestation_status IN ('VALID', 'FAILED') AND g.attestation_checked_at IS NOT NULL
+				  AND (t.attestation_checked_at IS NULL OR g.attestation_checked_at > t.attestation_checked_at)
+				""").param("toId", toId).param("fromId", fromId).param("now", Timestamp.from(now)).update() == 1;
+	}
+
 	private static DeviceRow map(ResultSet rs, int row) throws SQLException {
 		return new DeviceRow(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class),
 				rs.getObject("installation_id", UUID.class), rs.getString("platform"), rs.getString("device_name"),

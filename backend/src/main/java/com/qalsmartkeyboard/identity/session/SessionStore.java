@@ -172,6 +172,14 @@ class SessionStore {
 				""").param("deviceId", deviceId).param("familyId", familyId).param("userId", userId).update();
 	}
 
+	boolean hasActiveRow(UUID familyId, UUID userId) {
+		return jdbc.sql("""
+				SELECT EXISTS (SELECT 1 FROM user_sessions
+				               WHERE token_family_id = :familyId AND user_id = :userId AND session_status = 'ACTIVE'
+				                 AND expires_at > NOW())
+				""").param("familyId", familyId).param("userId", userId).query(Boolean.class).single();
+	}
+
 	int revokeAllOfUser(UUID userId, String reason, Instant now) {
 		return jdbc.sql("""
 				UPDATE user_sessions SET session_status = 'REVOKED', revoked_at = :now, revoked_reason = :reason
