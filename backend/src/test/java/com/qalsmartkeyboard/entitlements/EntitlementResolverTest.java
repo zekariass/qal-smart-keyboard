@@ -26,6 +26,7 @@ class EntitlementResolverTest {
 
 	static final Instant NOW = Instant.parse("2026-11-18T09:00:00Z");
 	static final Duration GRACE = Duration.ofDays(3);
+	static final Duration LAG = Duration.ofHours(24); // D22 default renewal lag
 
 	FakeEntitlementData data;
 	AtomicReference<Instant> clockNow;
@@ -36,11 +37,15 @@ class EntitlementResolverTest {
 	void setUp() {
 		data = new FakeEntitlementData();
 		clockNow = new AtomicReference<>(NOW);
-		resolver = resolverWith(Duration.ZERO);
+		resolver = resolverWith(Duration.ZERO, LAG);
 		user = data.user("REGISTERED", "ACTIVE");
 	}
 
 	private EntitlementResolver resolverWith(Duration cacheTtl) {
+		return resolverWith(cacheTtl, LAG);
+	}
+
+	private EntitlementResolver resolverWith(Duration cacheTtl, Duration renewalLag) {
 		Clock clock = new Clock() {
 			@Override
 			public java.time.ZoneId getZone() {
@@ -57,8 +62,8 @@ class EntitlementResolverTest {
 				return clockNow.get();
 			}
 		};
-		return new EntitlementResolver(data, new EntitlementProperties("PROVISIONAL_V2", "GUEST", GRACE, cacheTtl, 100),
-				clock);
+		return new EntitlementResolver(data,
+				new EntitlementProperties("PROVISIONAL_V2", "GUEST", GRACE, cacheTtl, 100, renewalLag), clock);
 	}
 
 	private SourceRow sub(PlanSource source, String plan, String status, Instant start, Instant end) {
@@ -98,7 +103,7 @@ class EntitlementResolverTest {
 	void guestPlanCodeIsConfigurable() {
 		user = data.user("GUEST", "ACTIVE");
 		var custom = new EntitlementResolver(data,
-				new EntitlementProperties("PROVISIONAL_V2", "FREE", GRACE, Duration.ZERO, 10), Clock.fixed(NOW, ZoneOffset.UTC));
+				new EntitlementProperties("PROVISIONAL_V2", "FREE", GRACE, Duration.ZERO, 10, LAG), Clock.fixed(NOW, ZoneOffset.UTC));
 		assertThat(custom.resolve(user).plan().orElseThrow().planCode()).isEqualTo("FREE");
 	}
 
@@ -250,7 +255,76 @@ class EntitlementResolverTest {
 		assertThat(resolver.resolve(user, start.minusNanos(1)).plan().orElseThrow().planCode()).isEqualTo("FREE");
 		assertThat(resolver.resolve(user, start).plan().orElseThrow().planCode()).isEqualTo("PREMIUM");
 		assertThat(resolver.resolve(user, end.minusNanos(1)).plan().orElseThrow().planCode()).isEqualTo("PREMIUM");
-		assertThat(resolver.resolve(user, end).plan().orElseThrow().planCode()).isEqualTo("FREE");
+		// D22: the renewal lag keeps an ACTIVE source valid past its end; the lag end is exclusive too
+		assertThat(resolver.resolve(user, end.plus(LAG).minusNanos(1)).plan().orElseThrow().planCode())
+				.isEqualTo("PREMIUM");
+		assertThat(resolver.resolve(user, end.plus(LAG)).plan().orElseThrow().planCode()).isEqualTo("FREE");
+		EntitlementResolver noLag = resolverWith(Duration.ZERO, Duration.ZERO);
+		assertThat(noLag.resolve(user, end.minusNanos(1)).plan().orElseThrow().planCode()).isEqualTo("PREMIUM");
+		assertThat(noLag.resolve(user, end).plan().orElseThrow().planCode()).isEqualTo("FREE");
+	}
+
+	// ------------------------------------------------------------------ renewal lag (ADR 0007 D22)
+
+	@Test
+	void activeSourceJustPastItsEndKeepsAccessDuringTheRenewalLag() {
+		Instant end = NOW.minus(Duration.ofHours(23));
+		data.add(user, sub(PlanSource.STORE_PURCHASE, "PREMIUM", "ACTIVE", end.minus(Duration.ofDays(30)), end));
+		EffectivePlan p = plan();
+		assertThat(p.planCode()).isEqualTo("PREMIUM");
+		assertThat(p.inGracePeriod()).isFalse();
+		assertThat(p.effectiveUntil()).as("still the period end: a renewal is pending").isEqualTo(end);
+		assertThat(resolver.resolve(user).feature("TONE_ADJUST").orElseThrow().accessEnabled()).isTrue();
+		// 1 h later the lag is over
+		assertThat(resolver.resolve(user, NOW.plus(Duration.ofHours(1))).plan().orElseThrow().planCode())
+				.isEqualTo("FREE");
+	}
+
+	@Test
+	void renewalLagAppliesToOrganisationSubscriptionsAndNotToGraceOrOtherStatuses() {
+		Instant end = NOW.minus(Duration.ofHours(1));
+		data.add(user, sub(PlanSource.ORGANIZATION_SEAT, "BUSINESS", "ACTIVE", end.minus(Duration.ofDays(30)), end));
+		assertThat(plan().planCode()).isEqualTo("BUSINESS");
+
+		UUID graceUser = data.user("REGISTERED", "ACTIVE");
+		Instant graceEnd = NOW.minus(Duration.ofHours(1));
+		data.add(graceUser, new SourceRow(PlanSource.SUBSCRIPTION, UUID.randomUUID(), null, "GRACE_PERIOD",
+				graceEnd.minus(Duration.ofDays(33)), graceEnd.minus(Duration.ofDays(3)), graceEnd, null,
+				data.plan("PREMIUM")));
+		assertThat(resolver.resolve(graceUser).plan().orElseThrow().planCode()).as("grace end is not lagged")
+				.isEqualTo("FREE");
+
+		UUID pastDue = data.user("REGISTERED", "ACTIVE");
+		data.add(pastDue, sub(PlanSource.SUBSCRIPTION, "PREMIUM", "PAST_DUE", end.minus(Duration.ofDays(30)), end));
+		assertThat(resolver.resolve(pastDue).plan().orElseThrow().planCode()).isEqualTo("FREE");
+	}
+
+	@Test
+	void aRenewedPeriodWinsOverTheLaggingOneAndLagIsConfigurable() {
+		Instant boundary = NOW.minus(Duration.ofHours(2));
+		data.add(user, sub(PlanSource.SUBSCRIPTION, "PREMIUM", "ACTIVE", boundary.minus(Duration.ofDays(30)), boundary));
+		SourceRow renewed = sub(PlanSource.SUBSCRIPTION, "PREMIUM", "ACTIVE", boundary, boundary.plus(Duration.ofDays(30)));
+		data.add(user, renewed);
+		assertThat(plan().subscriptionId()).isEqualTo(renewed.subscriptionId());
+
+		UUID other = data.user("REGISTERED", "ACTIVE");
+		data.add(other, sub(PlanSource.SUBSCRIPTION, "PREMIUM", "ACTIVE", boundary.minus(Duration.ofDays(30)), boundary));
+		assertThat(resolverWith(Duration.ZERO, Duration.ofHours(1)).resolve(other).plan().orElseThrow().planCode())
+				.isEqualTo("FREE");
+		assertThat(resolverWith(Duration.ZERO, Duration.ofHours(3)).resolve(other).plan().orElseThrow().planCode())
+				.isEqualTo("PREMIUM");
+	}
+
+	@Test
+	void cacheOfALaggingSourceEndsWithTheLag() {
+		EntitlementResolver cached = resolverWith(Duration.ofMinutes(10), Duration.ofMinutes(5));
+		Instant end = NOW.minus(Duration.ofMinutes(2));
+		data.add(user, sub(PlanSource.SUBSCRIPTION, "PREMIUM", "ACTIVE", end.minus(Duration.ofDays(30)), end));
+		assertThat(cached.resolve(user).plan().orElseThrow().planCode()).isEqualTo("PREMIUM");
+		clockNow.set(NOW.plus(Duration.ofMinutes(2))); // inside the TTL, still inside the lag (ends at NOW + 3 min)
+		assertThat(cached.resolve(user).plan().orElseThrow().planCode()).isEqualTo("PREMIUM");
+		clockNow.set(NOW.plus(Duration.ofMinutes(3))); // inside the TTL, lag over
+		assertThat(cached.resolve(user).plan().orElseThrow().planCode()).isEqualTo("FREE");
 	}
 
 	@Test
@@ -412,7 +486,7 @@ class EntitlementResolverTest {
 	@Test
 	void anotherQuotaPolicyVersionWithoutRowsFailsClosed() {
 		data.add(user, active(PlanSource.SUBSCRIPTION, "PREMIUM"));
-		var v3 = new EntitlementResolver(data, new EntitlementProperties("V3", "GUEST", GRACE, Duration.ZERO, 10),
+		var v3 = new EntitlementResolver(data, new EntitlementProperties("V3", "GUEST", GRACE, Duration.ZERO, 10, LAG),
 				Clock.fixed(NOW, ZoneOffset.UTC));
 		ResolvedEntitlements r = v3.resolve(user);
 		assertThat(r.quotaPolicyVersion()).isEqualTo("V3");
@@ -523,7 +597,7 @@ class EntitlementResolverTest {
 
 	@Test
 	void cacheNeverOutlivesTheWinningSourceAndExplicitInstantBypassesIt() {
-		EntitlementResolver cached = resolverWith(Duration.ofMinutes(10));
+		EntitlementResolver cached = resolverWith(Duration.ofMinutes(10), Duration.ZERO);
 		data.add(user, sub(PlanSource.SUBSCRIPTION, "PREMIUM", "ACTIVE", NOW.minus(Duration.ofDays(5)),
 				NOW.plus(Duration.ofMinutes(1))));
 		assertThat(cached.resolve(user).plan().orElseThrow().planCode()).isEqualTo("PREMIUM");
@@ -555,13 +629,15 @@ class EntitlementResolverTest {
 
 	@Test
 	void propertiesRejectNonsense() {
-		assertThatThrownBy(() -> new EntitlementProperties(" ", "GUEST", GRACE, Duration.ZERO, 1))
+		assertThatThrownBy(() -> new EntitlementProperties(" ", "GUEST", GRACE, Duration.ZERO, 1, LAG))
 				.isInstanceOf(IllegalArgumentException.class);
-		assertThatThrownBy(() -> new EntitlementProperties("V", "", GRACE, Duration.ZERO, 1))
+		assertThatThrownBy(() -> new EntitlementProperties("V", "", GRACE, Duration.ZERO, 1, LAG))
 				.isInstanceOf(IllegalArgumentException.class);
-		assertThatThrownBy(() -> new EntitlementProperties("V", "GUEST", Duration.ofDays(-1), Duration.ZERO, 1))
+		assertThatThrownBy(() -> new EntitlementProperties("V", "GUEST", Duration.ofDays(-1), Duration.ZERO, 1, LAG))
 				.isInstanceOf(IllegalArgumentException.class);
-		assertThatThrownBy(() -> new EntitlementProperties("V", "GUEST", GRACE, Duration.ZERO, 0))
+		assertThatThrownBy(() -> new EntitlementProperties("V", "GUEST", GRACE, Duration.ZERO, 0, LAG))
+				.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> new EntitlementProperties("V", "GUEST", GRACE, Duration.ZERO, 1, Duration.ofHours(-1)))
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 }

@@ -35,7 +35,10 @@ import com.qalsmartkeyboard.entitlements.EntitlementData.SourceRow;
  * <li><b>Sources.</b> A plan can come from {@code user_subscriptions} (payment, promotion, admin grant, store purchase,
  * partner grant: the last two are told apart by {@code source_type}; SD 16.1 and 16.7) and from an active organisation
  * seat. A source is valid at {@code at} when: its start (if any) is not after {@code at}; status ACTIVE and {@code at}
- * is before the period end (no end = open-ended); or status GRACE_PERIOD and {@code at} is before the grace end
+ * is before the period end plus the <b>renewal lag</b> ({@code qal.entitlements.renewal-lag}, default 24 h, ADR 0007
+ * D22: a late store or gateway renewal notification must not cut off a paying user; during the lag
+ * {@code effectiveUntil} still reports the period end, now in the past, so clients can tell a renewal is pending; no
+ * end = open-ended); or status GRACE_PERIOD and {@code at} is before the grace end
  * ({@code grace_period_end}, else period end plus {@code qal.entitlements.default-grace-period}). All other statuses
  * (PENDING, PAST_DUE, PAUSED, CANCELLED, EXPIRED, REVOKED, UPGRADED) grant nothing; a STORE subscription whose purchase
  * is REFUNDED or REVOKED grants nothing either. A seat needs an ACTIVE assignment, an ACTIVE membership, an ACTIVE
@@ -59,7 +62,8 @@ import com.qalsmartkeyboard.entitlements.EntitlementData.SourceRow;
  *
  * <h2>Cache</h2>
  * {@code resolve(userId)} (clock time) is cached per user for {@code qal.entitlements.cache-ttl} (default 30 s), but
- * never beyond the winning source's {@code effectiveUntil}. {@code resolve(userId, at)} always computes. Billing and
+ * never beyond the moment the winning source stops granting ({@code effectiveUntil}, plus the renewal lag for an ACTIVE
+ * source). {@code resolve(userId, at)} always computes. Billing and
  * membership code must call {@link #invalidate(UUID)} after changing a user's sources or overrides; without it a change
  * shows up after the TTL. A future-dated source starting, or an override expiring, inside the TTL is likewise seen
  * after at most the TTL.
@@ -108,12 +112,18 @@ public class EntitlementResolver {
 		}
 		ResolvedEntitlements fresh = compute(userId, now);
 		Instant until = now.plus(properties.cacheTtl());
-		Instant planEnd = fresh.plan().map(EffectivePlan::effectiveUntil).orElse(null);
+		Instant planEnd = fresh.plan().map(this::validUntil).orElse(null);
 		if (planEnd != null && planEnd.isBefore(until)) {
 			until = planEnd;
 		}
 		cache.put(userId, new Cached(fresh, until));
 		return fresh;
+	}
+
+	/** When the winning source stops granting: the grace end in grace, else the period end plus the renewal lag. */
+	private Instant validUntil(EffectivePlan plan) {
+		Instant end = plan.effectiveUntil();
+		return end == null || plan.inGracePeriod() ? end : end.plus(properties.renewalLag());
 	}
 
 	/** Entitlements at an explicit instant. Never cached. */
@@ -162,7 +172,8 @@ public class EntitlementResolver {
 
 		EffectivePlan plan = new EffectivePlan(winner.row().plan().id(), winner.row().plan().code(),
 				winner.row().plan().displayName(), winner.row().plan().rank(), winner.row().source(),
-				winner.row().subscriptionId(), winner.row().organizationId(), winner.until(), winner.grace());
+				winner.row().subscriptionId(), winner.row().organizationId(), winner.until(), winner.grace(),
+				winner.row().start());
 
 		Map<String, PlanFeature> planRows = new HashMap<>();
 		for (PlanFeature f : data.planFeatures(plan.planId(), version)) {
@@ -244,7 +255,8 @@ public class EntitlementResolver {
 		}
 		switch (r.status()) {
 			case "ACTIVE":
-				if (r.end() != null && !at.isBefore(r.end())) {
+				// D22: still valid for the renewal lag after the period end; effectiveUntil stays the period end
+				if (r.end() != null && !at.isBefore(r.end().plus(properties.renewalLag()))) {
 					return Optional.empty();
 				}
 				return Optional.of(new Candidate(r, r.end(), false));
