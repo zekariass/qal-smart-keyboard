@@ -72,6 +72,7 @@ class PackRuntime(val manager: PackManager, val journal: PackJournal, private va
     class Loaded(val result: LoadResult, val awaitingConfirmation: List<PendingSwap>)
 
     fun load(): Loaded {
+        versions.reload() // the updater may have changed the floors since the last load (D34)
         journal.beforeLoad(versions)
         var result = manager.load()
         var after = journal.afterLoad(result, versions)

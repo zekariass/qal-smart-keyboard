@@ -95,6 +95,7 @@ WorkManager job), which only writes files that `:ime` reads. The two share the `
 - **`.prev` and the version floor:** the updater renames the current `upd-<lang>-<type>-<platform>.pack` to `<name>.pack.prev`
   (not loaded: the manager only reads `*.pack`), then the verified temp file over `<name>.pack`, and records the swap in
   `update/pending.txt` with the floor it had. It never changes `versions.txt`: the floor rises when the IME loads the pack (A1.6 rule).
+- **Quarantine (D34):** `PackJournal.quarantine` moves an installed pack signed by a server-revoked key aside, drops its `.prev` and pending entry, blacklists it, removes the slot's version floor and requests a reload, so the slot falls back to the bundled pack (details in `android/packs-sync/README.md`).
 - **Health signal and rollback:** a pending swap is healthy when the pack loaded and won its slot (`PackJournal.afterLoad`) and the
   engine built from it survived until the keyboard was first shown (`confirm`: `.prev` and the journal entry are dropped). If the
   manager rejects the pack (it deletes the file), `.prev` is restored and `resourceId<TAB>version` goes to `update/blacklist.txt`

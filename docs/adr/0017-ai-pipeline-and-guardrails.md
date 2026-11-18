@@ -105,8 +105,9 @@ serving `capability` (quality tier for the response).
 - The pipeline reads `user_preferences`, `user_destination_profiles` (enum/language columns, never the label) and
   `supported_languages` through read-only ports (`AiUserContext`, `LanguageCatalog`) instead of the owning modules' APIs,
   to stay clear of the preferences/languages work in flight; swap for module APIs later.
-- DETECT_LANGUAGE runs through the pipeline unmetered and is refused for non-ACTIVE accounts, although the contract
-  declares no 403 for it.
+- DETECT_LANGUAGE runs through the pipeline unmetered. As built in B5.3 it was refused for every non-ACTIVE account;
+  ADR 0007 D33 / B5.5 changed that: it is served while the deletion is pending and refused for SUSPENDED (the contract
+  now declares the 403, and 401/422/503). Also D33: `ON_DEVICE_ONLY` users get 403 `ON_DEVICE_ONLY_PREFERRED`.
 
 ## Contract gaps (not changed here)
 1. `AiNote.type` lacks `CONVERSION` (SD 11.5 lists it); calendar/clock conversion notes cannot be sent.
@@ -198,3 +199,39 @@ provider call each time, and any body could be sent under an old key to get an u
 - Contract `IdempotencyKey` could say that a key older than 24 h may be answered `IDEMPOTENCY_KEY_REUSED` and that
   replayed responses keep the original `requestId` and `usage` (D20 batch).
 - Redis/Valkey replacement when measured load requires it (SD §17.3).
+
+## HTTP endpoints (B5.5)
+
+`aigateway.AiController` maps `translateText`, `transformText`, `detectLanguage` and `getAiCapabilities` to
+`AiPipeline.execute` and the `AiResult` records (details and the error table: `backend/README.md` "AI gateway: HTTP
+endpoints"). Decisions:
+
+1. **No framework binding of request bodies.** The controller takes `byte[]` and `AiRequestParser` reads the JSON. A
+   Jackson/Spring binding error quotes the rejected value and Spring logs resolved exceptions (DEBUG), so a wrong enum or
+   UUID next to the user's text would reach a log; the log-scrub IT (web loggers at DEBUG) found it. Parse errors are
+   static 400 `VALIDATION_FAILED` problems naming the field. No Bean Validation on request text for the same reason.
+2. **`/grammar` and `/rewrite` are tasks of `/transform`** (the contract). `/transliterate` is partner-only and waits for
+   the server-side keyboard core: not built. SUMMARIZE, EXPLAIN_TEXT and SCRIPT_CONVERSION are 400 until they have
+   templates, guardrails and metering rows; SSE streaming is not implemented.
+3. **ON_DEVICE_ONLY (D33)** is checked in the pipeline right after the account check (one `user_preferences` read, which
+   the later defaults lookup repeats; acceptable), so it holds for every caller of `AiPipeline`, not only HTTP. Code
+   `ON_DEVICE_ONLY_PREFERRED`, 403, nothing reserved, an `ai_requests` row is not written (no `Prepared` yet; counted in
+   `qal.ai.pipeline.requests{outcome}`).
+4. **DETECT_LANGUAGE for DELETION_PENDING (D33)**: `AccessState.DELETED` (DELETION_PENDING or DELETED; the security chain
+   already refuses real DELETED accounts) is let through for that feature only. It is unmetered and stores nothing but the
+   metadata row.
+5. **Cancellation:** `AiRequestCancelledException` -> empty 499 (not a contract status), interrupt flag cleared. A servlet
+   container does not interrupt the request thread when the client disconnects, so real abort detection needs an async
+   wrapper that cancels the worker on `onError`/disconnect; open below.
+6. **Rate limits** per user (translate/transform 30/min, detect 60/min, capabilities 120/min per user or address) because
+   the contract declares 429 on all four; quota is metering's.
+7. **`AiNote.type CONVERSION`** is not added: calendar/clock/numeral conversions are reported as `CULTURAL` (the pipeline
+   emits only QUALITY and AMBIGUITY today); the contract says so.
+8. **Capabilities** are derived from the registry's active descriptors (BETA/PRODUCTION only), filtered by the caller's
+   entitlements when signed in; `execution` is always `SERVER` until on-device model capabilities exist.
+
+### Open
+- Client-abort detection (decision 5): an async execution with cancellation on disconnect.
+- `saveToHistory` / `applyStyleProfile` are ignored until history (B5.7) and PERSONAL_STYLE exist; the contract says they
+  are honoured "only when enabled", so ignoring is within it.
+- Rate limits are in-memory per instance (platform limiter); revisit with a shared store.

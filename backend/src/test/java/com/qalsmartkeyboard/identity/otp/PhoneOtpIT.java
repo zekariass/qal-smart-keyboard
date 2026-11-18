@@ -187,7 +187,8 @@ class PhoneOtpIT {
 		String code = lastCode(phone);
 		for (int i = 1; i <= 4; i++) {
 			verifyCode(challenge, wrong(code), ip, true, null).andExpect(status().isUnauthorized())
-					.andExpect(jsonPath("$.code").value("OTP_INVALID"));
+					.andExpect(jsonPath("$.code").value("OTP_INVALID"))
+					.andExpect(jsonPath("$.attemptsRemaining").value(5 - i)); // D32
 			assertThat(jdbc.queryForObject("SELECT attempts FROM otp_challenges WHERE id = ?", Integer.class, challenge))
 					.isEqualTo(i);
 		}
@@ -244,14 +245,14 @@ class PhoneOtpIT {
 		UUID second = startOk(phone, ip);
 		String secondCode = lastCode(phone);
 		verifyCode(first, firstCode, ip, true, null).andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.code").value("OTP_INVALID"));
+				.andExpect(jsonPath("$.code").value("OTP_INVALID")).andExpect(jsonPath("$.attemptsRemaining").doesNotExist());
 		verifyCode(second, secondCode, ip, true, null).andExpect(status().isOk());
 	}
 
 	@Test
 	void unknownChallengeLooksLikeAWrongCode() throws Exception {
 		verifyCode(UUID.randomUUID(), "123456", newIp(), true, null).andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.code").value("OTP_INVALID"));
+				.andExpect(jsonPath("$.code").value("OTP_INVALID")).andExpect(jsonPath("$.attemptsRemaining").doesNotExist());
 	}
 
 	// ---------------------------------------------------------------- limits

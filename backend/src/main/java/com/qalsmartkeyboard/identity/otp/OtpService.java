@@ -97,7 +97,12 @@ class OtpService {
 		record Success(VerifiedSignIn signIn) implements VerifyOutcome {
 		}
 
-		record Failure(VerifyFailure failure, boolean lockedNow) implements VerifyOutcome {
+		/** @param attemptsRemaining wrong codes left before the challenge locks (INVALID only), else null */
+		record Failure(VerifyFailure failure, boolean lockedNow, Integer attemptsRemaining) implements VerifyOutcome {
+
+			Failure(VerifyFailure failure, boolean lockedNow) {
+				this(failure, lockedNow, null);
+			}
 		}
 	}
 
@@ -261,7 +266,7 @@ class OtpService {
 				if (f.lockedNow()) {
 					metrics.lockout();
 				}
-				throw problem(f.failure());
+				throw problem(f.failure(), f.attemptsRemaining());
 			}
 		};
 	}
@@ -293,7 +298,7 @@ class OtpService {
 		if (!secrets.codeMatches(challenge.id(), code, challenge.codeHash())) {
 			int attempts = challenges.recordFailedAttempt(challenge.id());
 			return attempts >= challenge.maxAttempts() ? new VerifyOutcome.Failure(VerifyFailure.TOO_MANY_ATTEMPTS, true)
-					: new VerifyOutcome.Failure(VerifyFailure.INVALID, false);
+					: new VerifyOutcome.Failure(VerifyFailure.INVALID, false, challenge.maxAttempts() - attempts);
 		}
 		if (guest != null && !merges.lockMergeableGuest(guest)) {
 			// nothing consumed: the client drops the stale guest token and retries with the same code
@@ -311,25 +316,26 @@ class OtpService {
 			case PhoneSignIn.Unavailable u -> new VerifyOutcome.Failure(VerifyFailure.UNAVAILABLE, false);
 			case PhoneSignIn.SignedIn s -> {
 				boolean upgraded = guest != null && s.created();
-				if (guest != null && !upgraded) {
-					merges.mergeInto(guest.userId(), s.user().id(), "PHONE", now);
-				}
+				boolean merged = guest != null && !upgraded
+						&& merges.mergeInto(guest.userId(), s.user().id(), "PHONE", now);
 				// after a merge the guest's device belongs to the account, so the registration finds it
 				IssuedSession issued = sessions.issue(s.user(), session);
 				if (upgraded) {
 					merges.completeUpgrade(s.user().id(), "PHONE", issued.sessionId());
 				}
 				yield new VerifyOutcome.Success(new VerifiedSignIn(s.user(), s.created(), issued,
-						guest == null ? null : guest.userId()));
+						upgraded || merged ? guest.userId() : null));
 			}
 			case PhoneSignIn.AgeConfirmationRequired a -> throw new IllegalStateException("handled above");
 		};
 	}
 
 	/** Replayed, superseded and unknown challenges are indistinguishable to the client. */
-	private static ApiException problem(VerifyFailure failure) {
+	private static ApiException problem(VerifyFailure failure, Integer attemptsRemaining) {
 		return switch (failure) {
-			case UNKNOWN_CHALLENGE, REPLAYED, SUPERSEDED, INVALID -> new ApiException(ApiErrorCode.OTP_INVALID,
+			case INVALID -> new ApiException(ApiErrorCode.OTP_INVALID, HttpStatus.UNAUTHORIZED, INVALID_DETAIL,
+					List.of(), Map.of("attemptsRemaining", attemptsRemaining));
+			case UNKNOWN_CHALLENGE, REPLAYED, SUPERSEDED -> new ApiException(ApiErrorCode.OTP_INVALID,
 					HttpStatus.UNAUTHORIZED, INVALID_DETAIL);
 			case EXPIRED -> new ApiException(ApiErrorCode.OTP_EXPIRED, HttpStatus.UNAUTHORIZED,
 					"The code has expired. Request a new code.");

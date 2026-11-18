@@ -57,6 +57,14 @@ object ApiErrors {
         else -> ApiError.Unexpected(null, e)
     }
 
+    /**
+     * Maps a non-2xx answer read by hand (hand-written JSON calls such as `:sync`'s, where the
+     * response must keep members the generated models would drop) to the same [ApiError] the
+     * generated client produces. [headers] is the response header map.
+     */
+    fun fromHttp(status: Int, body: String?, headers: Map<String, List<String>>): ApiError =
+        ApiErrorMapper.fromHttp(status, body, headers)
+
     private fun fromResponse(status: Int, r: ClientError<*>?): ApiError =
         ApiErrorMapper.fromHttp(status, r?.body as? String, r?.headers.orEmpty())
 

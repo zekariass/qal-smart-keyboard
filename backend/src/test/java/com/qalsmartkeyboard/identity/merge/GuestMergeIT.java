@@ -671,6 +671,35 @@ class GuestMergeIT {
 		assertThat((String) mergeEvents(guest.userId()).get(0).get("payload")).contains("\"method\": \"GOOGLE\"");
 	}
 
+	/** ADR 0007 D30: an account whose deletion is pending is never a merge target; the sign-in goes on without linking. */
+	@Test
+	void aGuestIsNotMergedIntoAnAccountWhoseDeletionIsPending() throws Exception {
+		String subject = newSubject();
+		Session target = session(google(subject, true, null, null).andExpect(status().isOk()).andReturn());
+		String phone = newPhone();
+		Session phoneTarget = registeredByPhone(phone, UUID.randomUUID());
+		jdbc.update("UPDATE users SET account_status = 'DELETION_PENDING' WHERE id IN (?, ?)", target.userId(),
+				phoneTarget.userId());
+
+		Session guest = newGuest(UUID.randomUUID());
+		session(google(subject, null, null, guest.accessToken()).andExpect(status().isOk())
+				.andExpect(jsonPath("$.mergedGuestUserId").doesNotExist())
+				.andExpect(jsonPath("$.user.id").value(target.userId().toString())).andReturn());
+		assertThat(user(guest.userId())).containsEntry("account_status", "ACTIVE").containsEntry("merged_into_user_id",
+				null);
+		assertThat(mergeEvents(guest.userId())).isEmpty();
+		assertThat(count("SELECT count(*) FROM user_devices WHERE user_id = ?", guest.userId())).isPositive();
+		devices(guest.accessToken()).andExpect(status().isOk());
+
+		// the same through a phone sign-in; the guest may even try again: it stays separate
+		session(verifyOtp(otp(phone), null, null, guest.accessToken()).andExpect(status().isOk())
+				.andExpect(jsonPath("$.mergedGuestUserId").doesNotExist())
+				.andExpect(jsonPath("$.user.id").value(phoneTarget.userId().toString())).andReturn());
+		assertThat(user(guest.userId())).containsEntry("account_status", "ACTIVE");
+		assertThat(mergeEvents(guest.userId())).isEmpty();
+		devices(guest.accessToken()).andExpect(status().isOk());
+	}
+
 	// ---------------------------------------------------------------- races, replays, wrong tokens
 
 	@Test

@@ -98,6 +98,11 @@
     <string name="onb_account_body">You do not need an account to type. Sign in only if you want account features when they arrive; you can do this later in Settings.</string>
     <string name="onb_account_skip_hint">Tap Continue to skip this step.</string>
 
+    <string name="sync_dict_title">Sync personal dictionary</string>
+    <string name="sync_dict_body">Keep the words you added or the keyboard learned on all your devices. Words are encrypted on our servers and decrypted only to deliver them to your devices over a secure connection. You can turn this off at any time.</string>
+    <string name="sync_dict_switch">Sync my dictionary</string>
+    <string name="sync_dict_needs_account">Sign in with your phone number or Google account to sync your dictionary. Guest sessions cannot.</string>
+    <string name="sync_dict_error">Could not update this setting. Check your connection and try again.</string>
     <string name="acct_title">Account</string>
     <string name="acct_signed_out">You are not signed in. Typing works without an account.</string>
     <string name="acct_session_ended">You were signed out because your session ended. Sign in again to continue.</string>

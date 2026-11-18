@@ -74,7 +74,9 @@ import io.micrometer.core.instrument.MeterRegistry;
  * {@code ACCOUNT_SUSPENDED}, DELETION_PENDING/DELETED is 403 {@code DELETION_PENDING} (ADR 0007 D22), a merged guest
  * 401 {@code GUEST_SESSION_INVALID}. The {@code AI_PROCESSING} consent is checked only when
  * {@code qal.ai.pipeline.require-ai-processing-consent} is set: the System Design does not require it for explicit
- * server actions (SD 17 makes it a per-action client confirmation for PREFER_ON_DEVICE).</li>
+ * server actions (SD 17 makes it a per-action client confirmation for PREFER_ON_DEVICE). Exception (D33): unmetered
+ * DETECT_LANGUAGE also works while the deletion is pending. A user whose {@code ai_processing_preference} is
+ * ON_DEVICE_ONLY gets 403 {@code ON_DEVICE_ONLY_PREFERRED} for every server AI call.</li>
  * <li><b>Validation</b> (no charge yet): text size ({@code INPUT_TOO_LONG}), active languages
  * ({@code LANGUAGE_NOT_SUPPORTED}), option values and the destination profile ({@code VALIDATION_FAILED}); the
  * addressee, style and cultural options are resolved request, then destination profile, then preferences.</li>
@@ -104,6 +106,8 @@ public class AiPipeline {
 
 	private static final Logger log = LoggerFactory.getLogger(AiPipeline.class);
 	private static final SecureRandom RANDOM = new SecureRandom();
+
+	private static final String ON_DEVICE_ONLY = "ON_DEVICE_ONLY";
 
 	private static final Set<AiFeature> TRANSFORM_TASKS = EnumSet.of(AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE,
 			AiFeature.TONE_ADJUST);
@@ -191,9 +195,18 @@ public class AiPipeline {
 
 		// (1) account and consent
 		ResolvedEntitlements resolved = entitlements.resolve(user);
-		if (resolved.access() != AccessState.GRANTED) {
+		// D33: language detection stays available while the account deletion is pending (typing-adjacent, unmetered,
+		// stores nothing); SUSPENDED and every other state are refused as before.
+		boolean detectWhilePending = feature == AiFeature.DETECT_LANGUAGE && resolved.access() == AccessState.DELETED;
+		if (resolved.access() != AccessState.GRANTED && !detectWhilePending) {
 			count(feature, "ACCOUNT_" + resolved.access().name());
 			throw denied(resolved.access());
+		}
+		// D33: the user's ON_DEVICE_ONLY preference is also enforced here: server AI is never called for them.
+		if (users.defaults(user).aiProcessingPreference().equals(ON_DEVICE_ONLY)) {
+			count(feature, ApiErrorCode.ON_DEVICE_ONLY_PREFERRED.name());
+			throw new ApiException(ApiErrorCode.ON_DEVICE_ONLY_PREFERRED, HttpStatus.FORBIDDEN,
+					"Server AI is turned off in the AI processing settings of this account.");
 		}
 		if (settings.requireAiProcessingConsent()) {
 			try {
