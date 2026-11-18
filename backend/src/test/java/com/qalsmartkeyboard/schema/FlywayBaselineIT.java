@@ -38,8 +38,8 @@ class FlywayBaselineIT {
     @Test
     void baselineIsAppliedByTheBootedApplicationAndValidates() {
         MigrationInfo[] all = flyway.info().all();
-        assertEquals(7, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
-                + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up), V5 attestation nonces (B2.3), V6 language-resource discovery columns (B3.1), V7 preferences revisions (B3.3)");
+        assertEquals(8, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
+                + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up), V5 attestation nonces (B2.3), V6 language-resource discovery columns (B3.1), V7 preferences revisions (B3.3), V8 destination profiles and app rules (B3.4)");
         assertEquals("1", all[0].getVersion().getVersion());
         assertEquals("baseline", all[0].getDescription());
         assertEquals(MigrationState.SUCCESS, all[0].getState());
@@ -53,6 +53,8 @@ class FlywayBaselineIT {
         assertEquals(MigrationState.SUCCESS, all[5].getState());
         assertEquals("7", all[6].getVersion().getVersion());
         assertEquals(MigrationState.SUCCESS, all[6].getState());
+        assertEquals("8", all[7].getVersion().getVersion());
+        assertEquals(MigrationState.SUCCESS, all[7].getState());
         flyway.validate(); // throws if an applied migration was edited
     }
 
@@ -62,8 +64,8 @@ class FlywayBaselineIT {
                 "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'"
                         + " and table_name <> 'flyway_schema_history'", Integer.class);
         // 86 baseline tables + scheduled_tasks and processed_events from V2 + attestation_nonces from V5
-        // + user_typing_language_revisions from V7
-        assertEquals(90, tables);
+        // + user_typing_language_revisions from V7 + user_app_rule_revisions and user_app_rule_keys from V8
+        assertEquals(92, tables);
         assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
                 "select success from flyway_schema_history where version='1'", Boolean.class)));
     }
