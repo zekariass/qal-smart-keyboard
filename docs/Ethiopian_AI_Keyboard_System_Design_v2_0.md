@@ -905,7 +905,7 @@ Seeded with `quotaPolicyVersion = PROVISIONAL_V2`. These values MUST be re-valid
   - Buying a higher plan is an **upgrade** (§16.6).
 - **`GET /me/entitlements`** returns resolved features (access, included, used, remaining, reset time) plus an **entitlement token**:
   - A JWS signed with Ed25519 (`kid` from a rotating key set published at `/.well-known/jwks.json`).
-  - Claims: `sub`, `plan`, `features` (booleans only), `iat`, `exp` (+24 h), `offline_grace_until` (+72 h).
+  - Claims (names as in the contract's `EntitlementToken`; amended in B4.4, ADR 0013): `iss`, `aud`, `sub`, `deviceId`, `planCode`, `features` (booleans only), `policyVersion`, `ver`, `iat`, `exp` (+24 h), `offlineGraceUntil` (+72 h), `jti`. `GET /me/entitlements/token` issues a token on its own.
   - Clients use it **only** for offline gates, currently `ON_DEVICE_AI_MODELS` and premium on-device packs. Every server-metered feature is re-checked on the server.
 
 ## 16. Billing and payments
