@@ -11,6 +11,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.io.IOException
+import java.text.Normalizer
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
@@ -34,6 +35,10 @@ import uniffi.qal_keyboard_core.Ranker
  *   Changes are saved after [debounceMs] in the background, on [saveSoon] (field finished) and
  *   on [flush] (service destroyed). A missing file starts empty; an unreadable or undecryptable
  *   one also starts empty and only its reason code is logged (never any word).
+ * - A typed word is learned on its second sighting, not its first (ADR 0007 D18). Until then it is
+ *   a pending entry: a per-language count of sightings, bounded to [MAX_PENDING] words (oldest
+ *   evicted), kept in the same encrypted file so a sighting before a restart still counts after it.
+ *   An explicit add is immediate; forget and clear also drop the pending entries they cover.
  * - Until [load] has run (or if there is no [store]: Keystore unavailable) changes are kept in
  *   memory only; nothing is ever written unencrypted.
  *
@@ -47,6 +52,9 @@ class UserDictionary(
 ) : WordLearningSink {
     private class Overlay(val lexicon: Lexicon = Lexicon.newEmpty()) {
         val ranker: Ranker = Ranker(lexicon)
+
+        /** Typed words not yet learned: NFC word to sightings so far, oldest first. */
+        val pending = LinkedHashMap<String, Int>()
     }
 
     private val lock = Any()
@@ -107,35 +115,60 @@ class UserDictionary(
 
     // ------------------------------------------------------------------ editing
 
-    /** Learning (a committed word): counts one use and, with [previous], the word pair. */
+    /**
+     * A committed word typed by the user (a sighting). A word already in the user dictionary is
+     * learned at once (one more use, and the pair with [previous]). Any other word becomes or
+     * stays pending and is learned on its [LEARN_AFTER_SIGHTINGS]th sighting.
+     */
     override fun learn(language: String, word: String, previous: String?) {
         mutate(language) { o, e ->
-            if (!o.lexicon.learnWord(word)) return@mutate false
+            val key = pendingKey(word)
+            if (!o.lexicon.contains(word)) {
+                val sightings = (o.pending[key] ?: 0) + 1
+                if (sightings < LEARN_AFTER_SIGHTINGS) {
+                    o.pending[key] = sightings
+                    trimPending(o)
+                    return@mutate true
+                }
+            }
+            val hadPending = o.pending.remove(key) != null
+            if (!o.lexicon.learnWord(word)) return@mutate hadPending
             if (previous != null) o.ranker.learnBigram(previous, word)
             live(e) { it.learnUserWord(language, word, previous) }
             true
         }
     }
 
-    /** Explicit add. False if the word is not acceptable (empty, too long, whitespace) or the overlay is full. */
-    override fun add(language: String, word: String): Boolean = mutate(language) { o, e ->
-        val ok = o.lexicon.addUserWord(word)
-        if (ok) live(e) { it.addUserWord(language, word) }
-        ok
+    /** Explicit add (immediate). False if the word is not acceptable (empty, too long, whitespace) or the overlay is full. */
+    override fun add(language: String, word: String): Boolean {
+        var added = false
+        mutate(language) { o, e ->
+            added = o.lexicon.addUserWord(word)
+            val hadPending = o.pending.remove(pendingKey(word)) != null
+            if (added) live(e) { it.addUserWord(language, word) }
+            added || hadPending
+        }
+        return added
     }
 
-    /** Deletes a word the user added or learned. Words of the shipped dictionary stay. */
-    fun forget(language: String, word: String): Boolean = mutate(language) { o, e ->
-        val ok = o.lexicon.forgetUserWord(word)
-        if (ok) live(e) { it.forgetUserWord(language, word) }
-        ok
+    /** Deletes a word the user added or learned, and any pending sightings of it. Words of the shipped dictionary stay. */
+    fun forget(language: String, word: String): Boolean {
+        var removed = false
+        mutate(language) { o, e ->
+            removed = o.lexicon.forgetUserWord(word)
+            if (removed) live(e) { it.forgetUserWord(language, word) }
+            val hadPending = o.pending.remove(pendingKey(word)) != null
+            removed || hadPending
+        }
+        return removed
     }
 
-    /** "Clear all" for one language (words and learned pairs). */
+    /** "Clear all" for one language (words, learned pairs and pending sightings). */
     fun clear(language: String) {
         mutate(language) { o, e ->
             o.lexicon.clearUserDictionary()
             o.ranker.clearUserBigrams()
+            o.pending.clear()
             live(e) { it.clearUserData(language) }
             true
         }
@@ -156,6 +189,7 @@ class UserDictionary(
         }
     }
 
+    /** Applies [change] under the lock; the block returns true if it changed the stored state. */
     private inline fun mutate(language: String, change: (Overlay, KeyboardEngine?) -> Boolean): Boolean {
         val changed = synchronized(lock) {
             if (!loaded) return false
@@ -164,6 +198,11 @@ class UserDictionary(
         }
         if (changed) scheduleSave(debounceMs)
         return changed
+    }
+
+    /** Drops the oldest pending words beyond [MAX_PENDING]. */
+    private fun trimPending(o: Overlay) {
+        while (o.pending.size > MAX_PENDING) o.pending.remove(o.pending.keys.first())
     }
 
     // ------------------------------------------------------------------ persistence
@@ -211,7 +250,10 @@ class UserDictionary(
 
     // ------------------------------------------------------------------ file content
 
-    /** `"QUF1" | int dictLength | dictionary | int bigramLength | bigrams` (core "QUD1" and "QBG1" payloads). */
+    /**
+     * `"QUF2" | int dictLength | dictionary | int bigramLength | bigrams | int pendingCount | (int len | word | int sightings)*`
+     * (core "QUD1" and "QBG1" payloads). A "QUF1" file (no pending block) still loads.
+     */
     private fun encode(o: Overlay): ByteArray {
         val out = ByteArrayOutputStream()
         DataOutputStream(out).use { d ->
@@ -222,6 +264,13 @@ class UserDictionary(
             val big = o.ranker.exportUserBigrams()
             d.writeInt(big.size)
             d.write(big)
+            d.writeInt(o.pending.size)
+            for ((word, sightings) in o.pending) {
+                val bytes = word.toByteArray(Charsets.UTF_8)
+                d.writeInt(bytes.size)
+                d.write(bytes)
+                d.writeInt(sightings)
+            }
         }
         return out.toByteArray()
     }
@@ -229,12 +278,16 @@ class UserDictionary(
     private fun decodeInto(o: Overlay, bytes: ByteArray): Boolean = try {
         DataInputStream(ByteArrayInputStream(bytes)).use { d ->
             val magic = ByteArray(MAGIC.size).also { d.readFully(it) }
-            if (!magic.contentEquals(MAGIC)) return false
+            val withPending = magic.contentEquals(MAGIC)
+            if (!withPending && !magic.contentEquals(MAGIC_V1)) return false
             val dict = readBlock(d, bytes.size) ?: return false
             val big = readBlock(d, bytes.size) ?: return false
+            val pending = if (withPending) readPending(d) ?: return false else LinkedHashMap<String, Int>()
             if (d.read() != -1) return false
             o.lexicon.importUserDictionary(dict)
             o.ranker.importUserBigrams(big)
+            o.pending.clear()
+            o.pending.putAll(pending)
             true
         }
     } catch (_: IOException) {
@@ -249,10 +302,35 @@ class UserDictionary(
         return ByteArray(n).also { d.readFully(it) }
     }
 
+    /** The pending block, in stored (oldest-first) order; null if malformed. */
+    private fun readPending(d: DataInputStream): LinkedHashMap<String, Int>? {
+        val n = d.readInt()
+        if (n < 0 || n > MAX_PENDING) return null
+        val out = LinkedHashMap<String, Int>()
+        repeat(n) {
+            val len = d.readInt()
+            if (len <= 0 || len > MAX_PENDING_WORD_BYTES) return null
+            val word = String(ByteArray(len).also { d.readFully(it) }, Charsets.UTF_8)
+            val sightings = d.readInt()
+            if (sightings !in 1 until LEARN_AFTER_SIGHTINGS || pendingKey(word) != word || out.put(word, sightings) != null) return null
+        }
+        return out
+    }
+
     companion object {
         val LANGUAGES = listOf("am", "ti", "om", "en")
         const val DEFAULT_DEBOUNCE_MS = 5_000L
-        private val MAGIC = byteArrayOf('Q'.code.toByte(), 'U'.code.toByte(), 'F'.code.toByte(), '1'.code.toByte())
+
+        /** A typed word is learned on this sighting (ADR 0007 D18). */
+        const val LEARN_AFTER_SIGHTINGS = 2
+
+        /** Most pending (typed, not yet learned) words kept per language; the oldest is evicted. */
+        const val MAX_PENDING = 2_000
+        private const val MAX_PENDING_WORD_BYTES = 256
+
+        private val MAGIC = "QUF2".toByteArray(Charsets.US_ASCII)
+        private val MAGIC_V1 = "QUF1".toByteArray(Charsets.US_ASCII)
+        private fun pendingKey(word: String): String = Normalizer.normalize(word, Normalizer.Form.NFC)
         private const val KEY_ALIAS = "qal.userdict.v1"
         private const val TAG = "QalUserDict"
 

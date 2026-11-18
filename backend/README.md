@@ -184,6 +184,31 @@ guests included (their documents move to the account on sign-in, ADR 0010). Resp
   list when the target has none; it deletes the guest's list revision row and increments the target's list revision when a
   list moved, so a target device that cached the old document gets a `REVISION_CONFLICT`.
 
+## Consents (B3.5)
+
+`GET /me/consents` (latest state per code) and `PUT /me/consents/{consentCode}` (grant or withdraw); any valid token,
+guests included. Code in `com.qalsmartkeyboard.privacy`.
+
+- **Append-only.** Every PUT appends a `user_consents` row (code, client-supplied `consentVersion`, grant/withdraw, platform
+  from `X-Client-Platform`, `details` kept in `metadata.details`, time from `clock_timestamp()`); a trigger rejects UPDATE and
+  DELETE. The latest row per (user, code) wins; no row means not granted. `grantedAt` is the time of the latest grant (kept
+  after a withdrawal), `revokedAt` is set only while the latest decision is a withdrawal.
+- **Versions.** The version is recorded, never compared: the System Design (19.3) defines no minimum-version rule, so an older
+  grant stays valid until the person decides again.
+- **Not revocable.** `TERMS_ACCEPTANCE` and `PRIVACY_NOTICE` (422 `VALIDATION_FAILED`, field `isGranted`); unknown code 400.
+- **Gate.** `ConsentGate.requireConsent(userId, ConsentType)` throws 403 `CONSENT_REQUIRED` with the extension member
+  `consentCode`; `hasConsent` is the boolean form. `ConsentType.gatedFeatures()` is the single list of which features each
+  consent gates (AI_PROCESSING: server AI; SAVE_AI_HISTORY: history writes and `historyEnabled`; SAVE_AUDIO_HISTORY: audio
+  history; DICTIONARY_SYNC: user dictionary sync; PERSONAL_STYLE: learned style hints; FEEDBACK_TEXT: feedback comment and
+  content; COMMUNITY_CONTRIBUTION: community submissions; PAYMENT_MANDATE: mandates; ANALYTICS; MARKETING).
+- **Withdrawal.** Publishes `ConsentChanged` in the same transaction. Preferences listens and switches `historyEnabled` off
+  (a revisioned write) when `SAVE_AI_HISTORY` is withdrawn; existing history is kept (contract: "stops new history writes and
+  offers deletion"), so no purge event is published. Billing (later) cancels mandates on `PAYMENT_MANDATE` the same way.
+- **History.** `ConsentService.history(userId, type)` (package-private Java API, oldest first) for the data export; the
+  contract has no history operation.
+- **Guest merge** (`PrivacyGuestMerge`, ADR 0010) is unchanged: it must preserve the guest's `recorded_at` and version, which
+  the PUT path does not.
+
 ## Identity: phone OTP (B2.1, ADR 0006)
 
 Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST /api/v1/auth/otp/verify` (200
