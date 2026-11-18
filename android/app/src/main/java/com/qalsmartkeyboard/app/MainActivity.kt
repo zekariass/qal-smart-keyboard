@@ -61,7 +61,9 @@ import com.qalsmartkeyboard.app.ui.theme.QalSmartKeyboardTheme
 import com.qalsmartkeyboard.core.CoreSmoke
 import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.SettingsRepository
-import com.qalsmartkeyboard.data.ThemeMode
+import com.qalsmartkeyboard.app.themes.ThemesHost
+import com.qalsmartkeyboard.app.themes.themeStore
+import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 import com.qalsmartkeyboard.ime.ai.AiLink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -150,13 +152,15 @@ class MainActivity : ComponentActivity() {
             var privacyRoute by rememberSaveable { mutableStateOf<String?>(null) }
             // Opened from the keyboard's gear: settings offer "Back to typing" (and Back) to return to the app.
             var fromKeyboard by rememberSaveable { mutableStateOf(false) }
+            // The theme picker (themes package).
+            var themesOpen by rememberSaveable { mutableStateOf(false) }
             val link = pendingLink
             LaunchedEffect(link, completed) {
                 if (link == null || completed == null) return@LaunchedEffect // wait until the stored flag is read
                 pendingLink = null
                 when (DeepLinks.route(link, graph.repository.currentStatus(), completed == true)) {
                     DeepLinkAction.NONE -> Unit
-                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; rerun = false }
+                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; rerun = false }
                     DeepLinkAction.SHOW_PRIVACY -> { showSignIn = false; showPlans = false; rerun = false; privacyRoute = PrivacyRoute.DASHBOARD.name }
                     DeepLinkAction.SHOW_SIGN_IN -> { signIn.reset(); showPlans = false; privacyRoute = null; showSignIn = true }
                     DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true }
@@ -181,11 +185,8 @@ class MainActivity : ComponentActivity() {
                 },
             )
             val hasGuest = accountStatus == AccountStatus.Guest
-            val dark = when (settings.theme) {
-                ThemeMode.SYSTEM -> isSystemInDarkTheme()
-                ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
-            }
+            val systemDark = isSystemInDarkTheme()
+            val dark = ThemeCatalog.find(settings.theme)?.let { !it.isLight } ?: systemDark
             // First run: show the flow. A re-run from settings stays until finished or skipped.
             val showFlow = completed == false || (rerun && !flow.finished)
             LaunchedEffect(flow.finished) { if (flow.finished) rerun = false }
@@ -218,6 +219,14 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             syncCard = { DictionarySyncSection(accountStatus) },
                         )
+                        themesOpen && !showFlow -> ThemesHost(
+                            appliedId = settings.theme,
+                            store = repository.themeStore(),
+                            systemDark = systemDark,
+                            onUnlock = { showPlans = true },
+                            onBack = { themesOpen = false },
+                            modifier = Modifier.padding(innerPadding),
+                        )
                         showFlow -> OnboardingScreen(
                             state = flow,
                             onNext = onboarding::next,
@@ -246,7 +255,7 @@ class MainActivity : ComponentActivity() {
                             SettingsScreen(settings, repository, onRunSetup = {
                                 onboarding.restart()
                                 rerun = true
-                            }, syncContent = {
+                            }, onOpenThemes = { themesOpen = true }, syncContent = {
                                 PrivacyEntryCard(onOpen = { privacyRoute = PrivacyRoute.DASHBOARD.name })
                             }, accountContent = {
                                 AccountSection(

@@ -27,7 +27,7 @@ import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.LanguageRules
 import com.qalsmartkeyboard.data.NumeralStyle
 import com.qalsmartkeyboard.data.SettingsRepository
-import com.qalsmartkeyboard.data.ThemeMode
+import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 import kotlinx.coroutines.launch
 
 private val languageNames = mapOf("am" to "Amharic", "ti" to "Tigrinya", "om" to "Afaan Oromoo", "en" to "English")
@@ -49,6 +49,8 @@ fun SettingsScreen(
     accountContent: @Composable () -> Unit = {},
     /** The sync card (A2.4: personal-dictionary sync consent), supplied by the host that owns the account state. */
     syncContent: @Composable () -> Unit = {},
+    /** Opens the theme picker (`ThemesScreen`), owned by the host. */
+    onOpenThemes: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -113,16 +115,9 @@ fun SettingsScreen(
                 )
             }
         }
-        Text("Theme", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ThemeMode.entries.forEach { t ->
-                FilterChip(
-                    selected = settings.theme == t,
-                    onClick = { scope.launch { repository.update { it.copy(theme = t) } } },
-                    label = { Text(t.name.lowercase().replaceFirstChar { c -> c.uppercase() }) },
-                )
-            }
-        }
+        Text(stringResource(R.string.settings_theme_title), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_theme_current, ThemeCatalog.find(settings.theme)?.name ?: stringResource(R.string.themes_system)))
+        Button(onClick = onOpenThemes) { Text(stringResource(R.string.settings_theme_button)) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Haptic feedback", Modifier.weight(1f))
             Switch(checked = settings.hapticsEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(hapticsEnabled = on) } } })

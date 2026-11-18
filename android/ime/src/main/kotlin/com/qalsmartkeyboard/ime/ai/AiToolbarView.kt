@@ -1,8 +1,6 @@
 package com.qalsmartkeyboard.ime.ai
 
 import android.content.Context
-import android.content.res.Configuration
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.view.Gravity
@@ -14,6 +12,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.qalsmartkeyboard.ime.R
+import com.qalsmartkeyboard.ime.theme.KeyboardTheme
+import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 import java.text.DateFormat
 import java.util.Date
 
@@ -33,13 +33,25 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     var onLink: (AiLink) -> Unit = {}
 
     private val d = resources.displayMetrics.density
-    private val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-    private val bg = if (dark) 0xFF1B1B1F.toInt() else 0xFFE4E5EA.toInt()
-    private val chipBg = if (dark) 0xFF2B2C31.toInt() else 0xFFF7F7FA.toInt()
-    private val chipOn = if (dark) 0xFF3D4F8A.toInt() else 0xFFCBD6FF.toInt()
-    private val fg = if (dark) 0xFFF1F1F4.toInt() else 0xFF1B1B1F.toInt()
-    private val muted = if (dark) 0xFFB5B7C0.toInt() else 0xFF55575F.toInt()
-    private val warn = 0xFFB26A00.toInt()
+    /** The colours to draw with. Set by the service when the chosen theme changes; the rows are rebuilt with them. */
+    var theme: KeyboardTheme = ThemeCatalog.classic(
+        (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) != android.content.res.Configuration.UI_MODE_NIGHT_YES,
+    )
+        set(value) {
+            if (field === value) return
+            field = value
+            setBackgroundColor(bg)
+            render()
+        }
+
+    private val dark get() = !theme.isLight
+    private val bg get() = theme.stripBg
+    private val chipBg get() = theme.key
+    private val chipOn get() = theme.pressed
+    private val fg get() = theme.keyText
+    private val muted get() = theme.hintText
+    private val warn get() = theme.warn
+    private val chipStroke get() = if (theme.hasBorder) theme.border else theme.special
 
     private val toolbar = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
     private val panelBox = LinearLayout(context).apply { orientation = VERTICAL }
@@ -293,7 +305,7 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
             background = GradientDrawable().apply {
                 cornerRadius = 16f * d
                 setColor(if (on) chipOn else chipBg)
-                setStroke((1f * d).toInt(), if (dark) Color.DKGRAY else Color.LTGRAY)
+                setStroke((1f * d).toInt(), chipStroke)
             }
             isEnabled = enabled
             isClickable = enabled

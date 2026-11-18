@@ -9,6 +9,7 @@ import com.qalsmartkeyboard.aiclient.EntitlementTokenVerifier
 import com.qalsmartkeyboard.aiclient.LastDestinationStore
 import com.qalsmartkeyboard.aiclient.PinnedKeys
 import com.qalsmartkeyboard.aiclient.ServerAiActions
+import com.qalsmartkeyboard.aiclient.ServerThemeAccess
 import com.qalsmartkeyboard.aiclient.SessionAccessInfo
 import com.qalsmartkeyboard.api.ApiClients
 import com.qalsmartkeyboard.api.CallLogger
@@ -74,6 +75,9 @@ class AiGraph private constructor(context: Context) {
         // A2.6: only while the person turned history on (the privacy screens set it); the server still checks consent and plan.
         saveToHistory = { PrivacyGraph.get(context).historyFlag.enabled },
     )
+
+    /** Premium keyboard themes (`PREMIUM_THEMES`), answered from the cached verified entitlement token. */
+    val themeAccess = ServerThemeAccess(entitlements, session, connectivity) { listener -> actions.addAvailabilityListener(listener) }
 
     companion object {
         const val KEY_ALIAS = "qal.ai.v1"

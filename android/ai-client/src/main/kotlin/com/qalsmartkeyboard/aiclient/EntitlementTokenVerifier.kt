@@ -173,10 +173,20 @@ enum class GateState {
     VOID,
 }
 
-/** The offline gates a token opens right now (ADR 0013 D3, D4.5). Only [onDeviceModels] exists today. */
-class OfflineGates(val state: GateState, val onDeviceModels: Boolean) {
+/**
+ * The offline gates a token opens right now (ADR 0013 D3, D4.5): [onDeviceModels] and [premiumThemes].
+ * [premiumThemesOnPlan] is what the token says about `PREMIUM_THEMES` whether or not the gate is open (the gate is
+ * shut online past `exp`, until a fresh token arrives), so the UI can tell "not on your plan" from "reconnect to check".
+ */
+class OfflineGates(
+    val state: GateState,
+    val onDeviceModels: Boolean,
+    val premiumThemes: Boolean = false,
+    val premiumThemesOnPlan: Boolean = false,
+) {
     companion object {
         val CLOSED = OfflineGates(GateState.VOID, false)
+        const val PREMIUM_THEMES = "PREMIUM_THEMES"
 
         /**
          * @param nowMs "now" is the later of the device clock and the newest `iat` or server `Date`
@@ -186,7 +196,8 @@ class OfflineGates(val state: GateState, val onDeviceModels: Boolean) {
             if (token == null || nowMs >= token.offlineGraceUntilMs) return CLOSED
             val state = if (nowMs < token.expiresAtMs) GateState.VALID else GateState.OFFLINE_GRACE
             val open = state == GateState.VALID || !online
-            return OfflineGates(state, open && token.features["ON_DEVICE_AI_MODELS"] == true)
+            val themes = token.features[PREMIUM_THEMES] == true
+            return OfflineGates(state, open && token.features["ON_DEVICE_AI_MODELS"] == true, open && themes, themes)
         }
     }
 }

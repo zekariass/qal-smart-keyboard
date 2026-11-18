@@ -143,7 +143,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 ).joinToString(FIELD)
             }
             p[NUMERALS] = s.numeralStyle.name
-            p[THEME] = s.theme.name
+            p[THEME] = s.theme
             p[HAPTICS] = s.hapticsEnabled
             p[KEY_HEIGHT] = s.keyHeightPercent
             p[PACK_MOBILE_DATA] = s.packUpdatesOnMobileData
@@ -173,7 +173,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             return KeyboardSettings(
                 languages = languages,
                 numeralStyle = enumOrNull<NumeralStyle>(p[NUMERALS]) ?: d.numeralStyle,
-                theme = enumOrNull<ThemeMode>(p[THEME]) ?: d.theme,
+                theme = ThemeIds.normalize(p[THEME]),
                 hapticsEnabled = p[HAPTICS] ?: d.hapticsEnabled,
                 keyHeightPercent = p[KEY_HEIGHT] ?: d.keyHeightPercent,
                 lastModes = lastModes,

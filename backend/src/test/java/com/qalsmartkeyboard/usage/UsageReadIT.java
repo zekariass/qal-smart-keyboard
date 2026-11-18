@@ -132,6 +132,7 @@ class UsageReadIT {
 				.doesNotContainKeys("used", "remaining", "resetsAt", "includedUnits");
 		// a gated feature the plan excludes is listed as not enabled
 		assertThat(feature(body, "ON_DEVICE_AI_MODELS")).containsEntry("accessEnabled", false);
+		assertThat(feature(body, "PREMIUM_THEMES")).containsEntry("accessEnabled", false);
 		// the real signer: a JWS (three parts) valid 24 h, offline grace 72 h after exp, for this user
 		assertThat(JsonPath.<String>read(body, "$.entitlementToken.jws").split("\\.")).hasSize(3);
 		assertThat(Duration.between(Instant.parse(JsonPath.read(body, "$.entitlementToken.expiresAt")),
@@ -204,6 +205,7 @@ class UsageReadIT {
 		assertThat(Instant.parse((String) translate.get("resetsAt"))).isEqualTo(end).isEqualTo(r.window().resetAt());
 		// boolean gates of the paid plan
 		assertThat(feature(body, "ON_DEVICE_AI_MODELS")).containsEntry("accessEnabled", true).doesNotContainKey("used");
+		assertThat(feature(body, "PREMIUM_THEMES")).containsEntry("accessEnabled", true).doesNotContainKey("used");
 
 		Map<String, Object> item = usageItem(getOk("/api/v1/me/usage", u), "TRANSLATE");
 		assertThat(Instant.parse((String) item.get("periodStart"))).isEqualTo(start);
@@ -258,7 +260,7 @@ class UsageReadIT {
 		assertThat(counterRows(u.id())).isZero();
 		List<String> codes = JsonPath.read(body, "$.items[*].featureCode");
 		assertThat(codes).contains("TRANSLATE", "SPEECH_TO_TEXT", "TEXT_TO_SPEECH").doesNotContain("OFFLINE_TYPING",
-				"HISTORY_SYNC", "ON_DEVICE_AI_MODELS");
+				"HISTORY_SYNC", "ON_DEVICE_AI_MODELS", "PREMIUM_THEMES");
 		Map<String, Object> speech = usageItem(body, "SPEECH_TO_TEXT");
 		assertThat(speech).containsEntry("usedUnits", 0).containsEntry("includedUnits", 600).containsEntry("unit", "SECOND");
 		// FREE has no anchor: the calendar month in the user's zone

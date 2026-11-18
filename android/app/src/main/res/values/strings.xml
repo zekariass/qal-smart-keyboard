@@ -79,6 +79,34 @@
     <string name="settings_back_to_typing">Back to typing</string>
     <string name="settings_opened_from_keyboard">Changes apply to the keyboard right away.</string>
 
+    <!-- Keyboard themes -->
+    <string name="themes_title">Keyboard theme</string>
+    <string name="themes_intro">Choose how the keyboard looks. Tap a theme to see a larger preview; nothing changes until you tap Apply.</string>
+    <string name="themes_section_free">Free themes</string>
+    <string name="themes_section_premium">Premium themes</string>
+    <string name="themes_premium_note">Premium themes are included with Premium. You can preview all of them.</string>
+    <string name="themes_system">System</string>
+    <string name="themes_system_hint">Classic Light or Classic Dark, following your phone.</string>
+    <string name="themes_applied">Applied</string>
+    <string name="themes_badge_premium">Premium</string>
+    <string name="themes_premium">Premium theme</string>
+    <string name="themes_premium_locked">Premium theme, locked</string>
+    <string name="themes_open_preview">Open preview</string>
+    <string name="themes_preview_description">Preview of the %1$s keyboard theme</string>
+    <string name="themes_preview_note">This is only a preview. Your keyboard keeps its current theme until you apply this one.</string>
+    <string name="themes_apply">Apply theme</string>
+    <string name="themes_unlock">Unlock with Premium</string>
+    <string name="themes_back_to_list">Back to all themes</string>
+    <string name="themes_locked_title">%1$s is a Premium theme</string>
+    <string name="themes_locked_body">Your keyboard shows %1$s for now. %2$s</string>
+    <string name="themes_reason_allowed">Premium themes are available.</string>
+    <string name="themes_reason_signed_out">Sign in to use Premium themes that belong to your account.</string>
+    <string name="themes_reason_not_on_plan">Your plan does not include Premium themes.</string>
+    <string name="themes_reason_needs_check">Connect to the internet once so we can check your plan.</string>
+    <string name="settings_theme_title">Theme</string>
+    <string name="settings_theme_current">Current: %1$s</string>
+    <string name="settings_theme_button">Choose theme</string>
+
     <!-- Personal dictionary (A1.8) -->
     <string name="pd_title">Personal dictionary</string>
     <string name="pd_body">Words you add or the keyboard learns as you type. They stay on this device, encrypted, and are never uploaded. Nothing is learned in password fields or when a field asks for no personalised learning.</string>
