@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,9 @@ import com.qalsmartkeyboard.platform.ApiErrorCode;
 import com.qalsmartkeyboard.platform.ApiException;
 import com.qalsmartkeyboard.platform.ApiFieldError;
 import com.qalsmartkeyboard.preferences.PreferencesDtos.PreferencesDto;
+import com.qalsmartkeyboard.privacy.ConsentChanged;
+import com.qalsmartkeyboard.privacy.ConsentGate;
+import com.qalsmartkeyboard.privacy.ConsentType;
 
 /**
  * {@code GET/PUT /me/preferences} (System Design 10.1). One document per user with an integer {@code revision}: no row
@@ -33,9 +37,12 @@ class PreferencesService {
 	private final JdbcClient jdbc;
 	private final TransactionTemplate tx;
 
-	PreferencesService(JdbcClient jdbc, TransactionTemplate tx) {
+	private final ConsentGate consents;
+
+	PreferencesService(JdbcClient jdbc, TransactionTemplate tx, ConsentGate consents) {
 		this.jdbc = jdbc;
 		this.tx = tx;
+		this.consents = consents;
 	}
 
 	PreferencesDto get(UUID userId) {
@@ -49,9 +56,8 @@ class PreferencesService {
 			UUID destination = language("defaultDestinationLanguage", in.defaultDestinationLanguage());
 			UUID voice = language("preferredVoiceLanguage", in.preferredVoiceLanguage());
 			boolean history = Boolean.TRUE.equals(in.historyEnabled());
-			if (history && !hasHistoryConsent(userId)) {
-				throw new ApiException(ApiErrorCode.CONSENT_REQUIRED, HttpStatus.FORBIDDEN,
-						"Saving history requires the SAVE_AI_HISTORY consent.");
+			if (history) {
+				consents.requireConsent(userId, ConsentType.SAVE_AI_HISTORY);
 			}
 			Map<String, Object> p = new HashMap<>();
 			p.put("user", userId);
@@ -160,12 +166,19 @@ class PreferencesService {
 						Map.of()));
 	}
 
-	/** The latest SAVE_AI_HISTORY consent record decides (append-only log, V1 section 7). */
-	private boolean hasHistoryConsent(UUID userId) {
-		return jdbc.sql("""
-				SELECT is_granted FROM user_consents WHERE user_id = :user AND consent_code = 'SAVE_AI_HISTORY'
-				ORDER BY recorded_at DESC, id DESC LIMIT 1
-				""").param("user", userId).query(Boolean.class).optional().orElse(false);
+	/**
+	 * Withdrawing {@code SAVE_AI_HISTORY} switches {@code aiHistoryEnabled} off (B3.5), in the withdrawal's transaction, as a
+	 * revisioned write so a client holding the old revision re-reads. Existing history is kept (the contract: stops new
+	 * writes and offers deletion). No preferences row means nothing to switch.
+	 */
+	@EventListener
+	void onConsentChanged(ConsentChanged event) {
+		if (event.type() == ConsentType.SAVE_AI_HISTORY && !event.granted()) {
+			jdbc.sql("""
+					UPDATE user_preferences SET ai_history_enabled = FALSE, revision = revision + 1, updated_at = NOW()
+					WHERE user_id = :user AND ai_history_enabled
+					""").param("user", event.userId()).update();
+		}
 	}
 
 	/** 409 {@code REVISION_CONFLICT}; the extension member {@code currentRevision} tells the client what to re-read. */
