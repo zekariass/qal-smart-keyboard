@@ -155,7 +155,14 @@ paths:
         that can no longer link (already merged, upgraded or ended, including a lost race) is 401
         `GUEST_SESSION_INVALID`; nothing is consumed, so the client discards the guest token and
         retries the same code without it. A registered bearer token is ignored for linking. A
-        suspended account gets 403 `ACCOUNT_SUSPENDED`.
+        suspended account gets 403 `ACCOUNT_SUSPENDED`. A guest is **never merged into an account
+        whose deletion is pending**: the sign-in succeeds without linking, `mergedGuestUserId` is
+        absent and the guest stays a separate, active guest session.
+
+        A wrong code is 401 `OTP_INVALID` with the extension member `attemptsRemaining` (integer,
+        at least 1): the wrong codes still allowed before the challenge locks
+        (429 `OTP_TOO_MANY_ATTEMPTS`). The member is absent when the challenge is unknown, already
+        used or replaced; clients show it when present and never count attempts themselves.
       security:
         - {}
         - bearerAuth: []
@@ -183,7 +190,8 @@ paths:
         Verifies the provider ID token (signature, audience, nonce, expiry) server-side.
         Same guest-upgrade merge behaviour as OTP verification (upgrade in place for a new
         identity, at-most-once merge into an existing account, 401 `GUEST_SESSION_INVALID` for a
-        guest bearer that can no longer link). The account is found or created by
+        guest bearer that can no longer link; no merge into an account whose deletion is pending,
+        the sign-in then proceeds without `mergedGuestUserId`). The account is found or created by
         the provider and its `sub` claim only; an e-mail address never links to another account.
         A provider the server cannot verify yet (Apple until its adapter exists) is a 400
         `VALIDATION_FAILED` on `provider`. A rejected token is 401 `UNAUTHENTICATED`; a suspended
@@ -1205,6 +1213,10 @@ paths:
         When `addressee.gender` is `UNKNOWN` the response may include gender `alternatives` and an
         `AMBIGUITY` note. Calendar/time/numeral options convert dates and times (e.g. Ethiopian
         clock hours count from 06:00).
+
+        403 codes: `ACCOUNT_SUSPENDED`, `DELETION_PENDING`, `FEATURE_NOT_ENTITLED`, `CONSENT_REQUIRED`
+        and `ON_DEVICE_ONLY_PREFERRED` (the account's `aiProcessingPreference` is `ON_DEVICE_ONLY`:
+        server AI is never called, nothing is charged).
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/ClientPlatform'
@@ -1281,6 +1293,9 @@ paths:
         Events: `event: delta` (`{"text":"..."}`), `event: done` (a full `TransformResponse`),
         `event: error` (a `Problem`). Usage is settled on `done`; a dropped stream before `done`
         releases the reservation. The keyboard uses JSON with an 8 s client timeout.
+
+        403 codes are those of `/ai/translate`, including `ON_DEVICE_ONLY_PREFERRED`. Tasks the server
+        cannot serve yet answer 400 `VALIDATION_FAILED` on `task`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/ClientPlatform'
@@ -1378,7 +1393,11 @@ paths:
       tags: [AI]
       operationId: detectLanguage
       summary: Detect language(s) of explicitly submitted text
-      description: Feature `DETECT_LANGUAGE` — unmetered, rate-limited. Prefer the on-device language-ID model when installed.
+      description: |
+        Feature `DETECT_LANGUAGE` — unmetered, rate-limited. Prefer the on-device language-ID model when installed.
+        Available to an account whose deletion is pending; a suspended account gets 403
+        `ACCOUNT_SUSPENDED`, and an account whose `aiProcessingPreference` is `ON_DEVICE_ONLY` gets 403
+        `ON_DEVICE_ONLY_PREFERRED`.
       requestBody:
         required: true
         content:
@@ -1391,7 +1410,11 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DetectLanguageResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/ai/feedback:
     post:
       tags: [AI]
@@ -3302,6 +3325,13 @@ components:
           recomputed **without a second charge**. PostgreSQL never stores AI text.
         - Reusing a key with a different body returns 409 `IDEMPOTENCY_KEY_REUSED`; an in-flight
           duplicate returns 409 `REQUEST_IN_PROGRESS` with `Retry-After`.
+        - **Keys older than 24 h** may be refused with 409 `IDEMPOTENCY_KEY_REUSED`: the server keeps the
+          request fingerprint for 24 h only and never hands out a result it cannot verify against the body.
+          Use a new key for anything older.
+        - A replay served from the cache keeps the **original `requestId` and `usage`** (`replayed: true`);
+          it never reports a second charge.
+        - Replaying a key whose original request was **cancelled** (the client went away before the
+          result) returns 503 `PROVIDER_UNAVAILABLE`, like any other released original; use a new key.
       schema: { type: string, format: uuid }
     ClientPlatform:
       name: X-Client-Platform
@@ -3713,6 +3743,10 @@ components:
           description: Replace idioms with natural equivalents and explain them in `notes`.
     AiNote:
       type: object
+      description: |
+        A short static message from the server, never text derived from the user's content.
+        Calendar, clock and numeral conversions are reported as `CULTURAL`; the server does not
+        emit a separate conversion type.
       required: [type, message]
       properties:
         type:
@@ -3759,7 +3793,8 @@ components:
         RFC 9457 Problem Details with extension members. Known extension members: `consentCode`
         on 403 `CONSENT_REQUIRED` (the consent to request), `currentRevision` on 409
         `REVISION_CONFLICT` (the revision the client should re-read), `featureCode`, `resetAt`,
-        `creditBalance` and `upgradeOptions` on 429 `QUOTA_EXCEEDED`, `reason` on 413/422 `PACK_REJECTED`
+        `creditBalance` and `upgradeOptions` on 429 `QUOTA_EXCEEDED`, `attemptsRemaining` (integer)
+        on 401 `OTP_INVALID` for a wrong code of a known challenge, `reason` on 413/422 `PACK_REJECTED`
         (admin pack publishing).
         `GUEST_SESSION_INVALID` (401, `WWW-Authenticate: Bearer error="invalid_token"`) means the
         guest bearer token's account was merged, upgraded, ended or suspended: discard the guest
@@ -3780,7 +3815,7 @@ components:
             ATTESTATION_REQUIRED, ATTESTATION_FAILED, ACCOUNT_SUSPENDED, DELETION_PENDING,
             GUEST_NOT_ALLOWED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, NOT_ACCEPTABLE,
             UNSUPPORTED_MEDIA_TYPE, REVISION_CONFLICT, IDEMPOTENCY_KEY_REUSED,
-            REQUEST_IN_PROGRESS, CONSENT_REQUIRED, FEATURE_NOT_ENTITLED, QUOTA_EXCEEDED,
+            REQUEST_IN_PROGRESS, ON_DEVICE_ONLY_PREFERRED, CONSENT_REQUIRED, FEATURE_NOT_ENTITLED, QUOTA_EXCEEDED,
             RATE_LIMITED, LANGUAGE_NOT_SUPPORTED, LANGUAGE_PAIR_UNAVAILABLE, PROFILE_NOT_ACTIVE,
             OUTPUT_GUARDRAIL_FAILED, CONTENT_REJECTED, PROVIDER_UNAVAILABLE, PROVIDER_TIMEOUT,
             ZERO_RETENTION_UNAVAILABLE, UPLOAD_EXPIRED, AUDIO_TOO_LONG, UNSUPPORTED_AUDIO_FORMAT,

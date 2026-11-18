@@ -125,9 +125,20 @@ public class GuestMergeService {
 	/**
 	 * Moves the guest into an existing registered account, in the caller's transaction (see the class comment). The
 	 * caller holds the guest lock ({@link #lockMergeableGuest}) and has signed the target in.
+	 *
+	 * <p>A target whose deletion is pending is refused (ADR 0007 D30): its data is about to be purged and the guest's
+	 * would go with it. Nothing is written; the guest stays a separate, active guest and the sign-in goes on without
+	 * linking (the response carries no {@code mergedGuestUserId}).
+	 *
+	 * @return whether the guest was merged; {@code false} = refused because the target's deletion is pending
 	 */
-	public void mergeInto(UUID guestUserId, UUID targetUserId, String method, Instant now) {
+	public boolean mergeInto(UUID guestUserId, UUID targetUserId, String method, Instant now) {
 		AccountState target = accounts.lockForMerge(targetUserId).orElseThrow();
+		if ("DELETION_PENDING".equals(target.accountStatus())) {
+			count("refused", method);
+			log.info("Guest {} not merged into user {}: the account deletion is pending", guestUserId, targetUserId);
+			return false;
+		}
 		if (!"REGISTERED".equals(target.accountType()) || guestUserId.equals(targetUserId)) {
 			throw new IllegalStateException("A guest can only be merged into another registered account");
 		}
@@ -153,6 +164,7 @@ public class GuestMergeService {
 		count("merged", method);
 		log.info("Guest {} merged into user {} ({}); {} guest session row(s) ended, {} participant(s), {} data key(s) "
 				+ "shredded", guestUserId, targetUserId, method, revoked, ordered.size(), destroyed);
+		return true;
 	}
 
 	/**

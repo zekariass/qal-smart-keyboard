@@ -176,15 +176,14 @@ class OAuthService {
 					new ApiException(ApiErrorCode.UNAUTHENTICATED, HttpStatus.UNAUTHORIZED, null));
 			case IdentitySignIn.SignedIn s -> {
 				boolean upgraded = guest != null && s.created();
-				if (guest != null && !upgraded) {
-					merges.mergeInto(guest.userId(), s.user().id(), provider, now);
-				}
+				boolean merged = guest != null && !upgraded
+						&& merges.mergeInto(guest.userId(), s.user().id(), provider, now);
 				IssuedSession issued = sessions.issue(s.user(), session);
 				if (upgraded) {
 					merges.completeUpgrade(s.user().id(), provider, issued.sessionId());
 				}
 				yield new Outcome.Success(new SignedIn(s.user(), s.created(), issued,
-						guest == null ? null : guest.userId()));
+						upgraded || merged ? guest.userId() : null));
 			}
 		};
 	}

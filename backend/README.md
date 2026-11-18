@@ -343,8 +343,9 @@ Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST 
 - **Codes:** 6 digits from `SecureRandom`, valid `qal.identity.otp.code-ttl` (5m). Stored only as a keyed hash bound to
   the challenge id; the number only as a keyed hash plus an AES-GCM sealed copy (V3, needed to create the account on
   verify). At most 5 wrong codes per challenge (`OTP_TOO_MANY_ATTEMPTS`, the challenge is then locked). A used,
-  superseded (a newer challenge exists for the number) or unknown challenge is `OTP_INVALID`; an expired one
-  `OTP_EXPIRED`. New accounts need `ageConfirmed: true` (400 otherwise; the code stays usable).
+  superseded (a newer challenge exists for the number) or unknown challenge is `OTP_INVALID`; a **wrong code** of a
+  live challenge is `OTP_INVALID` with the extension member `attemptsRemaining` (1 to 4; ADR 0007 D32, absent for the
+  indistinguishable used/superseded/unknown cases); an expired one `OTP_EXPIRED`. New accounts need `ageConfirmed: true` (400 otherwise; the code stays usable).
 - **Resend cooldown:** `qal.identity.otp.resend-cooldown` (60s) per number, enforced in PostgreSQL: 429 `RATE_LIMITED`
   with `Retry-After`.
 - **Secret (required):** `qal.identity.otp.secret-key` / env `QAL_OTP_SECRET_KEY` = base64 of at least 32 random bytes
@@ -506,6 +507,10 @@ Module `devices` owns `user_devices`: `GET /api/v1/devices` (`listDevices`), `PO
 account that signs in, and return `mergedGuestUserId`. Without a bearer, or with a registered account's token, nothing
 is linked. Code: `identity.merge.GuestMergeService`; module rules: `identity.GuestMergeParticipant` beans.
 
+- **Never into a pending deletion (ADR 0007 D30):** when the account that signs in is `DELETION_PENDING`, the guest is
+  not merged: nothing moves, the guest stays an ACTIVE, separate guest (its token keeps working), the sign-in succeeds
+  and the response has no `mergedGuestUserId` (`GuestMergeService.mergeInto` returns `false`; metric
+  `qal.identity.guest_merge{outcome=refused}`).
 - **Who may link:** a valid guest access token whose account is `GUEST`/`ACTIVE` and whose session family still has an
   ACTIVE refresh token (not logged out, not revoked for reuse). Checked after the code / ID token, before any write.
   Anything else is 401 `GUEST_SESSION_INVALID` (ADR 0007 D20) with `WWW-Authenticate: Bearer error="invalid_token"`, nothing
@@ -856,10 +861,13 @@ an ordered provider list and returns a `RouteResult<T>`: `outcome` (`SUCCEEDED`,
 `AiPipeline.execute(AiCommand)` runs one explicit AI action; `AiCommand.Translate` / `Transform` (GRAMMAR_CORRECTION,
 REWRITE, TONE_ADJUST) / `Detect` mirror the contract request bodies and `AiResult.TranslateResponse` /
 `TransformResponse` / `DetectLanguageResponse` the response bodies (JSON-ready; `toString()` prints lengths only). The
-endpoints are B5.5. Must not be called inside a transaction (throws `IllegalStateException`).
+endpoints are described in "AI gateway: HTTP endpoints" below (B5.5). Must not be called inside a transaction (throws
+`IllegalStateException`).
 
 1. **Account:** only ACTIVE accounts (403 `ACCOUNT_SUSPENDED`, 403 `DELETION_PENDING` per ADR 0007 D22, 401
-   `GUEST_SESSION_INVALID` / `UNAUTHENTICATED`). `AI_PROCESSING` consent only with
+   `GUEST_SESSION_INVALID` / `UNAUTHENTICATED`); exception (D33): unmetered DETECT_LANGUAGE is also served while the
+   deletion is pending (SUSPENDED stays refused). A user whose `user_preferences.ai_processing_preference` is
+   `ON_DEVICE_ONLY` gets 403 `ON_DEVICE_ONLY_PREFERRED` for every server AI feature, before validation and any charge. `AI_PROCESSING` consent only with
    `qal.ai.pipeline.require-ai-processing-consent=true` (off: SD does not require it for explicit actions).
 2. **Validation** before any charge: text <= 5,000 code points (detect 1,000) else `INPUT_TOO_LONG`; languages active in
    `supported_languages` else `LANGUAGE_NOT_SUPPORTED`; option enums, required tone, mode per task, destination profile
@@ -934,6 +942,51 @@ Settings `qal.ai.idempotency.*`: `cache-ttl` (10m, `QAL_AI_REPLAY_CACHE_TTL`), `
 `qal.ai.idempotency.swept{table}`. Schema: `V14__ai_replay_cache.sql`. Proof: `AiReplayCacheIT` (PG18, mock provider,
 injected clock: retry within the TTL, after expiry, concurrent duplicates, other bodies, failed originals, ciphertext
 scan, sweep, deletion), `RequestFingerprintTest`.
+
+## AI gateway: HTTP endpoints (B5.5, ADR 0017 "HTTP endpoints (B5.5)")
+
+`aigateway.AiController` serves the contract operations `translateText` (`POST /api/v1/ai/translate`), `transformText`
+(`POST /api/v1/ai/transform`: GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST), `detectLanguage`
+(`POST /api/v1/ai/detect-language`) and `getAiCapabilities` (`GET /api/v1/ai/capabilities`). The contract has no
+`/grammar` or `/rewrite`: they are tasks of `/transform`. `/transliterate` exists only as the partner operation
+`/partner/v1/transliterate` (it needs the server-side keyboard core, a later step) and is **not built**.
+
+- **Mapping:** body bytes -> `AiRequestParser` -> `AiCommand` (`Translate` / `Transform` / `Detect`) -> `AiPipeline.execute`
+  -> the `AiResult` record as the response (200, `Cache-Control: no-store`). `Idempotency-Key` is required (a UUID) on
+  translate and transform; detect needs none. `X-Client-Surface` (KEYBOARD | COMPANION) sets the surface. Accepted and
+  ignored for now: `saveToHistory`, `applyStyleProfile`, `options.explainIn`, `options.sourceRomanization`. The tasks
+  SUMMARIZE, EXPLAIN_TEXT and SCRIPT_CONVERSION answer 400 `VALIDATION_FAILED` (`NOT_AVAILABLE` on `task`). SSE streaming
+  (`Accept: text/event-stream`) is not implemented (406); `capabilities` says `supportsStreaming: false`.
+- **Bodies are read by hand** (`byte[]` + `AiRequestParser`), not bound by the framework: a binding error quotes the
+  rejected value ("... from String "<text>""), and the framework logs resolved exceptions at DEBUG. Every parse failure is
+  a static 400 `VALIDATION_FAILED` naming the field only (`MALFORMED_REQUEST_BODY` for syntax errors). The log-scrub IT
+  runs with the Spring web loggers at DEBUG and caught exactly this.
+- **Errors** are the pipeline's `ApiException`s written by the global handler (ProviderException outcomes were already
+  mapped by the router to contract codes): 400 VALIDATION_FAILED / INPUT_TOO_LONG / LANGUAGE_NOT_SUPPORTED, 401
+  UNAUTHENTICATED / GUEST_SESSION_INVALID, 403 ACCOUNT_SUSPENDED / DELETION_PENDING / FEATURE_NOT_ENTITLED /
+  CONSENT_REQUIRED / ON_DEVICE_ONLY_PREFERRED, 409 IDEMPOTENCY_KEY_REUSED / REQUEST_IN_PROGRESS (+ `Retry-After`), 422
+  OUTPUT_GUARDRAIL_FAILED / CONTENT_REJECTED, 429 QUOTA_EXCEEDED (extensions `featureCode`, `resetAt`, ...) / RATE_LIMITED,
+  503 PROVIDER_UNAVAILABLE / PROVIDER_TIMEOUT / LANGUAGE_PAIR_UNAVAILABLE / ZERO_RETENTION_UNAVAILABLE. Anything else is an
+  opaque 500 `INTERNAL_ERROR`.
+- **Cancellation** (`AiRequestCancelledException`: the calling thread was interrupted, reservation already released,
+  D29): the response is an empty **499** (not a contract status; nobody is listening) and the thread's interrupt flag is
+  cleared. Note that a plain servlet container does not interrupt the request thread when the client disconnects; the
+  interrupt comes from whoever cancels the thread (shutdown, a future async wrapper). Until then a vanished client's
+  request completes and is charged once; the client's retry with the same key is answered from the replay cache.
+- **Rate limits** (`platform.ratelimit`, per user, fixed window, in memory): `ai.translate.user` 30/min,
+  `ai.transform.user` 30/min, `ai.detect.user` 60/min, `ai.capabilities.client` 120/min (per user, or per remote address
+  when anonymous). 429 `RATE_LIMITED` with `Retry-After`; translate and transform 200s carry `RateLimit-*` headers.
+- **`GET /ai/capabilities`** (bearer optional): the active providers' enabled BETA/PRODUCTION capabilities for the five
+  served features, one item per (feature, source, destination) with the best tier, `execution: SERVER`,
+  `supportsStreaming: false`, `maxInputCharacters` = min(capability, contract limit). A signed-in caller sees only what
+  its plan includes; nothing when the account may not use server AI (SUSPENDED, MERGED...) or prefers `ON_DEVICE_ONLY`;
+  only DETECT_LANGUAGE while the deletion is pending. `no-store`, private.
+- **Privacy:** metadata only (`ai_requests`, ledger); nothing in this layer logs, counts or tags text.
+  Proof: `AiControllerTest` (contract validation of every operation and error mapping, mocked pipeline),
+  `AiControllerCancelTest`, `AiEndpointsIT` (PG18, mock providers, full stack through HTTP) including the log scrub:
+  distinctive input and provider output text must not appear in any log line (web loggers at DEBUG, exception class and
+  message included), Problem body, metric name or tag, or any column of any table (plaintext or the hex of its bytes,
+  covering `ai_requests`, `usage_events`, `usage_reservations`, `outbox_events`, `audit_events`, the replay cache).
 
 ## Contract tests
 

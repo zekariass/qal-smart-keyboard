@@ -613,6 +613,49 @@ class AiPipelineIT {
 		assertMatchesContract("/api/v1/ai/detect-language", r);
 	}
 
+	/** ADR 0007 D33: detection survives a pending deletion, is refused for SUSPENDED; metered features stay refused. */
+	@Test
+	void detectLanguageWorksWhileTheDeletionIsPendingButNotWhenSuspended() {
+		UUID pending = user("DELETION_PENDING");
+		AiResult.DetectLanguageResponse r = (AiResult.DetectLanguageResponse) pipeline
+				.execute(new AiCommand.Detect(Caller.of(pending, null), UserText.of(SECRET_AM), List.of()));
+		assertThat(r.languages().get(0).languageCode()).isEqualTo("am");
+		assertThat(requests(pending)).singleElement()
+				.satisfies(row -> assertThat(row.get("request_status")).isEqualTo("SUCCEEDED"));
+		assertThatThrownBy(() -> pipeline.execute(AiCommand.Transform.of(Caller.of(pending, key()),
+				AiFeature.GRAMMAR_CORRECTION, SECRET_AM, "am"))).isInstanceOfSatisfying(ApiException.class,
+						e -> assertThat(e.code()).isEqualTo(ApiErrorCode.DELETION_PENDING));
+
+		UUID suspended = user("SUSPENDED");
+		assertThatThrownBy(() -> pipeline.execute(new AiCommand.Detect(Caller.of(suspended, null),
+				UserText.of(SECRET_AM), List.of()))).isInstanceOfSatisfying(ApiException.class,
+						e -> assertThat(e.code()).isEqualTo(ApiErrorCode.ACCOUNT_SUSPENDED));
+	}
+
+	/** ADR 0007 D33: the ON_DEVICE_ONLY preference is enforced server-side for every AI feature, before any charge. */
+	@Test
+	void onDeviceOnlyPreferenceRefusesEveryServerFeatureWithoutCharging() {
+		UUID user = user("ACTIVE");
+		jdbc.update("INSERT INTO user_preferences (user_id, ai_processing_preference) VALUES (?, 'ON_DEVICE_ONLY')",
+				user);
+		int calls = mock.callCount();
+		String k = key();
+		AiCommand[] commands = { AiCommand.Translate.of(Caller.of(user, k), SECRET, "en", "om"),
+				AiCommand.Transform.of(Caller.of(user, key()), AiFeature.REWRITE, SECRET, "en"),
+				new AiCommand.Detect(Caller.of(user, null), UserText.of(SECRET), List.of()) };
+		for (AiCommand c : commands) {
+			assertThatThrownBy(() -> pipeline.execute(c)).isInstanceOfSatisfying(ApiException.class, e -> {
+				assertThat(e.code()).isEqualTo(ApiErrorCode.ON_DEVICE_ONLY_PREFERRED);
+				assertThat(e.status().value()).isEqualTo(403);
+			});
+		}
+		assertThat(mock.callCount()).isEqualTo(calls);
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM usage_reservations WHERE user_id = ?", Long.class, user))
+				.isZero();
+		jdbc.update("UPDATE user_preferences SET ai_processing_preference = 'PREFER_ON_DEVICE' WHERE user_id = ?", user);
+		assertThat(pipeline.execute(AiCommand.Translate.of(Caller.of(user, k), SECRET, "en", "om"))).isNotNull();
+	}
+
 	@Test
 	void theTransactionRuleIsEnforced() {
 		org.springframework.transaction.support.TransactionTemplate tx = new org.springframework.transaction.support.TransactionTemplate(

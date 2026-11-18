@@ -53,7 +53,11 @@ refresh token can never become a registered session; the event below is publishe
 
 ### Existing account: move the guest's data, then shred
 In the sign-in transaction, after the target was signed in (status rules unchanged: suspended 403, deleted/merged 401,
-in which case the guest is untouched):
+in which case the guest is untouched). **A target whose deletion is pending is never a merge target (ADR 0007 D30,
+B5.5 follow-up):** its data is about to be purged, and the guest's would go with it. `GuestMergeService.mergeInto` locks
+the target, sees `DELETION_PENDING`, writes nothing and returns `false`; the sign-in succeeds without linking (no
+`mergedGuestUserId`, no event, metric `outcome=refused`) and the guest stays an ACTIVE guest with its own session.
+If the user cancels the deletion, a later sign-in with the guest token can merge normally.
 1. Lock the target row.
 2. Every `identity.GuestMergeParticipant` bean moves its module's rows, in `mergeOrder()` order (devices first). Each
    joins the transaction, keeps row ids, re-encrypts ciphertext with `UserDataEncryption.reencrypt/reencryptRow`
