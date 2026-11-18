@@ -43,6 +43,22 @@ class NoNetworkTest {
         assertTrue(!manifest.contains("android.permission.INTERNET"))
     }
 
+    /**
+     * A2.5: the AI toolbar's network side lives in `:ai-client`; `:ime` only defines the `AiActions`
+     * port. `:ime` must not depend on the HTTP modules, directly (its build file) or by import.
+     */
+    @Test fun imeDoesNotDependOnTheNetworkModules() {
+        val build = File(androidRoot(), "ime/build.gradle.kts").readText()
+        for (dep in listOf("project(\":api\")", "project(\":ai-client\")", "project(\":sync\")", "project(\":packs-sync\")", "okhttp", "libs.okhttp")) {
+            assertTrue("ime depends on $dep", !build.contains(dep))
+        }
+        val imports = File(androidRoot(), "ime/src/main").walkTopDown().filter { it.extension == "kt" }
+            .flatMap { f -> f.readLines().filter { it.startsWith("import com.qalsmartkeyboard.") }.map { "${f.name}: $it" } }
+            .filter { it.contains("qalsmartkeyboard.api") || it.contains("aiclient") || it.contains("qalsmartkeyboard.sync") || it.contains("packsync") }
+            .toList()
+        assertTrue("network module imports: $imports", imports.isEmpty())
+    }
+
     @Test fun appManifestRequestsInternetForTheApiClient() {
         val manifest = File(androidRoot(), "app/src/main/AndroidManifest.xml").readText()
         assertTrue(manifest.contains("android.permission.INTERNET"))

@@ -157,5 +157,18 @@ class FakeEditor(initial: String = "") : EditorOps {
 
     override fun performEditorAction(actionId: Int) { actions += actionId }
 
+    override fun getSelectedText(): CharSequence? {
+        calls += "getSelectedText"
+        return if (selStart != selEnd) text.substring(minOf(selStart, selEnd), maxOf(selStart, selEnd)) else null
+    }
+
+    override fun setSelection(start: Int, end: Int): Boolean {
+        calls += "setSelection"
+        selStart = start
+        selEnd = end
+        report()
+        return true
+    }
+
     override fun getCursorCapsMode(reqModes: Int): Int = 0
 }

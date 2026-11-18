@@ -32,7 +32,17 @@ data class InputProfile(
     val enterAction: EnterAction,
     /** Auto-capitalisation request bits (`TYPE_TEXT_FLAG_CAP_*`); 0 when not applicable. */
     val capsFlags: Int,
+    /** `inputType == TYPE_NULL`: the host has no text model (terminals, custom views). */
+    val noTextModel: Boolean = false,
 ) {
+    /**
+     * The AI toolbar (A2.5) is offered here: plain text fields only, so never password, email, URI,
+     * number or phone fields, never where the host asked for no personalised learning (incognito),
+     * and never where the editor has no text model to read from or write to.
+     */
+    val allowsAi: Boolean
+        get() = kind == FieldKind.TEXT && learningAllowed && !noTextModel
+
     /**
      * Words committed here may be learned (SD 7.4): plain text fields that did not ask for no
      * personalised learning (incognito). Password, email, URI, number and phone fields never learn.
@@ -117,7 +127,7 @@ data class InputProfile(
                 0
             }
 
-            return InputProfile(kind, multiline, learning, enter, caps)
+            return InputProfile(kind, multiline, learning, enter, caps, noTextModel = inputType == InputType.TYPE_NULL)
         }
     }
 }
