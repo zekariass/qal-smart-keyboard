@@ -88,7 +88,7 @@ shredded with the guest. A KMS failure fails the sign-in (500, nothing committed
 | `user_history_items` | All move, input/output re-encrypted, expiry unchanged. |
 | `data_export_requests` | Stays (an export of the guest; expires on its own). |
 | `user_deletion_requests` | Not applicable: a guest with an open request is not `ACTIVE`, so it is not mergeable. |
-| `user_dictionary_entries` (languages) | Live entries move, word re-encrypted, **target wins** on `(language, word_hmac)` incl. its tombstones; new `sync_version`s after the target's highest; guest tombstones and losers deleted. `word_hmac` copied unchanged (see Open). |
+| `user_dictionary_entries` (languages) | Live entries move, word re-encrypted, **target wins** on `(language, word_hmac)` incl. its tombstones; new `sync_version`s after the target's counter; guest tombstones and losers deleted. **B3.6:** each moved word is decrypted as the guest, its `word_hmac` recomputed under the target's dictionary key (created if absent) and the conflict is decided on the recomputed value; the guest's sync-state and applied-change rows are deleted (ADR 0018). |
 | `term_suggestions.submitted_by_user_id` | Re-attributed to the target. `reviewed_by_user_id`: admins only. |
 | `usage_counters` (usage) | Carry-over, see below. Guest counters stay. |
 | `usage_events` | Append-only ledger keyed by subject id; stays with the guest. |
@@ -168,8 +168,7 @@ at-most-once merge are documented on `otp/verify`, `oauth/{provider}` and `AuthS
 ## Open
 - B3.4: if the Android app-rule HMAC key is per account, moved rules never match on the target's devices; the client
   must re-upload them (or the key must be per person, not per account).
-- B3.6: when the per-user dictionary HMAC key (ADR 0007 D2) exists, the dictionary participant must recompute
-  `word_hmac` for moved words under the target's key and compare conflicts on it.
+- ~~B3.6: dictionary `word_hmac` recompute~~ Done in B3.6 (ADR 0018): moved words are re-hashed under the target's key.
 - B4.2: the metering engine must count a carried-over counter whose window overlaps (but differs from) the window it
   computes for the target (different time zone or plan period).
 - Consent versions: a guest's acceptance of a newer `TERMS_ACCEPTANCE` version does not replace the target's older

@@ -14,7 +14,8 @@ import com.qalsmartkeyboard.identity.UserDeletionParticipant;
  * Account deletion (B6.2, ADR 0015) for the languages tables:
  * <ul>
  * <li>{@code user_dictionary_entries} (personal dictionary; the words are already crypto-shredded, but the word HMACs
- * would still allow a dictionary guess): deleted, tombstones included.</li>
+ * would still allow a dictionary guess): deleted, tombstones included. With them go the dictionary HMAC key row
+ * ({@code user_dictionary_sync_state}, ciphertext under the shredded data key, B3.6) and the applied-change ids.</li>
  * <li>{@code term_suggestions.submitted_by_user_id}: detached ({@code NULL}, what the foreign key's
  * {@code ON DELETE SET NULL} prescribes). The suggested term was a contribution to the shared catalogue under
  * {@code COMMUNITY_CONTRIBUTION} consent; it stays as catalogue data, no longer linked to the person.</li>
@@ -40,11 +41,15 @@ class DictionaryDeletion implements UserDeletionParticipant {
 	public int purgeUser(UUID userId, Instant now) {
 		int words = jdbc.sql("DELETE FROM user_dictionary_entries WHERE user_id = :user").param("user", userId)
 				.update();
+		int ledger = jdbc.sql("DELETE FROM user_dictionary_applied_changes WHERE user_id = :user").param("user", userId)
+				.update();
+		int state = jdbc.sql("DELETE FROM user_dictionary_sync_state WHERE user_id = :user").param("user", userId)
+				.update();
 		int suggestions = jdbc
 				.sql("UPDATE term_suggestions SET submitted_by_user_id = NULL WHERE submitted_by_user_id = :user")
 				.param("user", userId).update();
-		log.info("Account deletion {}: {} dictionary entries deleted, {} term suggestions detached", userId, words,
-				suggestions);
-		return words + suggestions;
+		log.info("Account deletion {}: {} dictionary entries, {} applied-change ids and {} key row(s) deleted, {} term"
+				+ " suggestions detached", userId, words, ledger, state, suggestions);
+		return words + ledger + state + suggestions;
 	}
 }

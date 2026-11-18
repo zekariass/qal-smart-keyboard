@@ -248,6 +248,22 @@ class GuestMergeIT {
 				+ "WHERE event_type = 'identity.guest.merged' AND payload->>'guestUserId' = ?", guest.toString());
 	}
 
+	byte[] targetDictionaryKey;
+
+	/** The documented word hash, implemented independently of the service: HMAC-SHA256(key, domain 0 language 0 word). */
+	static String dictionaryHmac(byte[] key, String language, String nfcWord) {
+		try {
+			javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+			mac.init(new javax.crypto.spec.SecretKeySpec(key, "HmacSHA256"));
+			byte[] input = ("qal.dictionary.word.v1 " + language + " " + nfcWord)
+					.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+			return java.util.HexFormat.of().formatHex(mac.doFinal(input));
+		}
+		catch (java.security.GeneralSecurityException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
 	static String hmac(char c) {
 		return String.valueOf(c).repeat(64);
 	}
@@ -419,22 +435,34 @@ class GuestMergeIT {
 				INSERT INTO user_app_destination_rules (id, user_id, app_package_hmac, destination_language_id)
 				VALUES (?, ?, ?, ?)
 				""", ruleToLanguage, g, hmac('c'), ti);
-		// dictionary: "selam" moves; a word the target already has (same HMAC) stays the target's
+		// dictionary: "selam" moves (its HMAC is recomputed under the target's key); a word the target already has
+		// (same word, same language) stays the target's
+		byte[] dictionaryKey = new byte[32];
+		ThreadLocalRandom.current().nextBytes(dictionaryKey);
+		EncryptedValue sealedKey = encryption.encrypt(t, EncryptionContext.of("user_dictionary_sync_state",
+				"key_ciphertext", t), dictionaryKey);
+		jdbc.update("INSERT INTO user_dictionary_sync_state (user_id, key_ciphertext, key_version, sync_counter) "
+				+ "VALUES (?, ?, ?, 7)", t, sealedKey.ciphertext(), sealedKey.keyVersion());
+		targetDictionaryKey = dictionaryKey;
+		UUID targetWord = UUID.randomUUID();
 		jdbc.update("""
 				INSERT INTO user_dictionary_entries (id, user_id, language_id, word_ciphertext, word_hmac, key_version,
 				                                     sync_version)
 				VALUES (?, ?, ?, ?, ?, ?, 7)
-				""", UUID.randomUUID(), t, am, seal(t, "x", "y", UUID.randomUUID(), "x").ciphertext(), hmac('2'), 1);
+				""", targetWord, t, am, seal(t, "user_dictionary_entries", "word_ciphertext", targetWord, "ከፍተኛ")
+				.ciphertext(), dictionaryHmac(dictionaryKey, "am", "ከፍተኛ"), 1);
 		UUID word = UUID.randomUUID();
 		EncryptedValue selam = seal(g, "user_dictionary_entries", "word_ciphertext", word, "ሰላም");
 		jdbc.update("""
 				INSERT INTO user_dictionary_entries (id, user_id, language_id, word_ciphertext, word_hmac, key_version)
 				VALUES (?, ?, ?, ?, ?, ?)
 				""", word, g, am, selam.ciphertext(), hmac('1'), selam.keyVersion());
+		UUID duplicate = UUID.randomUUID();
 		jdbc.update("""
 				INSERT INTO user_dictionary_entries (id, user_id, language_id, word_ciphertext, word_hmac, key_version)
 				VALUES (?, ?, ?, ?, ?, ?)
-				""", UUID.randomUUID(), g, am, seal(g, "x", "y", UUID.randomUUID(), "x").ciphertext(), hmac('2'), 1);
+				""", duplicate, g, am, seal(g, "user_dictionary_entries", "word_ciphertext", duplicate, "ከፍተኛ")
+				.ciphertext(), hmac('2'), 1);
 		// history
 		UUID historyId = UUID.randomUUID();
 		EncryptedValue input = seal(g, "user_history_items", "input_ciphertext", historyId, "እንደምን ነህ");
@@ -555,10 +583,15 @@ class GuestMergeIT {
 		Map<String, Object> entry = jdbc.queryForMap(
 				"SELECT user_id, sync_version, word_ciphertext FROM user_dictionary_entries WHERE id = ?", word);
 		assertThat(entry).containsEntry("user_id", t).containsEntry("sync_version", 8L);
+		assertThat(jdbc.queryForObject("SELECT word_hmac FROM user_dictionary_entries WHERE id = ?", String.class, word))
+				.isEqualTo(dictionaryHmac(targetDictionaryKey, "am", "ሰላም"));
+		assertThat(jdbc.queryForObject("SELECT sync_counter FROM user_dictionary_sync_state WHERE user_id = ?",
+				Long.class, t)).isEqualTo(8L);
+		assertThat(count("SELECT count(*) FROM user_dictionary_entries WHERE id = ?", duplicate)).isZero();
 		assertThat(open(t, "user_dictionary_entries", "word_ciphertext", word, (byte[]) entry.get("word_ciphertext")))
 				.isEqualTo("ሰላም");
 		assertThat(count("SELECT count(*) FROM user_dictionary_entries WHERE user_id = ? AND word_hmac = ?", t,
-				hmac('2'))).isOne();
+				dictionaryHmac(targetDictionaryKey, "am", "ከፍተኛ"))).isOne();
 		// history: moved and re-encrypted
 		Map<String, Object> history = jdbc.queryForMap(
 				"SELECT user_id, input_ciphertext, output_ciphertext FROM user_history_items WHERE id = ?", historyId);
@@ -570,7 +603,7 @@ class GuestMergeIT {
 		// nothing personal is left on the guest (consents are an append-only record and stay)
 		for (String table : List.of("user_preferences", "user_typing_languages", "user_style_profiles",
 				"user_destination_profiles", "user_app_destination_rules", "user_dictionary_entries",
-				"user_history_items", "glossaries")) {
+				"user_dictionary_sync_state", "user_dictionary_applied_changes", "user_history_items", "glossaries")) {
 			assertThat(count("SELECT count(*) FROM " + table + " WHERE user_id = ?", g)).as(table).isZero();
 		}
 		// consents: latest decision per code of the target
