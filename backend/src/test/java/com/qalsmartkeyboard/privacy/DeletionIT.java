@@ -330,7 +330,8 @@ class DeletionIT {
 			"user_app_destination_rules", "user_app_rule_revisions", "user_app_rule_keys", "user_dictionary_entries",
 			"user_dictionary_sync_state", "user_dictionary_applied_changes", "user_history_items", "data_export_requests",
 			"glossaries", "usage_counters", "usage_reservations",
-			"user_feature_overrides", "ai_feedback", "organization_members", "user_admin_roles", "voice_jobs");
+			"user_feature_overrides", "ai_feedback", "organization_members", "user_admin_roles", "voice_jobs",
+			"ai_request_fingerprints", "ai_replay_cache");
 
 	/**
 	 * Data in every per-user table and every encrypted column: through the API where a writer exists (consents, the
@@ -419,6 +420,21 @@ class DeletionIT {
 				VALUES (?, ?, ?, 'TRANSLATE', -1, ?, 1, ?)
 				""", feedback, UUID.randomUUID(), u, comment.ciphertext(), feedbackConsent);
 		sealed.add(comment);
+		// AI idempotency (B5.4): a request fingerprint and a replay cache entry, both sealed for the user
+		UUID aiRequest = UUID.randomUUID();
+		Sealed fingerprint = seal(u, "ai_request_fingerprints", "fingerprint_ciphertext", aiRequest, "digest");
+		jdbc.update("""
+				INSERT INTO ai_request_fingerprints (request_id, user_id, fingerprint_ciphertext, key_version, created_at,
+				                                     expires_at)
+				VALUES (?, ?, ?, 1, now(), now() + interval '24 hours')
+				""", aiRequest, u, fingerprint.ciphertext());
+		Sealed replay = seal(u, "ai_replay_cache", "response_ciphertext", aiRequest, "{\"translatedText\":\"Selam\"}");
+		jdbc.update("""
+				INSERT INTO ai_replay_cache (request_id, user_id, response_ciphertext, key_version, created_at, expires_at)
+				VALUES (?, ?, ?, 1, now(), now() + interval '10 minutes')
+				""", aiRequest, u, replay.ciphertext());
+		sealed.add(fingerprint);
+		sealed.add(replay);
 		// glossary with an entry, a term suggestion, an attestation nonce
 		UUID glossary = UUID.randomUUID();
 		jdbc.update("INSERT INTO glossaries (id, user_id, name, source_language_id, target_language_id) "

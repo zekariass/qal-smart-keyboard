@@ -35,6 +35,7 @@ public interface UserDeletionParticipant {
 	int USAGE = 500;
 	int GLOSSARIES = 600;
 	int ENTITLEMENTS = 700;
+	int AI_GATEWAY = 750;
 	/** Tables whose owning module has no code yet (privacy holds them until it does). */
 	int UNOWNED = 800;
 	int IDENTITY = 900;

@@ -73,4 +73,17 @@ class AiGatewayConfigurationTest {
 				"sk-secret-value", "");
 		assertThat(http.toString()).doesNotContain("sk-secret-value");
 	}
+
+	@Test
+	void replayCacheTtlIsCappedAtTenMinutesAndFingerprintsAreKeptADay() {
+		runner.run(ctx -> {
+			AiGatewayProperties.Idempotency i = ctx.getBean(AiGatewayProperties.class).idempotency();
+			assertThat(i.cacheTtl()).isEqualTo(java.time.Duration.ofMinutes(10));
+			assertThat(i.fingerprintRetention()).isEqualTo(java.time.Duration.ofHours(24));
+		});
+		runner.withPropertyValues("qal.ai.idempotency.cache-ttl=0s").run(ctx -> assertThat(ctx).hasNotFailed());
+		runner.withPropertyValues("qal.ai.idempotency.cache-ttl=11m").run(ctx -> assertThat(ctx).hasFailed());
+		runner.withPropertyValues("qal.ai.idempotency.fingerprint-retention=23h")
+				.run(ctx -> assertThat(ctx).hasFailed());
+	}
 }

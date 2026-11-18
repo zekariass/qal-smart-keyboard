@@ -13,9 +13,14 @@ import com.qalsmartkeyboard.usage.Reservation;
  * to do instead of calling a provider and charging again. After a successful, settled request it hands the response
  * to {@link #onCompleted} so an implementation can keep it (encrypted, at most 10 minutes) for a later replay.
  *
- * <p>The bean in this step ({@code pipeline.ReplayWithoutCache}) has no cache: in flight = {@code REQUEST_IN_PROGRESS};
- * settled = recompute without a charge; released = the original failure again (D25). B5.4 replaces the bean (it is
- * {@code @ConditionalOnMissingBean}) or wraps it.
+ * <p>Right after a <b>new</b> reservation (before any provider call) the pipeline calls {@link #onReserved}, so an
+ * implementation can remember what the key was used for and recognise the same key with another body later, even
+ * while the original is still in flight.
+ *
+ * <p>B5.3's {@code pipeline.ReplayWithoutCache} has no cache: in flight = {@code REQUEST_IN_PROGRESS}; settled =
+ * recompute without a charge; released = the original failure again (D25). The default bean since B5.4 is
+ * {@code idempotency.EncryptedReplayCache} (request fingerprints and the encrypted 10-minute replay cache, ADR 0017
+ * "Replay cache (B5.4)"); it is {@code @ConditionalOnMissingBean}.
  */
 public interface AiIdempotency {
 
@@ -40,6 +45,14 @@ public interface AiIdempotency {
 	 *                    charged once already, RELEASED = failed or cancelled without a charge)
 	 */
 	Decision onReplay(AiCommand command, Reservation reservation);
+
+	/**
+	 * A metered request reserved with a key never used before; no provider was called yet. Called outside a
+	 * transaction. An exception is logged and the request goes on (the reservation already guarantees at-most-once
+	 * charging). Default: keep nothing.
+	 */
+	default void onReserved(AiCommand command, Reservation reservation) {
+	}
 
 	/** A metered request succeeded and was settled; {@code requestId} = the reservation id. Default: keep nothing. */
 	default void onCompleted(AiCommand command, UUID requestId, AiResult result) {
