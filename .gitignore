@@ -47,3 +47,7 @@ language-data/build/
 
 # Kotlin Gradle plugin session data
 android/.kotlin/
+
+# JVM crash logs (IDE language server, Gradle/Maven forks)
+hs_err_pid*.log
+replay_pid*.log

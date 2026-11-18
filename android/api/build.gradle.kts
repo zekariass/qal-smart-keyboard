@@ -50,9 +50,9 @@ val normalizeContract = tasks.register("normalizeContract") {
 }
 
 // OpenAPI Generator "kotlin" + jvm-okhttp4 + kotlinx.serialization. The 3.1 contract is accepted
-// as is (the generator logs a "3.1 is in beta" warning). dateLibrary=string keeps timestamps as
-// ISO-8601 strings: java.time is missing below API 26 and the app's minSdk is 24, so no
-// desugaring requirement is imposed on the app. Calls are blocking (OkHttp execute); the
+// as is (the generator logs a "3.1 is in beta" warning). dateLibrary=java8 (D28, A2.2) types
+// timestamps as java.time.OffsetDateTime; the app (minSdk 24) enables core library desugaring for
+// it. Calls are blocking (OkHttp execute); the
 // wrapper in ApiCalls.kt runs them on Dispatchers.IO.
 val generateApiClient = tasks.register<GenerateTask>("generateApiClient") {
     group = "openapi"
@@ -82,7 +82,7 @@ val generateApiClient = tasks.register<GenerateTask>("generateApiClient") {
     configOptions.set(
         mapOf(
             "serializationLibrary" to "kotlinx_serialization",
-            "dateLibrary" to "string",
+            "dateLibrary" to "java8",
             "omitGradleWrapper" to "true",
         ),
     )

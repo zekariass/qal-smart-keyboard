@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /** Steps of the first-run flow, in order. */
-enum class OnboardingStep { PRIVACY, ENABLE, SELECT, LANGUAGES, TUTORIAL }
+/** ACCOUNT is optional (A2.2): typing needs no account, "Continue" always works. */
+enum class OnboardingStep { PRIVACY, ENABLE, SELECT, LANGUAGES, ACCOUNT, TUTORIAL }
 
 /** What the system says about our IME right now. */
 data class ImeStatus(val enabled: Boolean = false, val selected: Boolean = false) {
