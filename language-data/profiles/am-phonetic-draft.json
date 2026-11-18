@@ -3,19 +3,20 @@
  "formatVersion": 1,
  "language": "am",
  "profileId": "am-phonetic",
- "profileVersion": "0.1.0",
+ "profileVersion": "0.2.0",
  "status": "DRAFT",
  "foldCase": true,
  "collapseGemination": true,
  "labialMarker": "W",
+ "labialAltMarker": "w",
  "separator": "_",
- "labializedSeries": {"G": "GW", "Q": "QW", "K": "KW", "KX": "KXW", "X": "XW"},
+ "labializedSeries": {"H": "XW", "G": "GW", "Q": "QW", "K": "KW", "KX": "KXW", "X": "XW"},
  "initial": {
   "series": "GLOTTAL",
   "altSeries": ["PHARYNGEAL"],
   "overrides": [
    {"in": "a", "order": 1, "altOrders": [4]},
-   {"in": "e", "order": 6, "altOrders": [1]}
+   {"in": "e", "order": 6, "altOrders": [1, 8]}
   ]
  },
  "consonants": [
@@ -48,7 +49,23 @@
   {"in": "ch'", "series": "CH"},
   {"in": "p'", "series": "PH"},
   {"in": "ts", "series": "TS", "alt": ["TZ"]},
-  {"in": "ts'", "series": "TS", "alt": ["TZ"]}
+  {"in": "ts'", "series": "TS", "alt": ["TZ"]},
+  {"in": "x", "series": "SH"},
+  {"in": "c", "series": "C"},
+  {"in": "c'", "series": "CH"},
+  {"in": "k'", "series": "Q"},
+  {"in": "s'", "series": "TS", "alt": ["TZ"]},
+  {"in": "`", "series": "PHARYNGEAL"},
+  {"in": "`s", "series": "SZ", "alt": ["S"]},
+  {"in": "`h", "series": "X", "alt": ["H", "HH"]},
+  {"in": "`ts", "series": "TZ", "alt": ["TS"]},
+  {"in": "T", "series": "T", "alt": ["TH"]},
+  {"in": "C", "series": "C", "alt": ["CH"]},
+  {"in": "P", "series": "P", "alt": ["PH"]},
+  {"in": "S", "series": "S", "alt": ["SZ", "TS"]},
+  {"in": "K", "series": "K", "alt": ["KX"]},
+  {"in": "N", "series": "N", "alt": ["NY"]},
+  {"in": "Z", "series": "Z", "alt": ["ZH"]}
  ],
  "vowels": [
   {"in": "e", "order": 1},

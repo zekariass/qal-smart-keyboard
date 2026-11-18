@@ -38,6 +38,7 @@ struct RawProfile {
     #[serde(default)]
     collapse_gemination: bool,
     labial_marker: Option<String>,
+    labial_alt_marker: Option<String>,
     separator: Option<String>,
     #[serde(default)]
     labialized_series: BTreeMap<String, String>,
@@ -149,6 +150,9 @@ pub struct Profile {
     pub(crate) fold_case: bool,
     pub(crate) collapse_gemination: bool,
     pub(crate) labial_marker: Option<Vec<char>>,
+    /// Consonant rule (index) whose input after another consonant also offers the labialised
+    /// form as an alternative (`gwa` gives ግዋ, alternative ጓ); the default reading is unchanged.
+    pub(crate) labial_alt_rule: Option<usize>,
     pub(crate) separator: Option<char>,
     /// `(series, labiovelar series)` pairs.
     pub(crate) labialized: Vec<(usize, usize)>,
@@ -365,6 +369,17 @@ impl Profile {
             Some(m) if input_ok(m) && !inputs.contains(m) => Some(m.chars().collect()),
             Some(_) => return Err(err("invalid labialMarker")),
         };
+        let labial_alt_rule = match &raw.labial_alt_marker {
+            None => None,
+            Some(m) => match consonants.iter().position(|c| &c.input == m) {
+                Some(k) if raw.labial_marker.as_ref() != Some(m) => Some(k),
+                _ => {
+                    return Err(err(
+                        "labialAltMarker must be a consonant input other than labialMarker",
+                    ))
+                }
+            },
+        };
         let separator = match &raw.separator {
             None => None,
             Some(s) => match single_char(s) {
@@ -436,6 +451,7 @@ impl Profile {
             fold_case: raw.fold_case,
             collapse_gemination: raw.collapse_gemination,
             labial_marker,
+            labial_alt_rule,
             separator,
             labialized,
             initial_series,

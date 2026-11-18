@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 const AM_PROFILE: &str = include_str!("../../language-data/profiles/am-phonetic-draft.json");
 const TI_PROFILE: &str = include_str!("../../language-data/profiles/ti-phonetic-draft.json");
-const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.1.0.json");
-const TI_GOLDEN: &str = include_str!("golden/ti-phonetic-0.1.0.json");
+const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.2.0.json");
+const TI_GOLDEN: &str = include_str!("golden/ti-phonetic-0.2.0.json");
 
 fn profile_pack(lang: &str, version: &str, artifact: &[u8]) -> Vec<u8> {
     let mut f = fields(version);
@@ -159,7 +159,7 @@ fn source_profiles_are_valid_and_draft() {
         let info = e.translit_profile(lang.into()).unwrap();
         assert_eq!(info.status, TranslitProfileStatus::Draft);
         assert_eq!(info.profile_id, format!("{lang}-phonetic"));
-        assert_eq!(info.profile_version, "0.1.0");
+        assert_eq!(info.profile_version, "0.2.0");
     }
 }
 
@@ -236,7 +236,7 @@ fn profile_validation() {
         ("\"status\": \"DRAFT\"", "\"status\": \"FINAL\"", "status"),
         ("\"language\": \"am\"", "\"language\": \"om\"", "language"),
         (
-            "\"profileVersion\": \"0.1.0\"",
+            "\"profileVersion\": \"0.2.0\"",
             "\"profileVersion\": \"x\"",
             "semver",
         ),
@@ -269,6 +269,16 @@ fn profile_validation() {
             "\"labialMarker\": \"W\"",
             "\"labialMarker\": \"a\"",
             "marker clashes with a rule",
+        ),
+        (
+            "\"labialAltMarker\": \"w\"",
+            "\"labialAltMarker\": \"W\"",
+            "alternative marker equals the labial marker",
+        ),
+        (
+            "\"labialAltMarker\": \"w\"",
+            "\"labialAltMarker\": \"wu\"",
+            "alternative marker is not a consonant input",
         ),
         (
             "{\"in\": \"..\", \"out\": \"።\"}",
