@@ -111,7 +111,7 @@ abstract class SessionsITSupport {
 	}
 
 	static String newPhone() {
-		return "+2517" + String.format("%08d", ThreadLocalRandom.current().nextInt(100_000_000));
+		return "+2519" + String.format("%08d", ThreadLocalRandom.current().nextInt(100_000_000));
 	}
 
 	/** Phone OTP sign-in (anonymous endpoints) → session. */

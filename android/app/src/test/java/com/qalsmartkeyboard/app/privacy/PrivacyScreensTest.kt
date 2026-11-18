@@ -71,6 +71,16 @@ class PrivacyScreensTest {
         assertEquals(listOf(PrivacyRoute.DELETE), opened)
     }
 
+    @Test fun dashboardCrashReportSwitchSaysNoTypedTextAndWorksSignedOut() {
+        val changes = mutableListOf<Boolean>()
+        compose.setContent {
+            PrivacyDashboardScreen(signedOut, ConsentsState(), DeletionState(), false, {}, {}, {}, crashReportsOn = true, onCrashReports = { changes += it })
+        }
+        compose.onNodeWithText("Send crash reports — no typed text, ever").assertExists()
+        compose.onNode(isToggleable()).assertIsEnabled().performClick()
+        assertEquals(listOf(false), changes)
+    }
+
     // ---- consents
 
     @Test fun termsAndPrivacyAreAcceptedAndRequiredWithoutASwitch() {

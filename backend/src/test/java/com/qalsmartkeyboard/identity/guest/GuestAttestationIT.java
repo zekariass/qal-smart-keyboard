@@ -152,7 +152,7 @@ class GuestAttestationIT {
 	Account signUp() {
 		return transactions.execute(status -> {
 			PhoneSignIn.SignedIn in = (PhoneSignIn.SignedIn) accounts.signInWithPhone(
-					"+2517" + String.format("%08d", ThreadLocalRandom.current().nextInt(100_000_000)), true,
+					"+2519" + String.format("%08d", ThreadLocalRandom.current().nextInt(100_000_000)), true,
 					Instant.now());
 			UserAccount user = in.user();
 			IssuedSession s = issuer.issue(user, new SessionContext(null, "10.0.0.1", "it"));

@@ -123,6 +123,10 @@ fun SettingsScreen(
             Switch(checked = settings.hapticsEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(hapticsEnabled = on) } } })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Key press preview", Modifier.weight(1f))
+            Switch(checked = settings.keyPreviewEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(keyPreviewEnabled = on) } } })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Update language packs on mobile data", Modifier.weight(1f))
             Switch(
                 checked = settings.packUpdatesOnMobileData,
@@ -135,7 +139,8 @@ fun SettingsScreen(
             onValueChange = { v -> scope.launch { repository.update { it.copy(keyHeightPercent = v.toInt()) } } },
             valueRange = KeyboardSettings.KEY_HEIGHT_MIN.toFloat()..KeyboardSettings.KEY_HEIGHT_MAX.toFloat(),
         )
-        Button(onClick = { scope.launch { repository.update { KeyboardSettings.DEFAULT } } }) { Text("Reset to defaults") }
+        // A privacy decision is not a keyboard preference: "Reset to defaults" never turns crash reports back on.
+        Button(onClick = { scope.launch { repository.update { KeyboardSettings.DEFAULT.copy(crashReports = it.crashReports) } } }) { Text("Reset to defaults") }
         HorizontalDivider()
         PersonalDictionarySection()
     }

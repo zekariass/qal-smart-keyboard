@@ -79,8 +79,8 @@ bound the cost of junk). Revisit for per-country diaspora rules.
 `SmsProvider` adapters. Only `log` exists (`qal.notifications.sms.provider`, no default, refused under production-like
 profiles). It logs a masked number (`+251*******67`) and never the body. The DEV-ONLY switch
 `qal.notifications.sms.log.include-message=true` prints the body so a developer can sign in locally. Provider errors
-are rethrown without cause or message. The WireMock stubs under `infra/compose/wiremock` (`/sms/v1/messages`) are
-ready for an HTTP adapter once OI-11 picks an aggregator.
+are rethrown without cause or message. The real adapter is SMS Ethiopia (ADR 0025); its WireMock stubs
+under `infra/compose/wiremock` (`sms-ethiopia-*.json`) replaced the earlier `/sms/v1/messages` placeholder.
 
 ### Metrics and logs
 `qal.identity.otp.started{outcome,destination=ET|INTL}`, `qal.identity.otp.verified{outcome}`,
@@ -225,3 +225,9 @@ number, hash, IP or code is ever a tag or log argument. A test captures every lo
 ## Open
 - OTP SMS text is English only. Localised templates need native review (G0).
 - No consumer yet for `identity.refresh_token.reuse_detected` or `devices.device.revoked` (notifications). Guest upgrade on verify (`mergedGuestUserId`) is B2.6.
+
+## Update (D48): Ethio Telecom numbers only
+- The SMS provider accepts only Ethio Telecom mobiles (`2519XXXXXXXX`, 12 digits). Phone sign-in therefore starts a code only for numbers whose E.164 form starts with an entry of `qal.auth.phone.allowed-prefixes` (default `+2519`, comma list; widening to Safaricom Ethiopia is `+2519,+2517`, config only).
+- Refusals are 400, create no challenge and send no SMS, and still count against the per-IP start limit so the endpoint is not a free probe: `PHONE_CARRIER_NOT_SUPPORTED` for another well-formed Ethiopian mobile (`+2517XXXXXXXX`, Safaricom Ethiopia), `PHONE_REGION_NOT_SUPPORTED` for any other country. Other `+251` shapes (landline, wrong length, prefix other than 7 or 9) stay `VALIDATION_FAILED` / `INVALID_PHONE_NUMBER`, checked before the IP limit as before. The Ethiopian mobile format rule (`+251` then 9 digits starting with 9 or 7) predates D48 and was not re-verified against the ECTA numbering plan here.
+- Verify of an existing challenge is unaffected. The SMS Ethiopia adapter is separate work; the sender port is unchanged.
+- Android: fixed `+251` prefix, the user types 9 digits (leading 0 stripped); `07...`/`7...` shows the Safaricom message and non-Ethiopian input the Ethiopia-only message, both without calling the server; both server codes map to the same messages. Users outside Ethiopia or on Safaricom are pointed to Google sign-in (ADR 0009).

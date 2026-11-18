@@ -102,6 +102,8 @@ data class KeyboardSettings(
     val theme: String = ThemeIds.SYSTEM,
     /** Contract `hapticsEnabled`. */
     val hapticsEnabled: Boolean = true,
+    /** Key press preview bubble above the pressed key (never shown in password fields). Device-local. */
+    val keyPreviewEnabled: Boolean = true,
     /** Key height as a percentage of the default row height. */
     val keyHeightPercent: Int = KEY_HEIGHT_DEFAULT,
     /** Last-used native layout per language, as the IME's `LayoutKind` name (the IME interprets it). */
@@ -117,6 +119,11 @@ data class KeyboardSettings(
     val packUpdatesOnMobileData: Boolean = false,
     /** A2.3: channel asked of `GET /language-resources`. Local only. */
     val packChannel: PackChannel = PackChannel.STABLE,
+    /**
+     * ADR 0024 (ADR 0007 D47): send content-free crash reports. On by default because reports carry no typed text;
+     * the privacy dashboard turns it off. Local only, not synced, and "Reset to defaults" keeps it.
+     */
+    val crashReports: Boolean = true,
 ) {
     /** Enabled language codes in the user's order. */
     val enabledLanguages: List<String> get() = languages.filter { it.enabled }.map { it.languageCode }

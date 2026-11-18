@@ -74,7 +74,27 @@ class SettingsRepositoryTest {
         assertEquals("am", s.enabledLanguages.first())
         assertEquals(NumeralStyle.WESTERN, s.numeralStyle)
         assertTrue(s.hapticsEnabled)
+        assertTrue(s.keyPreviewEnabled)
         assertEquals(100, s.keyHeightPercent)
+        assertTrue(s.crashReports) // ADR 0024: on by default, reports carry no content
+    }
+
+    @Test fun crashReportsSwitchPersistsAcrossRestart() = runBlocking {
+        open().update { it.copy(crashReports = false) }
+        closeAll()
+        assertFalse(open().current().crashReports)
+    }
+
+    @Test fun filesWrittenBeforeCrashReportsDecodeToOn() = runBlocking {
+        // A store written by the previous version: no crash_reports key at all.
+        val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "old-crash.preferences_pb")
+        store.edit {
+            it[intPreferencesKey("schema_version")] = 1
+            it[intPreferencesKey("key_height_percent")] = 110
+        }
+        val s = SettingsRepository(store).current()
+        assertTrue(s.crashReports)
+        assertEquals(110, s.keyHeightPercent)
     }
 
     @Test fun persistedAcrossRestart() = runBlocking {
@@ -84,6 +104,7 @@ class SettingsRepositoryTest {
                 numeralStyle = NumeralStyle.ETHIOPIC,
                 theme = ThemeIds.CLASSIC_DARK,
                 hapticsEnabled = false,
+                keyPreviewEnabled = false,
                 keyHeightPercent = 115,
             )
         }
@@ -105,6 +126,7 @@ class SettingsRepositoryTest {
         assertEquals(NumeralStyle.ETHIOPIC, s.numeralStyle)
         assertEquals(ThemeIds.CLASSIC_DARK, s.theme)
         assertFalse(s.hapticsEnabled)
+        assertFalse(s.keyPreviewEnabled)
         assertEquals(115, s.keyHeightPercent)
         val am = s.language("am")!!
         assertEquals(InputMode.PHONETIC_LATIN_TO_NATIVE, am.inputMode)

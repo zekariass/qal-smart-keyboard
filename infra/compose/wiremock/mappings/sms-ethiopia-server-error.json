@@ -1,0 +1,15 @@
+{
+  "name": "sms-ethiopia: 500 for magic number 251900000500",
+  "priority": 2,
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v2/sms/send",
+    "headers": { "KEY": { "matches": ".+" } },
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.msisdn == '251900000500')]" } ]
+  },
+  "response": {
+    "status": 500,
+    "headers": { "Content-Type": "application/json; charset=utf-8" },
+    "jsonBody": { "error_message": "Internal server error" }
+  }
+}

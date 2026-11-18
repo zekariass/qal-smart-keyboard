@@ -43,6 +43,13 @@ qal:
   ai:
     mock:
       enabled: true
+    # ADR 0023: tests never pick up real vendor keys from the developer's environment; a test that needs the adapters
+    # sets a key and a local stub base URL itself.
+    openai:
+      api-key: ""
+      model: ""
+    google-translate:
+      api-key: ""
     registry-cache-ttl: 0s
     # B5.4: the replay cache sweeper (a db-scheduler task) is off in tests; AiReplayCacheIT calls the sweep directly.
     idempotency:

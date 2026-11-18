@@ -124,12 +124,14 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val NUMERALS = stringPreferencesKey("numeral_style")
         private val THEME = stringPreferencesKey("theme")
         private val HAPTICS = booleanPreferencesKey("haptics_enabled")
+        private val KEY_PREVIEW = booleanPreferencesKey("key_preview_enabled")
         private val KEY_HEIGHT = intPreferencesKey("key_height_percent")
         private val LAST_MODES = stringPreferencesKey("last_modes")
         private val WRITING_MODES = stringPreferencesKey("writing_modes")
         private val PACK_MOBILE_DATA = booleanPreferencesKey("pack_updates_mobile_data")
         private val PACK_CHANNEL = stringPreferencesKey("pack_channel")
         private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+        private val CRASH_REPORTS = booleanPreferencesKey("crash_reports")
 
         private const val FIELD = "|"
         private const val LINE = "\n"
@@ -145,9 +147,11 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[NUMERALS] = s.numeralStyle.name
             p[THEME] = s.theme
             p[HAPTICS] = s.hapticsEnabled
+            p[KEY_PREVIEW] = s.keyPreviewEnabled
             p[KEY_HEIGHT] = s.keyHeightPercent
             p[PACK_MOBILE_DATA] = s.packUpdatesOnMobileData
             p[PACK_CHANNEL] = s.packChannel.name
+            p[CRASH_REPORTS] = s.crashReports
             p[LAST_MODES] = encodeMap(s.lastModes)
             p[WRITING_MODES] = encodeMap(s.writingModes)
         }
@@ -175,12 +179,15 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 numeralStyle = enumOrNull<NumeralStyle>(p[NUMERALS]) ?: d.numeralStyle,
                 theme = ThemeIds.normalize(p[THEME]),
                 hapticsEnabled = p[HAPTICS] ?: d.hapticsEnabled,
+                keyPreviewEnabled = p[KEY_PREVIEW] ?: d.keyPreviewEnabled,
                 keyHeightPercent = p[KEY_HEIGHT] ?: d.keyHeightPercent,
                 lastModes = lastModes,
                 // Additive key (schema stays 1): files written before it decode to an empty map.
                 writingModes = decodeMap(p[WRITING_MODES]),
                 packUpdatesOnMobileData = p[PACK_MOBILE_DATA] ?: d.packUpdatesOnMobileData,
                 packChannel = enumOrNull<PackChannel>(p[PACK_CHANNEL]) ?: d.packChannel,
+                // Additive key (schema stays 1): files written before it decode to the default (on).
+                crashReports = p[CRASH_REPORTS] ?: d.crashReports,
             ).sanitized()
         }
 

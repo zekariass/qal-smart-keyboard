@@ -175,6 +175,9 @@ interface ModePreferences {
 
     val hapticsEnabled: Boolean get() = true
 
+    /** Key press preview bubbles (never in password fields, see [KeyboardController.keyPreviewsActive]). */
+    val keyPreviewEnabled: Boolean get() = true
+
     /** Key height multiplier (1.0 = default). */
     val keyHeightScale: Float get() = 1f
 }

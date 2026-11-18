@@ -7,6 +7,21 @@ UniFFI Kotlin bindings, SD 6.2), `:ime`, `:data`, `:api` (generated API client, 
 `api/README.md`), `:packs-sync` (language-pack updater, A2.3; `packs-sync/README.md`), `:sync` (settings, destination-profile, app-rule and dictionary sync, A2.4; `sync/README.md`), `:ai-client` (the keyboard's AI toolbar network side, A2.5; `ai-client/README.md`), `:billing-play`, `:billing-direct`.
 Versions live in `gradle/libs.versions.toml`; `qal.minSdk` and `qal.abis` in `gradle.properties`.
 
+## Crash reporting: Sentry (ADR 0024, ADR 0007 D47)
+
+`:app` depends on `io.sentry:sentry-android-core` 8.62.0 (no Sentry Gradle plugin: nothing is uploaded at build time).
+Sentry starts only when the build has a DSN **and** the privacy dashboard switch "Send crash reports — no typed text, ever"
+is on (`KeyboardSettings.crashReports`, default on). Without a DSN (the default: local, CI, tests) it never starts.
+
+```sh
+./gradlew :app:assemblePlayRelease -Pqal.sentryDsn=https://<key>@<org>.ingest.sentry.io/<project>
+# or qal.sentryDsn=... in android/local.properties, or env QAL_SENTRY_DSN_ANDROID
+```
+
+One init in `QalApplication` covers the companion app and the keyboard (same process); `:ime` stays network-free. No
+screenshots, view hierarchy, replay, tap/system/network breadcrumbs, tracing or logcat; exception messages are replaced by
+`[redacted]` (`app/.../crash/CrashScrubber.kt`). Details and the full list: `docs/adr/0024-sentry-crash-reporting.md`.
+
 ## Building the Rust core (A1.1)
 
 `:core-bindings` builds `../core` for `arm64-v8a`, `armeabi-v7a` and `x86_64` with `cargo-ndk`

@@ -115,6 +115,17 @@ paths:
       description: |
         Starts phone sign-in. Responds identically whether or not the number is registered.
         Rate-limited per number, IP and (when `installationId` is sent) device.
+
+        **Ethio Telecom numbers only** (ADR 0007 D48): the SMS provider accepts only
+        `+2519XXXXXXXX`. Which prefixes get a code is server configuration
+        (`qal.auth.phone.allowed-prefixes`, default `+2519`) and may be widened later without a
+        contract change. A well-formed number outside the allowed prefixes is refused with 400,
+        no code is sent and no challenge is created, but the attempt counts against the per-IP
+        limit: another Ethiopian mobile (such as Safaricom `+2517XXXXXXXX`) is
+        `PHONE_CARRIER_NOT_SUPPORTED`; a number from another country is
+        `PHONE_REGION_NOT_SUPPORTED`. Clients point those users to Google sign-in. An Ethiopian
+        number that is not a mobile number (for example a landline) is 400 `VALIDATION_FAILED`
+        with field error `INVALID_PHONE_NUMBER`.
       security:
         - {}
         - bearerAuth: []
@@ -3880,7 +3891,7 @@ components:
           description: |
             Stable machine-readable code. Clients switch on `code`, never on `title`.
             VALIDATION_FAILED, INPUT_TOO_LONG, UNAUTHENTICATED, GUEST_SESSION_INVALID, TOKEN_EXPIRED, REFRESH_TOKEN_REUSED,
-            OTP_INVALID, OTP_EXPIRED, OTP_TOO_MANY_ATTEMPTS, EMAIL_ALREADY_REGISTERED,
+            OTP_INVALID, OTP_EXPIRED, OTP_TOO_MANY_ATTEMPTS, PHONE_REGION_NOT_SUPPORTED, PHONE_CARRIER_NOT_SUPPORTED, EMAIL_ALREADY_REGISTERED,
             ATTESTATION_REQUIRED, ATTESTATION_FAILED, ACCOUNT_SUSPENDED, DELETION_PENDING,
             GUEST_NOT_ALLOWED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, NOT_ACCEPTABLE,
             UNSUPPORTED_MEDIA_TYPE, REVISION_CONFLICT, IDEMPOTENCY_KEY_REUSED,
