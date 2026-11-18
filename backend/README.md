@@ -830,9 +830,48 @@ response headers (`new ApiException(code, status, detail, errors, extensions, he
 ## Notifications: SMS (B2.1)
 
 `notifications.OtpSender` delivers OTP messages through an `SmsProvider`. **Required:** `qal.notifications.sms.provider`
-/ env `QAL_SMS_PROVIDER`. Only `log` exists (development and tests; refused under `prod`/`production`/`staging`): it
-sends nothing and logs a masked number. To see codes locally set `qal.notifications.sms.log.include-message=true`
-(DEV ONLY). The real aggregator adapter comes with OI-11 (WireMock stub: `infra/compose/wiremock`, `/sms/v1/messages`).
+/ env `QAL_SMS_PROVIDER`, no default:
+
+| Provider | Use | Notes |
+|---|---|---|
+| `sms-ethiopia` | production (ADR 0007 D48, ADR 0025) | SMS Ethiopia v2 API; allowed under `prod`/`production`/`staging` |
+| `log` | development, tests | sends nothing, logs a masked number; refused under `prod`/`production`/`staging` |
+| `capture` | development (Android local-stack test) | see below; refused under `prod`/`production`/`staging` |
+
+With `log`, set `qal.notifications.sms.log.include-message=true` (DEV ONLY) to see codes locally.
+
+**SMS Ethiopia (`provider=sms-ethiopia`, ADR 0025).** `POST {base-url}/api/v2/sms/send` with header `KEY` and
+`{"msisdn":"2519XXXXXXXX","text":"..."}`. Only `+2519` + 8 digits (Ethio Telecom) is sent; anything else is refused
+locally. Settings (`qal.notifications.sms.sms-ethiopia.*`):
+
+| Env | Property | Default | |
+|---|---|---|---|
+| `QAL_SMS_ETHIOPIA_API_KEY` | `api-key` | none | **required**: startup fails if blank; never logged (redacted in `toString`) |
+| `QAL_SMS_ETHIOPIA_BASE_URL` | `base-url` | `https://smsethiopia.com/` | must be `https` under production-like profiles; `http://localhost:8089/` for the compose WireMock |
+| `QAL_SMS_ETHIOPIA_CONNECT_TIMEOUT` | `connect-timeout` | `2s` | |
+| `QAL_SMS_ETHIOPIA_READ_TIMEOUT` | `read-timeout` | `5s` | |
+
+No retries (the user can ask for a new code after the cooldown). After a 429 with `Retry-After` (seconds) the adapter
+refuses sends locally until it elapses (capped at 5 minutes). Logs carry the outcome, the vendor error code, the HTTP
+status and the vendor message id only (never the number, the text, the vendor's `error_message` or the key). Meter
+`qal.notifications.sms.provider.responses{provider,outcome,code,alert}` next to `qal.notifications.sms.sent{provider,outcome}`;
+alert on `alert="true"`: `insufficient_balance` (vendor 10005, top up; also an ERROR log `INSUFFICIENT SMS BALANCE`),
+`provider_misconfigured` (10002 campaign inactive, 10006 sender ID not approved), `authentication_failed` (401/403),
+`integration_error` and `invalid_response`.
+
+*Testing with a real account.* A new SMS Ethiopia account has a free **Default** test campaign (100 SMS, shared sender
+`8726`, test footer) that only delivers to numbers verified (whitelisted) in the SMS Ethiopia dashboard; any other number
+fails with vendor error 10007 (`recipient_not_whitelisted`, not alertable). Create an API key in that campaign, then
+`QAL_SMS_PROVIDER=sms-ethiopia QAL_SMS_ETHIOPIA_API_KEY=...` and sign in with a whitelisted number. **Production** needs a
+paid campaign (prepaid SMS package) with a custom sender ID approved by Ethio Telecom (sends fail with 10006 while it is
+pending) and an API key created in that campaign. Keys expire: track the expiry date.
+
+*Locally without an account:* start the compose WireMock and run with `QAL_SMS_PROVIDER=sms-ethiopia
+QAL_SMS_ETHIOPIA_API_KEY=dev QAL_SMS_ETHIOPIA_BASE_URL=http://localhost:8089/`. The stubs
+(`infra/compose/wiremock/mappings/sms-ethiopia-*.json`) accept any `2519XXXXXXXX` and have magic numbers for errors
+(`+251900010005` → 10005, `+251900010007` → 10007, `+251900000429` → 429, `+251900000500` → 500). The code is not
+visible this way; use `provider=capture` to sign in locally. `SmsEthiopiaProviderTest` covers every outcome against an
+in-process WireMock; nothing in the build calls smsethiopia.com.
 
 **Dev SMS capture (ADR 0007 D28, DEV ONLY).** `provider=capture` also sends nothing; it keeps the last message per number in
 memory (max 1000 numbers, lost on restart) and logs only a masked number. With

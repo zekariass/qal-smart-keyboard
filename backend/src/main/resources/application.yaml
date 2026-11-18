@@ -45,10 +45,16 @@ qal:
         key-id: ${QAL_ENTITLEMENT_TOKEN_KEY_ID:ent-1}
         private-key: ${QAL_ENTITLEMENT_TOKEN_PRIVATE_KEY:}
         public-key: ${QAL_ENTITLEMENT_TOKEN_PUBLIC_KEY:}
-  # SMS provider (B2.1). No default: 'log' (development only, refused under prod/production/staging).
+  # SMS provider (B2.1, ADR 0025). No default: 'sms-ethiopia' (production, needs the API key), or 'log' / 'capture'
+  # (development only, refused under prod/production/staging).
   notifications:
     sms:
       provider: ${QAL_SMS_PROVIDER:}
+      sms-ethiopia:
+        api-key: ${QAL_SMS_ETHIOPIA_API_KEY:}
+        base-url: ${QAL_SMS_ETHIOPIA_BASE_URL:https://smsethiopia.com/}
+        connect-timeout: ${QAL_SMS_ETHIOPIA_CONNECT_TIMEOUT:2s}
+        read-timeout: ${QAL_SMS_ETHIOPIA_READ_TIMEOUT:5s}
   # Language packs (B3.1). Download URLs are pre-signed S3 (MinIO locally, infra/compose: bucket qal-language-packs).
   # Without credentials stored s3:// locations cannot be served (500); the prod/production/staging profiles refuse to start.
   languages:

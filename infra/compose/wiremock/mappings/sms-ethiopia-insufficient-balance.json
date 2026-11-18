@@ -1,0 +1,15 @@
+{
+  "name": "sms-ethiopia: 400 Error Code 10005 (insufficient balance) for magic number 251900010005",
+  "priority": 2,
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v2/sms/send",
+    "headers": { "KEY": { "matches": ".+" } },
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.msisdn == '251900010005')]" } ]
+  },
+  "response": {
+    "status": 400,
+    "headers": { "Content-Type": "application/json; charset=utf-8" },
+    "jsonBody": { "error_message": "Insufficient SMS balance. Error Code :: 10005" }
+  }
+}
