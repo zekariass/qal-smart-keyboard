@@ -99,20 +99,25 @@ consented feature (`DICTIONARY_SYNC`).
 | `WordLearner.kt` | Pure rules that turn committed text into learned words (`WordLearningSink`). |
 | `UserDictionary.kt` | Per-language overlay (core `Lexicon` + `Ranker`, user data only), encrypted persistence, engine sync. One instance per process (`UserDictionary.get`), shared with the settings screen. |
 
-**Learning rules** (SD 7.4): a word is learned when it is finished (space or Ethiopic wordspace after it), counted per language,
-with the previous word as a pair when a plain space separates them. Never learned: anything in password, email, URI, number and
+**Learning rules** (SD 7.4, ADR 0007 D18): a typed word is finished by a space (or the Ethiopic wordspace) after it, and is
+learned on its **second** sighting, not its first, so a one-off typo is never learned. Until then it is a pending count (at most
+2,000 words per language; the oldest is evicted), kept in the same encrypted file so a sighting before a restart still counts.
+A word already in the personal dictionary is learned at once. Counted per language, with the previous word as a pair (recorded
+only when the word itself is learned) when a plain space separates them. Never learned: anything in password, email, URI, number and
 phone fields, or in a field with `IME_FLAG_NO_PERSONALIZED_LEARNING` (incognito) (`InputProfile.learnsWords`); nothing is even
 buffered there. A Latin word typed in ABC for am/ti; tokens with digits or symbols inside (addresses, handles), all-capital
 acronyms, single letters, words over 48 characters; the word being typed when the field is left or the mode switches; text the
 user is deleting (a backspace into committed text drops the open word and the context). Words must be in the language's script
-(Ethiopic for am/ti, Latin for om/en). **Explicit add:** long-press a candidate on the strip (same field rules). **Remove:**
-the settings screen ("Personal dictionary": per-word delete and "Clear all"). Deleting forgets the user entry; shipped words stay.
+(Ethiopic for am/ti, Latin for om/en). **Explicit add:** long-press a candidate on the strip (same field rules); it is learned at
+once, not on a second sighting. **Remove:** the settings screen ("Personal dictionary": per-word delete and "Clear all"). Deleting
+forgets the user entry and any pending sightings of that word; shipped words stay. "Clear all" also clears pending sightings.
 
 **Storage:** one file per language under `noBackupFilesDir/userdict/` (a backup could not restore the Keystore key, so
-it is excluded). Content = `"QUF1"` + the core's user-dictionary bytes + the core's user-bigram bytes, encrypted by
+it is excluded). Content = `"QUF2"` + the core's user-dictionary bytes + the core's user-bigram bytes + the pending sightings (a count, then per word
+its UTF-8 length, bytes and sighting count), encrypted by
 `:data`'s `EncryptedFileStore` with AES-256-GCM (fresh 96-bit IV per write, file name bound as AAD) under a non-exportable
 Android Keystore key (`qal.userdict.v1`, no user authentication). Writes are atomic (temp file, `fsync`, rename). A missing
-file starts empty; an unreadable, undecryptable (wrong or lost key) or malformed file also starts empty, is overwritten by the
+file starts empty (a `"QUF1"` file from before pending sightings still loads); an unreadable, undecryptable (wrong or lost key) or malformed file also starts empty, is overwritten by the
 next save, and only a reason code is logged, never a word. If the Keystore cannot be used the dictionary works in memory only;
 nothing is ever written unencrypted. **Lifecycle:** `load` (and `attach` to the engine) run on the pack-loader thread after the
 packs are loaded; changes made before that are ignored. Saves are debounced (5 s) on a background thread, requested at once on
