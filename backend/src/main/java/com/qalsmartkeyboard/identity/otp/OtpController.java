@@ -7,11 +7,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.qalsmartkeyboard.identity.AuthenticatedUser;
+import com.qalsmartkeyboard.identity.merge.GuestMergeService.GuestCaller;
 import com.qalsmartkeyboard.identity.otp.OtpDtos.OtpChallengeDto;
 import com.qalsmartkeyboard.identity.otp.OtpDtos.OtpStartRequest;
 import com.qalsmartkeyboard.identity.otp.OtpDtos.OtpVerifyRequest;
@@ -57,14 +60,16 @@ class OtpController {
 	}
 
 	@PostMapping(path = "/api/v1/auth/otp/verify", consumes = MediaType.APPLICATION_JSON_VALUE)
-	ResponseEntity<AuthSessionDto> verify(@Valid @RequestBody OtpVerifyRequest body, HttpServletRequest request) {
+	ResponseEntity<AuthSessionDto> verify(@Valid @RequestBody OtpVerifyRequest body,
+			@AuthenticationPrincipal AuthenticatedUser caller, HttpServletRequest request) {
 		String deviceKey = body.device() == null ? null : body.device().installationId().toString();
 		VerifiedSignIn signIn = service.verify(body.challengeId(), body.code(), Boolean.TRUE.equals(body.ageConfirmed()),
 				request.getRemoteAddr(), deviceKey,
 				new SessionContext(null, request.getRemoteAddr(), request.getHeader(HttpHeaders.USER_AGENT),
-						body.device() == null ? null : body.device().toDeviceInfo(request.getHeader("X-App-Version"))));
+						body.device() == null ? null : body.device().toDeviceInfo(request.getHeader("X-App-Version"))),
+				GuestCaller.from(caller));
 		return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-				.body(AuthSessionDto.of(signIn.session(), signIn.user(), signIn.created()));
+				.body(AuthSessionDto.of(signIn.session(), signIn.user(), signIn.created(), signIn.mergedGuestUserId()));
 	}
 
 	/** First language tag of {@code Accept-Language} if well formed (max 35 characters as in {@code users.ui_locale}). */

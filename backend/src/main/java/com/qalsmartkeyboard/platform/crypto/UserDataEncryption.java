@@ -1,6 +1,12 @@
 package com.qalsmartkeyboard.platform.crypto;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -45,6 +51,60 @@ public interface UserDataEncryption {
 	/** UTF-8 convenience for {@link #decrypt(UUID, EncryptionContext, byte[])}. */
 	default String decryptString(UUID userId, EncryptionContext context, byte[] ciphertext) {
 		return new String(decrypt(userId, context, ciphertext), StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * Moves a value to another user or row: opens it as {@code fromUserId}/{@code from} and seals the plaintext again
+	 * for {@code toUserId}/{@code to} under the target's current key. Ciphertext is bound to its user and row (ADR 0005),
+	 * so this is the only correct way to move it (guest merge, B2.6, ADR 0010); copying the bytes would make them
+	 * unreadable. The plaintext copy is wiped before returning.
+	 *
+	 * @throws CryptoShreddedException     if the source key version or the target's keys were destroyed
+	 * @throws CiphertextRejectedException if the source value does not open as {@code fromUserId}/{@code from}
+	 * @throws KeyManagementException      if the KMS fails
+	 */
+	default EncryptedValue reencrypt(UUID fromUserId, EncryptionContext from, byte[] ciphertext, UUID toUserId,
+			EncryptionContext to) {
+		byte[] plaintext = decrypt(fromUserId, from, ciphertext);
+		try {
+			return encrypt(toUserId, to, plaintext);
+		}
+		finally {
+			Arrays.fill(plaintext, (byte) 0);
+		}
+	}
+
+	/**
+	 * {@link #reencrypt} for every ciphertext column of one row, which keeps a single {@code key_version} column: all
+	 * returned values are sealed with the same target key version (if the target's key rotates in between, the row is
+	 * sealed again). Each column keeps its context; only the user changes.
+	 *
+	 * @param contexts    one per column, as used for the source row and the target row
+	 * @param ciphertexts the source values in the same order; {@code null} entries stay {@code null}
+	 * @return the target values in the same order ({@code null} where the source was {@code null})
+	 */
+	default List<EncryptedValue> reencryptRow(UUID fromUserId, UUID toUserId, List<EncryptionContext> contexts,
+			List<byte[]> ciphertexts) {
+		if (contexts.size() != ciphertexts.size()) {
+			throw new IllegalArgumentException("one context per ciphertext");
+		}
+		for (int attempt = 0; attempt < 3; attempt++) {
+			List<EncryptedValue> sealed = new ArrayList<>(ciphertexts.size());
+			Set<Integer> versions = new HashSet<>();
+			for (int i = 0; i < ciphertexts.size(); i++) {
+				byte[] ciphertext = ciphertexts.get(i);
+				EncryptedValue value = ciphertext == null ? null
+						: reencrypt(fromUserId, contexts.get(i), ciphertext, toUserId, contexts.get(i));
+				if (value != null) {
+					versions.add(value.keyVersion());
+				}
+				sealed.add(value);
+			}
+			if (versions.size() <= 1) {
+				return Collections.unmodifiableList(sealed);
+			}
+		}
+		throw new IllegalStateException("The target's data key kept rotating during re-encryption");
 	}
 
 	/**

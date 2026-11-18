@@ -14,9 +14,14 @@ public record AuthSessionDto(String tokenType, String accessToken, Instant acces
 		UUID mergedGuestUserId, UserProfileDto user) {
 
 	public static AuthSessionDto of(IssuedSession session, UserAccount user, Boolean isNewUser) {
+		return of(session, user, isNewUser, null);
+	}
+
+	/** @param mergedGuestUserId the guest account linked by this sign-in (B2.6), or {@code null} */
+	public static AuthSessionDto of(IssuedSession session, UserAccount user, Boolean isNewUser, UUID mergedGuestUserId) {
 		return new AuthSessionDto("Bearer", session.accessToken(), session.accessTokenExpiresAt(),
-				session.refreshToken(), session.refreshTokenExpiresAt(), session.deviceId(), isNewUser, null,
-				UserProfileDto.of(user));
+				session.refreshToken(), session.refreshTokenExpiresAt(), session.deviceId(), isNewUser,
+				mergedGuestUserId, UserProfileDto.of(user));
 	}
 
 	/** Never prints the tokens. */

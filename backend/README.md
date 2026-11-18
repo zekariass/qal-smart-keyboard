@@ -29,6 +29,8 @@ String label = encryption.decryptString(userId, ctx, row.labelCiphertext());
 ```
 
 - `rotateKey(userId)` starts a new key version. Old values still decrypt, and existing rows are not re-encrypted.
+- `reencrypt(from, ctx, ciphertext, to, ctx)` / `reencryptRow(...)` move a value to another user (guest merge, B2.6):
+  decrypt and seal again for the new owner. Ciphertext is bound to its user, so copying the bytes never works.
 - `cryptoShred(userId)` (privacy, account deletion) destroys all of the user's keys. It is idempotent and joins the
   caller's transaction. Afterwards decrypt, encrypt and rotate throw `CryptoShreddedException`, and a shredded user
   never gets a new key.
@@ -261,15 +263,48 @@ Module `devices` owns `user_devices`: `GET /api/v1/devices` (`listDevices`), `PO
   unknown ids does not hit Google), and cached keys keep working through a Google outage. Any rejected token is 401
   `UNAUTHENTICATED` (generic); keys not fetchable and not cached is 503 `PROVIDER_UNAVAILABLE`.
 - **Accounts:** found or created by (`GOOGLE`, `sub`) in `user_auth_identities`, **never by e-mail** (account-takeover
-  risk; linking is B2.6). Stored: `sub`, the e-mail only when `email_verified` (on the identity row, `users.email` stays
+  risk). Stored: `sub`, the e-mail only when `email_verified` (on the identity row, `users.email` stays
   empty), the display name for new accounts. Never stored or logged: the ID token, nonce, e-mail in logs. Status rules
   as phone sign-in (suspended 403, deleted/merged 401); new accounts need `ageConfirmed: true`. A `device` member is
-  registered like on OTP verify. Guest merge is not done yet (B2.6).
+  registered like on OTP verify. A guest bearer token links the guest (B2.6, next section).
 - **Limits** (`qal.identity.oauth.limits.<name>.capacity|period`, PROVISIONAL): `exchange-per-ip` 60/1h,
   `exchange-per-device` 20/1h; checked before verification.
 - **Tests:** `JwksIdTokenVerifierTest` (fake JWKS on a loopback HTTP server: bad signature, wrong `aud`/`iss`, expired,
   unknown `kid` with refresh, alg none/HS256), `OAuthControllerTest` (contract-validated), `GoogleSignInIT`.
 - **Metrics:** `qal.identity.oauth{provider,outcome}`.
+
+## Identity: guest linking on sign-in (B2.6, ADR 0010)
+
+`POST /auth/otp/verify` and `POST /auth/oauth/{provider}` with the bearer token of a live guest link that guest to the
+account that signs in, and return `mergedGuestUserId`. Without a bearer, or with a registered account's token, nothing
+is linked. Code: `identity.merge.GuestMergeService`; module rules: `identity.GuestMergeParticipant` beans.
+
+- **Who may link:** a valid guest access token whose account is `GUEST`/`ACTIVE` and whose session family still has an
+  ACTIVE refresh token (not logged out, not revoked for reuse). Checked after the code / ID token, before any write.
+  Anything else is 401 `UNAUTHENTICATED` with `WWW-Authenticate: Bearer error="invalid_token"`, nothing written, the
+  OTP code not consumed (the client drops the guest token and retries).
+- **New phone number / Google subject: upgrade in place.** The guest row becomes the `REGISTERED` account (identity,
+  phone or display name, `age_confirmed_at`; `ageConfirmed: true` is required as for any new account). Same user id, so
+  devices, verdicts, usage, history and keys stay; `isNewUser: true`, `mergedGuestUserId` = `user.id`. The guest's own
+  session families are revoked (`ACCOUNT_MERGED`) right after the registered session is issued.
+- **Existing account: merge.** In the sign-in transaction: each module moves
+  its rows (devices, preferences, typing languages, style and destination profiles, app rules, consents (appended),
+  history, dictionary, term-suggestion attribution, current usage counters, glossaries), re-encrypting ciphertext for
+  the target (`UserDataEncryption.reencrypt`/`reencryptRow`), target wins on conflicts; unspent nonces burned; guest
+  sessions revoked (`ACCOUNT_MERGED`); guest `MERGED` with `merged_into_user_id`; guest keys crypto-shredded; then the target's session. Per-table rules: ADR 0010.
+- **Quota:** the guest's consumption in current windows (`used + reserved`) is added to the target's current counter of
+  the same feature, so signing in never resets an allowance.
+- **Exactly once:** the guest row is locked (`FOR NO KEY UPDATE`); a concurrent or replayed sign-in with the same guest
+  token gets the 401 above. Guest access tokens are checked against `users` on every request (one indexed read), so a
+  merged or upgraded guest's tokens stop working at once (registered tokens stay stateless, 15 min window).
+- **Event:** outbox `identity.guest.merged` `{guestUserId, targetUserId, mode: MERGED|UPGRADED, method, revokedSessions}`.
+  Metric `qal.identity.guest_merge{outcome,method}`. Logs carry ids only.
+- **Adding a per-user table:** extend (or add) the owning module's `GuestMergeParticipant` in the same change; ciphertext
+  is re-encrypted, never copied.
+- **Tests:** `GuestMergeIT` (contract-validated: upgrade by phone and by Google, merge with data in every table incl.
+  re-encryption, shred and quota carry-over, Google merge, 6-way race, replay, registered token, ended guest session,
+  log hygiene), `OtpControllerTest` (response field, registered token ignored, guest tokens refused without the
+  account store), `EnvelopeEncryptionServiceTest` (re-encryption).
 
 ## Security chain (B2.4, OI-P11)
 
@@ -288,6 +323,9 @@ no form/basic login) and works as a resource server for the access tokens above.
     `/actuator/health`. The `Authorization` header is ignored there.
   - `/partner/v1/**` is closed (401 `API_KEY_INVALID`) until partner API keys exist. User tokens are never accepted
     there.
+- **Guest tokens** (`accountType = GUEST`) are accepted only while the account is an `ACTIVE` guest (one primary-key
+  read per guest request, B2.6): a merged, upgraded, suspended or deleted guest's tokens are refused at once. Without
+  the account store (MVC slice tests) guest tokens are refused.
 - **Everything else**, unknown paths included, needs a valid access token. 401 is a contract Problem with correlation
   id: `TOKEN_EXPIRED` for a correctly signed but expired token, otherwise `UNAUTHENTICATED`, with
   `WWW-Authenticate: Bearer`. 403 is a `FORBIDDEN` Problem. Both are written by `platform.ProblemResponseWriter`.

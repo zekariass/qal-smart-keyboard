@@ -26,4 +26,10 @@ class DevicesConfiguration {
 		return new DeviceService(new DeviceStore(jdbc), sessions, attestations, outbox, new TransactionTemplate(transactionManager),
 				clock.getIfAvailable(Clock::systemUTC), meters.getIfAvailable());
 	}
+
+	/** The guest-merge participant for {@code user_devices} (B2.6), called by identity. */
+	@Bean
+	DeviceGuestMerge deviceGuestMerge(JdbcClient jdbc) {
+		return new DeviceGuestMerge(new DeviceStore(jdbc));
+	}
 }

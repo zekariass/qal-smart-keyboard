@@ -4,11 +4,14 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.qalsmartkeyboard.identity.AuthenticatedUser;
+import com.qalsmartkeyboard.identity.merge.GuestMergeService.GuestCaller;
 import com.qalsmartkeyboard.identity.oauth.OAuthService.Exchange;
 import com.qalsmartkeyboard.identity.oauth.OAuthService.SignedIn;
 import com.qalsmartkeyboard.identity.session.AuthSessionDto;
@@ -22,7 +25,7 @@ import jakarta.validation.constraints.Size;
 
 /**
  * {@code POST /api/v1/auth/oauth/{provider}} ({@code exchangeOAuthIdToken}). Anonymous in the contract (a presented
- * bearer token must still be valid, see {@code ApiPaths}; the guest merge belongs to B2.6).
+ * bearer token must still be valid, see {@code ApiPaths}; a guest bearer token links the guest, B2.6).
  *
  * <p>{@code provider} is the contract's enum, {@code GOOGLE} or {@code APPLE}. Only Google can be verified so far:
  * every other value, Apple included, is a 400 {@code VALIDATION_FAILED} on {@code provider}
@@ -52,7 +55,8 @@ class OAuthController {
 
 	@PostMapping(path = "/api/v1/auth/oauth/{provider}", consumes = MediaType.APPLICATION_JSON_VALUE)
 	ResponseEntity<AuthSessionDto> exchange(@PathVariable("provider") String provider,
-			@Valid @RequestBody OAuthExchangeRequest body, HttpServletRequest request) {
+			@Valid @RequestBody OAuthExchangeRequest body, @AuthenticationPrincipal AuthenticatedUser caller,
+			HttpServletRequest request) {
 		if (!"GOOGLE".equals(provider) && !"APPLE".equals(provider)) {
 			throw OAuthService.unsupported();
 		}
@@ -61,8 +65,9 @@ class OAuthController {
 				new Exchange(body.idToken(), body.nonce(), body.displayName(), Boolean.TRUE.equals(body.ageConfirmed())),
 				request.getRemoteAddr(), deviceKey,
 				new SessionContext(null, request.getRemoteAddr(), request.getHeader(HttpHeaders.USER_AGENT),
-						body.device() == null ? null : body.device().toDeviceInfo(request.getHeader("X-App-Version"))));
-		return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-				.body(AuthSessionDto.of(signedIn.session(), signedIn.user(), signedIn.created()));
+						body.device() == null ? null : body.device().toDeviceInfo(request.getHeader("X-App-Version"))),
+				GuestCaller.from(caller));
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(AuthSessionDto.of(signedIn.session(),
+				signedIn.user(), signedIn.created(), signedIn.mergedGuestUserId()));
 	}
 }

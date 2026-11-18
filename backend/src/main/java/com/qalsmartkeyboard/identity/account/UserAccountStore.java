@@ -77,6 +77,19 @@ public class UserAccountStore {
 	 * (the identity row is added then). Records the login on success.
 	 */
 	public PhoneSignIn signInWithPhone(String phoneE164, boolean ageConfirmed, Instant now) {
+		return signInWithPhone(phoneE164, ageConfirmed, now, null);
+	}
+
+	/**
+	 * As {@link #signInWithPhone(String, boolean, Instant)}, but when no account exists for the number and
+	 * {@code guestToUpgrade} is set, that guest account is <b>upgraded in place</b> (B2.6, ADR 0010) instead of a new
+	 * account being created: it becomes {@code REGISTERED} with the verified number and the {@code PHONE} identity, and
+	 * keeps its id and every row that belongs to it. {@code SignedIn.created} is then {@code true} (a registered account
+	 * was created by this sign-in). The caller has locked the guest row and checked that it is an active guest.
+	 *
+	 * @param guestToUpgrade the caller's mergeable guest account, or {@code null}
+	 */
+	public PhoneSignIn signInWithPhone(String phoneE164, boolean ageConfirmed, Instant now, UUID guestToUpgrade) {
 		Optional<UserAccount> existing = jdbc.sql("SELECT " + USER_COLUMNS + """
 				 FROM user_auth_identities i JOIN users u ON u.id = i.user_id
 				WHERE i.identity_provider = 'PHONE' AND i.provider_subject = :phone
@@ -116,6 +129,17 @@ public class UserAccountStore {
 		if (!ageConfirmed) {
 			return new PhoneSignIn.AgeConfirmationRequired();
 		}
+		if (guestToUpgrade != null) {
+			UserAccount upgraded = jdbc.sql("""
+					UPDATE users u SET account_type = 'REGISTERED', phone_e164 = :phone, phone_verified_at = :now,
+					       age_confirmed_at = COALESCE(u.age_confirmed_at, :now), last_login_at = :now, updated_at = :now
+					WHERE u.id = :id AND u.account_type = 'GUEST' AND u.account_status = 'ACTIVE' AND u.deleted_at IS NULL
+					RETURNING """ + " " + USER_COLUMNS).param("phone", phoneE164).param("now", Timestamp.from(now))
+					.param("id", guestToUpgrade).query(UserAccountStore::map).optional()
+					.orElseThrow(UserAccountStore::guestChanged);
+			insertPhoneIdentity(upgraded.id(), phoneE164, now);
+			return new PhoneSignIn.SignedIn(upgraded, true);
+		}
 		UUID userId = UUID.randomUUID();
 		UserAccount created = jdbc.sql("""
 				INSERT INTO users AS u (id, account_type, phone_e164, phone_verified_at, account_status, age_confirmed_at,
@@ -142,6 +166,19 @@ public class UserAccountStore {
 	 */
 	public IdentitySignIn signInWithIdentity(String provider, String subject, String verifiedEmail, String displayName,
 			boolean ageConfirmed, Instant now) {
+		return signInWithIdentity(provider, subject, verifiedEmail, displayName, ageConfirmed, now, null);
+	}
+
+	/**
+	 * As {@link #signInWithIdentity(String, String, String, String, boolean, Instant)}, but when no account exists for
+	 * the identity and {@code guestToUpgrade} is set, that guest account is <b>upgraded in place</b> (B2.6, ADR 0010):
+	 * it becomes {@code REGISTERED} with the identity (and the display name if it has none) and keeps its id and rows.
+	 * {@code SignedIn.created} is then {@code true}. The caller has locked the guest row and checked it.
+	 *
+	 * @param guestToUpgrade the caller's mergeable guest account, or {@code null}
+	 */
+	public IdentitySignIn signInWithIdentity(String provider, String subject, String verifiedEmail, String displayName,
+			boolean ageConfirmed, Instant now, UUID guestToUpgrade) {
 		Optional<UserAccount> existing = jdbc.sql("SELECT " + USER_COLUMNS + """
 				 FROM user_auth_identities i JOIN users u ON u.id = i.user_id
 				WHERE i.identity_provider = :provider AND i.provider_subject = :subject
@@ -172,13 +209,26 @@ public class UserAccountStore {
 		if (!ageConfirmed) {
 			return new IdentitySignIn.AgeConfirmationRequired();
 		}
-		UUID userId = UUID.randomUUID();
-		UserAccount created = jdbc.sql("""
-				INSERT INTO users AS u (id, account_type, display_name, account_status, age_confirmed_at, last_login_at,
-				                        created_at, updated_at)
-				VALUES (:id, 'REGISTERED', :displayName, 'ACTIVE', :now, :now, :now, :now)
-				RETURNING """ + " " + USER_COLUMNS).param("id", userId).param("displayName", displayName)
-				.param("now", Timestamp.from(now)).query(UserAccountStore::map).single();
+		UserAccount created;
+		if (guestToUpgrade != null) {
+			created = jdbc.sql("""
+					UPDATE users u SET account_type = 'REGISTERED', display_name = COALESCE(u.display_name, :displayName),
+					       age_confirmed_at = COALESCE(u.age_confirmed_at, :now), last_login_at = :now, updated_at = :now
+					WHERE u.id = :id AND u.account_type = 'GUEST' AND u.account_status = 'ACTIVE' AND u.deleted_at IS NULL
+					RETURNING """ + " " + USER_COLUMNS).param("displayName", displayName)
+					.param("now", Timestamp.from(now)).param("id", guestToUpgrade).query(UserAccountStore::map)
+					.optional().orElseThrow(UserAccountStore::guestChanged);
+		}
+		else {
+			created = jdbc.sql("""
+					INSERT INTO users AS u (id, account_type, display_name, account_status, age_confirmed_at,
+					                        last_login_at, created_at, updated_at)
+					VALUES (:id, 'REGISTERED', :displayName, 'ACTIVE', :now, :now, :now, :now)
+					RETURNING """ + " " + USER_COLUMNS).param("id", UUID.randomUUID())
+					.param("displayName", displayName).param("now", Timestamp.from(now))
+					.query(UserAccountStore::map).single();
+		}
+		UUID userId = created.id();
 		jdbc.sql("""
 				INSERT INTO user_auth_identities (id, user_id, identity_provider, provider_subject, provider_email,
 				                                  created_at, last_used_at)
@@ -199,6 +249,62 @@ public class UserAccountStore {
 				VALUES (:id, 'GUEST', 'ACTIVE', :now, :now, :now)
 				RETURNING """ + " " + USER_COLUMNS).param("id", UUID.randomUUID()).param("now", Timestamp.from(now))
 				.query(UserAccountStore::map).single();
+	}
+
+	/**
+	 * Whether the account is a live guest ({@code GUEST}, {@code ACTIVE}, not deleted). Guest access tokens are honoured
+	 * only while this holds (ADR 0010): the tokens of a merged, upgraded, suspended or deleted guest stop working at
+	 * once instead of after their 15 minute lifetime. One primary-key lookup.
+	 */
+	public boolean isActiveGuest(UUID userId) {
+		return jdbc.sql("""
+				SELECT EXISTS (SELECT 1 FROM users WHERE id = :id AND account_type = 'GUEST'
+				                                     AND account_status = 'ACTIVE' AND deleted_at IS NULL)
+				""").param("id", userId).query(Boolean.class).single();
+	}
+
+	/** {@code account_type} and effective {@code account_status} ({@code DELETED} when {@code deleted_at} is set). */
+	public record AccountState(String accountType, String accountStatus) {
+
+		public boolean isActiveGuest() {
+			return "GUEST".equals(accountType) && "ACTIVE".equals(accountStatus);
+		}
+	}
+
+	/**
+	 * Locks a {@code users} row for the rest of the transaction with {@code FOR NO KEY UPDATE}. That serialises merges
+	 * and sign-ins of the account but, unlike {@code FOR UPDATE}, does not block foreign-key checks of rows that other
+	 * transactions insert for the account (such as the data key that {@code platform.crypto} creates in its own
+	 * transaction while a merge re-encrypts data for the target).
+	 *
+	 * @return the locked row's state, empty if there is no such user
+	 */
+	public Optional<AccountState> lockForMerge(UUID userId) {
+		return jdbc.sql("""
+				SELECT account_type, CASE WHEN deleted_at IS NOT NULL THEN 'DELETED' ELSE account_status END AS status
+				FROM users WHERE id = :id FOR NO KEY UPDATE
+				""").param("id", userId)
+				.query((rs, row) -> new AccountState(rs.getString("account_type"), rs.getString("status")))
+				.optional();
+	}
+
+	/**
+	 * Marks an active guest as merged into {@code targetUserId}. The row stays a {@code GUEST} (V1
+	 * {@code ck_users_merge_only_guest}); a {@code MERGED} account can never sign in again and its tokens are refused.
+	 *
+	 * @return whether the row was changed
+	 */
+	public boolean markMerged(UUID guestUserId, UUID targetUserId, Instant now) {
+		return jdbc.sql("""
+				UPDATE users SET account_status = 'MERGED', merged_into_user_id = :target, updated_at = :now
+				WHERE id = :id AND account_type = 'GUEST' AND account_status = 'ACTIVE'
+				""").param("target", targetUserId).param("now", Timestamp.from(now)).param("id", guestUserId)
+				.update() == 1;
+	}
+
+	private static IllegalStateException guestChanged() {
+		// unreachable while the caller holds the guest row lock (GuestMergeService.lockMergeableGuest)
+		return new IllegalStateException("The guest account changed during sign-in");
 	}
 
 	private void insertPhoneIdentity(UUID userId, String phoneE164, Instant now) {

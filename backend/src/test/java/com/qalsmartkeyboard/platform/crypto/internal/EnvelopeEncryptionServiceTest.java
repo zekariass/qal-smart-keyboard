@@ -62,6 +62,38 @@ class EnvelopeEncryptionServiceTest {
 		assertThat(kms.wraps.get()).isEqualTo(1);
 	}
 
+	/** B2.6: moving a value to another user re-encrypts it; the old bytes never open as the new owner. */
+	@Test
+	void reencryptMovesAValueToAnotherUserAndRowKeepingNulls() {
+		UUID guest = store.newUser();
+		UUID target = store.newUser();
+		service.encryptString(target, LABEL, "x");
+		service.rotateKey(target); // the target is on another key version (2) than the guest (1)
+		EncryptionContext signoff = EncryptionContext.of("user_style_profiles", "signoff_ciphertext", "row-1");
+		EncryptedValue label = service.encryptString(guest, LABEL, SECRET);
+		EncryptedValue sign = service.encryptString(guest, signoff, "bye");
+
+		EncryptedValue moved = service.reencrypt(guest, LABEL, label.ciphertext(), target, LABEL);
+		assertThat(moved.keyVersion()).isEqualTo(2);
+		assertThat(service.decryptString(target, LABEL, moved.ciphertext())).isEqualTo(SECRET);
+		assertRejected(() -> service.decrypt(target, LABEL, label.ciphertext()), Reason.AUTHENTICATION_FAILED);
+
+		java.util.List<EncryptedValue> row = service.reencryptRow(guest, target,
+				java.util.List.of(LABEL, signoff, LABEL),
+				java.util.Arrays.asList(label.ciphertext(), null, label.ciphertext()));
+		assertThat(row).hasSize(3);
+		assertThat(row.get(1)).isNull();
+		assertThat(row.get(0).keyVersion()).isEqualTo(row.get(2).keyVersion()).isEqualTo(2);
+		assertThat(service.decryptString(target, LABEL, row.get(0).ciphertext())).isEqualTo(SECRET);
+		// a value sealed for another row of the guest does not open under this row's context
+		assertThatThrownBy(() -> service.reencrypt(guest, LABEL, sign.ciphertext(), target, LABEL))
+				.isInstanceOf(CiphertextRejectedException.class);
+
+		service.cryptoShred(guest);
+		assertThatThrownBy(() -> service.reencrypt(guest, LABEL, label.ciphertext(), target, LABEL))
+				.isInstanceOf(CryptoShreddedException.class);
+	}
+
 	@Test
 	void ciphertextIsSelfDescribing() {
 		UUID user = store.newUser();

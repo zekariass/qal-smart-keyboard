@@ -18,6 +18,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.qalsmartkeyboard.identity.account.UserAccountStore;
+import com.qalsmartkeyboard.identity.merge.GuestMergeService;
 import com.qalsmartkeyboard.identity.session.SessionIssuer;
 import com.qalsmartkeyboard.platform.ratelimit.RateLimiter;
 
@@ -39,7 +40,7 @@ class OAuthConfiguration {
 	@Bean
 	OAuthService oAuthService(OAuthProperties properties, Environment environment, UserAccountStore accounts,
 			SessionIssuer sessions, RateLimiter limiter, JdbcClient jdbc, PlatformTransactionManager transactionManager,
-			ObjectProvider<Clock> clock, ObjectProvider<MeterRegistry> meters) {
+			ObjectProvider<Clock> clock, ObjectProvider<MeterRegistry> meters, GuestMergeService merges) {
 		Clock c = clock.getIfAvailable(Clock::systemUTC);
 		Map<String, JwksIdTokenVerifier> verifiers = new HashMap<>();
 		OAuthProperties.Google google = properties.google();
@@ -60,6 +61,6 @@ class OAuthConfiguration {
 			}
 		}
 		return new OAuthService(verifiers, accounts, sessions, limiter, properties.limits(),
-				new TransactionTemplate(transactionManager), jdbc, c, meters.getIfAvailable());
+				new TransactionTemplate(transactionManager), jdbc, c, meters.getIfAvailable(), merges);
 	}
 }

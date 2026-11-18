@@ -18,6 +18,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.qalsmartkeyboard.identity.account.UserAccountStore;
+import com.qalsmartkeyboard.identity.merge.GuestMergeService;
 import com.qalsmartkeyboard.identity.session.SessionIssuer;
 import com.qalsmartkeyboard.notifications.OtpSender;
 import com.qalsmartkeyboard.platform.ratelimit.RateLimiter;
@@ -41,10 +42,10 @@ class OtpConfiguration {
 	@Bean
 	OtpService otpService(JdbcClient jdbc, OtpProperties properties, Environment environment, UserAccountStore accounts,
 			SessionIssuer sessions, OtpSender sender, RateLimiter limiter, PlatformTransactionManager transactionManager,
-			ObjectProvider<Clock> clock, ObjectProvider<MeterRegistry> meters) {
+			ObjectProvider<Clock> clock, ObjectProvider<MeterRegistry> meters, GuestMergeService merges) {
 		return new OtpService(new OtpChallengeStore(jdbc), secrets(properties, environment, random), accounts, sessions,
 				sender, limiter, properties, new TransactionTemplate(transactionManager),
-				clock.getIfAvailable(Clock::systemUTC), random, new OtpMetrics(meters.getIfAvailable()));
+				clock.getIfAvailable(Clock::systemUTC), random, new OtpMetrics(meters.getIfAvailable()), merges);
 	}
 
 	static OtpSecrets secrets(OtpProperties properties, Environment environment, SecureRandom random) {

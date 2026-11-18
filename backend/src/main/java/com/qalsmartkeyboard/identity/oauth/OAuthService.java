@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +15,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.qalsmartkeyboard.identity.account.UserAccount;
 import com.qalsmartkeyboard.identity.account.UserAccountStore;
 import com.qalsmartkeyboard.identity.account.UserAccountStore.IdentitySignIn;
+import com.qalsmartkeyboard.identity.merge.GuestMergeService;
+import com.qalsmartkeyboard.identity.merge.GuestMergeService.GuestCaller;
 import com.qalsmartkeyboard.identity.session.IssuedSession;
 import com.qalsmartkeyboard.identity.session.SessionContext;
 import com.qalsmartkeyboard.identity.session.SessionIssuer;
@@ -35,6 +38,10 @@ import io.micrometer.core.instrument.MeterRegistry;
  * leave rows (age confirmation missing, suspended, deleted) return normally from the transaction and become Problems
  * afterwards.
  *
+ * <p><b>Guest upgrade (B2.6, ADR 0010):</b> with the bearer token of a live guest, a new identity turns the guest itself
+ * into the registered account and an existing one receives the guest's data ({@link GuestMergeService}); the response
+ * carries {@code mergedGuestUserId}. A guest token that can no longer link is a 401 and nothing is written.
+ *
  * <p><b>Account resolution:</b> by (provider, subject) in {@code user_auth_identities}, never by e-mail (see
  * {@link UserAccountStore#signInWithIdentity}). The ID token itself is never stored or logged; neither is the e-mail.
  */
@@ -53,8 +60,12 @@ class OAuthService {
 		}
 	}
 
-	/** The outcome of a successful sign-in. */
-	record SignedIn(UserAccount user, boolean created, IssuedSession session) {
+	/**
+	 * The outcome of a successful sign-in.
+	 *
+	 * @param mergedGuestUserId the guest linked by this sign-in, or {@code null}
+	 */
+	record SignedIn(UserAccount user, boolean created, IssuedSession session, UUID mergedGuestUserId) {
 	}
 
 	private final Map<String, JwksIdTokenVerifier> verifiers;
@@ -67,10 +78,12 @@ class OAuthService {
 	private final JdbcClient jdbc;
 	private final Clock clock;
 	private final MeterRegistry meters;
+	private final GuestMergeService merges;
 
 	OAuthService(Map<String, JwksIdTokenVerifier> verifiers, UserAccountStore accounts, SessionIssuer sessions,
 			RateLimiter limiter, OAuthProperties.Limits limits, TransactionTemplate transactions, JdbcClient jdbc,
-			Clock clock, MeterRegistry meters) {
+			Clock clock, MeterRegistry meters, GuestMergeService merges) {
+		this.merges = merges;
 		this.verifiers = Map.copyOf(verifiers);
 		this.accounts = accounts;
 		this.sessions = sessions;
@@ -86,8 +99,10 @@ class OAuthService {
 	/**
 	 * @param provider  {@code GOOGLE} or {@code APPLE} (the contract's enum); anything else is a 400
 	 * @param deviceKey the request's {@code device.installationId}, or {@code null}
+	 * @param guest     the caller's guest bearer token, or {@code null} (no bearer, or a registered one: not linked)
 	 */
-	SignedIn exchange(String provider, Exchange request, String clientIp, String deviceKey, SessionContext session) {
+	SignedIn exchange(String provider, Exchange request, String clientIp, String deviceKey, SessionContext session,
+			GuestCaller guest) {
 		JwksIdTokenVerifier verifier = verifiers.get(provider);
 		if (verifier == null) {
 			count(provider, "unsupported");
@@ -123,7 +138,7 @@ class OAuthService {
 		}
 		String displayName = displayName(request.displayName(), token.name());
 		Outcome outcome = transactions.execute(status -> signIn(provider, token, displayName, request.ageConfirmed(),
-				session));
+				session, guest));
 		return switch (outcome) {
 			case Outcome.Success s -> {
 				count(provider, s.signedIn().created() ? "created" : "success");
@@ -139,13 +154,16 @@ class OAuthService {
 	}
 
 	private Outcome signIn(String provider, VerifiedIdToken token, String displayName, boolean ageConfirmed,
-			SessionContext session) {
+			SessionContext session, GuestCaller guest) {
 		// one sign-in per identity at a time: a first-time double tap must not race on the unique (provider, subject)
 		jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
 				.param("key", "qal.oauth:" + provider + ":" + token.subject()).query().singleRow();
+		if (guest != null && !merges.lockMergeableGuest(guest)) {
+			return new Outcome.Failure("guest_stale", GuestMergeService.staleGuestToken());
+		}
 		Instant now = clock.instant();
 		IdentitySignIn result = accounts.signInWithIdentity(provider, token.subject(), token.email(), displayName,
-				ageConfirmed, now);
+				ageConfirmed, now, guest == null ? null : guest.userId());
 		return switch (result) {
 			case IdentitySignIn.AgeConfirmationRequired a -> new Outcome.Failure("age_required",
 					new ApiException(ApiErrorCode.VALIDATION_FAILED, HttpStatus.BAD_REQUEST, null,
@@ -156,8 +174,18 @@ class OAuthService {
 					new ApiException(ApiErrorCode.ACCOUNT_SUSPENDED, HttpStatus.FORBIDDEN, null));
 			case IdentitySignIn.Unavailable u -> new Outcome.Failure("unavailable",
 					new ApiException(ApiErrorCode.UNAUTHENTICATED, HttpStatus.UNAUTHORIZED, null));
-			case IdentitySignIn.SignedIn s -> new Outcome.Success(
-					new SignedIn(s.user(), s.created(), sessions.issue(s.user(), session)));
+			case IdentitySignIn.SignedIn s -> {
+				boolean upgraded = guest != null && s.created();
+				if (guest != null && !upgraded) {
+					merges.mergeInto(guest.userId(), s.user().id(), provider, now);
+				}
+				IssuedSession issued = sessions.issue(s.user(), session);
+				if (upgraded) {
+					merges.completeUpgrade(s.user().id(), provider, issued.sessionId());
+				}
+				yield new Outcome.Success(new SignedIn(s.user(), s.created(), issued,
+						guest == null ? null : guest.userId()));
+			}
 		};
 	}
 
