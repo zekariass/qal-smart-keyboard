@@ -137,7 +137,7 @@ Module `languages`: the five read operations `GET /languages`, `GET /languages/{
   bucket) is skipped and logged so one bad row cannot break discovery. The URL only carries the transfer: the client trusts the pack
   signature and SHA-256, never the URL.
 - **Signing keys:** every key with its status (`ACTIVE`, `RETIRING`, `REVOKED`, so clients can distrust revoked ones), public key,
-  validity window and, if present, `endorsedByKeyId`/`endorsementSignature` (V7 columns, written by B3.2 key tooling). Public
+  validity window and, if present, `endorsedByKeyId`/`endorsementSignature` (V6 columns, written by B3.2 key tooling). Public
   material only; private keys live in KMS (ADR 0007 D10).
 - **Profiles:** `ACTIVE` and `RETIRED` profiles of an active language, with `status`, so a client holding a retired code falls back
   to the newest active profile of the language (SD 10.2, F14). `DRAFT` is never listed. `rulesResourceId` is only given while that
@@ -146,7 +146,7 @@ Module `languages`: the five read operations `GET /languages`, `GET /languages/{
   (the catalogue has no column for it).
 - **Caching:** the contract defines no `ETag`/`Cache-Control`, so none is set (Spring Security's default no-cache headers stay,
   which is right for responses carrying signed URLs).
-- Migration `V7__language_resource_discovery.sql` adds `language_resources.container_size_bytes` and the two endorsement columns
+- Migration `V6__language_resource_discovery.sql` adds `language_resources.container_size_bytes` and the two endorsement columns
   of `resource_signing_keys`.
 
 ## Identity: phone OTP (B2.1, ADR 0006)
