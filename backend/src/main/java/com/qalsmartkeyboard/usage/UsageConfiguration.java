@@ -36,6 +36,13 @@ class UsageConfiguration {
 				properties.creditExpiryBatchSize());
 	}
 
+	/** Read side: {@code /me/entitlements} and {@code /me/usage} (B4.5). */
+	@Bean
+	UsageReadService usageReadService(JdbcClient jdbc, EntitlementResolver entitlements, Credits credits,
+			UsageProperties properties, ObjectProvider<Clock> clock) {
+		return new UsageReadService(jdbc, entitlements, credits, properties, clock.getIfAvailable(Clock::systemUTC));
+	}
+
 	@Bean
 	JdbcMetering metering(JdbcClient jdbc, PlatformTransactionManager transactionManager,
 			EntitlementResolver entitlements, CreditWallet wallet, UsageProperties properties,

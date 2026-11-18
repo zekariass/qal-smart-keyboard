@@ -1718,6 +1718,7 @@ paths:
                   expiresAt: '2026-11-18T08:00:00Z'
                   offlineGraceUntil: '2026-11-21T08:00:00Z'
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /api/v1/me/usage:
     get:
       tags: [Entitlements]
@@ -1736,7 +1737,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/UsageReport' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /api/v1/me/credits:
     get:
       tags: [Entitlements]
