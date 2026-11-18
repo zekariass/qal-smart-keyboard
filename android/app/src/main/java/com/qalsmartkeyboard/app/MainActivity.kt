@@ -28,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.qalsmartkeyboard.app.auth.AccountSection
@@ -41,6 +42,7 @@ import com.qalsmartkeyboard.app.auth.SignInViewModel
 import com.qalsmartkeyboard.app.auth.UpdateRequiredScreen
 import com.qalsmartkeyboard.app.auth.openStorePage
 import com.qalsmartkeyboard.app.onboarding.ImeStatusReader
+import com.qalsmartkeyboard.app.packs.PackUpdateScheduler
 import com.qalsmartkeyboard.app.onboarding.OnboardingScreen
 import com.qalsmartkeyboard.app.onboarding.OnboardingViewModel
 import com.qalsmartkeyboard.app.ui.theme.QalSmartKeyboardTheme
@@ -48,6 +50,9 @@ import com.qalsmartkeyboard.core.CoreSmoke
 import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.data.ThemeMode
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val repository by lazy { SettingsRepository.get(applicationContext) }
@@ -65,6 +70,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // A2.3: language-pack updates. The first value is the app-start check; a later change of the
+        // mobile-data switch re-queues the check with the new network constraint.
+        lifecycleScope.launch {
+            var first = true
+            repository.settings.map { it.packUpdatesOnMobileData }.distinctUntilChanged().collect { allow ->
+                PackUpdateScheduler.schedule(applicationContext, allow, replaceNow = !first)
+                first = false
+            }
+        }
         setContent {
             val settings by repository.settings.collectAsState(initial = KeyboardSettings.DEFAULT)
             // null while the stored flag loads, so neither screen flashes by mistake.

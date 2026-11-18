@@ -38,6 +38,9 @@ class VersionStore(private val file: File) {
 
     fun get(slot: String): SemVer? = highest[slot]
 
+    /** The floor of [slot] as stored text (for the update journal). */
+    fun getRaw(slot: String): String? = raw[slot]
+
     /** Raises the floor of [slot] to [version] if it is higher. Returns true if it changed. */
     fun raise(slot: String, version: String): Boolean {
         val v = SemVer.parse(version) ?: return false
@@ -46,6 +49,21 @@ class VersionStore(private val file: File) {
         highest[slot] = v
         raw[slot] = version
         return true
+    }
+
+    /**
+     * Sets the floor of [slot] to exactly [version] (null removes it), lowering it if needed. Only
+     * the update rollback uses this, to undo a floor raised by a pack that was then rolled back.
+     */
+    fun restore(slot: String, version: String?) {
+        val v = version?.let { SemVer.parse(it) }
+        if (v == null) {
+            highest.remove(slot)
+            raw.remove(slot)
+        } else {
+            highest[slot] = v
+            raw[slot] = version
+        }
     }
 
     /** Writes the store atomically. Throws [IOException] if the directory is not writable. */
