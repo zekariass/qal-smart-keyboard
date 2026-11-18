@@ -14,11 +14,16 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param sweeperEnabled     run the expiry sweeper as a db-scheduler recurring task
  * @param sweepInterval      delay between sweeper runs
  * @param sweepBatchSize     reservations examined per sweeper batch (the run continues while batches are full)
+ * @param creditExpiryEnabled run the credit lot expiry job (B4.3) as a db-scheduler recurring task
+ * @param creditExpiryInterval delay between expiry job runs (SD 15.4: daily; shorter keeps the ledger current)
+ * @param creditExpiryBatchSize lots expired per batch (the run continues while batches are full)
  */
 @ConfigurationProperties("qal.usage")
 record UsageProperties(@DefaultValue("Africa/Addis_Ababa") String defaultTimeZone,
 		@DefaultValue("15m") Duration reservationTtl, @DefaultValue("true") boolean sweeperEnabled,
-		@DefaultValue("1m") Duration sweepInterval, @DefaultValue("100") int sweepBatchSize) {
+		@DefaultValue("1m") Duration sweepInterval, @DefaultValue("100") int sweepBatchSize,
+		@DefaultValue("true") boolean creditExpiryEnabled, @DefaultValue("1h") Duration creditExpiryInterval,
+		@DefaultValue("100") int creditExpiryBatchSize) {
 
 	UsageProperties {
 		try {
@@ -34,6 +39,12 @@ record UsageProperties(@DefaultValue("Africa/Addis_Ababa") String defaultTimeZon
 		}
 		if (sweepBatchSize < 1) {
 			throw new IllegalArgumentException("qal.usage.sweep-batch-size must be positive");
+		}
+		if (creditExpiryInterval.isNegative() || creditExpiryInterval.isZero()) {
+			throw new IllegalArgumentException("qal.usage.credit-expiry-interval must be positive");
+		}
+		if (creditExpiryBatchSize < 1) {
+			throw new IllegalArgumentException("qal.usage.credit-expiry-batch-size must be positive");
 		}
 	}
 

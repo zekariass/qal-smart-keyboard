@@ -1,7 +1,6 @@
 package com.qalsmartkeyboard.usage;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -14,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import com.qalsmartkeyboard.platform.ApiErrorCode;
 import com.qalsmartkeyboard.usage.QuotaExceededException.UpgradeOption;
 
-/** The contract's QuotaExceededProblem members (SD 14.4) and the empty wallet. */
+/** The contract's QuotaExceededProblem members (SD 14.4). */
 class QuotaExceededExceptionTest {
 
 	@Test
@@ -39,17 +38,6 @@ class QuotaExceededExceptionTest {
 		QuotaExceededException q = new QuotaExceededException("TONE_ADJUST", null, BigDecimal.ZERO, List.of());
 		assertThat(q.extensions()).doesNotContainKey("resetAt").containsEntry("upgradeOptions", List.of());
 		assertThat(q.resetAt()).isNull();
-	}
-
-	@Test
-	void theEmptyWalletHasNothingAndHoldsNothing() {
-		NoCreditWallet wallet = new NoCreditWallet();
-		UUID user = UUID.randomUUID();
-		assertThat(wallet.balance(user)).isEqualByComparingTo("0");
-		assertThat(wallet.hold(user, UUID.randomUUID(), BigDecimal.ONE)).isFalse();
-		wallet.settle(user, UUID.randomUUID(), BigDecimal.ZERO, BigDecimal.ZERO);
-		assertThatThrownBy(() -> wallet.settle(user, UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO))
-				.isInstanceOf(IllegalStateException.class);
 	}
 
 	@Test
