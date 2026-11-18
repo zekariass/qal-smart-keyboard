@@ -8,6 +8,9 @@ package com.qalsmartkeyboard.ime
 enum class KeyKind {
     CHAR, SHIFT, BACKSPACE, SPACE, ENTER, GLOBE, ABC_TOGGLE, TO_SYMBOLS, TO_SYMBOLS_2, TO_LETTERS,
     FIDEL_CONSONANT, FIDEL_VOWEL,
+
+    /** Opens the emoji panel (ADR 0028); only in fields that take emoji ([InputProfile.allowsEmoji]). */
+    EMOJI,
 }
 
 /**
@@ -111,12 +114,15 @@ object Layouts {
     private fun spacer(w: Float) = Key(KeyKind.CHAR, "", "", w)
     private fun backspace(w: Float = 1.5f) = Key(KeyKind.BACKSPACE, "⌫", weight = w, description = "Delete")
     private fun enter(w: Float = 1.5f) = Key(KeyKind.ENTER, "", weight = w)
+    private fun emojiKey(profile: InputProfile, w: Float = 1f): Key? =
+        if (profile.allowsEmoji) Key(KeyKind.EMOJI, "", weight = w, description = "Emoji") else null
+
     private fun plainSpace(w: Float) = Key(KeyKind.SPACE, " ", " ", w, description = "Space")
 
     fun forPage(page: Page, profile: InputProfile, ctx: LayoutContext = LayoutContext.DEFAULT): KeyboardLayout = when (page) {
         Page.LETTERS -> letters(profile, ctx)
-        Page.SYMBOLS -> symbols1(ctx)
-        Page.SYMBOLS_2 -> symbols2(ctx)
+        Page.SYMBOLS -> symbols1(profile, ctx)
+        Page.SYMBOLS_2 -> symbols2(profile, ctx)
         Page.NUMBER -> number(profile)
     }
 
@@ -198,7 +204,8 @@ object Layouts {
                 Key(KeyKind.GLOBE, "🌐", weight = 1f, longAction = true, description = "Switch language"),
                 toggleKey(ctx),
                 commaKey(ctx),
-                spaceKey(3f, ctx),
+                emojiKey(profile, 0.9f),
+                spaceKey(if (profile.allowsEmoji) 2.75f else 3f, ctx),
                 periodKey(ctx),
                 enter(),
             )
@@ -250,11 +257,12 @@ object Layouts {
         return KeyboardLayout(Page.LETTERS, rows, rowHeightDp = 42f)
     }
 
-    private fun bottomSymbols() = listOf(
-        Key(KeyKind.TO_LETTERS, "ABC", weight = 1.5f, description = "Letters"), ch(","), plainSpace(4f), ch("."), enter(),
+    private fun bottomSymbols(profile: InputProfile) = listOfNotNull(
+        Key(KeyKind.TO_LETTERS, "ABC", weight = 1.5f, description = "Letters"), ch(","), emojiKey(profile, 1f),
+        plainSpace(if (profile.allowsEmoji) 3.5f else 4f), ch("."), enter(),
     )
 
-    private fun symbols1(ctx: LayoutContext): KeyboardLayout {
+    private fun symbols1(profile: InputProfile, ctx: LayoutContext): KeyboardLayout {
         val marks = ctx.ethiopicMarks
         val rows = buildList {
             add(digitRow(ctx))
@@ -264,19 +272,19 @@ object Layouts {
             add(chars("@#$%&-+()/"))
             add(chars("*\"':;!?~`|"))
             add(listOf(Key(KeyKind.TO_SYMBOLS_2, "=\\<", weight = 1.5f, description = "More symbols")) + chars(",._") + listOf(backspace()))
-            add(bottomSymbols())
+            add(bottomSymbols(profile))
         }
         return KeyboardLayout(Page.SYMBOLS, rows, if (rows.size > 5) 44f else 50f)
     }
 
-    private fun symbols2(ctx: LayoutContext) = KeyboardLayout(
+    private fun symbols2(profile: InputProfile, ctx: LayoutContext) = KeyboardLayout(
         Page.SYMBOLS_2,
         listOf(
             digitRow(ctx),
             chars("~`|^{}[]<>"),
             chars("=\\£€¥°©®™•"),
             listOf(Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.5f, description = "Numbers and symbols")) + chars(",._;:") + listOf(backspace()),
-            bottomSymbols(),
+            bottomSymbols(profile),
         ),
     )
 

@@ -147,6 +147,9 @@ class KeyboardSurface(context: Context) : View(context) {
         )
     }
 
+    /** The height this surface takes for the current layout: the emoji panel (which replaces it) takes the same. */
+    fun preferredHeightPx(): Int = ((controller?.layout?.rows?.size ?: 5) * rowHeight + edge * 2).toInt()
+
     // What the last full layout pass saw; a change confined to the Fidel composition state takes the cheap path.
     private var seenLayout: KeyboardLayout? = null
     private var seenShift = ShiftState.OFF
@@ -291,6 +294,10 @@ class KeyboardSurface(context: Context) : View(context) {
                 drawGlobe(canvas, p.rect.centerX(), p.rect.centerY(), min(p.rect.width(), p.rect.height()) * 0.24f)
                 continue
             }
+            if (key.kind == KeyKind.EMOJI) {
+                drawSmiley(canvas, p.rect.centerX(), p.rect.centerY(), min(p.rect.width(), p.rect.height()) * 0.26f)
+                continue
+            }
             val label = when (key.kind) {
                 KeyKind.ENTER -> enterText(c.profile.enterLabel)
                 KeyKind.SHIFT -> if (c.shift == ShiftState.LOCKED) "⇪" else "⇧"
@@ -365,15 +372,21 @@ class KeyboardSurface(context: Context) : View(context) {
         canvas.drawLine(cx - half, cy + y, cx + half, cy + y, icon)
     }
 
-    private fun enterText(l: EnterLabel) = when (l) {
-        EnterLabel.RETURN -> "⏎"
-        EnterLabel.GO -> "Go"
-        EnterLabel.SEARCH -> "Search"
-        EnterLabel.SEND -> "Send"
-        EnterLabel.NEXT -> "Next"
-        EnterLabel.PREVIOUS -> "Prev"
-        EnterLabel.DONE -> "Done"
+    /** The emoji key as a drawn smiley in the special-key label colour (no colour emoji, no font dependency). */
+    private fun drawSmiley(canvas: Canvas, cx: Float, cy: Float, r: Float) {
+        icon.color = specialText
+        icon.strokeWidth = 1.6f * d
+        canvas.drawCircle(cx, cy, r, icon)
+        fill.color = specialText
+        canvas.drawCircle(cx - r * 0.38f, cy - r * 0.25f, r * 0.12f, fill)
+        canvas.drawCircle(cx + r * 0.38f, cy - r * 0.25f, r * 0.12f, fill)
+        smile.set(cx - r * 0.55f, cy - r * 0.5f, cx + r * 0.55f, cy + r * 0.6f)
+        canvas.drawArc(smile, 25f, 130f, false, icon)
     }
+
+    private val smile = RectF()
+
+    private fun enterText(l: EnterLabel) = enterLabelText(l)
 
     /** The key under the point; taps in the gaps land on the nearest key within one row height. */
     private fun hit(x: Float, y: Float): Placed? {
@@ -688,4 +701,15 @@ class KeyboardSurface(context: Context) : View(context) {
         hidePreview()
         super.onDetachedFromWindow()
     }
+}
+
+/** The Enter key label for an editor action (shared with the emoji panel). */
+internal fun enterLabelText(l: EnterLabel) = when (l) {
+    EnterLabel.RETURN -> "⏎"
+    EnterLabel.GO -> "Go"
+    EnterLabel.SEARCH -> "Search"
+    EnterLabel.SEND -> "Send"
+    EnterLabel.NEXT -> "Next"
+    EnterLabel.PREVIOUS -> "Prev"
+    EnterLabel.DONE -> "Done"
 }

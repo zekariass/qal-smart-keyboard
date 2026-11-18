@@ -44,6 +44,13 @@ data class InputProfile(
         get() = kind == FieldKind.TEXT && learningAllowed && !noTextModel
 
     /**
+     * The emoji key and panel are offered here (ADR 0028): plain text fields only, so never password, email, URI,
+     * number or phone fields, and never where the editor has no text model to commit into.
+     */
+    val allowsEmoji: Boolean
+        get() = kind == FieldKind.TEXT && !noTextModel
+
+    /**
      * Words committed here may be learned (SD 7.4): plain text fields that did not ask for no
      * personalised learning (incognito). Password, email, URI, number and phone fields never learn.
      */
