@@ -74,6 +74,7 @@ class SettingsRepositoryTest {
         assertEquals("am", s.enabledLanguages.first())
         assertEquals(NumeralStyle.WESTERN, s.numeralStyle)
         assertTrue(s.hapticsEnabled)
+        assertTrue(s.keyPreviewEnabled)
         assertEquals(100, s.keyHeightPercent)
         assertTrue(s.crashReports) // ADR 0024: on by default, reports carry no content
     }
@@ -103,6 +104,7 @@ class SettingsRepositoryTest {
                 numeralStyle = NumeralStyle.ETHIOPIC,
                 theme = ThemeIds.CLASSIC_DARK,
                 hapticsEnabled = false,
+                keyPreviewEnabled = false,
                 keyHeightPercent = 115,
             )
         }
@@ -124,6 +126,7 @@ class SettingsRepositoryTest {
         assertEquals(NumeralStyle.ETHIOPIC, s.numeralStyle)
         assertEquals(ThemeIds.CLASSIC_DARK, s.theme)
         assertFalse(s.hapticsEnabled)
+        assertFalse(s.keyPreviewEnabled)
         assertEquals(115, s.keyHeightPercent)
         val am = s.language("am")!!
         assertEquals(InputMode.PHONETIC_LATIN_TO_NATIVE, am.inputMode)

@@ -124,6 +124,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val NUMERALS = stringPreferencesKey("numeral_style")
         private val THEME = stringPreferencesKey("theme")
         private val HAPTICS = booleanPreferencesKey("haptics_enabled")
+        private val KEY_PREVIEW = booleanPreferencesKey("key_preview_enabled")
         private val KEY_HEIGHT = intPreferencesKey("key_height_percent")
         private val LAST_MODES = stringPreferencesKey("last_modes")
         private val WRITING_MODES = stringPreferencesKey("writing_modes")
@@ -146,6 +147,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[NUMERALS] = s.numeralStyle.name
             p[THEME] = s.theme
             p[HAPTICS] = s.hapticsEnabled
+            p[KEY_PREVIEW] = s.keyPreviewEnabled
             p[KEY_HEIGHT] = s.keyHeightPercent
             p[PACK_MOBILE_DATA] = s.packUpdatesOnMobileData
             p[PACK_CHANNEL] = s.packChannel.name
@@ -177,6 +179,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 numeralStyle = enumOrNull<NumeralStyle>(p[NUMERALS]) ?: d.numeralStyle,
                 theme = ThemeIds.normalize(p[THEME]),
                 hapticsEnabled = p[HAPTICS] ?: d.hapticsEnabled,
+                keyPreviewEnabled = p[KEY_PREVIEW] ?: d.keyPreviewEnabled,
                 keyHeightPercent = p[KEY_HEIGHT] ?: d.keyHeightPercent,
                 lastModes = lastModes,
                 // Additive key (schema stays 1): files written before it decode to an empty map.

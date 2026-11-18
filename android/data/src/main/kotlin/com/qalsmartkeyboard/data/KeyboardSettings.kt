@@ -102,6 +102,8 @@ data class KeyboardSettings(
     val theme: String = ThemeIds.SYSTEM,
     /** Contract `hapticsEnabled`. */
     val hapticsEnabled: Boolean = true,
+    /** Key press preview bubble above the pressed key (never shown in password fields). Device-local. */
+    val keyPreviewEnabled: Boolean = true,
     /** Key height as a percentage of the default row height. */
     val keyHeightPercent: Int = KEY_HEIGHT_DEFAULT,
     /** Last-used native layout per language, as the IME's `LayoutKind` name (the IME interprets it). */

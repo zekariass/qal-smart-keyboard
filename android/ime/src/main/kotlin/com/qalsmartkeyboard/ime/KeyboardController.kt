@@ -40,6 +40,8 @@ class KeyboardController(
         set(value) {
             field = value
             gridCache.clear()
+            orderRows.clear()
+            pendingSeries = null
             cachedLayout = null
             applyMode()
             onChanged()
@@ -86,6 +88,31 @@ class KeyboardController(
     /** A composition (e.g. a pending Fidel consonant) is open: the vowel-order keys are live. */
     var composing: Boolean = false
         private set
+
+    /**
+     * The consonant family (`FidelKey.series_id`) whose default form is the pending composition of the
+     * two-key Fidel layout, or null. It drives the vowel-order row and the selected-consonant highlight.
+     */
+    var pendingSeries: String? = null
+        private set
+
+    private val orderRows = HashMap<String, FidelOrderRow?>()
+
+    private fun orderRow(): FidelOrderRow? {
+        val lang = effectiveMode.language
+        return if (orderRows.containsKey(lang)) orderRows[lang] else (grid(lang)?.let { FidelOrderRow(it) }).also { orderRows[lang] = it }
+    }
+
+    /** The face of the vowel-order [key] in the current state (family forms while a consonant is pending, else neutral). */
+    fun orderFace(key: Key): OrderFace =
+        orderRow()?.face(pendingSeries, key.order) ?: OrderFace(key.order, key.label, active = false)
+
+    /** [key] is the consonant key of the pending family (drawn highlighted, spoken as selected). */
+    fun isSelectedConsonant(key: Key): Boolean = key.kind == KeyKind.FIDEL_CONSONANT && key.text == pendingSeries
+
+    /** Key press previews apply: the setting is on and the field is not a password field (never echo what is typed there). */
+    val keyPreviewsActive: Boolean
+        get() = prefs.keyPreviewEnabled && profile.kind != FieldKind.PASSWORD
 
     /** The strip is shown for phonetic modes only, and never in password fields. */
     val showCandidateStrip: Boolean
@@ -203,6 +230,7 @@ class KeyboardController(
         learner.reset()
         candidates = emptyList()
         composing = false
+        pendingSeries = null
         refreshAutoCapital()
         onChanged()
     }
@@ -225,8 +253,12 @@ class KeyboardController(
                 if (shift == ShiftState.ONCE) shift = ShiftState.OFF
                 refreshAutoCapital()
             }
-            KeyKind.FIDEL_CONSONANT -> send(ComposerKey.FidelConsonant(key.text))
-            KeyKind.FIDEL_VOWEL -> send(ComposerKey.FidelVowel(key.order))
+            KeyKind.FIDEL_CONSONANT -> {
+                send(ComposerKey.FidelConsonant(key.text))
+                // The core now shows this family's default form as the composition; an unknown id leaves none open.
+                pendingSeries = if (composing) key.text else null
+            }
+            KeyKind.FIDEL_VOWEL -> if (pendingSeries != null && orderFace(key).active) send(ComposerKey.FidelVowel(key.order))
             KeyKind.SPACE -> { send(ComposerKey.Space); refreshAutoCapital() }
             KeyKind.BACKSPACE -> { send(ComposerKey.Backspace); refreshAutoCapital() }
             KeyKind.ENTER -> {
@@ -393,6 +425,7 @@ class KeyboardController(
         learner.reset()
         candidates = emptyList()
         composing = false
+        pendingSeries = null
         val m = effectiveMode
         if (!composer.setMode(m)) composer.setMode(TypingMode.abc(m.language))
     }
@@ -406,5 +439,8 @@ class KeyboardController(
         learner.observe(update, m.language, profile.learnsWords && !(m.isAbc && LanguageCatalog.isEthiopic(m.language)))
         candidates = update.candidates
         composing = update.composing.isNotEmpty()
+        // Anything that commits or cancels the composition (space, another consonant's commit, backspace, an order key,
+        // a mode switch) ends the family selection; the consonant branch of [onKey] sets it again.
+        if (!composing) pendingSeries = null
     }
 }
