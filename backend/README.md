@@ -184,6 +184,36 @@ guests included (their documents move to the account on sign-in, ADR 0010). Resp
   list when the target has none; it deletes the guest's list revision row and increments the target's list revision when a
   list moved, so a target device that cached the old document gets a `REVISION_CONFLICT`.
 
+## Destination profiles and Android app rules (B3.4, ADR 0012)
+
+`GET/POST /api/v1/me/destination-profiles`, `PUT/DELETE /api/v1/me/destination-profiles/{profileId}` and
+`GET/PUT /api/v1/me/app-destination-rules` (module `preferences`). Any valid access token, guests included. Responses are
+`Cache-Control: no-store`. V8 adds `default_style` and `glossary_id` (profiles), `is_enabled` (rules), the rules revision
+table `user_app_rule_revisions` and the per-account key table `user_app_rule_keys`.
+
+- **Label = ciphertext only.** `label_ciphertext` is `UserDataEncryption` output bound to user, key version,
+  `user_destination_profiles`, `label_ciphertext` and the row id (the id is generated before encrypting). Responses decrypt
+  for the owner; every PUT re-encrypts with a fresh nonce.
+- **Profile validation (400).** Label 1-80 characters and not blank; destination language active (`LANGUAGE_NOT_SUPPORTED`);
+  `formality` INFORMAL/FORMAL/HONORIFIC (default INFORMAL), `addresseeGender` MASCULINE/FEMININE/PLURAL/UNKNOWN (default
+  UNKNOWN), `defaultTone` FRIENDLY/POLITE/PROFESSIONAL/CONCISE/APOLOGETIC/HONORIFIC (absent is stored as NATURAL and read
+  back without the member), `defaultStyle`, `glossaryId` must be one of the caller's glossaries, `sortOrder` default 100;
+  at most 100 profiles per user (defensive cap, not in the contract). Another user's profile is 404. The contract has no
+  default-profile flag, so none is set through the API.
+- **Concurrency.** Profiles have no revision in the contract: PUT is last-writer-wins on the whole profile. Rules use the
+  `revision` protocol of typing languages (`user_app_rule_revisions`, compare-and-set `UPDATE ... WHERE revision = ?`, 409
+  `REVISION_CONFLICT` with `currentRevision`). Profile create/delete and the rules PUT share a per-user advisory lock;
+  deleting a profile cascades its rules and bumps the rules revision.
+- **Rules.** `appPackageHmac` must match `^[0-9a-f]{64}$`, so a package name (dots, other letters, wrong length) is 400
+  before it reaches a query, log or row. At most 200 rules, unique hashes, exactly one of `destinationProfileId` (the
+  caller's) or `destinationLanguage` (active), `enabled` default true.
+- **Rule key.** The client computes `HMAC-SHA256(accountRuleKey, packageName)`. The key is per account (not per device), 256
+  random bits created server-side with the first non-empty rules document and stored only as ciphertext
+  (`user_app_rule_keys`). The contract has no operation that delivers it to a device yet (reported gap, ADR 0012).
+- **Guest merge.** Profiles move with re-encrypted labels. Both accounts have a rule key: the guest's rules are dropped
+  (different key, cannot be re-hashed server-side). Only the guest has one: it becomes the target's (re-encrypted), so the
+  moved rules keep matching. The target's rules revision is bumped when rules moved. A guest key never survives the merge.
+
 ## Consents (B3.5)
 
 `GET /me/consents` (latest state per code) and `PUT /me/consents/{consentCode}` (grant or withdraw); any valid token,

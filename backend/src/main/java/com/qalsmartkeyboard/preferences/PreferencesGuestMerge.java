@@ -36,7 +36,9 @@ import com.qalsmartkeyboard.platform.crypto.UserDataEncryption;
  * target has no default. Labels are not compared, so two profiles with the same name can result (the user can delete
  * one).</li>
  * <li>{@code user_app_destination_rules}: a rule for an app (package HMAC) the target already has a rule for is
- * dropped; the rest move with their profile or language.</li>
+ * dropped; the rest move with their profile or language. The rule key is per account (ADR 0012): when both accounts have
+ * one, all the guest's rules are dropped (their hashes use another key); when only the guest has one it moves to the
+ * target. The target's rules revision is bumped when rules moved.</li>
  * </ul>
  * A value that does not open as the guest (corrupt) is not moved; it is logged by table and row id and deleted with the
  * guest's leftovers (it would be unreadable after the guest's keys are shredded anyway).
@@ -138,6 +140,7 @@ class PreferencesGuestMerge implements GuestMergeParticipant {
 	 * profile's rules are taken off, the profile moves, and the rules are inserted again for the target (same ids).
 	 */
 	private int mergeDestinationProfiles(UUID guest, UUID target, Timestamp now) {
+		mergeRuleKey(guest, target);
 		// the target's rule for an app wins
 		jdbc.sql("""
 				DELETE FROM user_app_destination_rules g
@@ -146,7 +149,7 @@ class PreferencesGuestMerge implements GuestMergeParticipant {
 				    WHERE t.user_id = :target AND t.platform = g.platform AND t.app_package_hmac = g.app_package_hmac)
 				""").param("guest", guest).param("target", target).update();
 		// rules that point at a language move as they are
-		jdbc.sql("""
+		int movedRules = jdbc.sql("""
 				UPDATE user_app_destination_rules SET user_id = :target, updated_at = :now
 				WHERE user_id = :guest AND destination_profile_id IS NULL
 				""").param("target", target).param("guest", guest).param("now", now).update();
@@ -193,6 +196,7 @@ class PreferencesGuestMerge implements GuestMergeParticipant {
 		}
 		for (Rule rule : profileRules) {
 			if (moved.contains(rule.profileId())) {
+				movedRules++;
 				jdbc.sql("""
 						INSERT INTO user_app_destination_rules (id, user_id, platform, app_package_hmac,
 						                                        destination_profile_id, created_at, updated_at)
@@ -203,7 +207,48 @@ class PreferencesGuestMerge implements GuestMergeParticipant {
 			}
 		}
 		jdbc.sql("DELETE FROM user_destination_profiles WHERE user_id = :guest").param("guest", guest).update();
+		jdbc.sql("DELETE FROM user_app_rule_revisions WHERE user_id = :guest").param("guest", guest).update();
+		if (movedRules > 0) {
+			// the target's rules changed under it: a device that cached the old revision must hit a REVISION_CONFLICT
+			AppDestinationRulesService.bump(jdbc, target);
+		}
 		return moved.size();
+	}
+
+	/**
+	 * ADR 0012: the app-rule HMAC key is per account. If both accounts have one, the guest's rules were hashed under a
+	 * key the target's devices do not use and cannot be re-hashed (the server never sees package names), so they are
+	 * dropped before the move and the target's devices re-create them. If only the guest has one, it becomes the
+	 * target's (re-encrypted for the target), so the moved rules keep matching. A guest key never survives the merge.
+	 */
+	private void mergeRuleKey(UUID guest, UUID target) {
+		byte[] guestKey = jdbc.sql("SELECT key_ciphertext FROM user_app_rule_keys WHERE user_id = :guest")
+				.param("guest", guest).query(byte[].class).optional().orElse(null);
+		if (guestKey == null) {
+			return;
+		}
+		boolean targetHasKey = jdbc.sql("SELECT EXISTS (SELECT 1 FROM user_app_rule_keys WHERE user_id = :target)")
+				.param("target", target).query(Boolean.class).single();
+		if (targetHasKey) {
+			int dropped = jdbc.sql("DELETE FROM user_app_destination_rules WHERE user_id = :guest").param("guest", guest)
+					.update();
+			log.info("Guest merge {} -> {}: {} app rules dropped (different rule keys)", guest, target, dropped);
+		}
+		else {
+			try {
+				EncryptedValue sealed = encryption.reencrypt(guest, AppRuleKeys.context(guest), guestKey, target,
+						AppRuleKeys.context(target));
+				jdbc.sql("""
+						INSERT INTO user_app_rule_keys (user_id, key_ciphertext, key_version) VALUES (:target, :ct, :version)
+						""").param("target", target).param("ct", sealed.ciphertext(), Types.BINARY)
+						.param("version", sealed.keyVersion()).update();
+			}
+			catch (CiphertextRejectedException e) {
+				log.warn("Guest merge: {} of {} does not decrypt; its rules are dropped", AppRuleKeys.TABLE, guest);
+				jdbc.sql("DELETE FROM user_app_destination_rules WHERE user_id = :guest").param("guest", guest).update();
+			}
+		}
+		jdbc.sql("DELETE FROM user_app_rule_keys WHERE user_id = :guest").param("guest", guest).update();
 	}
 
 	private static byte[] ciphertext(EncryptedValue value) {

@@ -69,13 +69,13 @@
 |---|---|---|---|---|---|---|---|
 | Phase 0 | Foundations (M0) | 6 | 6 | 0 | 0 | 0 | 100% |
 | Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 21 | 0 | 0 | 1 | 95% |
-| Phase 2 | Backend + P0 AI (M2) | 39 | 16 | 0 | 0 | 23 | 41% |
+| Phase 2 | Backend + P0 AI (M2) | 39 | 17 | 0 | 0 | 22 | 44% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
 | Phase 4 | Monetisation (M4) | 10 | 0 | 0 | 0 | 10 | 0% |
 | Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
 | Phase 6 | Differentiation (M6) | 8 | 0 | 0 | 0 | 8 | 0% |
 | Phase 7 | Expansion + B2B (M7) | 5 | 0 | 0 | 0 | 5 | 0% |
-| **Total** | | **109** | 43 | 0 | 0 | 66 | 39% |
+| **Total** | | **109** | 44 | 0 | 0 | 65 | 40% |
 
 ### Human gates
 
@@ -140,6 +140,7 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 | 2026-11-18 | B4.1 | 🟩 DONE | 3f89919, merge 081764e | `entitlements.EntitlementResolver` (`resolve(userId[, at])`, `invalidate`): effective plan = highest `plan_rank` among valid sources and the default (FREE for registered, GUEST for guests), never summed; sources from `user_subscriptions` (PAYMENT/PROMOTION/ADMIN_GRANT = SUBSCRIPTION, STORE, PARTNER) and organisation seats; valid = ACTIVE before period end or GRACE_PERIOD before grace end (default 3 d, SD 16.5); refunded/revoked store purchases grant nothing; deterministic tie-breaks. Only ACTIVE accounts get a plan; ungated typing features + DETECT_LANGUAGE always allowed (R-2). Overrides via `user_feature_overrides` joined to `feature_flags.feature_code` (disable wins; enable keeps the plan allowance, credits-only when excluded). Quota policy version from config (PROVISIONAL_V2), missing row = disabled (fail closed). 30 s per-user cache bounded by the source's validity. Seed matrix test parses V1 (5 plans x 24 features = 120) so it cannot drift. Verified by me after merging main (B3.3): 556 unit + 172 IT on JDK 21, 0 failures; JDK 25 compile OK. Decision: ADR 0007 D22 (24 h renewal lag follow-up; event invalidation in M4). OPEN: contract `plan.source` lacks STORE_PURCHASE/PARTNER (D20 batch); not cross-checked against the SD 15.2 table text. |
 | 2026-11-18 | B3.5 | 🟩 DONE | 2dbbcf5, merge d73d9e4 | `privacy` consents: `PUT /me/consents/{code}` appends a `user_consents` row (version, platform, details in metadata, `clock_timestamp()`; the V1 trigger blocks UPDATE/DELETE); latest row wins, none = not granted. `ConsentGate.requireConsent/hasConsent` (403 `CONSENT_REQUIRED` with `consentCode`); consent-to-feature map in `ConsentType.gatedFeatures()`. TERMS/PRIVACY not revocable (422). Withdrawal stops processing (no purge, per SD 19.3 and the contract) and publishes `ConsentChanged`; preferences switches `historyEnabled` off as a revisioned write. B3.3's history check now uses the gate. Guests allowed; merge path unchanged. Verified by me after merging main (B4.1): 561 unit + 177 IT on JDK 21, 0 failures; JDK 25 compile OK. Decision: ADR 0007 D23 (append repeats; configurable minimum TERMS/PRIVACY version in M3). OPEN: no history/document-version endpoints, 401/403 declarations (D20 batch); PAYMENT_MANDATE cancellation waits for billing. |
 | 2026-11-18 | D18 follow-up | 🟩 DONE | 3883eb8, merge 8349334 | ADR 0007 D18: a typed word not already in the user overlay becomes a pending sighting and is learned on the second sighting (bigram recorded only when the word is learned); explicit add is immediate and clears pending; forget/clear also clear pending. Pending map per language (NFC keys, max 2,000, oldest evicted) persisted inside the same AES-GCM user-dictionary file (format `QUF2`; `QUF1` files still load — I checked the decoder against A1.8's encoder). Verified by me: `:data` 27 and `:ime` 141 JVM tests, 0 failures (agent ran the full CI command). |
+| 2026-11-18 | B3.4 | 🟩 DONE | 2520a6a, V8 renumber, merge 871c24d | `preferences`: destination profile CRUD (label 1-80 chars stored only as `UserDataEncryption` ciphertext bound to the row; active language; contract enums; own glossaries only; cap 100) and `GET/PUT /me/app-destination-rules` (client-computed `HMAC(key, packageName)` must be 64 lowercase hex, so a package name can never be stored; max 200; profile or language target; revision compare-and-set like typing languages). Per-account 256-bit app-rule key created server-side, stored encrypted under the user's data key in `user_app_rule_keys` (shredded with the user), separate from the data key so rotation never changes hashes; guest merge adopts the guest key when the target has none, else drops guest rules (they can't be re-hashed). **V8 migration** (renumbered from V10 by me). Done-when: `DestinationIT` scans every column of every row for labels, package names and the key: none found. Verified by me after merging main: 565 unit + 189 IT on JDK 21, 0 failures; agent's JDK 25 compile passed. Decision: ADR 0007 D24 (key delivery operation + schema fixes in the D20 batch). OPEN: app rules unusable end to end until D24; server can decrypt the key (documented limit in ADR 0012). |
 
 ---
 
@@ -238,7 +239,7 @@ Goal: identity, devices, preferences, packs, AI gateway, translate/grammar/rewri
 | B3.1 | Languages/profiles/packs read APIs and `/resource-signing-keys`; pack manifest + delta metadata; release channels. | B1.2 | Client can discover and download pack metadata. | 🟩 DONE |
 | B3.2 | Admin pack publishing: upload → validate licence/signature → stage → publish channel (stable/beta). Signing keys in KMS. | B3.1 | Unlicensed/unsigned pack rejected. | ⬜ TODO |
 | B3.3 | Preferences + settings sync with **`revision`** optimistic concurrency (`REVISION_CONFLICT`). | B2.4 | Concurrent-write test. | 🟩 DONE |
-| B3.4 | **Destination profiles** (encrypted label, tone, language, formality, addressee gender) and Android app-rule HMAC mapping. | B3.3, B1.5 | Server never stores raw package name or plaintext label. | ⬜ TODO |
+| B3.4 | **Destination profiles** (encrypted label, tone, language, formality, addressee gender) and Android app-rule HMAC mapping. | B3.3, B1.5 | Server never stores raw package name or plaintext label. | 🟩 DONE |
 | B3.5 | Consents (`COMMUNITY_CONTRIBUTION`, `PERSONAL_STYLE`, `ANALYTICS`, …) append-only with history; gating helper `requireConsent`. | B2.4 | Withdrawal blocks dependent features. | 🟩 DONE |
 | B3.6 | Personal dictionary sync (encrypted, revision-based). | B3.3, B1.5 | Round-trip test. | ⬜ TODO |
 
