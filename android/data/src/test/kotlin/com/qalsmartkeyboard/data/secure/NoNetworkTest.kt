@@ -37,8 +37,14 @@ class NoNetworkTest {
         assertTrue("network references: $hits", hits.isEmpty())
     }
 
-    @Test fun appManifestDoesNotRequestInternet() {
-        val manifest = File(androidRoot(), "app/src/main/AndroidManifest.xml").readText()
+    /** A2.2: `:app` now holds INTERNET (sign-in); the keyboard module's merged manifest must still not. */
+    @Test fun imeManifestDoesNotRequestInternet() {
+        val manifest = File(androidRoot(), "ime/src/main/AndroidManifest.xml").readText()
         assertTrue(!manifest.contains("android.permission.INTERNET"))
+    }
+
+    @Test fun appManifestRequestsInternetForTheApiClient() {
+        val manifest = File(androidRoot(), "app/src/main/AndroidManifest.xml").readText()
+        assertTrue(manifest.contains("android.permission.INTERNET"))
     }
 }

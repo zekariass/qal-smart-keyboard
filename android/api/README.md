@@ -4,8 +4,9 @@ The typed API client (plan step A2.1). A plain Kotlin/JVM module (no Android dep
 transport layer, including the interceptors and the authenticator, is tested on the JVM. **Why not `:data`:** `:data`
 holds local state and its `NoNetworkTest` asserts it uses no network API; keeping networking in its own module keeps
 that guarantee, lets `:ime` and `:app` depend on the client without pulling DataStore, and avoids Android lint and
-API-level constraints for pure HTTP code. Nothing depends on `:api` yet; A2.2 (sign-in, Keystore token store) is the
-first user.
+API-level constraints for pure HTTP code. `:app` is the first user (A2.2 sign-in, see `android/app/README.md`); the
+Keystore-backed `TokenStore` lives there (`auth/EncryptedTokenStore`), not here and not in `:data`, so `:api` stays
+Android-free and `:data` stays network-free.
 
 ## Generated client
 OpenAPI Generator **7.14.0** (Gradle plugin, pinned in `gradle/libs.versions.toml`), generator `kotlin`, library
@@ -24,14 +25,15 @@ without touching the contract:
 | free-form objects (`values`, `details`) become `Map<String, Any>`, which kotlinx.serialization cannot serialise (compiler back-end crash) | `typeMappings AnyType=JsonElement` |
 | schema `ApiClient` collides with the generated `infrastructure.ApiClient` | `modelNameMappings ApiClient=PartnerApiClient` |
 
-Other generator options: `dateLibrary=string` (timestamps stay ISO-8601 strings: `java.time` is missing below API 26 and
-`minSdk` is 24, so no desugaring is required of the app; parse with a desugared or `ThreadLocal` formatter when a
-timestamp is needed). The contract's optional `X-Client-Platform` / `X-App-Version` / `X-Client-Surface` parameters
+Other generator options: `dateLibrary=java8` (**D28, A2.2**): `date-time` fields are `java.time.OffsetDateTime`, with the
+generator's own kotlinx.serialization adapters. `java.time` is missing below API 26 and `minSdk` is 24, so `:app` enables
+core library desugaring (`isCoreLibraryDesugaringEnabled`, `desugar_jdk_libs` 2.1.5); this module is a plain JVM jar and
+needs nothing, and `:ime`/`:data` do not use it. Any new Android consumer of `:api` must enable desugaring too. The contract's optional `X-Client-Platform` / `X-App-Version` / `X-Client-Surface` parameters
 appear on a few operations; leave them unset, the interceptor overwrites them.
 
 ## Wiring
 ```kotlin
-val session = SessionManager(InMemoryTokenStore())              // Keystore store arrives with A2.2
+val session = SessionManager(InMemoryTokenStore())              // the app uses EncryptedTokenStore (Keystore, A2.2)
 val clients = ApiClients(
     TransportConfig(baseUrl = "https://api.example.com",
         client = ClientInfo(appVersion = BuildConfig.VERSION_NAME, surface = ClientSurface.COMPANION)),
@@ -40,7 +42,7 @@ val clients = ApiClients(
 val challenge = apiCall { clients.auth.startPhoneOtp(OtpStartRequest(phoneNumber = ...)) }
 session.signedIn(apiCall { clients.auth.verifyPhoneOtp(...) })   // stores the pair, state -> SignedIn
 ```
-The `:app` module does not declare the `INTERNET` permission yet (A2.2 adds it together with the first caller).
+`:app` declares `INTERNET` (A2.2); `:ime` must not (`NoNetworkTest` in `:data` checks both manifests).
 
 ## Transport behaviour
 - **`ClientHeadersInterceptor`:** `X-Client-Platform: ANDROID`, `X-App-Version`, `X-Client-Surface: KEYBOARD | COMPANION` on every request.

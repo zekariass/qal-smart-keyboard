@@ -21,8 +21,8 @@ class TokenPair(val accessToken: String, val refreshToken: String) {
  * only the newest pair (ADR 0007 D8: clients keep only the newest refresh token).
  * Calls are blocking and may come from any OkHttp thread.
  *
- * [InMemoryTokenStore] is the only implementation in A2.1 (tests, local stack). The
- * Android Keystore backed implementation is A2.2; until then a process restart signs out.
+ * [InMemoryTokenStore] is for tests and the local stack. The app uses the Android Keystore backed
+ * `EncryptedTokenStore` in `:app` (A2.2).
  */
 interface TokenStore {
     fun load(): TokenPair?

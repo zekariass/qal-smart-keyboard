@@ -63,6 +63,7 @@ class OnboardingModelTest {
         assertTrue(OnboardingFlow.canContinue(SELECT, both))
         assertTrue(OnboardingFlow.canContinue(LANGUAGES, none))
         assertTrue(OnboardingFlow.canContinue(TUTORIAL, none))
+        assertTrue(OnboardingFlow.canContinue(ACCOUNT, none))
     }
 
     @Test fun reconcileSkipsSatisfiedStepsAndFallsBack() {
@@ -127,7 +128,7 @@ class OnboardingModelTest {
         m.edit { it.makePrimary("ti").withMode("ti", InputMode.DIRECT_SCRIPT_LAYOUT).toggle("om") }
         assertEquals(KeyboardSettings.DEFAULT, repo.current()) // nothing saved before Continue
         m.next()
-        assertEquals(TUTORIAL, m.state.value.step)
+        assertEquals(ACCOUNT, m.state.value.step)
 
         val saved = repo.current()
         assertEquals(listOf("ti", "am", "om", "en"), saved.languages.map { it.languageCode })
@@ -136,6 +137,8 @@ class OnboardingModelTest {
         assertEquals(InputMode.PHONETIC_LATIN_TO_NATIVE, saved.language("am")!!.inputMode) // ADR 0007 U3 default kept
         assertFalse(repo.onboardingCompleted.first())
 
+        m.next() // the account step is optional: Continue always works
+        assertEquals(TUTORIAL, m.state.value.step)
         m.next() // finish
         assertTrue(m.state.value.finished)
         assertTrue(repo.onboardingCompleted.first())
