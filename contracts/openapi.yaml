@@ -1427,9 +1427,14 @@ paths:
       operationId: submitAiFeedback
       summary: Rate an AI result
       description: |
-        Stores rating and reason codes linked to `aiRequestId`. A free-text `comment` is accepted
-        only with a granted `FEEDBACK_TEXT` consent and is encrypted. No input/output text is
-        attached unless `includeContent` is true and the same consent is granted.
+        Stores rating and reason codes linked to `aiRequestId`, which must be a succeeded AI
+        request of the caller (anything else is 404). One rating per request: sending it again
+        replaces the earlier one (rating, reasons, comment and content), so a retry or a changed
+        mind is safe. A free-text `comment` and, with `includeContent` true, the client-supplied
+        `inputText` / `outputText` are accepted only with a granted `FEEDBACK_TEXT` consent
+        (otherwise 403 `CONSENT_REQUIRED` with `consentCode`, and nothing is stored) and are
+        stored encrypted. Without `includeContent` the texts are ignored. Feedback is never used
+        to train third-party models.
       requestBody:
         required: true
         content:
@@ -1438,8 +1443,10 @@ paths:
       responses:
         '202': { description: Feedback recorded. }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   # ---------------------------------------------------------------- History
   /api/v1/me/history:
@@ -4934,7 +4941,7 @@ components:
             type: string
             enum: [WRONG_MEANING, WRONG_TONE, WRONG_GENDER_OR_FORMALITY, UNNATURAL, SPELLING, NAME_CHANGED, WRONG_SCRIPT, TOO_SLOW, OTHER]
         comment: { type: string, maxLength: 1000, description: Requires FEEDBACK_TEXT consent; encrypted. }
-        includeContent: { type: boolean, default: false, description: Attach the input/output text (client-supplied) with FEEDBACK_TEXT consent. }
+        includeContent: { type: boolean, default: false, description: "Attach the input/output text (client-supplied) with FEEDBACK_TEXT consent; without it inputText and outputText are ignored." }
         inputText: { type: string, maxLength: 5000 }
         outputText: { type: string, maxLength: 10000 }
 

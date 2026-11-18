@@ -62,6 +62,7 @@ class AiController {
 	static final RateLimitPolicy TRANSFORM_PER_USER = new RateLimitPolicy("ai.transform.user", 30,
 			Duration.ofMinutes(1));
 	static final RateLimitPolicy DETECT_PER_USER = new RateLimitPolicy("ai.detect.user", 60, Duration.ofMinutes(1));
+	static final RateLimitPolicy FEEDBACK_PER_USER = new RateLimitPolicy("ai.feedback.user", 60, Duration.ofMinutes(1));
 	static final RateLimitPolicy CAPABILITIES_PER_CLIENT = new RateLimitPolicy("ai.capabilities.client", 120,
 			Duration.ofMinutes(1));
 
@@ -82,9 +83,11 @@ class AiController {
 	private final AiGatewayProperties properties;
 	private final Clock clock;
 	private final AiRequestParser parser;
+	private final AiFeedback feedback;
 
 	AiController(AiPipeline pipeline, RateLimiter limiter, ProviderRegistry registry, EntitlementResolver entitlements,
-			AiUserContext users, AiGatewayProperties properties, ObjectProvider<Clock> clock, JsonMapper mapper) {
+			AiUserContext users, AiGatewayProperties properties, ObjectProvider<Clock> clock, JsonMapper mapper,
+			AiFeedback feedback) {
 		this.pipeline = pipeline;
 		this.limiter = limiter;
 		this.registry = registry;
@@ -93,6 +96,7 @@ class AiController {
 		this.properties = properties;
 		this.clock = clock.getIfAvailable(Clock::systemUTC);
 		this.parser = new AiRequestParser(mapper);
+		this.feedback = feedback;
 	}
 
 	// The bodies arrive as bytes and are read by AiRequestParser: a framework binding error would quote the value.
@@ -118,6 +122,15 @@ class AiController {
 			@RequestHeader(name = "X-Client-Surface", required = false) String surface, @RequestBody byte[] body) {
 		limiter.tryConsume(DETECT_PER_USER, caller.userId().toString()).orThrow();
 		return run(parser.detect(body, caller(caller, null, surface)), null);
+	}
+
+	/** B5.6 {@code submitAiFeedback}: see {@link AiFeedback}. 202 without a body. */
+	@PostMapping(path = "/api/v1/ai/feedback", consumes = MediaType.APPLICATION_JSON_VALUE)
+	ResponseEntity<Void> submitAiFeedback(@AuthenticationPrincipal AuthenticatedUser caller,
+			@RequestBody byte[] body) {
+		limiter.tryConsume(FEEDBACK_PER_USER, caller.userId().toString()).orThrow();
+		feedback.submit(caller.userId(), body);
+		return ResponseEntity.accepted().cacheControl(CacheControl.noStore()).build();
 	}
 
 	/** The contract's {@code TransformTask}; null for anything else. */
