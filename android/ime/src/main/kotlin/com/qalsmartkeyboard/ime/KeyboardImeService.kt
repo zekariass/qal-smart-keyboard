@@ -11,6 +11,18 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
 import android.widget.Toast
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.PersistableBundle
+import com.qalsmartkeyboard.ime.ai.AiActionsHolder
+import com.qalsmartkeyboard.ime.ai.AiLink
+import com.qalsmartkeyboard.ime.ai.AiToolbarController
+import com.qalsmartkeyboard.ime.ai.AiToolbarView
+import com.qalsmartkeyboard.ime.ai.EditorAiAccess
 import com.qalsmartkeyboard.ime.userdict.UserDictionary
 import com.qalsmartkeyboard.ime.packs.PackRuntime
 import com.qalsmartkeyboard.ime.packs.PackStorage
@@ -53,6 +65,8 @@ class KeyboardImeService : InputMethodService() {
             c.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
         }
         override fun performEditorAction(actionId: Int) { ic?.performEditorAction(actionId) }
+        override fun getSelectedText(): CharSequence? = ic?.getSelectedText(0)
+        override fun setSelection(start: Int, end: Int) = ic?.setSelection(start, end) ?: false
         override fun getCursorCapsMode(reqModes: Int): Int {
             val type = currentInputEditorInfo?.inputType ?: return 0
             return if (type == InputType.TYPE_NULL) 0 else ic?.getCursorCapsMode(reqModes) ?: 0
@@ -68,8 +82,63 @@ class KeyboardImeService : InputMethodService() {
     private val userDictionary by lazy { UserDictionary.get(applicationContext) }
     private val controller by lazy { KeyboardController(adapter, settingsPrefs, settingsPrefs, userDictionary) { refreshViews() } }
 
+    // AI toolbar (A2.5): built off the main thread (the app side opens Keystore-backed files), then
+    // attached. Until then, or when the app registered none, the keyboard has no toolbar.
+    private var aiView: AiToolbarView? = null
+    private var aiToolbar: AiToolbarController? = null
+
+    private fun attachAiInBackground() {
+        Thread({
+            val actions = try {
+                AiActionsHolder.create()
+            } catch (e: Exception) {
+                Log.w(TAG, "ai unavailable: ${e.javaClass.simpleName}")
+                null
+            }
+            if (actions != null) {
+                main.post {
+                    if (aiToolbar != null) return@post
+                    val toolbar = AiToolbarController(
+                        actions = actions,
+                        editor = EditorAiAccess(adapter) { controller.commitComposition() },
+                        post = { block -> main.post(block) },
+                        copyToClipboard = ::copyResult,
+                        onChanged = { aiView?.render() },
+                    )
+                    aiToolbar = toolbar
+                    aiView?.controller = toolbar
+                    toolbar.onFieldStarted(controller.profile, currentInputEditorInfo?.packageName)
+                    if (isInputViewShown) toolbar.onKeyboardShown()
+                }
+            }
+        }, "qal-ai-attach").start()
+    }
+
+    /** Copies the shown result on the user's Copy tap; marked sensitive so the clipboard preview hides it (API 33+). */
+    private fun copyResult(text: String) {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        val clip = ClipData.newPlainText("", text)
+        if (Build.VERSION.SDK_INT >= 33) {
+            clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
+        }
+        cm.setPrimaryClip(clip)
+    }
+
+    /** Opens the companion app (sign-in, AI settings, plans, update). It decides what to show from the extra. */
+    private fun openCompanion(link: AiLink) {
+        val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        launch.putExtra(EXTRA_OPEN_LINK, link.name)
+        try {
+            startActivity(launch)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "cannot open the app: ${e.javaClass.simpleName}")
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        attachAiInBackground()
         adapter.onCompositionAbandoned = { controller.onCompositionAbandoned() }
         snapshot.onChange = { main.post { controller.onPreferencesChanged() } }
         snapshot.start()
@@ -159,6 +228,7 @@ class KeyboardImeService : InputMethodService() {
 
     override fun onDestroy() {
         snapshot.stop()
+        aiToolbar?.release()
         engine?.let { userDictionary.detach(it) }
         userDictionary.flush()
         engine?.close()
@@ -183,6 +253,11 @@ class KeyboardImeService : InputMethodService() {
             }
             strip = it
         }
+        val ai = AiToolbarView(this).also {
+            it.controller = aiToolbar
+            it.onLink = ::openCompanion
+            aiView = it
+        }
         val overlay = PopupOverlay(this)
         val k = KeyboardSurface(this).also {
             it.controller = controller
@@ -193,6 +268,7 @@ class KeyboardImeService : InputMethodService() {
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
+            addView(ai, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(s, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
@@ -200,6 +276,7 @@ class KeyboardImeService : InputMethodService() {
             addView(column)
             addView(overlay)
             inputRoot = this
+            ai.render()
             refreshViews()
         }
     }
@@ -228,19 +305,20 @@ class KeyboardImeService : InputMethodService() {
             initialSelEnd = info.initialSelEnd,
         )
         controller.composer.reset()
-        controller.startField(
-            InputProfile.from(
-                info.inputType,
-                info.imeOptions,
-                hasCustomAction = info.actionLabel != null,
-                customActionId = info.actionId,
-            ),
+        val profile = InputProfile.from(
+            info.inputType,
+            info.imeOptions,
+            hasCustomAction = info.actionLabel != null,
+            customActionId = info.actionId,
         )
+        controller.startField(profile)
+        aiToolbar?.onFieldStarted(profile, info.packageName)
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         checkPackUpdates()
+        aiToolbar?.onKeyboardShown()
         controller.refreshAutoCapital()
         refreshViews()
     }
@@ -261,6 +339,7 @@ class KeyboardImeService : InputMethodService() {
         // Keyboard hidden: the editor keeps the composition as plain text.
         adapter.finishComposition()
         controller.onCompositionAbandoned()
+        aiToolbar?.onKeyboardHidden()
         super.onFinishInputView(finishingInput)
     }
 
@@ -281,6 +360,9 @@ class KeyboardImeService : InputMethodService() {
 
     private companion object {
         const val TAG = "QalIme"
+
+        /** Intent extra on the launch intent of the companion app: the [AiLink] name to show. */
+        const val EXTRA_OPEN_LINK = "com.qalsmartkeyboard.OPEN_LINK"
         const val POPUP_HEADROOM_DP = 190f
     }
 }

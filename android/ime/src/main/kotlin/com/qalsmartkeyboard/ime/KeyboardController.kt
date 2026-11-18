@@ -149,6 +149,12 @@ class KeyboardController(
         onChanged()
     }
 
+    /** Commits the open composition as typed (the AI toolbar needs final text in the editor before it reads it). */
+    fun commitComposition() {
+        send(ComposerKey.Commit)
+        onChanged()
+    }
+
     /** The composition was given up (field change, cursor moved, keyboard hidden). */
     fun onCompositionAbandoned() {
         composer.reset()

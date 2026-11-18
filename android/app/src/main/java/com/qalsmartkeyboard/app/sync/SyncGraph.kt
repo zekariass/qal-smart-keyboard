@@ -25,11 +25,14 @@ class SyncGraph private constructor(context: Context) {
     /** The local personal dictionary as sync sees it (same process-wide instance as the keyboard and the settings list). */
     val dictionary: UserDictionary = UserDictionary.get(context)
 
+    /** The destination profiles and app rules: one instance for the sync, the AI toolbar's chip and (later) the editing UI. */
+    val destinations = DestinationStore(files)
+
     val engine = SyncEngine(
         settings = SettingsRepository.get(context),
         http = SyncHttp(AuthGraph.get(context).clients),
         state = SyncStateStore(files),
-        destinations = DestinationStore(files),
+        destinations = destinations,
         dictionary = UserDictionaryPort(dictionary),
         log = { android.util.Log.i(TAG, it) },
     )
