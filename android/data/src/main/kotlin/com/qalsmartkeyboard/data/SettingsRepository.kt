@@ -126,6 +126,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val HAPTICS = booleanPreferencesKey("haptics_enabled")
         private val KEY_HEIGHT = intPreferencesKey("key_height_percent")
         private val LAST_MODES = stringPreferencesKey("last_modes")
+        private val PACK_MOBILE_DATA = booleanPreferencesKey("pack_updates_mobile_data")
+        private val PACK_CHANNEL = stringPreferencesKey("pack_channel")
         private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
 
         private const val FIELD = "|"
@@ -143,6 +145,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[THEME] = s.theme.name
             p[HAPTICS] = s.hapticsEnabled
             p[KEY_HEIGHT] = s.keyHeightPercent
+            p[PACK_MOBILE_DATA] = s.packUpdatesOnMobileData
+            p[PACK_CHANNEL] = s.packChannel.name
             p[LAST_MODES] = s.lastModes.entries.joinToString(LINE) { "${it.key}$FIELD${it.value}" }
         }
 
@@ -174,6 +178,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 hapticsEnabled = p[HAPTICS] ?: d.hapticsEnabled,
                 keyHeightPercent = p[KEY_HEIGHT] ?: d.keyHeightPercent,
                 lastModes = lastModes,
+                packUpdatesOnMobileData = p[PACK_MOBILE_DATA] ?: d.packUpdatesOnMobileData,
+                packChannel = enumOrNull<PackChannel>(p[PACK_CHANNEL]) ?: d.packChannel,
             ).sanitized()
         }
 

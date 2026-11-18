@@ -3,6 +3,7 @@ package com.qalsmartkeyboard.aigateway;
 import java.time.Duration;
 import java.util.List;
 
+import com.qalsmartkeyboard.aigateway.spi.ProviderCapability;
 import com.qalsmartkeyboard.aigateway.spi.ProviderException;
 
 /**
@@ -15,9 +16,12 @@ import com.qalsmartkeyboard.aigateway.spi.ProviderException;
  * @param attempts the provider calls made, in order
  * @param skipped candidates that were not called, with the reason
  * @param elapsed wall time of the whole route
+ * @param capability the capability row that matched the serving provider (quality tier for the response, model code);
+ *                   null unless SUCCEEDED
  */
 public record RouteResult<T>(Outcome outcome, T value, String providerCode, boolean servedByLastResort,
-		List<Attempt> attempts, List<Skip> skipped, ProviderException.Kind finalErrorKind, Duration elapsed) {
+		List<Attempt> attempts, List<Skip> skipped, ProviderException.Kind finalErrorKind, Duration elapsed,
+		ProviderCapability capability) {
 
 	public enum Outcome {
 		SUCCEEDED("") ,

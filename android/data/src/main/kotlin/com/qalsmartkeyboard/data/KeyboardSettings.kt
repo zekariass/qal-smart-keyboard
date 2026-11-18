@@ -15,6 +15,9 @@ enum class NumeralStyle { WESTERN, ETHIOPIC }
 /** Keyboard theme. The contract's `keyboardTheme` is a free string (max 40); we use these names. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+/** Language-pack release channel (A2.3); names match the contract's `ReleaseChannel`. STABLE unless a tester opts in. */
+enum class PackChannel { STABLE, BETA, INTERNAL }
+
 /** Static facts about the launch languages (SD 7.1) that validation needs. */
 object LanguageRules {
     /** Launch languages in their default order. */
@@ -79,6 +82,10 @@ data class KeyboardSettings(
     val keyHeightPercent: Int = KEY_HEIGHT_DEFAULT,
     /** Last-used native layout per language, as the IME's `LayoutKind` name (the IME interprets it). */
     val lastModes: Map<String, String> = emptyMap(),
+    /** A2.3: allow language-pack updates on a metered connection. Default off (SD: Wi-Fi-only by default). Local only. */
+    val packUpdatesOnMobileData: Boolean = false,
+    /** A2.3: channel asked of `GET /language-resources`. Local only. */
+    val packChannel: PackChannel = PackChannel.STABLE,
 ) {
     /** Enabled language codes in the user's order. */
     val enabledLanguages: List<String> get() = languages.filter { it.enabled }.map { it.languageCode }

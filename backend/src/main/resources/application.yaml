@@ -101,6 +101,18 @@ qal:
       cost-cache-ttl: 10s
       killed-providers: ${QAL_AI_KILLED_PROVIDERS:}
       killed-features: ${QAL_AI_KILLED_FEATURES:}
+    # Request pipeline (B5.3, ADR 0017): one time budget for route + guardrail retry + fallback; AI_PROCESSING consent
+    # is not required for explicit actions unless switched on.
+    pipeline:
+      deadline: ${QAL_AI_PIPELINE_DEADLINE:8s}
+      require-ai-processing-consent: ${QAL_AI_REQUIRE_PROCESSING_CONSENT:false}
+      catalog-cache-ttl: 30s
+      min-script-ratio: 0.9
+    # Idempotency (B5.4, ADR 0017): encrypted replay cache (0s..10m, 0s = off) and request fingerprints (>= 24h).
+    idempotency:
+      cache-ttl: ${QAL_AI_REPLAY_CACHE_TTL:10m}
+      fingerprint-retention: 24h
+      sweep-interval: 1m
     mock:
       enabled: ${QAL_AI_MOCK:false}
     http:

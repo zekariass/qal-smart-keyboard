@@ -12,7 +12,9 @@ import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
 import android.widget.Toast
 import com.qalsmartkeyboard.ime.userdict.UserDictionary
+import com.qalsmartkeyboard.ime.packs.PackRuntime
 import com.qalsmartkeyboard.ime.packs.PackStorage
+import java.util.concurrent.atomic.AtomicBoolean
 import com.qalsmartkeyboard.ime.packs.installedProfiles
 import kotlinx.coroutines.runBlocking
 import com.qalsmartkeyboard.data.SettingsRepository
@@ -30,6 +32,10 @@ class KeyboardImeService : InputMethodService() {
     private var surface: KeyboardSurface? = null
     private var strip: CandidateStripView? = null
     private var engine: KeyboardEngine? = null
+    private var runtime: PackRuntime? = null
+    private var loaded: PackRuntime.Loaded? = null
+    @Volatile private var seenReloadToken: String? = null
+    private val reloading = AtomicBoolean(false)
     private val main = Handler(Looper.getMainLooper())
 
     private val editorOps = object : EditorOps {
@@ -71,45 +77,84 @@ class KeyboardImeService : InputMethodService() {
     }
 
     /**
-     * Loads the native core and the bundled packs off the main thread (SD 17.1: no disk I/O on the
-     * key path). Until it is done the keyboard types ABC through [PassthroughComposer].
+     * Loads the native core and the packs off the main thread (SD 17.1: no disk I/O on the key
+     * path). Until it is done the keyboard types ABC through [PassthroughComposer]. Also used to
+     * reload after the app-side updater (A2.3) installed or rolled back a pack: the new engine
+     * replaces the old one on the main thread and the old one is closed.
      */
     private fun loadCoreInBackground() {
+        if (!reloading.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread({
-            val created = try {
-                PackStorage.create(appContext) { Log.w(TAG, it) }?.load()?.also { result ->
+            var created: KeyboardEngine? = null
+            var createdLoad: PackRuntime.Loaded? = null
+            try {
+                val rt = runtime ?: PackStorage.create(appContext) { Log.w(TAG, it) }?.also { runtime = it }
+                seenReloadToken = rt?.journal?.reloadToken()
+                val l = try {
+                    rt?.load()
+                } catch (e: Exception) {
+                    // Bad trust key, missing native library, ...: keep typing ABC. No content is logged.
+                    Log.e(TAG, "core unavailable: ${e.javaClass.simpleName}")
+                    null
+                } catch (e: LinkageError) {
+                    Log.e(TAG, "core unavailable: ${e.javaClass.simpleName}")
+                    null
+                }
+                if (l != null) {
+                    createdLoad = l
+                    created = l.result.engine
                     // A1.5/A1.6 seam: retired profile codes in the settings fall back to the loaded
                     // profile (F14); the "profile changed" flag is `SettingsRepository.profileChanges`.
                     // We are on the loader thread, so blocking here is fine.
                     try {
-                        runBlocking { SettingsRepository.get(appContext).applyInstalledProfiles(result.installedProfiles()) }
+                        runBlocking { SettingsRepository.get(appContext).applyInstalledProfiles(l.result.installedProfiles()) }
                     } catch (e: Exception) {
                         Log.w(TAG, "profile fallback skipped: ${e.javaClass.simpleName}")
                     }
-                }?.engine
-            } catch (e: Exception) {
-                // Bad trust key, missing native library, ...: keep typing ABC. No content is logged.
-                Log.e(TAG, "core unavailable: ${e.javaClass.simpleName}")
-                null
-            } catch (e: LinkageError) {
-                Log.e(TAG, "core unavailable: ${e.javaClass.simpleName}")
-                null
+                }
+                // The personal dictionary is read after the packs (off the main thread) and handed to the engine.
+                try {
+                    userDictionary.load()
+                    created?.let { userDictionary.attach(it) }
+                } catch (e: Exception) {
+                    Log.w(TAG, "user dictionary skipped: ${e.javaClass.simpleName}")
+                }
+            } finally {
+                reloading.set(false)
             }
-            // The personal dictionary is read after the packs (off the main thread) and handed to the engine.
-            try {
-                userDictionary.load()
-                created?.let { userDictionary.attach(it) }
-            } catch (e: Exception) {
-                Log.w(TAG, "user dictionary skipped: ${e.javaClass.simpleName}")
-            }
-            if (created != null) {
+            val fresh = created
+            if (fresh != null) {
                 main.post {
-                    engine = created
-                    controller.composer = CoreComposer(created)
+                    val old = engine
+                    controller.composer.reset()
+                    engine = fresh
+                    loaded = createdLoad
+                    controller.composer = CoreComposer(fresh)
+                    if (old != null) {
+                        userDictionary.detach(old)
+                        old.close()
+                    }
                 }
             }
         }, "qal-pack-loader").start()
+    }
+
+    /**
+     * Called when the keyboard is shown. (1) A new update token from the app-side updater triggers a
+     * reload. (2) The first time the keyboard is shown on an engine that holds a swapped-in pack,
+     * the update counts as healthy (A2.3 health signal) and its `.prev` backup is dropped.
+     */
+    private fun checkPackUpdates() {
+        val rt = runtime ?: return
+        val current = loaded
+        if (current != null && current.awaitingConfirmation.isNotEmpty() && engine != null) {
+            loaded = PackRuntime.Loaded(current.result, emptyList())
+            Thread({ rt.confirm(current) }, "qal-pack-confirm").start()
+        }
+        Thread({
+            if (rt.journal.reloadToken() != seenReloadToken && !reloading.get()) loadCoreInBackground()
+        }, "qal-pack-check").start()
     }
 
     override fun onDestroy() {
@@ -195,6 +240,7 @@ class KeyboardImeService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        checkPackUpdates()
         controller.refreshAutoCapital()
         refreshViews()
     }

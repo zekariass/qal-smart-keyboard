@@ -105,6 +105,7 @@ person any more (identities, contact data and devices are gone); re-identificati
 | `ai_feedback` | Deleted (rating linked to the person; comment already shredded). | privacy until the AI module owns it |
 | `voice_jobs`, `realtime_sessions` | Detached (`user_id = NULL`, as their FK prescribes); audio has its own ≤ 24 h lifecycle. | privacy until speech/realtime own them |
 | `organization_members` (+ `organization_seat_assignments` by cascade), `user_admin_roles` | Deleted. | privacy until organizations/administration own them |
+| `ai_replay_cache`, `ai_request_fingerprints` | Deleted (sealed AI responses, at most 10 min old, and sealed request digests, at most 24 h old; both already unreadable after the shred, B5.4/ADR 0017). | aigateway (`AiIdempotencyDeletion`) |
 | `ai_requests` | **Kept, pseudonymised** (metadata only, logical user id; SD 19.2: 13 months then aggregated). | AI (B5.x) |
 | `audit_events` | **Kept, pseudonymised** (security and financial audit, SD 19.2: 2/7 years; `actor_user_id` logical). | administration |
 | `outbox_events` | Kept (ids only, never personal data; outbox retention). | platform |

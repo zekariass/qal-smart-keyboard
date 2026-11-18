@@ -33,7 +33,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 /**
- * Wires the registry and the dev/test adapters. The mock and the WireMock-shaped HTTP adapter fail the startup under a
+ * Wires the registry, the router and the dev/test adapters (the request pipeline is {@link AiPipelineConfiguration}). The mock and the WireMock-shaped HTTP adapter fail the startup under a
  * production-like profile, like the other mocks (SMS, attestation). No real vendor adapter exists until gate G0.
  */
 @Configuration(proxyBeanMethods = false)
