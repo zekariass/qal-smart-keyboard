@@ -216,6 +216,27 @@ table `user_app_rule_revisions` and the per-account key table `user_app_rule_key
   (different key, cannot be re-hashed server-side). Only the guest has one: it becomes the target's (re-encrypted), so the
   moved rules keep matching. The target's rules revision is bumped when rules moved. A guest key never survives the merge.
 
+## Personal dictionary sync (B3.6, ADR 0018)
+
+`GET/POST /me/dictionary/changes` (`pullDictionaryChanges`, `pushDictionaryChanges`), code in
+`com.qalsmartkeyboard.languages` (the module that owns `user_dictionary_entries`; the SD table lists the endpoint under
+preferences, but the table, the guest-merge and the deletion participants are here).
+
+- **Gate:** guests 403 `GUEST_NOT_ALLOWED`; `DICTIONARY_SYNC` entitlement (`FEATURE_NOT_ENTITLED`); `DICTIONARY_SYNC`
+  consent via `ConsentGate` (403 `CONSENT_REQUIRED`). Withdrawal blocks both operations and purges nothing.
+- **Storage:** word NFC-normalised, stored only as `UserDataEncryption` ciphertext bound to its row (`word_ciphertext`);
+  `word_hmac = hex(HMAC-SHA256(dictKey, "qal.dictionary.word.v1" 0x00 languageCode 0x00 NFC(word)))`, UTF-8. `dictKey` is a
+  per-user random 256-bit key in `user_dictionary_sync_state` (ciphertext under the user's data key, separate from it, never
+  regenerated, shredded with the user). Delete = tombstone row (`deleted_at`).
+- **Protocol:** every change takes the next per-user `sync_version` (counter in the state row, which also serialises
+  pushes). Pull: `since` = opaque token (`v1.` + base64url of the last version), oldest first, `limit` 1-100, `hasMore`;
+  `clientChangeId` on download is the entry id. Push: up to 500 changes, last writer wins in arrival order, `ADD` of a live
+  word and `DELETE` of an absent word are no-ops, applied `clientChangeId`s are remembered 30 days (re-upload is a no-op),
+  per-change rejections `INVALID_WORD` / `LANGUAGE_NOT_SUPPORTED` in `rejected`.
+- **Merge/deletion:** guest merge recomputes `word_hmac` under the target's key; account deletion deletes the entries, the
+  applied-change ids and the key row.
+- **V14** adds `user_dictionary_sync_state` and `user_dictionary_applied_changes`.
+
 ## Consents (B3.5)
 
 `GET /me/consents` (latest state per code) and `PUT /me/consents/{consentCode}` (grant or withdraw); any valid token,

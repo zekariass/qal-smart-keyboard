@@ -94,7 +94,7 @@ person any more (identities, contact data and devices are gone); re-identificati
 | `user_history_items`, `data_export_requests` | Deleted. B6.1 must also delete an export's archive object. | privacy |
 | `user_consents` | **Kept, pseudonymised** (append-only, SD 19.3/20.1): proof of what was agreed and withdrawn; no contact data. Removed by the retention job (B6.3) at the end of SD 19.2's "life of account + 30 days", i.e. 30 days after `deleted_at`. | privacy |
 | `user_deletion_requests` | Kept: the record that and when the deletion was done (no personal data). | privacy |
-| `user_dictionary_entries` | Deleted (the word HMACs would still allow a dictionary guess). | languages |
+| `user_dictionary_entries`, `user_dictionary_sync_state`, `user_dictionary_applied_changes` | Deleted (the word HMACs would still allow a dictionary guess; the state row holds the per-user dictionary HMAC key, ciphertext under the shredded data key, B3.6/ADR 0018). | languages |
 | `term_suggestions.submitted_by_user_id` | Detached (`NULL`, what its `ON DELETE SET NULL` prescribes); the suggestion is catalogue data contributed under `COMMUNITY_CONTRIBUTION`. | languages |
 | `usage_counters`, `usage_reservations` | Deleted (operational state). | usage |
 | `usage_events` | **Kept, pseudonymised** (append-only metering ledger; `subject_id` logical). Retention: B6.3. | usage |

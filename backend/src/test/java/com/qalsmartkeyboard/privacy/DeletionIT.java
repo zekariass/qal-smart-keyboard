@@ -328,7 +328,8 @@ class DeletionIT {
 			"password_reset_tokens", "attestation_nonces", "user_devices", "user_preferences", "user_typing_languages",
 			"user_typing_language_revisions", "user_style_profiles", "user_destination_profiles",
 			"user_app_destination_rules", "user_app_rule_revisions", "user_app_rule_keys", "user_dictionary_entries",
-			"user_history_items", "data_export_requests", "glossaries", "usage_counters", "usage_reservations",
+			"user_dictionary_sync_state", "user_dictionary_applied_changes", "user_history_items", "data_export_requests",
+			"glossaries", "usage_counters", "usage_reservations",
 			"user_feature_overrides", "ai_feedback", "organization_members", "user_admin_roles", "voice_jobs");
 
 	/**
@@ -343,7 +344,7 @@ class DeletionIT {
 		UUID en = language("en");
 		List<Sealed> sealed = new ArrayList<>();
 		// consents (append-only, through the API)
-		for (String code : List.of("TERMS_ACCEPTANCE", "ANALYTICS")) {
+		for (String code : List.of("TERMS_ACCEPTANCE", "ANALYTICS", "DICTIONARY_SYNC")) {
 			mvc.perform(put("/api/v1/me/consents/" + code).header("Authorization", "Bearer " + s.accessToken())
 					.contentType(MediaType.APPLICATION_JSON).content("{\"consentVersion\":\"1\",\"isGranted\":true}"))
 					.andExpect(status().isOk());
@@ -382,12 +383,16 @@ class DeletionIT {
 				""", UUID.randomUUID(), u, hex('a'), profile);
 		jdbc.update("INSERT INTO user_app_rule_revisions (user_id, revision) VALUES (?, 1)", u);
 		// dictionary and history
-		UUID word = UUID.randomUUID();
-		Sealed selam = seal(u, "user_dictionary_entries", "word_ciphertext", word, "ሰላም");
-		jdbc.update("""
-				INSERT INTO user_dictionary_entries (id, user_id, language_id, word_ciphertext, word_hmac, key_version)
-				VALUES (?, ?, ?, ?, ?, 1)
-				""", word, u, am, selam.ciphertext(), hex('1'));
+		// the synced dictionary through the API: entry, applied-change id and the per-user HMAC key row (B3.6)
+		mvc.perform(post("/api/v1/me/dictionary/changes").header("Authorization", "Bearer " + s.accessToken())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"changes\":[{\"op\":\"ADD\",\"languageCode\":\"am\","
+						+ "\"word\":\"ሰላም\",\"clientChangeId\":\"" + UUID.randomUUID() + "\"}]}"))
+				.andExpect(status().isOk());
+		UUID word = jdbc.queryForObject("SELECT id FROM user_dictionary_entries WHERE user_id = ?", UUID.class, u);
+		Sealed selam = new Sealed("user_dictionary_entries", "word_ciphertext", word, jdbc.queryForObject(
+				"SELECT word_ciphertext FROM user_dictionary_entries WHERE id = ?", byte[].class, word));
+		sealed.add(new Sealed("user_dictionary_sync_state", "key_ciphertext", u, jdbc.queryForObject(
+				"SELECT key_ciphertext FROM user_dictionary_sync_state WHERE user_id = ?", byte[].class, u)));
 		sealed.add(selam);
 		UUID history = UUID.randomUUID();
 		Sealed input = seal(u, "user_history_items", "input_ciphertext", history, "እንደምን አደርክ");
@@ -474,7 +479,7 @@ class DeletionIT {
 		int usageEvents = count("SELECT count(*) FROM usage_events WHERE subject_id = ?", u);
 		int creditLedger = count("SELECT count(*) FROM ai_credit_transactions t JOIN ai_credit_accounts c "
 				+ "ON c.id = t.credit_account_id WHERE c.user_id = ?", u);
-		assertThat(consents).isEqualTo(3);
+		assertThat(consents).isEqualTo(4);
 		assertThat(usageEvents).isOne();
 		assertThat(creditLedger).isOne();
 		entitlementToken(a.accessToken()).andExpect(status().isOk());
