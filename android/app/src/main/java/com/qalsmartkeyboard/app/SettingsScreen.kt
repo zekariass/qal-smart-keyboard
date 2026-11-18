@@ -45,6 +45,8 @@ fun SettingsScreen(
     repository: SettingsRepository,
     modifier: Modifier = Modifier,
     onRunSetup: () -> Unit = {},
+    /** The account card (A2.2), supplied by the host that owns the sign-in state. */
+    accountContent: @Composable () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -56,6 +58,7 @@ fun SettingsScreen(
                 Button(onClick = onRunSetup) { Text(stringResource(R.string.settings_setup_button)) }
             }
         }
+        accountContent()
         Text("Languages (top = first on the globe key)", style = MaterialTheme.typography.titleMedium)
         val onlyOneEnabled = settings.enabledLanguages.size <= 1
         settings.languages.forEachIndexed { i, l ->

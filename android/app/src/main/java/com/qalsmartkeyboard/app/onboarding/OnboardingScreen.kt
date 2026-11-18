@@ -55,7 +55,7 @@ private fun launch(context: Context, intent: Intent) {
 }
 
 /**
- * First-run flow: privacy, enable, select, languages, tutorial. Scrolls in portrait, landscape and
+ * First-run flow: privacy, enable, select, languages, optional account, tutorial. Scrolls in portrait, landscape and
  * with large text; navigation buttons stay pinned at the bottom.
  */
 @Composable
@@ -66,6 +66,8 @@ fun OnboardingScreen(
     onSkip: () -> Unit,
     onEdit: ((LanguageDraft) -> LanguageDraft) -> Unit,
     modifier: Modifier = Modifier,
+    /** The optional sign-in step (A2.2); provided by the host, which owns the sign-in view model. */
+    accountContent: @Composable () -> Unit = {},
 ) {
     val steps = OnboardingStep.entries
     val total = steps.size
@@ -91,6 +93,7 @@ fun OnboardingScreen(
                 OnboardingStep.ENABLE -> EnableStep(state.ime)
                 OnboardingStep.SELECT -> SelectStep(state.ime)
                 OnboardingStep.LANGUAGES -> LanguagesStep(state.draft, onEdit)
+                OnboardingStep.ACCOUNT -> accountContent()
                 OnboardingStep.TUTORIAL -> TutorialStep(state)
             }
         }
