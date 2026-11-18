@@ -744,7 +744,7 @@ length), error bodies are never read, nothing is logged by adapters.
 schema's word for "inactive"), does not train on customer data, has a DPA (unless `SELF_HOSTED`), has an adapter bean with
 the same code, satisfies the data policy of the request (ZDR; region allow-list) and has an enabled capability for the
 feature, language pair, minimum tier (default BETA) and input size. Descriptors are cached `qal.ai.registry-cache-ttl`
-(30 s). Routing order, failover, circuit breaker and kill switch are B5.2.
+(30 s). Routing order, failover, circuit breaker, kill switch and cost caps are `AiRouter` (below).
 
 **No real vendor adapter exists**: the shortlist is gate G0 (OI-R1/OI-P5). Development adapters, off by default and
 refused under `prod`/`production`/`staging`: `qal.ai.mock.enabled` / `QAL_AI_MOCK` (`MockAiProvider`: deterministic,
@@ -753,6 +753,39 @@ WireMock stubs, `QAL_AI_HTTP_BASE_URL` default `http://localhost:8089`, key `QAL
 the two matching provider rows `DISABLED`; enable one locally with
 `UPDATE ai_providers SET provider_status='ACTIVE', dpa_signed_at=NOW() WHERE provider_code='mock'`. Tests use WireMock
 in-process (`wiremock-standalone`, serving `infra/compose/wiremock`).
+
+## AI gateway: routing (B5.2, ADR 0014 "Routing (B5.2)", SD 11/17/19)
+
+`AiRouter.route(RouteRequest<T>)` runs one call (`RouteRequest.translate/transform/detect`, or any `ProviderCall`) over
+an ordered provider list and returns a `RouteResult<T>`: `outcome` (`SUCCEEDED`, `PROVIDER_UNAVAILABLE`,
+`PROVIDER_TIMEOUT`, `ZERO_RETENTION_UNAVAILABLE`, `LANGUAGE_PAIR_UNAVAILABLE`, `CONTENT_REJECTED`, `CANCELLED`),
+`contractCode()` for B5.3 (null for success and `CANCELLED`), `providerCode`, `servedByLastResort`, every `Attempt`
+(number, provider, latency, error kind), every `Skip` (kill switch, open breaker, cost cap) and `finalErrorKind`.
+
+- **Order:** the registry decides who may serve; enabled `ai_routing_policies` rows (feature x language pair, NULL = any)
+  order them: most specific language scope wins, lowest `priority` first, equal priorities by weighted random draw on
+  `traffic_weight`; a matching policy is also an allow-list; `requires_zero_retention` rows skip non-ZDR providers. No
+  matching row: registry order (provider code). DEGRADED providers that otherwise qualify come after all ACTIVE ones
+  (ADR 0007 D29).
+- **Fallback:** UNAVAILABLE, TIMEOUT, INVALID_RESPONSE, QUOTA_EXHAUSTED_AT_PROVIDER, AUTHENTICATION_FAILED go to the next
+  provider; UNSUPPORTED_LANGUAGE_PAIR goes to the next without a health impact; CONTENT_REJECTED ends the route;
+  CANCELLED (thread interrupt) ends it as a client abort. A provider is never retried within a request.
+  `qal.ai.routing.max-attempts` (3), `attempt-timeout` (4 s), `deadline` (8 s); a request may override them.
+- **Circuit breaker** per provider, in-house (`routing/CircuitBreaker`): sliding window of the last `window-size` calls
+  (20), opens at `failure-rate-percent` (50) once `minimum-calls` (10) are in, or on `slow-call-rate-percent` (80) of calls
+  slower than `slow-call-threshold` (3 s); open for `open-duration` (30 s), then `half-open-calls` (3) probes, all of
+  which must succeed. Quota-exhausted and credentials-refused trip it at once (Retry-After honoured). State is per JVM.
+- **Kill switch, no deploy:** BACKEND `app_configurations` row `ai.kill_switch` =
+  `{"providers": ["code"], "features": ["TRANSLATE"]}`, re-read every `kill-switch-cache-ttl` (5 s); restart-time
+  `qal.ai.routing.killed-providers` / `killed-features` (`QAL_AI_KILLED_PROVIDERS`, `QAL_AI_KILLED_FEATURES`). Killing a
+  feature answers `PROVIDER_UNAVAILABLE` without calling anyone.
+- **Cost cap (V12):** `ai_provider_prices` (micro-USD per unit; feature-specific row overrides the NULL-feature row),
+  `ai_provider_budgets` (daily soft and hard limit; NULL = none), `ai_provider_daily_spend` (UTC day, successful calls
+  only). Soft limit: one warning log and `qal.ai.cost.alerts{level=SOFT}` per day; hard limit: provider skipped until the
+  next UTC day or a raise. Nothing is seeded (gate G0).
+- **Metrics:** `qal.ai.provider.calls|latency`, `qal.ai.route.outcome|failovers|skipped`, `qal.ai.circuit.state|transitions`,
+  `qal.ai.cost.micros|spend.micros|alerts` (tags: provider, feature, outcome, reason only). Logs carry provider codes,
+  attempt numbers and error kinds, never text.
 
 ## Contract tests
 

@@ -25,7 +25,7 @@ import com.qalsmartkeyboard.aigateway.spi.RouteQuery;
  * <li>an enabled capability on an ACTIVE model matches feature, language pair, minimum quality tier and input size.</li>
  * </ol>
  * Result order is by provider code and carries no routing meaning: priority, weights, fallback, circuit breaker, kill
- * switch and cost caps are B5.2. The descriptor snapshot is cached for {@code qal.ai.registry-cache-ttl} and a stale
+ * switch and cost caps are the router's (B5.2, {@code AiRouter}). The descriptor snapshot is cached for {@code qal.ai.registry-cache-ttl} and a stale
  * snapshot is served if a reload fails (the same policy as the configuration module).
  */
 public class ProviderRegistry {
@@ -54,10 +54,22 @@ public class ProviderRegistry {
 
 	/** Providers allowed for the query, ordered by code. */
 	public List<ResolvedProvider> resolve(RouteQuery query) {
+		return resolve(query, ProviderDescriptor::routable);
+	}
+
+	/**
+	 * DEGRADED providers that would otherwise qualify (same adapter, contract, data-policy and capability checks),
+	 * ordered by code. The router appends them after every ACTIVE candidate as a last resort (ADR 0007 D29).
+	 */
+	public List<ResolvedProvider> resolveLastResort(RouteQuery query) {
+		return resolve(query, ProviderDescriptor::lastResort);
+	}
+
+	private List<ResolvedProvider> resolve(RouteQuery query, java.util.function.Predicate<ProviderDescriptor> status) {
 		List<ResolvedProvider> out = new ArrayList<>();
 		for (ProviderDescriptor d : descriptors()) {
 			AiProvider adapter = adapters.get(d.code());
-			if (adapter == null || !d.routable() || !d.dataPolicy().satisfies(query.dataPolicy())) {
+			if (adapter == null || !status.test(d) || !d.dataPolicy().satisfies(query.dataPolicy())) {
 				continue;
 			}
 			d.capabilityFor(query).ifPresent(c -> out.add(new ResolvedProvider(d, adapter, c)));
