@@ -1149,10 +1149,15 @@ paths:
         withdrawn) and a registered account (403 `GUEST_NOT_ALLOWED` for guests). Words are decrypted server-side for delivery
         over TLS only. Changes come oldest first. A deleted word is delivered as a `DELETE` tombstone that still carries the
         word. On download `clientChangeId` is the id of the dictionary entry. Words are NFC-normalised.
+
+        Tombstones are kept for 180 days. When a tombstone the client has not seen was purged (the client was offline
+        for longer than that), the pull answers 410 `SYNC_CURSOR_EXPIRED`: the client discards its sync token and
+        downloads the whole dictionary again by pulling without `since`, replaces its synced words with the result, and
+        then pushes the changes it still has pending. A pull without `since` is never refused this way.
       parameters:
         - name: since
           in: query
-          description: Opaque sync token from a previous response; omit for a full sync. An unknown token is 400.
+          description: Opaque sync token from a previous response; omit for a full sync. An unknown token is 400. A token that is behind a purged tombstone is 410 `SYNC_CURSOR_EXPIRED`.
           schema: { type: string, maxLength: 128 }
         - $ref: '#/components/parameters/Limit'
       responses:
@@ -1164,6 +1169,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '410': { $ref: '#/components/responses/SyncCursorExpired' }
     post:
       tags: [Preferences]
       operationId: pushDictionaryChanges
@@ -3497,6 +3503,16 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    SyncCursorExpired:
+      description: |
+        The sync token is older than the oldest retained deletion (`SYNC_CURSOR_EXPIRED`): deleted words were purged
+        after 180 days and this client never saw them. Discard the token, pull without `since` for a full download and
+        replace the locally synced words with it.
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
       description: |
         State conflict (`IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS`, `REVISION_CONFLICT`, `ORDER_NOT_PAYABLE`, `STORE_PURCHASE_ALREADY_LINKED`, ...).
@@ -3789,7 +3805,7 @@ components:
             ORDER_EXPIRED, PAYMENT_VERIFICATION_FAILED, MANDATE_NOT_SUPPORTED,
             STORE_PURCHASE_INVALID, STORE_PURCHASE_ALREADY_LINKED, SUBSCRIPTION_NOT_RENEWABLE,
             SEAT_UNAVAILABLE, API_KEY_INVALID, API_SCOPE_MISSING, WEBHOOK_SIGNATURE_INVALID,
-            APP_VERSION_UNSUPPORTED, PACK_REJECTED, PUBLICATION_CONFLICT, APPROVAL_REQUIRED, INTERNAL_ERROR.
+            APP_VERSION_UNSUPPORTED, PACK_REJECTED, PUBLICATION_CONFLICT, SYNC_CURSOR_EXPIRED, APPROVAL_REQUIRED, INTERNAL_ERROR.
           pattern: '^[A-Z][A-Z0-9_]*$'
         correlationId: { type: string, maxLength: 100 }
         errors:

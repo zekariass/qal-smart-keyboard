@@ -36,6 +36,9 @@ qal:
   privacy:
     deletion:
       executor-enabled: false
+  # B6.3: the retention job (a db-scheduler task) is off in tests; RetentionIT runs it directly with an injected clock.
+  retention:
+    enabled: false
   # B5.1: the in-process mock AI provider; descriptor cache off so ITs see provider row changes at once.
   ai:
     mock:
