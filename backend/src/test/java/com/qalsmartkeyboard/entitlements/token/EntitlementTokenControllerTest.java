@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -30,6 +31,8 @@ import com.qalsmartkeyboard.entitlements.token.EntitlementTokenVerifier.Validity
 import com.qalsmartkeyboard.entitlements.token.EntitlementTokenVerifier.Verified;
 import com.qalsmartkeyboard.identity.security.ApiSecurityConfiguration;
 import com.qalsmartkeyboard.identity.token.AccessTokenService;
+import com.qalsmartkeyboard.platform.ratelimit.RateLimitDecision;
+import com.qalsmartkeyboard.platform.ratelimit.RateLimiter;
 import com.qalsmartkeyboard.platform.web.ServletProblemResponseWriter;
 import com.qalsmartkeyboard.testsupport.contract.ContractValidated;
 
@@ -49,6 +52,14 @@ class EntitlementTokenControllerTest {
 	AccessTokenService accessTokens;
 	@MockitoBean
 	EntitlementResolver resolver;
+	@MockitoBean
+	RateLimiter limiter;
+
+	@BeforeEach
+	void allowByDefault() {
+		when(limiter.tryConsume(any(), any())).thenReturn(new RateLimitDecision(EntitlementTokenController.PER_USER,
+				true, 59, Duration.ZERO, Duration.ofMinutes(60)));
+	}
 
 	final UUID userId = UUID.randomUUID();
 	final UUID deviceId = UUID.randomUUID();
@@ -118,5 +129,21 @@ class EntitlementTokenControllerTest {
 		when(resolver.resolve(userId)).thenReturn(TokenFixtures.denied(userId, AccessState.UNKNOWN));
 		mvc.perform(get("/api/v1/me/entitlements/token").header("Authorization", bearer()))
 				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+	}
+
+	@Test
+	void sixtyPerHourPerUserThen429WithRateLimitHeaders() throws Exception {
+		assertThat(EntitlementTokenController.PER_USER.capacity()).isEqualTo(60);
+		assertThat(EntitlementTokenController.PER_USER.period()).isEqualTo(Duration.ofHours(1));
+		when(resolver.resolve(userId)).thenReturn(TokenFixtures.granted(userId, "PREMIUM", true));
+		mvc.perform(get("/api/v1/me/entitlements/token").header("Authorization", bearer())).andExpect(status().isOk());
+		verify(limiter).tryConsume(EntitlementTokenController.PER_USER, userId.toString());
+
+		when(limiter.tryConsume(any(), any())).thenReturn(new RateLimitDecision(EntitlementTokenController.PER_USER,
+				false, 0, Duration.ofSeconds(90), Duration.ofSeconds(90)));
+		mvc.perform(get("/api/v1/me/entitlements/token").header("Authorization", bearer()))
+				.andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("RATE_LIMITED"))
+				.andExpect(header().string("Retry-After", "90")).andExpect(header().string("RateLimit-Limit", "60"))
+				.andExpect(header().string("RateLimit-Remaining", "0")).andExpect(jsonPath("$.jws").doesNotExist());
 	}
 }

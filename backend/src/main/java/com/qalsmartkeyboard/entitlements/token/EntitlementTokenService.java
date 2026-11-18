@@ -1,6 +1,7 @@
 package com.qalsmartkeyboard.entitlements.token;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
@@ -44,7 +45,8 @@ import com.qalsmartkeyboard.platform.ApiException;
  * <li>{@code planCode}, {@code features} (object of feature code to boolean, only the configured offline features that
  * are gated and unmetered), {@code policyVersion} (the quota policy version that produced the gates), {@code ver}
  * ({@value #FORMAT_VERSION}, the token format);</li>
- * <li>{@code iat}, {@code exp} = iat + 24 h, {@code offlineGraceUntil} = exp + 72 h (NumericDate seconds).</li>
+ * <li>{@code iat}, {@code exp} = iat + 24 h, at most the winning source's end plus the renewal lag (ADR 0007 D27),
+ * {@code offlineGraceUntil} = exp + 72 h (NumericDate seconds).</li>
  * </ul>
  *
  * <h2>Who gets one</h2> Any ACTIVE account, guests included (their plan opens no offline gate, so every gate is
@@ -58,6 +60,8 @@ public final class EntitlementTokenService {
 	static final JOSEObjectType TYPE = new JOSEObjectType(TYPE_VALUE);
 	/** Token format version ({@code ver}); verifiers reject other values. */
 	public static final int FORMAT_VERSION = 1;
+
+	private static final Duration DEFAULT_RENEWAL_LAG = Duration.ofHours(24);
 
 	private static final Logger log = LoggerFactory.getLogger(EntitlementTokenService.class);
 
@@ -76,11 +80,22 @@ public final class EntitlementTokenService {
 	private final EntitlementTokenKeys keys;
 	private final EntitlementTokenProperties properties;
 	private final Clock clock;
+	private final Duration renewalLag;
 	private final JdkEd25519Signer signer;
 	private final Set<String> warnedFeatures = ConcurrentHashMap.newKeySet();
 
 	EntitlementTokenService(EntitlementResolver resolver, EntitlementTokenKeys keys,
 			EntitlementTokenProperties properties, Clock clock) {
+		this(resolver, keys, properties, clock, DEFAULT_RENEWAL_LAG);
+	}
+
+	/**
+	 * @param renewalLag {@code qal.entitlements.renewal-lag}: how long the resolver keeps an ACTIVE source past its period
+	 *                   end; a token may outlive the end by the same time (ADR 0007 D27)
+	 */
+	EntitlementTokenService(EntitlementResolver resolver, EntitlementTokenKeys keys,
+			EntitlementTokenProperties properties, Clock clock, Duration renewalLag) {
+		this.renewalLag = Objects.requireNonNull(renewalLag, "renewalLag");
 		this.resolver = Objects.requireNonNull(resolver, "resolver");
 		this.keys = Objects.requireNonNull(keys, "keys");
 		this.properties = Objects.requireNonNull(properties, "properties");
@@ -90,7 +105,7 @@ public final class EntitlementTokenService {
 
 	/** Same keys and settings, another clock (tests issue tokens at fixed instants with it). */
 	EntitlementTokenService withClock(Clock otherClock) {
-		return new EntitlementTokenService(resolver, keys, properties, otherClock);
+		return new EntitlementTokenService(resolver, keys, properties, otherClock, renewalLag);
 	}
 
 	/**
@@ -107,7 +122,7 @@ public final class EntitlementTokenService {
 		EffectivePlan plan = resolved.plan().orElseThrow(() -> new IllegalStateException("granted without a plan"));
 
 		Instant issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS);
-		Instant expiresAt = issuedAt.plus(properties.ttl());
+		Instant expiresAt = expiry(issuedAt, plan);
 		Instant graceUntil = expiresAt.plus(properties.offlineGrace());
 
 		JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder().issuer(properties.issuer())
@@ -127,6 +142,24 @@ public final class EntitlementTokenService {
 			throw new IllegalStateException("Cannot sign the entitlement token", e);
 		}
 		return new EntitlementToken(jwt.serialize(), keys.signingKeyId(), expiresAt, graceUntil);
+	}
+
+	/**
+	 * {@code exp} = the TTL after issue, but never later than the winning source's end plus the renewal lag (ADR 0007
+	 * D27): a token must not outlive the entitlement it states. A source in its grace period has no lag (the resolver
+	 * grants nothing after the grace end); a source without an end (DEFAULT, open-ended grants) keeps the full TTL.
+	 */
+	private Instant expiry(Instant issuedAt, EffectivePlan plan) {
+		Instant expiresAt = issuedAt.plus(properties.ttl());
+		if (plan.effectiveUntil() == null) {
+			return expiresAt;
+		}
+		Instant cap = plan.effectiveUntil().plus(plan.inGracePeriod() ? Duration.ZERO : renewalLag)
+				.truncatedTo(ChronoUnit.SECONDS);
+		if (cap.isBefore(expiresAt)) {
+			expiresAt = cap.isAfter(issuedAt) ? cap : issuedAt.plusSeconds(1);
+		}
+		return expiresAt;
 	}
 
 	/** The published key set: the signing key and the previous keys, public parts only. */

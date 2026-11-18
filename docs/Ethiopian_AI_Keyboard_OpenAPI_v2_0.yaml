@@ -1720,6 +1720,7 @@ paths:
                   expiresAt: '2026-11-18T08:00:00Z'
                   offlineGraceUntil: '2026-11-21T08:00:00Z'
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /api/v1/me/entitlements/token:
     get:
       tags: [Entitlements]
@@ -1731,7 +1732,8 @@ paths:
         gates cheaply. Any active account may call it, guests included (their gates are all false).
         A suspended account gets 403 `ACCOUNT_SUSPENDED` and a deletion-pending one 403
         `DELETION_PENDING`; on any 401 or 403 the client drops its cached token. Every call signs a
-        new token (new `jti`); the response is `Cache-Control: no-store`.
+        new token (new `jti`), so a user may call it 60 times per hour (429 `RATE_LIMITED` with
+        `Retry-After`). The response is `Cache-Control: no-store`.
       responses:
         '200':
           description: A new entitlement token.
@@ -1749,6 +1751,7 @@ paths:
                 offlineGraceUntil: '2026-11-22T08:00:00Z'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
   /.well-known/jwks.json:
     get:
       tags: [Entitlements]
@@ -1799,7 +1802,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/UsageReport' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /api/v1/me/credits:
     get:
       tags: [Entitlements]

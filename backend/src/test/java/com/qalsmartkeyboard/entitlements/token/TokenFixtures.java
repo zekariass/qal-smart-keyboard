@@ -82,6 +82,12 @@ final class TokenFixtures {
 
 	/** A granted result: the plan, ON_DEVICE_AI_MODELS as given, plus a metered and an ungated feature. */
 	static ResolvedEntitlements granted(UUID userId, String planCode, boolean onDeviceModels) {
+		return granted(userId, planCode, onDeviceModels, Instant.parse("2026-12-31T00:00:00Z"), false);
+	}
+
+	/** As above with the winning source ending at {@code effectiveUntil} (null = open-ended). */
+	static ResolvedEntitlements granted(UUID userId, String planCode, boolean onDeviceModels, Instant effectiveUntil,
+			boolean inGrace) {
 		Map<String, FeatureEntitlement> features = new LinkedHashMap<>();
 		features.put("OFFLINE_TYPING", new FeatureEntitlement("OFFLINE_TYPING", false, true, MeteringUnit.NONE, null,
 				ResetPeriod.NONE, BigDecimal.ZERO, false, FeatureEntitlement.Origin.UNGATED));
@@ -93,7 +99,7 @@ final class TokenFixtures {
 				MeteringUnit.NONE, null, ResetPeriod.NONE, BigDecimal.ZERO, false,
 				onDeviceModels ? FeatureEntitlement.Origin.PLAN : FeatureEntitlement.Origin.NO_PLAN_ROW));
 		EffectivePlan plan = new EffectivePlan(UUID.randomUUID(), planCode, planCode, 10, PlanSource.SUBSCRIPTION,
-				UUID.randomUUID(), null, Instant.parse("2026-12-31T00:00:00Z"), false, null);
+				UUID.randomUUID(), null, effectiveUntil, inGrace, null);
 		return new ResolvedEntitlements(userId, Instant.now(), AccessState.GRANTED, Optional.of(plan), "PROVISIONAL_V2",
 				features);
 	}

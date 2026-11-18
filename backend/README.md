@@ -497,10 +497,13 @@ models); every server feature is re-checked on each call.
   `getEntitlements` (B4.5) embeds the same `EntitlementToken`.
 - **Format:** header `alg EdDSA` (Ed25519), `typ qal-ent+jwt`, `kid`. Claims: `iss` (`qal-smart-keyboard`), `aud`
   (`qal-keyboard`), `sub` (user id), `deviceId` (when the access token has `did`), `planCode`, `features` (feature code
-  -> boolean), `policyVersion`, `ver` (1), `iat`, `exp` = iat + `qal.entitlements.token.ttl` (24h, at most 24h),
+  -> boolean), `policyVersion`, `ver` (1), `iat`, `exp` = iat + `qal.entitlements.token.ttl` (24h, at most 24h) but never later than the winning source's end +
+  `qal.entitlements.renewal-lag` (no lag for a GRACE_PERIOD source; ADR 0007 D27),
   `offlineGraceUntil` = exp + `offline-grace` (72h, at most 72h), `jti`. No personal data, allowances or usage.
 - **Offline gates:** `qal.entitlements.token.offline-features` (default `ON_DEVICE_AI_MODELS`). Only gated features
   with unit `NONE` are written; metered (server AI) or unknown codes are left out with a warning.
+- **Rate limit:** `GET /me/entitlements/token` 60 per hour per user (`platform.ratelimit` policy `entitlements.token.user`), 429
+  `RATE_LIMITED` with `Retry-After`/`RateLimit-*`.
 - **Refused:** SUSPENDED 403 `ACCOUNT_SUSPENDED`, DELETION_PENDING/DELETED 403 `DELETION_PENDING`, MERGED 401
   `GUEST_SESSION_INVALID`, PENDING/unknown 401 `UNAUTHENTICATED`.
 - **Signing key (required):** `QAL_ENTITLEMENT_TOKEN_PRIVATE_KEY` (PKCS#8 PEM, or an OKP JWK with `d` and `x`),
@@ -598,6 +601,31 @@ credits.adjust(userId, lot.id(), new BigDecimal("-2"), "support-17", "goodwill")
   (`qal.usage.credit-expiry-interval` 1h, `credit-expiry-batch-size` 100, `credit-expiry-enabled`) writes `EXPIRY` rows.
 - **Locking:** account row, then lots in FIFO order, in every writer. Tests: `CreditsIT` (FIFO, expiry, parallel
   holds, append-only ledger, refunds, metering end to end), `MeteringIT` on the real wallet.
+
+## Usage and entitlement read APIs (B4.5, SD 15)
+
+`GET /api/v1/me/entitlements` and `GET /api/v1/me/usage` (`UsageReadController`, `UsageReadService` in module `usage`, which
+depends on `entitlements`). Any valid access token, guests included (a guest sees the GUEST plan). Responses are `no-store`.
+
+- **`/me/entitlements`** = `EntitlementResolver.resolve(userId)` (plan, `source`, `effectiveUntil`, one entry per catalogue
+  feature) plus, for each gated metered feature with access, the current window of `usage_counters`: `used` = `used_units`,
+  `remaining` = `max(0, included - used - reserved)` (reservations in flight count against it; absent when unlimited),
+  `resetsAt` = window end (absent for reset period NONE). `creditBalance` = `Credits.balance(user, now).display` (whole credits,
+  rounded down). Ungated typing features are listed with `accessEnabled: true` and no usage; boolean gates and features the plan
+  excludes carry no usage either. `entitlementToken` comes from `EntitlementTokenService.issue(userId, deviceId)` (B4.4; `deviceId` is the access token's `did`).
+- **`/me/usage`**: without parameters, the current window of every metered feature the plan gives access to
+  (`usedUnits`, `includedUnits`, `creditsConsumed` = sum of `credits_charged` of the window's settled reservations, 6 dp).
+  With `from` and/or `to` (date-time): the user's counter rows whose window overlaps `[from, to)`, newest first (at most 500; the
+  contract has no paging), plus the current empty window of a feature that has no row. A past window's `includedUnits` is the
+  allowance its reservations were checked against (absent when none or unlimited). `to <= from` gives an empty list.
+- **Windows** are the engine's own (`UserWindows`/`UsageWindows`: the user's `users.time_zone`, anchored monthly windows on paid
+  plans), serialised as UTC instants; nothing is recomputed differently for display.
+- **Read only:** plain `SELECT`s, no `FOR UPDATE`, no insert. A window with no counter row yet is reported as used 0 without
+  creating it, and a read never waits for the row lock a concurrent reserve or settle holds (proved in `UsageReadIT`).
+- **Accounts:** SUSPENDED 403 `ACCOUNT_SUSPENDED`; DELETION_PENDING/DELETED 403 `DELETION_PENDING`; PENDING 403 `FORBIDDEN`;
+  unknown or MERGED users 401 (a merged guest's token is already refused by the security chain, B2.6). Bad `from`/`to` 400.
+- **Tests:** `UsageReadControllerTest` (contract-validated shapes: free, guest, credits, over quota, paid anchored window, 400,
+  401, 403), `UsageReadIT` (PG18, V1 seed, real reservations/settlements/credit lots; numbers equal `Metering`/`Credits`).
 
 ## Security chain (B2.4, OI-P11)
 

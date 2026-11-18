@@ -2,6 +2,7 @@ package com.qalsmartkeyboard.entitlements.token;
 
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -20,6 +21,9 @@ public class EntitlementTokenConfiguration {
 	EntitlementTokenService entitlementTokenService(EntitlementResolver resolver,
 			EntitlementTokenProperties properties, Environment environment, ObjectProvider<Clock> clock) {
 		EntitlementTokenKeys keys = EntitlementTokenKeys.load(properties, environment, new SecureRandom());
-		return new EntitlementTokenService(resolver, keys, properties, clock.getIfAvailable(Clock::systemUTC));
+		Duration renewalLag = environment.getProperty("qal.entitlements.renewal-lag", Duration.class,
+				Duration.ofHours(24));
+		return new EntitlementTokenService(resolver, keys, properties, clock.getIfAvailable(Clock::systemUTC),
+				renewalLag);
 	}
 }
