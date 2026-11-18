@@ -85,6 +85,17 @@ class SettingsRepositoryTest {
         assertFalse(open().current().crashReports)
     }
 
+    @Test fun emojiRecentsAndTonesPersistAcrossRestartAndStartEmpty() = runBlocking {
+        val first = open()
+        assertTrue(first.current().recentEmoji.isEmpty())
+        assertTrue(first.current().emojiTones.isEmpty())
+        first.update { it.copy(recentEmoji = listOf("😀", "👋"), emojiTones = mapOf("👋" to "👋🏽")) }
+        closeAll()
+        val s = open().current()
+        assertEquals(listOf("😀", "👋"), s.recentEmoji)
+        assertEquals(mapOf("👋" to "👋🏽"), s.emojiTones)
+    }
+
     @Test fun filesWrittenBeforeCrashReportsDecodeToOn() = runBlocking {
         // A store written by the previous version: no crash_reports key at all.
         val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "old-crash.preferences_pb")

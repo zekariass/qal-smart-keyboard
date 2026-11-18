@@ -124,6 +124,10 @@ data class KeyboardSettings(
      * the privacy dashboard turns it off. Local only, not synced, and "Reset to defaults" keeps it.
      */
     val crashReports: Boolean = true,
+    /** Emoji panel: recently used emoji, newest first (at most [EMOJI_RECENT_MAX]). Device-local: never synced, never logged. */
+    val recentEmoji: List<String> = emptyList(),
+    /** Emoji panel: the skin-tone form last chosen per base emoji (base to variant). Device-local. */
+    val emojiTones: Map<String, String> = emptyMap(),
 ) {
     /** Enabled language codes in the user's order. */
     val enabledLanguages: List<String> get() = languages.filter { it.enabled }.map { it.languageCode }
@@ -174,6 +178,8 @@ data class KeyboardSettings(
             keyHeightPercent = keyHeightPercent.coerceIn(KEY_HEIGHT_MIN, KEY_HEIGHT_MAX),
             lastModes = lastModes.filter { (k, v) -> LanguageRules.isKnown(k) && MODE_TOKEN.matches(v) },
             writingModes = writingModes.filter { (k, v) -> LanguageRules.isKnown(k) && MODE_TOKEN.matches(v) },
+            recentEmoji = recentEmoji.filter { emojiToken(it) }.distinct().take(EMOJI_RECENT_MAX),
+            emojiTones = emojiTones.filter { (k, v) -> emojiToken(k) && emojiToken(v) }.entries.take(EMOJI_TONES_MAX).associate { it.key to it.value },
         )
     }
 
@@ -182,6 +188,11 @@ data class KeyboardSettings(
         const val KEY_HEIGHT_MAX = 130
         const val KEY_HEIGHT_DEFAULT = 100
         const val SCHEMA_VERSION = 1
+        const val EMOJI_RECENT_MAX = 32
+        const val EMOJI_TONES_MAX = 400
+
+        /** An emoji sequence as stored: short, and free of the separators the store uses. */
+        private fun emojiToken(s: String) = s.isNotEmpty() && s.length <= 40 && s.none { it == '|' || it == '\n' || it == '\r' }
 
         private val PROFILE_CODE = Regex("[A-Za-z0-9_]{1,100}")
         private val MODE_TOKEN = Regex("[A-Z_]{1,24}")

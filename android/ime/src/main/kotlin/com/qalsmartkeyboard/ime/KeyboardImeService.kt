@@ -22,6 +22,14 @@ import android.os.PersistableBundle
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import com.qalsmartkeyboard.ime.emoji.EmojiController
+import com.qalsmartkeyboard.ime.emoji.EmojiExecutor
+import com.qalsmartkeyboard.ime.emoji.EmojiLoader
+import com.qalsmartkeyboard.ime.emoji.EmojiMode
+import com.qalsmartkeyboard.ime.emoji.EmojiPanelView
+import com.qalsmartkeyboard.ime.emoji.EmojiSearchBar
+import com.qalsmartkeyboard.ime.emoji.FileGlyphCache
+import com.qalsmartkeyboard.ime.emoji.SettingsEmojiStore
 import com.qalsmartkeyboard.ime.ai.AiActionsHolder
 import com.qalsmartkeyboard.ime.ai.AiLink
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
@@ -53,6 +61,9 @@ class KeyboardImeService : InputMethodService() {
     private var surface: KeyboardSurface? = null
     private var strip: CandidateStripView? = null
     private var bar: KeyboardBar? = null
+    private var emojiPanel: EmojiPanelView? = null
+    private var emojiSearch: EmojiSearchBar? = null
+    private var seenEmojiMode = EmojiMode.CLOSED
     private var engine: KeyboardEngine? = null
     private var runtime: PackRuntime? = null
     private var loaded: PackRuntime.Loaded? = null
@@ -109,6 +120,8 @@ class KeyboardImeService : InputMethodService() {
         surface?.theme = t
         strip?.theme = t
         overlayView?.theme = t
+        emojiPanel?.theme = t
+        emojiSearch?.theme = t
         aiView?.theme = t
     }
 
@@ -147,7 +160,32 @@ class KeyboardImeService : InputMethodService() {
         )
     }
     private val userDictionary by lazy { UserDictionary.get(applicationContext) }
-    private val controller by lazy { KeyboardController(adapter, settingsPrefs, settingsPrefs, userDictionary) { refreshViews() } }
+    private val controller by lazy {
+        KeyboardController(
+            adapter, settingsPrefs, settingsPrefs, userDictionary,
+            SettingsEmojiStore({ snapshot.current }, { change -> snapshot.launchUpdate(change) }), emojiLoader, emojiExecutor,
+        ) { refreshViews() }
+    }
+
+    // Emoji panel (ADR 0028): nothing here touches the disk or the font until the panel is first opened. The loader parses
+    // the bundled assets and asks `Paint.hasGlyph` on a worker thread; the answer is cached per system build.
+    private val emojiLoader by lazy {
+        val appContext = applicationContext
+        val probe by lazy { android.graphics.Paint() }
+        EmojiLoader(
+            source = { name -> try { appContext.assets.open("emoji/$name") } catch (e: java.io.IOException) { null } },
+            supported = { probe.hasGlyph(it) },
+            cache = FileGlyphCache(java.io.File(appContext.cacheDir, "emoji-glyphs.txt"), "${Build.FINGERPRINT}|1"),
+        )
+    }
+    private val emojiExecutor = object : EmojiExecutor {
+        override fun <T> run(work: () -> T, done: (T) -> Unit) {
+            Thread({
+                val result = work()
+                main.post { done(result) }
+            }, "qal-emoji").start()
+        }
+    }
 
     // AI toolbar (A2.5): built off the main thread (the app side opens Keystore-backed files), then
     // attached. Until then, or when the app registered none, the keyboard has no toolbar.
@@ -347,12 +385,26 @@ class KeyboardImeService : InputMethodService() {
             it.overlay = overlay
             surface = it
         }
+        val panel = EmojiPanelView(this).also {
+            it.controller = controller
+            it.overlay = overlay
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            emojiPanel = it
+        }
+        val search = EmojiSearchBar(this).also {
+            it.controller = controller
+            it.visibility = View.GONE
+            emojiSearch = it
+        }
         val space = View(this).also { headroom = it }
         val column = KeyboardColumn(this, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.apply {
             addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
             addView(ai, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(search, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val root = OverlayStack(this).apply {
             addView(column)
@@ -491,9 +543,16 @@ class KeyboardImeService : InputMethodService() {
         adapter.onSelectionUpdate(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
     }
 
+    /** Back steps out of the emoji search, then out of the panel, before it dismisses the keyboard. */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && controller.emoji.back()) return true
+        return super.onKeyDown(keyCode, event)
+    }
+
     override fun onFinishInputView(finishingInput: Boolean) {
         // Keyboard hidden: the editor keeps the composition as plain text.
         adapter.finishComposition()
+        controller.emoji.close()
         controller.onCompositionAbandoned()
         bar?.closeAi()
         aiToolbar?.onKeyboardHidden()
@@ -517,6 +576,20 @@ class KeyboardImeService : InputMethodService() {
             it.setModes(controller.writingModeOptions, controller.writingMode)
             it.closeModeChooser()
         }
+        // Emoji panel (ADR 0028): the panel takes the key area, or (search) the keys are back with the search strip in the bar's place.
+        val mode = controller.emoji.mode
+        val inPanel = mode == EmojiMode.PANEL
+        val inSearch = mode == EmojiMode.SEARCH
+        surface?.visibility = if (inPanel) View.GONE else View.VISIBLE
+        emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
+        bar?.visibility = if (inSearch) View.GONE else View.VISIBLE
+        emojiSearch?.visibility = if (inSearch) View.VISIBLE else View.GONE
+        if (mode != seenEmojiMode) {
+            if (inPanel) emojiPanel?.onOpened()
+            seenEmojiMode = mode
+        }
+        if (inPanel) emojiPanel?.refresh()
+        if (inSearch) emojiSearch?.render()
         surface?.onLayoutChanged()
     }
 

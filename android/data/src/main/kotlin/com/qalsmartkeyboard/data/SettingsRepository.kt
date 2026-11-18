@@ -132,6 +132,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val PACK_CHANNEL = stringPreferencesKey("pack_channel")
         private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         private val CRASH_REPORTS = booleanPreferencesKey("crash_reports")
+        private val RECENT_EMOJI = stringPreferencesKey("recent_emoji")
+        private val EMOJI_TONES = stringPreferencesKey("emoji_tones")
 
         private const val FIELD = "|"
         private const val LINE = "\n"
@@ -154,6 +156,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[CRASH_REPORTS] = s.crashReports
             p[LAST_MODES] = encodeMap(s.lastModes)
             p[WRITING_MODES] = encodeMap(s.writingModes)
+            p[RECENT_EMOJI] = s.recentEmoji.joinToString(LINE)
+            p[EMOJI_TONES] = encodeMap(s.emojiTones)
         }
 
         /** Lenient decode: anything missing or unrecognised takes its default; the result is sanitised. */
@@ -188,6 +192,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 packChannel = enumOrNull<PackChannel>(p[PACK_CHANNEL]) ?: d.packChannel,
                 // Additive key (schema stays 1): files written before it decode to the default (on).
                 crashReports = p[CRASH_REPORTS] ?: d.crashReports,
+                // Additive keys (schema stays 1): emoji panel recents and remembered skin tones, device-local.
+                recentEmoji = p[RECENT_EMOJI].orEmpty().split(LINE).filter { it.isNotEmpty() },
+                emojiTones = decodeMap(p[EMOJI_TONES]),
             ).sanitized()
         }
 
