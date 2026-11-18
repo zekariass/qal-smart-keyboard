@@ -135,6 +135,7 @@ The keyboard's toolbar link buttons start the launcher activity with `EXTRA_OPEN
 | `AI_SETTINGS` | the privacy dashboard (A2.6: consents, AI history, export, deletion; where a `CONSENT_REQUIRED` failure leads) |
 | `UPGRADE` | `PlansScreen`, a **placeholder** (text and Back) until the billing/plans UI exists |
 | `UPDATE_APP` | the store page (`openStorePage`), also during first-run setup |
+| `SETTINGS` | the keyboard settings screen (the keyboard's gear), with a "Back to typing" bar (`KeyboardReturnBar`): it and the system Back call `finishAndRemoveTask()`, so the user lands back in the app they were typing in |
 
 During first-run setup every link except `UPDATE_APP` is ignored (the setup has its own account step). An unknown
 extra does nothing. The link is applied once the stored onboarding flag has loaded.
@@ -142,7 +143,7 @@ extra does nothing. The link is applied once the stored onboarding flag has load
 Plan state and the entitlement token also refresh from `SyncWorker` (`AiGraph.actions.refreshNow()` after the sync
 run; throttled and a no-op when signed out), so the keyboard never needs to fetch them when it appears. `AiGraph`
 passes a `LastDestinationStore` (device-local last destination per app, see `android/ai-client/README.md`).
-Tests: `link/DeepLinksTest`.
+Tests: `link/DeepLinksTest`, `KeyboardReturnBarTest` (Robolectric: button and Back).
 
 ## Privacy dashboard, consents, history, export, deletion (A2.6, package `privacy`)
 Entry: the "Privacy" card in settings (`PrivacyEntryCard`) and the deep link `AI_SETTINGS` (`DeepLinkAction.SHOW_PRIVACY`). Screens

@@ -75,6 +75,9 @@
     <string name="settings_setup_title">Keyboard setup</string>
     <string name="settings_setup_body">Turn on and choose the keyboard, pick languages and try it out.</string>
     <string name="settings_setup_button">Run setup again</string>
+    <!-- Shown when the settings screen was opened from the keyboard gear: returns to the app the user was typing in. -->
+    <string name="settings_back_to_typing">Back to typing</string>
+    <string name="settings_opened_from_keyboard">Changes apply to the keyboard right away.</string>
 
     <!-- Personal dictionary (A1.8) -->
     <string name="pd_title">Personal dictionary</string>

@@ -183,6 +183,7 @@ class OnboardingModelTest {
         val repo = open()
         repo.setLastMode("am", "PHONETIC")
         repo.setLastMode("ti", "FIDEL")
+        repo.update { it.copy(writingModes = mapOf("am" to "ABC", "ti" to "FIDEL")) }
         val m = OnboardingModel(repo)
         m.start()
         m.onSystemState(both)
@@ -194,6 +195,8 @@ class OnboardingModelTest {
         val s = repo.current()
         assertEquals(null, s.lastModes["am"])
         assertEquals("FIDEL", s.lastModes["ti"])
+        assertEquals(null, s.writingModes["am"]) // the English writing mode chosen earlier is forgotten too
+        assertEquals("FIDEL", s.writingModes["ti"])
     }
 
     @Test fun backNavigationStaysInRange() = runBlocking {

@@ -148,6 +148,8 @@ class MainActivity : ComponentActivity() {
             var showPlans by rememberSaveable { mutableStateOf(false) }
             // The privacy area (A2.6): null = closed, else a PrivacyRoute name.
             var privacyRoute by rememberSaveable { mutableStateOf<String?>(null) }
+            // Opened from the keyboard's gear: settings offer "Back to typing" (and Back) to return to the app.
+            var fromKeyboard by rememberSaveable { mutableStateOf(false) }
             val link = pendingLink
             LaunchedEffect(link, completed) {
                 if (link == null || completed == null) return@LaunchedEffect // wait until the stored flag is read
@@ -159,6 +161,7 @@ class MainActivity : ComponentActivity() {
                     DeepLinkAction.SHOW_SIGN_IN -> { signIn.reset(); showPlans = false; privacyRoute = null; showSignIn = true }
                     DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true }
                     DeepLinkAction.OPEN_STORE -> openStorePage(this@MainActivity)
+                    DeepLinkAction.SHOW_KEYBOARD_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; rerun = false; fromKeyboard = true }
                 }
             }
             val googleSource = remember { CredentialManagerGoogleSource(this@MainActivity, BuildConfig.GOOGLE_WEB_CLIENT_ID) }
@@ -235,6 +238,7 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                         else -> Column(Modifier.padding(innerPadding)) {
+                            if (fromKeyboard) KeyboardReturnBar(onDone = { finishAndRemoveTask() })
                             Greeting(
                                 name = "core " + CoreSmoke.coreVersion(), // A1.1: proves the UniFFI binding
                                 modifier = Modifier.padding(horizontal = 16.dp),

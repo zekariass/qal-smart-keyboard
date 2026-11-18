@@ -82,6 +82,13 @@ data class KeyboardSettings(
     val keyHeightPercent: Int = KEY_HEIGHT_DEFAULT,
     /** Last-used native layout per language, as the IME's `LayoutKind` name (the IME interprets it). */
     val lastModes: Map<String, String> = emptyMap(),
+    /**
+     * The writing mode the user last selected per language (am/ti: Fidel, Phonetic or English), as the
+     * IME's `LayoutKind` name (`ABC` is the English writing mode). Unlike [lastModes] it may be `ABC`,
+     * so the keyboard reopens in the mode the user left. A missing entry (settings saved before this
+     * field existed) falls back to [lastModes], then to the language's input mode. Device-local.
+     */
+    val writingModes: Map<String, String> = emptyMap(),
     /** A2.3: allow language-pack updates on a metered connection. Default off (SD: Wi-Fi-only by default). Local only. */
     val packUpdatesOnMobileData: Boolean = false,
     /** A2.3: channel asked of `GET /language-resources`. Local only. */
@@ -134,6 +141,7 @@ data class KeyboardSettings(
             languages = cleaned,
             keyHeightPercent = keyHeightPercent.coerceIn(KEY_HEIGHT_MIN, KEY_HEIGHT_MAX),
             lastModes = lastModes.filter { (k, v) -> LanguageRules.isKnown(k) && MODE_TOKEN.matches(v) },
+            writingModes = writingModes.filter { (k, v) -> LanguageRules.isKnown(k) && MODE_TOKEN.matches(v) },
         )
     }
 

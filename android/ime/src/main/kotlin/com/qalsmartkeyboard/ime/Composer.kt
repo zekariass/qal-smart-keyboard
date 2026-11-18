@@ -62,6 +62,9 @@ interface Composer {
 
     /** The direct-Fidel layout data of [language] (also source of punctuation and numerals), if loaded. */
     fun fidelGrid(language: String): FidelGrid?
+
+    /** The cached single-key outputs of [language]'s phonetic profile, for the key hints (never computed here). */
+    fun phoneticHints(language: String): PhoneticHints? = null
 }
 
 /** ABC-only composer used until the core and its packs are loaded: text is committed as typed. */

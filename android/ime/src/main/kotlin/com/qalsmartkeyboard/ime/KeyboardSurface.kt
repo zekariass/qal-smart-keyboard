@@ -33,7 +33,14 @@ class KeyboardSurface(context: Context) : View(context) {
     private var placed: List<Placed> = emptyList()
     private val pressed = HashMap<Int, Placed>() // pointer id -> key
     private val d = resources.displayMetrics.density
-    private val gap = 3f * d
+
+    /** Space between keys in a row, and between rows (mainstream proportions: rows breathe more). */
+    private val gap = 4f * d
+    private val rowGap = 7f * d
+
+    /** Outer margin of the key area. */
+    private val edge = 3f * d
+    private val corner = 6f * d
     private val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
     private val bg = if (dark) 0xFF1B1B1F.toInt() else 0xFFE4E5EA.toInt()
@@ -46,6 +53,14 @@ class KeyboardSurface(context: Context) : View(context) {
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.RIGHT }
+    private val icon = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+
+    /** The keyboard background; the service also paints it under the navigation-bar and cutout padding. */
+    val backgroundFill: Int get() = bg
+
+    /** The keys use the dark palette: the service sets the navigation-bar icon appearance from it. */
+    val isDark: Boolean get() = dark
 
     private val longPressMs = ViewConfiguration.getLongPressTimeout().toLong()
     private val slop = ViewConfiguration.get(context).scaledTouchSlop * 2f
@@ -78,13 +93,23 @@ class KeyboardSurface(context: Context) : View(context) {
 
     private var announcedMode: String? = null
 
-    private val rowHeight: Float get() = (controller?.layout?.rowHeightDp ?: 50f) * d
+    /** Row height in px: the layout's (key-height setting included), fitted to orientation and screen. */
+    private val rowHeight: Float
+        get() {
+            val c = controller
+            val layout = c?.layout
+            val cfg = resources.configuration
+            return KeyboardMetrics.rowHeightDp(
+                layout?.rowHeightDp ?: 50f, c?.prefs?.keyHeightScale ?: 1f, layout?.rows?.size ?: 5,
+                cfg.screenWidthDp, cfg.screenHeightDp,
+            ) * d
+        }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val rows = controller?.layout?.rows?.size ?: 5
         setMeasuredDimension(
             resolveSize(suggestedMinimumWidth, widthMeasureSpec),
-            (rows * rowHeight + gap * 2).toInt(),
+            (rows * rowHeight + edge * 2).toInt(),
         )
     }
 
@@ -105,15 +130,15 @@ class KeyboardSurface(context: Context) : View(context) {
     private fun place() {
         val layout = controller?.layout ?: return
         val out = ArrayList<Placed>()
-        val rh = (height - gap * 2) / layout.rows.size
+        val rh = (height - edge * 2) / layout.rows.size
         layout.rows.forEachIndexed { r, row ->
             val total = row.sumOf { it.weight.toDouble() }.toFloat()
-            val unit = (width - gap * 2) / total
-            var x = gap
-            val top = gap + r * rh
+            val unit = (width - edge * 2) / total
+            var x = edge
+            val top = edge + r * rh
             for (k in row) {
                 val w = unit * k.weight
-                out += Placed(k, RectF(x + gap / 2, top + gap / 2, x + w - gap / 2, top + rh - gap / 2))
+                out += Placed(k, RectF(x + gap / 2, top + rowGap / 2, x + w - gap / 2, top + rh - rowGap / 2))
                 x += w
             }
         }
@@ -146,7 +171,11 @@ class KeyboardSurface(context: Context) : View(context) {
                 key.kind == KeyKind.SHIFT && c.shift != ShiftState.OFF -> pressedColor
                 else -> specialColor
             }
-            canvas.drawRoundRect(p.rect, 6f * d, 6f * d, fill)
+            canvas.drawRoundRect(p.rect, corner, corner, fill)
+            if (key.kind == KeyKind.GLOBE) {
+                drawGlobe(canvas, p.rect.centerX(), p.rect.centerY(), min(p.rect.width(), p.rect.height()) * 0.24f)
+                continue
+            }
             val label = when (key.kind) {
                 KeyKind.ENTER -> enterText(c.profile.enterLabel)
                 KeyKind.SHIFT -> if (c.shift == ShiftState.LOCKED) "⇪" else "⇧"
@@ -157,6 +186,7 @@ class KeyboardSurface(context: Context) : View(context) {
             text.color = when {
                 key.kind == KeyKind.ENTER -> 0xFFFFFFFF.toInt()
                 key.kind == KeyKind.SPACE || dead -> dimColor
+                key.kind == KeyKind.SHIFT && c.shift != ShiftState.OFF -> accent
                 else -> textColor
             }
             val base = when {
@@ -165,19 +195,38 @@ class KeyboardSurface(context: Context) : View(context) {
                 else -> 21f
             } * d
             fitText(label, p.rect.width() - 4f * d, base)
-            val y = p.rect.centerY() - (text.descent() + text.ascent()) / 2
+            var y = p.rect.centerY() - (text.descent() + text.ascent()) / 2
+            // Short keys (landscape): keep the label clear of the DRAFT badge above it.
+            if (key.draftBadge) y += max(0f, p.rect.top + BADGE_BOTTOM_DP * d - (y + text.ascent()))
             canvas.drawText(label, p.rect.centerX(), y, text)
-            if (key.hint.isNotEmpty()) {
-                text.color = dimColor
-                text.textSize = 10f * d
-                canvas.drawText(key.hint, p.rect.right - 7f * d, p.rect.top + 11f * d, text)
+            // Secondary label: the first alternative, or (phonetic letters) the native character
+            // for the current shift state. Read from the layout model only: no engine call here.
+            val hint = if (key.shiftHint != null && c.shift != ShiftState.OFF) key.shiftHint else key.hint
+            if (hint.isNotEmpty()) {
+                hintPaint.color = dimColor
+                hintPaint.textSize = 11f * d
+                canvas.drawText(hint, p.rect.right - 4f * d, p.rect.top + 12f * d, hintPaint)
             }
             if (key.draftBadge) {
                 text.color = accent
                 text.textSize = 8f * d
-                canvas.drawText("DRAFT", p.rect.centerX(), p.rect.top + 10f * d, text)
+                canvas.drawText("DRAFT", p.rect.centerX(), p.rect.top + 9f * d, text)
             }
         }
+    }
+
+    /** The language key as a drawn globe in the label colour (no colour emoji). */
+    private fun drawGlobe(canvas: Canvas, cx: Float, cy: Float, r: Float) {
+        icon.color = textColor
+        icon.strokeWidth = 1.6f * d
+        canvas.drawCircle(cx, cy, r, icon)
+        canvas.drawOval(cx - r * 0.45f, cy - r, cx + r * 0.45f, cy + r, icon)
+        canvas.drawLine(cx - r, cy, cx + r, cy, icon)
+        canvas.drawLine(cx, cy - r, cx, cy + r, icon)
+        val y = r * 0.5f
+        val half = r * 0.866f
+        canvas.drawLine(cx - half, cy - y, cx + half, cy - y, icon)
+        canvas.drawLine(cx - half, cy + y, cx + half, cy + y, icon)
     }
 
     private fun enterText(l: EnterLabel) = when (l) {
@@ -351,6 +400,11 @@ class KeyboardSurface(context: Context) : View(context) {
         removeCallbacks(repeat)
         repeating = null
         repeatPointer = -1
+    }
+
+    private companion object {
+        /** Bottom of the DRAFT badge below the key top, plus a 1dp gap. */
+        const val BADGE_BOTTOM_DP = 11f
     }
 
     override fun onDetachedFromWindow() {

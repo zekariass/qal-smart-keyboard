@@ -24,6 +24,12 @@ enum class DeepLinkAction {
 
     /** The store page of the app (a 426 / update-required answer). */
     OPEN_STORE,
+
+    /**
+     * The settings screen opened from the keyboard's gear: it shows "Back to typing", and that or
+     * Back finishes the screen so the user lands back in the app they were typing in.
+     */
+    SHOW_KEYBOARD_SETTINGS,
 }
 
 /**
@@ -36,6 +42,7 @@ enum class DeepLinkAction {
  * | `AI_SETTINGS` | privacy dashboard (consents, AI history, export, deletion; A2.6) |
  * | `UPGRADE` | plans screen |
  * | `UPDATE_APP` | store page (even during first-run setup) |
+ * | `SETTINGS` | keyboard settings, opened from the keyboard's gear (with a way back to typing) |
  *
  * While first-run setup has not finished, every link except `UPDATE_APP` is ignored: the setup flow
  * has its own account step and is not interrupted. An unknown or missing extra does nothing.
@@ -51,6 +58,7 @@ object DeepLinks {
         !onboardingCompleted -> DeepLinkAction.NONE
         link == AiLink.SIGN_IN -> if (account == AccountStatus.Registered) DeepLinkAction.SHOW_SETTINGS else DeepLinkAction.SHOW_SIGN_IN
         link == AiLink.AI_SETTINGS -> DeepLinkAction.SHOW_PRIVACY
+        link == AiLink.SETTINGS -> DeepLinkAction.SHOW_KEYBOARD_SETTINGS
         else -> DeepLinkAction.SHOW_PLANS
     }
 }

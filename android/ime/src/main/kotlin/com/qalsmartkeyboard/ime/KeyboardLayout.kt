@@ -27,7 +27,8 @@ data class PopupItem(
  * [KeyKind.FIDEL_CONSONANT] it is the core series id. [weight] is the relative width inside its row.
  * A CHAR key with empty [text] is a layout spacer. [popup] opens on long-press ([popupColumns]
  * wide); [longAction] fires on long-press instead (globe). [hint] is a small corner label showing
- * the first alternative. [order] is the vowel order of a FIDEL_VOWEL key.
+ * the first alternative, or (phonetic letter keys) the native character the key produces;
+ * [shiftHint], when not null, replaces it while shift is on. [order] is the vowel order of a FIDEL_VOWEL key.
  */
 data class Key(
     val kind: KeyKind,
@@ -38,6 +39,7 @@ data class Key(
     val popupColumns: Int = 5,
     val longAction: Boolean = false,
     val hint: String = "",
+    val shiftHint: String? = null,
     val order: Int = 0,
     val description: String = "",
     val draftBadge: Boolean = false,
@@ -69,9 +71,20 @@ data class LayoutContext(
     val draft: Boolean = false,
     /** numeralStyle ETHIOPIC: Ethiopic numerals are offered as alternatives for typed digits (SD 7.2). */
     val ethiopicNumerals: Boolean = false,
+    /** Phonetic mode: the native output of each letter key (secondary key labels). */
+    val hints: PhoneticHints? = null,
 ) {
     /** Ethiopic punctuation and numerals are offered while an Ethiopic language is typed natively. */
     val ethiopic: Boolean get() = LanguageCatalog.isEthiopic(mode.language) && !mode.isAbc && grid != null
+
+    /**
+     * The Ge'ez marks offered while an Ethiopic language is typed natively (Fidel or Phonetic, not
+     * English): the layout pack's `punctuation` in its order, then any of [Layouts.GEEZ_MARKS] the
+     * pack lacks (also when no layout pack is loaded), so all of them are always reachable.
+     */
+    val ethiopicMarks: List<String>
+        get() = if (!LanguageCatalog.isEthiopic(mode.language) || mode.isAbc) emptyList()
+        else (grid?.punctuation.orEmpty() + Layouts.GEEZ_MARKS).distinct()
 
     /** The Fidel grid layout: `.` and `,` tap the Ethiopic full stop and comma (ADR 0007). */
     val fidelPunctuation: Boolean get() = mode.kind == LayoutKind.FIDEL && grid != null
@@ -85,8 +98,16 @@ data class LayoutContext(
 object Layouts {
     private const val FULL_STOP = "።"
     private const val ETHIOPIC_COMMA = "፣"
+
+    /** The Ge'ez punctuation marks every Ethiopic native layout must reach (SD 7.2). */
+    val GEEZ_MARKS: List<String> = listOf("።", "፣", "፤", "፥", "፦", "፧", "፨")
     private fun ch(c: String, w: Float = 1f) = Key(KeyKind.CHAR, c, c, w)
     private fun chars(s: String) = s.map { ch(it.toString()) }
+
+    /** A row of letter keys; in Phonetic mode each carries the engine's output for it as a hint. */
+    private fun letterKeys(s: String, hints: PhoneticHints?) = if (hints == null) chars(s) else s.map { c ->
+        Key(KeyKind.CHAR, c.toString(), c.toString(), hint = hints.lower(c), shiftHint = hints.upper(c))
+    }
     private fun spacer(w: Float) = Key(KeyKind.CHAR, "", "", w)
     private fun backspace(w: Float = 1.5f) = Key(KeyKind.BACKSPACE, "⌫", weight = w, description = "Delete")
     private fun enter(w: Float = 1.5f) = Key(KeyKind.ENTER, "", weight = w)
@@ -122,8 +143,7 @@ object Layouts {
     )
 
     private fun marks(ctx: LayoutContext, only: Set<String>? = null): List<PopupItem> =
-        if (!ctx.ethiopic) emptyList()
-        else ctx.grid?.punctuation.orEmpty().filter { only == null || it in only }
+        ctx.ethiopicMarks.filter { only == null || it in only }
             .map { PopupItem(it, description = "Ethiopic punctuation $it") }
 
     private fun periodKey(ctx: LayoutContext): Key {
@@ -153,13 +173,18 @@ object Layouts {
         return Key(KeyKind.CHAR, ",", ",", 0.75f, popup = m, popupColumns = 2, hint = m.firstOrNull()?.label.orEmpty())
     }
 
+    /**
+     * The one-tap ABC key. In am/ti it is the English writing mode switch: `ABC` goes to English, the
+     * native glyph goes back to the last of Fidel/Phonetic. Hidden in English (ABC == English).
+     */
     private fun toggleKey(ctx: LayoutContext): Key? {
         val lang = ctx.mode.language
         if (lang == "en") return null // ABC and English are both plain Latin passthrough
+        val ethiopic = LanguageCatalog.isEthiopic(lang)
         return if (ctx.mode.isAbc) {
             Key(KeyKind.ABC_TOGGLE, LanguageCatalog.nativeGlyph(lang), description = "Switch to ${LanguageCatalog.spokenName(lang)} keys")
         } else {
-            Key(KeyKind.ABC_TOGGLE, "ABC", description = "Switch to ABC Latin keys")
+            Key(KeyKind.ABC_TOGGLE, "ABC", description = if (ethiopic) "Switch to English writing mode" else "Switch to ABC Latin keys")
         }
     }
 
@@ -187,14 +212,14 @@ object Layouts {
             listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.25f, description = "Shift")) + chars("zxcvbnm") +
                 Key(KeyKind.CHAR, "'", "'", description = "Apostrophe, hudhaa") + backspace(1.25f)
         } else {
-            listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.5f, description = "Shift")) + chars("zxcvbnm") + backspace()
+            listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.5f, description = "Shift")) + letterKeys("zxcvbnm", ctx.hints) + backspace()
         }
         return KeyboardLayout(
             Page.LETTERS,
             listOf(
                 digitRow(ctx),
-                chars("qwertyuiop"),
-                listOf(spacer(0.5f)) + chars("asdfghjkl") + listOf(spacer(0.5f)),
+                letterKeys("qwertyuiop", ctx.hints),
+                listOf(spacer(0.5f)) + letterKeys("asdfghjkl", ctx.hints) + listOf(spacer(0.5f)),
                 shiftRow,
                 bottom,
             ),
@@ -230,7 +255,7 @@ object Layouts {
     )
 
     private fun symbols1(ctx: LayoutContext): KeyboardLayout {
-        val marks = if (ctx.ethiopic) ctx.grid?.punctuation.orEmpty() else emptyList()
+        val marks = ctx.ethiopicMarks
         val rows = buildList {
             add(digitRow(ctx))
             if (marks.isNotEmpty()) {

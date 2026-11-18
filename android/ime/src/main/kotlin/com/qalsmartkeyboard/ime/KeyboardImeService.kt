@@ -7,6 +7,7 @@ import android.text.InputType
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
@@ -18,6 +19,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.PersistableBundle
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.qalsmartkeyboard.ime.ai.AiActionsHolder
 import com.qalsmartkeyboard.ime.ai.AiLink
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
@@ -77,7 +81,11 @@ class KeyboardImeService : InputMethodService() {
     // Settings (A1.5): a cached snapshot (defaults until the first load), updated off the main thread.
     private val snapshot by lazy { SettingsSnapshot(SettingsRepository.get(applicationContext)) }
     private val settingsPrefs by lazy {
-        SettingsPreferences({ snapshot.current }) { lang, mode -> snapshot.launchUpdate { it.copy(lastModes = it.lastModes + (lang to mode)) } }
+        SettingsPreferences(
+            { snapshot.current },
+            saveLastMode = { lang, mode -> snapshot.launchUpdate { it.copy(lastModes = it.lastModes + (lang to mode)) } },
+            saveWritingMode = { lang, mode -> snapshot.launchUpdate { it.copy(writingModes = it.writingModes + (lang to mode)) } },
+        )
     }
     private val userDictionary by lazy { UserDictionary.get(applicationContext) }
     private val controller by lazy { KeyboardController(adapter, settingsPrefs, settingsPrefs, userDictionary) { refreshViews() } }
@@ -123,7 +131,7 @@ class KeyboardImeService : InputMethodService() {
         cm.setPrimaryClip(clip)
     }
 
-    /** Opens the companion app (sign-in, AI settings, plans, update). It decides what to show from the extra. */
+    /** Opens the companion app (sign-in, AI settings, plans, update, keyboard settings). It decides what to show from the extra. */
     private fun openCompanion(link: AiLink) {
         val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -156,6 +164,7 @@ class KeyboardImeService : InputMethodService() {
         Thread({
             var created: KeyboardEngine? = null
             var createdLoad: PackRuntime.Loaded? = null
+            var hints: Map<String, PhoneticHints> = emptyMap()
             try {
                 val rt = runtime ?: PackStorage.create(appContext) { Log.w(TAG, it) }?.also { runtime = it }
                 seenReloadToken = rt?.journal?.reloadToken()
@@ -188,17 +197,25 @@ class KeyboardImeService : InputMethodService() {
                 } catch (e: Exception) {
                     Log.w(TAG, "user dictionary skipped: ${e.javaClass.simpleName}")
                 }
+                // Phonetic key hints: each letter typed alone into a fresh phonetic session of the new
+                // engine, before it is handed to the main thread (no core call ever runs on the draw path).
+                try {
+                    created?.let { hints = CoreComposer.deriveHints(it) }
+                } catch (e: Exception) {
+                    Log.w(TAG, "key hints skipped: ${e.javaClass.simpleName}")
+                }
             } finally {
                 reloading.set(false)
             }
             val fresh = created
+            val freshHints = hints
             if (fresh != null) {
                 main.post {
                     val old = engine
                     controller.composer.reset()
                     engine = fresh
                     loaded = createdLoad
-                    controller.composer = CoreComposer(fresh)
+                    controller.composer = CoreComposer(fresh, freshHints)
                     if (old != null) {
                         userDictionary.detach(old)
                         old.close()
@@ -250,6 +267,8 @@ class KeyboardImeService : InputMethodService() {
                 val added = controller.addCandidateToDictionary(i)
                 Toast.makeText(this, if (added) R.string.user_dictionary_added else R.string.user_dictionary_not_added, Toast.LENGTH_SHORT).show()
             }
+            it.onSettings = { openCompanion(AiLink.SETTINGS) }
+            it.onModeSelected = { kind -> controller.selectWritingMode(kind) }
             strip = it
         }
         val ai = AiToolbarView(this).also {
@@ -264,35 +283,104 @@ class KeyboardImeService : InputMethodService() {
             surface = it
         }
         val space = View(this).also { headroom = it }
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val column = KeyboardColumn(this, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.apply {
             addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
             addView(ai, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(s, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
-        return OverlayStack(this).apply {
+        val root = OverlayStack(this).apply {
             addView(column)
             addView(overlay)
             inputRoot = this
             ai.render()
             refreshViews()
         }
+        // Edge-to-edge IME window (targetSdk 35+ on Android 15+): keep the keys clear of the
+        // navigation bar (gesture or 3-button, bottom or side) and of landscape cutouts, while the
+        // column keeps painting the keyboard background under them. The window's root insets are
+        // read (the IME's own decor may consume or never forward them to the input view), and they
+        // are zero where the system already shrinks the window above the bar (older releases), so
+        // nothing is padded twice. Re-read on every insets dispatch and layout change (rotation,
+        // navigation mode, density).
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            applyInsetPadding(v, column, ViewCompat.getRootWindowInsets(v) ?: insets)
+            insets
+        }
+        // Also after every layout of the window (the IME's own navigation-bar strip is added and
+        // sized by the system after the input view), only changing the padding when it differs.
+        root.viewTreeObserver.addOnGlobalLayoutListener {
+            ViewCompat.getRootWindowInsets(root)?.let { applyInsetPadding(root, column, it) }
+        }
+        styleNavigationBar(k)
+        return root
+    }
+
+    private fun applyInsetPadding(root: View, column: View, insets: WindowInsetsCompat) {
+        val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+        val cut = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+        val p = KeyboardInsets.padding(
+            intArrayOf(nav.left, nav.top, nav.right, nav.bottom),
+            intArrayOf(cut.left, cut.top, cut.right, cut.bottom),
+            imeNavBarHeight(root),
+        )
+        if (column.paddingLeft != p.left || column.paddingRight != p.right || column.paddingBottom != p.bottom) {
+            // Posted: changing padding inside a layout pass would be ignored until the next one.
+            root.post { column.setPadding(p.left, 0, p.right, p.bottom) }
+        }
+    }
+
+    /**
+     * Height of the navigation-bar strip the system adds to the IME window (Android 13+, the
+     * `NavigationBarFrame` with the IME back / switcher buttons), 0 when there is none or it is
+     * hidden. Found among the window's own views, outside the input view.
+     */
+    private fun imeNavBarHeight(root: View): Int {
+        val decor = window?.window?.decorView as? ViewGroup ?: return 0
+        fun find(g: ViewGroup, depth: Int): Int {
+            for (i in 0 until g.childCount) {
+                val c = g.getChildAt(i)
+                if (c === root || c.visibility != View.VISIBLE) continue
+                if (c.javaClass.simpleName == "NavigationBarFrame") return c.height
+                if (c is ViewGroup && depth < 3) find(c, depth + 1).let { if (it > 0) return it }
+            }
+            return 0
+        }
+        return find(decor, 0)
+    }
+
+    /**
+     * Navigation bar under the keyboard: its icons follow the keyboard palette (`dark`), and on
+     * releases where the bar is not transparent it takes the keyboard background, so the keyboard
+     * looks continuous. API 24-25 have no light navigation icons, so a light keyboard keeps the
+     * system bar colour there.
+     */
+    private fun styleNavigationBar(k: KeyboardSurface) {
+        val w = window?.window ?: return
+        val dark = k.isDark
+        try {
+            if (Build.VERSION.SDK_INT < 35 && (dark || Build.VERSION.SDK_INT >= 26)) {
+                @Suppress("DEPRECATION")
+                w.navigationBarColor = k.backgroundFill
+            }
+            if (Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
+            WindowCompat.getInsetsController(w, w.decorView).isAppearanceLightNavigationBars = !dark
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "navigation bar style skipped: ${e.javaClass.simpleName}")
+        }
     }
 
     /** The app only sees the part of the window below the headroom; the headroom does not take touches. */
     override fun onComputeInsets(outInsets: Insets) {
         super.onComputeInsets(outInsets)
-        val root = inputRoot
-        val room = headroom
-        if (root != null && room != null && root.height > 0) {
-            val loc = IntArray(2)
-            room.getLocationInWindow(loc)
-            val top = loc[1] + room.height
-            outInsets.contentTopInsets = top
-            outInsets.visibleTopInsets = top
-            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
-        }
+        val root = inputRoot ?: return
+        val room = headroom ?: return
+        val loc = IntArray(2)
+        room.getLocationInWindow(loc)
+        val top = KeyboardInsets.contentTop(root.height, loc[1], room.height) ?: return
+        outInsets.contentTopInsets = top
+        outInsets.visibleTopInsets = top
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
     }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
@@ -316,6 +404,7 @@ class KeyboardImeService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        surface?.let { styleNavigationBar(it) }
         checkPackUpdates()
         controller.refreshAutoCapital()
         refreshViews()
@@ -349,9 +438,14 @@ class KeyboardImeService : InputMethodService() {
     }
 
     private fun refreshViews() {
+        // The top bar (mode pill, candidates, settings gear) is always shown so the keyboard keeps
+        // one height; candidates and the DRAFT tag only where the strip applies (phonetic, not passwords).
         strip?.let {
-            it.visibility = if (controller.showCandidateStrip) View.VISIBLE else View.GONE
-            it.show(controller.candidates, controller.candidatesAreDraft)
+            it.visibility = View.VISIBLE
+            val candidates = controller.showCandidateStrip
+            it.show(if (candidates) controller.candidates else emptyList(), candidates && controller.candidatesAreDraft)
+            it.setModes(controller.writingModeOptions, controller.writingMode)
+            it.closeModeChooser()
         }
         surface?.onLayoutChanged()
     }

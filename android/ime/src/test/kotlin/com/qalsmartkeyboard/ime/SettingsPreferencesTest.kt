@@ -51,6 +51,20 @@ class SettingsPreferencesTest {
         assertEquals(listOf("am" to "PHONETIC"), saved)
     }
 
+    @Test fun writingModesMapAndSaveOnlyForAmAndTi() {
+        val saved = ArrayList<Pair<String, String>>()
+        val s = KeyboardSettings.DEFAULT.copy(writingModes = mapOf("am" to "ABC", "ti" to "FIDEL", "om" to "ABC", "en" to "FIDEL"))
+        val p = SettingsPreferences({ s }, saveWritingMode = { l, m -> saved += l to m })
+        assertEquals(LayoutKind.ABC, p.writingMode("am")) // English
+        assertEquals(LayoutKind.FIDEL, p.writingMode("ti"))
+        assertNull(p.writingMode("om")) // single-mode languages have no writing mode
+        assertNull(p.writingMode("en"))
+        p.setWritingMode("am", LayoutKind.ABC) // unchanged: not saved again
+        p.setWritingMode("am", LayoutKind.PHONETIC)
+        p.setWritingMode("om", LayoutKind.ABC) // ignored
+        assertEquals(listOf("am" to "PHONETIC"), saved)
+    }
+
     @Test fun firstRunStartsOnAmharicPhoneticQwertyAndFidelIsOneGlobeLongPressAway() {
         val s = CoreTestEnv.Session(languages = prefs(KeyboardSettings.DEFAULT), prefs = prefs(KeyboardSettings.DEFAULT))
         assertEquals(TypingMode("am", LayoutKind.PHONETIC), s.c.effectiveMode)

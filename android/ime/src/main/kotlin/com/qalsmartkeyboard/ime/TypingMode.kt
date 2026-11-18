@@ -14,7 +14,10 @@ enum class LayoutKind(val phonetic: Boolean, val latin: Boolean) {
     /** Latin passthrough (core `English`): en. */
     ENGLISH(phonetic = false, latin = true),
 
-    /** Temporary Latin passthrough in any language (core `Abc`). */
+    /**
+     * Latin passthrough in any language (core `Abc`). For am/ti this is the **English** writing mode
+     * (remembered like Fidel and Phonetic); for om it is the temporary ABC toggle.
+     */
     ABC(phonetic = false, latin = true),
 }
 
@@ -40,6 +43,30 @@ object LanguageCatalog {
 
     /** Languages written in Ge'ez script: Ethiopic punctuation and numerals apply (SD 7.2). */
     fun isEthiopic(language: String) = language == "am" || language == "ti"
+
+    /**
+     * The writing modes the mode selector offers, in selector order: am/ti have Fidel, Phonetic and
+     * English (= [LayoutKind.ABC], Latin with no transliteration); om and en have a single mode and no
+     * selector. Language and writing mode are separate: the language stays am/ti in English mode.
+     */
+    fun writingModes(language: String): List<LayoutKind> =
+        if (isEthiopic(language)) listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC, LayoutKind.ABC) else emptyList()
+
+    /** The selector's name of a writing mode (am/ti). */
+    fun writingModeLabel(kind: LayoutKind) = when (kind) {
+        LayoutKind.FIDEL -> "ፊደል"
+        LayoutKind.PHONETIC -> "Phonetic"
+        LayoutKind.ABC -> "English"
+        else -> kindLabel(kind)
+    }
+
+    /** Spoken name of a writing mode (am/ti). */
+    fun spokenWritingMode(kind: LayoutKind) = when (kind) {
+        LayoutKind.FIDEL -> "Fidel"
+        LayoutKind.PHONETIC -> "Phonetic"
+        LayoutKind.ABC -> "English"
+        else -> spokenKind(kind)
+    }
 
     /** Short tag for the mode indicator, e.g. `አማ`. */
     fun shortLabel(language: String) = when (language) {
@@ -70,7 +97,7 @@ object LanguageCatalog {
 
     fun kindLabel(kind: LayoutKind) = when (kind) {
         LayoutKind.FIDEL -> "ፊደል"
-        LayoutKind.PHONETIC -> "QWERTY"
+        LayoutKind.PHONETIC -> "Phonetic"
         LayoutKind.QUBEE -> "Qubee"
         LayoutKind.ENGLISH -> "QWERTY"
         LayoutKind.ABC -> "ABC"
@@ -85,12 +112,14 @@ object LanguageCatalog {
     }
 
     /**
-     * The mode indicator (SD 7.1, e.g. `አማ · ABC→አ`): language tag, then the layout; in ABC the
-     * arrow names where the one-tap ABC toggle goes back to.
+     * The mode indicator (SD 7.1, e.g. `አማ · Phonetic`): language tag, then the layout or writing
+     * mode. am/ti name their English writing mode; elsewhere ABC names where the one-tap ABC toggle
+     * goes back to (`OM · ABC→Qu`).
      */
     fun indicator(mode: TypingMode, backTo: LayoutKind?): String {
         val tag = shortLabel(mode.language)
         return when {
+            mode.isAbc && isEthiopic(mode.language) -> "$tag · ${writingModeLabel(LayoutKind.ABC)}"
             mode.isAbc && backTo != null && mode.language != "en" -> "$tag · ABC→${nativeGlyph(mode.language)}"
             mode.isAbc -> "$tag · ABC"
             else -> "$tag · ${kindLabel(mode.kind)}"
@@ -130,6 +159,14 @@ interface ModePreferences {
 
     fun setLastNative(language: String, kind: LayoutKind) {}
 
+    /**
+     * The writing mode last selected in [language] (am/ti: Fidel, Phonetic or English = ABC), or null
+     * when none was saved yet (then [lastNative] and [preferredKind] decide).
+     */
+    fun writingMode(language: String): LayoutKind? = null
+
+    fun setWritingMode(language: String, kind: LayoutKind) {}
+
     /** Whether the candidate strip is shown for [language]'s phonetic mode. */
     fun showCandidates(language: String): Boolean = true
 
@@ -145,8 +182,11 @@ interface ModePreferences {
 /** In-memory preferences: used by tests and before settings load. */
 open class InMemoryModePreferences : ModePreferences {
     private val last = HashMap<String, LayoutKind>()
+    private val writing = HashMap<String, LayoutKind>()
     override fun lastNative(language: String) = last[language]
     override fun setLastNative(language: String, kind: LayoutKind) { last[language] = kind }
+    override fun writingMode(language: String) = writing[language]
+    override fun setWritingMode(language: String, kind: LayoutKind) { writing[language] = kind }
 }
 
 /** Direct-Fidel layout data, copied from the core's `FidelLayout` so the UI model does not depend on FFI types. */

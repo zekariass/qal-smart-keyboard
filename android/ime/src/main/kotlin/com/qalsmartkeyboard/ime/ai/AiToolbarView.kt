@@ -233,7 +233,7 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     private fun linkLabel(l: AiLink): String = context.getString(
         when (l) {
             AiLink.SIGN_IN -> R.string.ai_link_sign_in
-            AiLink.AI_SETTINGS -> R.string.ai_link_settings
+            AiLink.AI_SETTINGS, AiLink.SETTINGS -> R.string.ai_link_settings
             AiLink.UPGRADE -> R.string.ai_link_upgrade
             AiLink.UPDATE_APP -> R.string.ai_link_update
         },

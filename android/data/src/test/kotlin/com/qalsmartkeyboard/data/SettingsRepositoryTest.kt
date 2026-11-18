@@ -165,6 +165,43 @@ class SettingsRepositoryTest {
         assertTrue(s.enabledLanguages.isNotEmpty())
     }
 
+    // ---------------------------------------------------------------- writing modes (am/ti)
+
+    @Test fun writingModesPersistPerLanguageAcrossRestart() = runBlocking {
+        val r = open()
+        r.update { it.copy(writingModes = it.writingModes + ("am" to "ABC")) }
+        r.update { it.copy(writingModes = it.writingModes + ("ti" to "FIDEL"), lastModes = it.lastModes + ("ti" to "FIDEL")) }
+        closeAll() // the "restart"
+        val s = open().current()
+        assertEquals(mapOf("am" to "ABC", "ti" to "FIDEL"), s.writingModes)
+        assertEquals(mapOf("ti" to "FIDEL"), s.lastModes)
+    }
+
+    @Test fun filesWrittenBeforeWritingModesKeepEverythingElse() = runBlocking {
+        // A store written by the previous version: no writing_modes key at all.
+        val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "old.preferences_pb")
+        store.edit {
+            it[intPreferencesKey("schema_version")] = 1
+            it[stringPreferencesKey("last_modes")] = "am|FIDEL\nom|QUBEE"
+            it[intPreferencesKey("key_height_percent")] = 110
+        }
+        val r = SettingsRepository(store)
+        val s = r.current()
+        assertEquals(emptyMap<String, String>(), s.writingModes)
+        assertEquals(mapOf("am" to "FIDEL", "om" to "QUBEE"), s.lastModes)
+        assertEquals(110, s.keyHeightPercent)
+        // the first write adds the new key without losing the old values
+        r.update { it.copy(writingModes = mapOf("am" to "PHONETIC")) }
+        val after = r.current()
+        assertEquals(mapOf("am" to "PHONETIC"), after.writingModes)
+        assertEquals(mapOf("am" to "FIDEL", "om" to "QUBEE"), after.lastModes)
+    }
+
+    @Test fun badWritingModesAreDropped() {
+        val dirty = KeyboardSettings(writingModes = mapOf("xx" to "FIDEL", "am" to "bad|mode", "ti" to "ABC")).sanitized()
+        assertEquals(mapOf("ti" to "ABC"), dirty.writingModes)
+    }
+
     // ---------------------------------------------------------------- F14
 
     private fun catalog(vararg active: ProfileRef) = ProfileCatalog { lang -> active.filter { it.language == lang } }
