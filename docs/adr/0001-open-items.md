@@ -13,15 +13,15 @@
 |---|---|---|---|---|---|---|---|
 | OI-01 | Final launch-language set and dialect coverage (incl. Tigrinya Ethiopia vs Eritrea conventions) | SD §26.2 | Product + language leads | M0 | L1.3 | OPEN | — |
 | OI-02 | Approved AM/TI phonetic schemes and onboarding default (phonetic vs Fidel) | SD §26.2 | Language panels | M0 | C1.4 | OPEN | Plan gate G0 |
-| OI-03 | Initial MT/LLM/ASR/TTS providers per pair, with ZDR contracts | SD §26.2 | AI lead | M0 | B5.1, F0.6 | OPEN | Plan gate G0 (provider shortlist) |
-| OI-04 | Hosting region and transfer basis under the Ethiopian PDP Proclamation | SD §26.2 | Legal + infra | M0 | H3.4 | OPEN | — |
+| OI-03 | Initial MT/LLM/ASR/TTS providers per pair, with ZDR contracts | SD §26.2 | AI lead | M0 | B5.1, F0.6 | DECIDED | ADR 0007 D46: OpenAI primary (MT + LLM), Google Cloud Translation as MT fallback. ASR/TTS still open; per-pair quality still gated by OI-R1 |
+| OI-04 | Hosting region and transfer basis under the Ethiopian PDP Proclamation | SD §26.2 | Legal + infra | M0 | H3.4 | OPEN | Deferred by the product owner (ADR 0007 D49) |
 | OI-05 | Final quotas and ETB/GBP/USD/EUR price points after cost modelling | SD §26.2 | Product + finance | M3 | B4.1, G4 | OPEN | Plan gate G4 (quota/cost model) |
 | OI-06 | Play Billing buyer availability for Ethiopian accounts; need for `direct` flavour | SD §26.2 | Product + legal | M3 | M4.7, M4.8 | OPEN | Plan gate G3 |
 | OI-07 | Apple storefront purchase path for Ethiopian users | SD §26.2 | Product + legal | M5 | I5.5 | OPEN | — |
 | OI-08 | Chapa merchant onboarding, methods, limits, settlement, refunds | SD §26.2 | Finance | M4 | M4.2 | OPEN | — |
 | OI-09 | ArifPay recurring and Telebirr mandate approval for target methods | SD §26.2 | Finance | M4+ | M4.9 | OPEN | — |
 | OI-10 | VAT/receipt obligations in Ethiopia and diaspora markets | SD §26.2 | Finance | M4 | M4.1, M4.3 | OPEN | — |
-| OI-11 | SMS/OTP aggregator for +251 and cost per message | SD §26.2 | Engineering | M2 | B2.1 | OPEN | — |
+| OI-11 | SMS/OTP aggregator for +251 and cost per message | SD §26.2 | Engineering | M2 | B2.1 | DECIDED | ADR 0007 D48: SMS Ethiopia; phone sign-in for +251 only. Adapter waits for the vendor's API docs; cost per message still to be confirmed |
 | OI-12 | Rust capacity (or D2 fallback) | SD §26.2 | Engineering manager | M0 | C1.1 | OPEN | — |
 | OI-R1 | Amharic/Tigrinya/Oromo MT and ASR quality from commercial providers is uneven | AR §6 | AI lead | TBD | F0.6 | OPEN | Mitigation: evaluation sets per pair, `quality_tier` gating, native-speaker panels before marketing a pair |
 | OI-R2 | Google Play buyer availability for Ethiopian accounts and Apple storefront options | AR §6 | Product + legal | TBD | M4.7, M4.8 | OPEN | Mitigation: market/channel policy table fails closed; `direct` Android flavour |
