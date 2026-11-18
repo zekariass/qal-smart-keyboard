@@ -128,7 +128,8 @@ column `user_dictionary_sync_state.tombstone_floor` (V16) to the highest `sync_v
 ### D5. Operations
 - `qal.retention.enabled=false` leaves the task out (tests; one-off environments). Overrides as in D1.
 - Backups: the 30-day cap (ADR 0007 D1) applies to the database; the retention periods above are the live periods.
-- The data-export archive objects (B6.1) need the 7-day bucket lifecycle of SD 8.1: a row delete cannot delete a file; the
+- The data-export archive objects (B6.1, ADR 0022) are deleted by the export job when the link expires (7 days) and by the
+  account deletion; the 7-day bucket lifecycle of SD 8.1 / D39 is the backstop (a row delete cannot delete a file); the
   row purge (30 days after the link expires) only removes the record. Voice rows whose audio object still exists are never
   purged for the same reason.
 

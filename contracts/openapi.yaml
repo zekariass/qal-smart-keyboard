@@ -591,6 +591,12 @@ paths:
       tags: [Me]
       operationId: requestDataExport
       summary: Request an export of personal data
+      description: |
+        Queues an asynchronous export of everything the service stores about the caller (SD 19.2: account,
+        preferences, consents, history, dictionary, devices, sessions metadata, AI request metadata, feedback,
+        usage, credits, subscriptions and receipts). One export is in flight per user: asking while one is
+        `REQUESTED` or `PROCESSING` returns that export. At most 3 exports per 24 hours (429 with `Retry-After`).
+        Available while an account deletion is pending; a deleted account cannot export (403).
       requestBody:
         required: false
         content:
@@ -598,10 +604,13 @@ paths:
             schema: { $ref: '#/components/schemas/DataExportCreate' }
       responses:
         '202':
-          description: Export queued.
+          description: Export queued (or the export already in flight).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DataExport' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
   /api/v1/me/data-exports/{exportId}:
     parameters:
@@ -609,13 +618,36 @@ paths:
     get:
       tags: [Me]
       operationId: getDataExport
-      summary: Get export status and short-lived download URL
+      summary: Get export status and download URL
+      description: |
+        Status of one of the caller's exports; another user's id answers 404. A `READY` export carries the
+        `downloadUrl` and its expiry; after `downloadExpiresAt` (7 days) the status is `EXPIRED` and the archive is gone.
       responses:
         '200':
           description: Export status.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DataExport' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/me/data-exports/{exportId}/archive:
+    parameters:
+      - $ref: '#/components/parameters/ExportId'
+    get:
+      tags: [Me]
+      operationId: downloadDataExport
+      summary: Download the export archive
+      description: |
+        The `downloadUrl` of a `READY` export. Requires the owner's access token. The archive is stored encrypted under
+        the user's data key and is decrypted here for the owner only. 404 for another user's export, an export that is
+        not `READY`, an expired one, or one whose keys were destroyed by an account deletion.
+      responses:
+        '200':
+          description: The archive as an attachment (`Content-Disposition`), `Cache-Control` no-store.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataExportArchive' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/me/consents:
     get:
@@ -4159,8 +4191,53 @@ components:
           enum: [REQUESTED, PROCESSING, READY, EXPIRED, FAILED]
         requestedAt: { type: string, format: date-time }
         readyAt: { type: string, format: date-time }
-        downloadUrl: { type: string, format: uri, description: Signed URL valid ≤ 15 minutes. }
-        downloadExpiresAt: { type: string, format: date-time }
+        downloadUrl:
+          type: string
+          format: uri
+          description: "Present while `READY`: the archive endpoint of this API (`/me/data-exports/{id}/archive`). It is not a bucket URL and needs the owner's access token."
+        downloadExpiresAt: { type: string, format: date-time, description: "End of the 7-day link; the archive is deleted then." }
+    DataExportArchive:
+      type: object
+      description: "The export document: a manifest listing every section with its row count and everything left out, and the data."
+      required: [manifest, data]
+      properties:
+        manifest:
+          type: object
+          required: [format, formatVersion, exportId, userId, generatedAt, linkExpiresAt, sections, excluded]
+          properties:
+            format: { type: string, enum: [qal-data-export] }
+            formatVersion: { type: integer, minimum: 1 }
+            exportId: { type: string, format: uuid }
+            userId: { type: string, format: uuid }
+            generatedAt: { type: string, format: date-time }
+            linkExpiresAt: { type: string, format: date-time }
+            sections:
+              type: array
+              items:
+                type: object
+                required: [code, dataClass, description, rows]
+                properties:
+                  code: { type: string, description: "Key of the section in `data`." }
+                  dataClass: { type: string }
+                  description: { type: string }
+                  rows: { type: integer, minimum: 0 }
+            excluded:
+              type: array
+              items:
+                type: object
+                required: [code, reason]
+                properties:
+                  code: { type: string }
+                  reason: { type: string }
+            notes:
+              type: array
+              items: { type: string }
+        data:
+          type: object
+          description: "One array of rows per manifest section."
+          additionalProperties:
+            type: array
+            items: { type: object, additionalProperties: true }
     ConsentCode:
       type: string
       enum:

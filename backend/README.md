@@ -338,6 +338,33 @@ guests included. Code in `com.qalsmartkeyboard.privacy`.
 - **Re-registration:** identities are deleted and the row anonymised, so the same phone number or Google account later
   creates a new, empty account; the deleted account can never be signed in to again.
 
+## Data export (B6.1, ADR 0022, SD 19.4)
+
+`POST /me/data-exports` (202), `GET /me/data-exports/{exportId}`, `GET /me/data-exports/{exportId}/archive`; any valid token,
+guests included; every response `no-store`. Code in `com.qalsmartkeyboard.privacy` (`DataExportService`, `DataExportJob`,
+`ExportArchive`, `ExportObjectStore`) and `identity` (the `UserExportParticipant` port, `ExportWriter`, `ExportRows`).
+
+- **Request:** records a `REQUESTED` row; the db-scheduler task `privacy-data-export` (every `poll-interval`, 10 s; off in tests,
+  `job-enabled=false`) builds it. **One in flight per user** (asking again returns the open export), **3 per 24 h**
+  (`max-per-window`, `window`; failed exports do not count), then 429 `RATE_LIMITED` with `Retry-After`. Also allowed while an
+  account deletion is pending (the person can take the data with them); a closed or shredded account cannot export.
+- **Archive** (JSON, contract `DataExportArchive`): `manifest` (format `qal-data-export`, version, ids, times, one entry per
+  section with its row count and SD 19.2 data class, `excluded` with a reason each, notes) and `data` (one array per
+  section). Every module contributes through a `UserExportParticipant` (the twin of `UserDeletionParticipant`, run in one
+  read-only, repeatable-read transaction), decrypting its ciphertext with `UserDataEncryption`; plaintext exists only in the
+  archive. App rules are exported as hashes (the server never sees package names, ADR 0012). A module that adds a per-user
+  table must add it to its participant; `DataExportIT` fails on any per-user table that is neither exported nor excluded.
+- **At rest:** the document is AES-256-GCM sealed with the user's data key (`data_export_requests / archive / <export id>`) and
+  stored as `exports/<256 random bits hex>` in the private bucket (`qal.privacy.export.storage.*`, env `QAL_EXPORTS_S3_*`, bucket
+  `qal-exports`; **give the bucket a 7-day lifecycle rule**). The bucket is never exposed: `downloadUrl` is the API's archive
+  endpoint, which needs the owner's token and decrypts for the response. Crypto-shred or account deletion makes it unreadable.
+- **Expiry:** `link-ttl` 7 days from completion; after that the status reads `EXPIRED` at once, the download is 404 and the
+  job deletes the object and clears the key. Another user's id, an unknown id and a not-ready export are all 404.
+- **Account deletion:** `PrivacyDeletion` deletes the export rows and their archive objects (a store failure is logged and does
+  not hold up the deletion). B6.3 removes the rows 30 days after expiry (`data-export-requests`).
+- Metrics `qal.privacy.data_export{outcome=requested|ready|failed|expired|downloaded|rate_limited}`; logs carry ids and counts only.
+- Proof: `DataExportIT` (PG18 + MinIO via Testcontainers, contract-validated).
+
 ## Retention (B6.3, ADR 0020, SD 19.2)
 
 A daily db-scheduler task `privacy-retention` (`qal.retention.cron`, default `0 0 3 * * *` UTC; `qal.retention.enabled`,
