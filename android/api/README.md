@@ -63,6 +63,7 @@ session.signedIn(apiCall { clients.auth.verifyPhoneOtp(...) })   // stores the p
 the rest. A non-Problem error body (for example an edge HTML page) becomes `Http` with code `UNKNOWN`, the HTTP status
 and the `X-Correlation-Id` header. Clients switch on `code`, never on `title`. `apiResult { }` returns a `Result`
 instead of throwing.
+`ApiErrors.fromHttp(status, body, headers)` maps a non-2xx answer read by hand to the same errors (`:sync` uses it for its JSON calls, A2.4).
 
 ## Transport security
 ADR 0016: no API certificate pinning (SD 18), system trust anchors only, no cleartext except the debug local stack

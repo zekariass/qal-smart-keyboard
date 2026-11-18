@@ -73,24 +73,26 @@ class PackUpdater(
             state.revokedKeys()
         }
 
+        val store = versions()
+        val quarantined = quarantineRevoked(revoked, store)
+
         val offers = ArrayList<ResourceOffer>()
         try {
             for (lang in request.languages.distinct()) offers += discovery.offers(lang, request.channel, request.appVersion)
         } catch (e: ApiError) {
             log("discovery failed: ${e.javaClass.simpleName} ${e.status ?: ""}")
-            return UpdateReport(RunStatus.DISCOVERY_FAILED, retryable = e.isTransient())
+            return UpdateReport(RunStatus.DISCOVERY_FAILED, retryable = e.isTransient(), quarantined = quarantined)
         } catch (e: IOException) {
             log("discovery failed: ${e.javaClass.simpleName}")
-            return UpdateReport(RunStatus.DISCOVERY_FAILED, retryable = true)
+            return UpdateReport(RunStatus.DISCOVERY_FAILED, retryable = true, quarantined = quarantined)
         }
 
-        val store = versions()
         val ctx = PlanContext(
             languages = request.languages.toSet(),
             appVersion = AppVersion.parse(request.appVersion),
             floor = store::get,
             isBlacklisted = journal::isBlacklisted,
-            pendingSlots = journal.pending().map { it.slot }.toSet(),
+            pendingSlots = journal.pending().map { it.slot }.toSet() + state.heldSlots().keys,
         )
         val installed = ArrayList<Installed>()
         val failures = ArrayList<Failure>()
@@ -115,7 +117,45 @@ class PackUpdater(
             }
         }
         if (installed.isNotEmpty()) journal.requestReload()
-        return UpdateReport(RunStatus.DONE, installed, failures, retryable)
+        return UpdateReport(RunStatus.DONE, installed, failures, retryable, quarantined)
+    }
+
+    /**
+     * ADR 0007 D34: a key the server marks REVOKED and the build trusts also condemns the packs it
+     * already signed. Every installed (downloaded) pack is read with the throw-away verifier (against the
+     * build trust, without the server revocation, so it still verifies) and, when its signed manifest names
+     * a revoked key, moved to quarantine by [PackJournal.quarantine]: the slot falls back to the bundled
+     * pack, the version floor is removed (a floor raised by that pack must not block its replacement), the
+     * IME is told to reload and the slot is held until the IME has loaded again (the bundled pack raises
+     * the floor) or 48 h passed, so an update is never judged against "no floor". Bundled packs are
+     * immutable and never touched. Returns the quarantined file names.
+     */
+    private fun quarantineRevoked(revoked: Set<String>, store: VersionStore): List<String> {
+        // Release holds whose floor is back (the IME loaded since); expired ones are already gone.
+        val current = state.heldSlots()
+        val kept = current.filterKeys { store.get(it) == null }
+        if (kept.size != current.size) state.saveHeldSlots(kept)
+
+        val condemned = revoked.intersect(trust.map { it.id }.toSet())
+        if (condemned.isEmpty()) return emptyList()
+        val files = installedDir.listFiles { f -> f.isFile && f.name.endsWith(".pack") }?.sortedBy { it.name }.orEmpty()
+        val out = ArrayList<String>()
+        for (f in files) {
+            if (f.length() > PackManager.MAX_FILE_BYTES) continue
+            val bytes = try {
+                f.readBytes()
+            } catch (_: IOException) {
+                continue
+            }
+            // Other failures (corrupt, unknown key, ...) are the pack manager's business at the next load.
+            val info = (verifier.verify(bytes, emptySet()) as? PackVerifier.Verdict.Ok)?.info ?: continue
+            if (info.keyId !in condemned) continue
+            val slot = VersionStore.slot(info.languageCode, info.resourceType.name, info.platform.name)
+            journal.quarantine(f.name, info.packId, info.version, slot, store, "REVOKED_KEY")
+            state.hold(slot)
+            out += f.name
+        }
+        return out
     }
 
     private sealed interface Attempt {

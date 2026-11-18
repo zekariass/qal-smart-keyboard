@@ -93,6 +93,7 @@ dependencies {
     implementation(project(":data"))
     implementation(project(":api"))
     implementation(project(":packs-sync"))
+    implementation(project(":sync"))
     implementation(libs.androidx.work.runtime)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.credentials)
