@@ -18,7 +18,7 @@ const AM_PROFILE: &[u8] = include_bytes!("../../language-data/profiles/am-phonet
 const AM_LEXICON: &[u8] = include_bytes!("../../language-data/seed/artifacts/am.lexicon.qlx");
 const AM_BIGRAMS: &[u8] = include_bytes!("../../language-data/seed/artifacts/am.bigrams.qbg");
 const TI_LEXICON: &[u8] = include_bytes!("../../language-data/seed/artifacts/ti.lexicon.qlx");
-const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.1.0.json");
+const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.2.0.json");
 
 fn pack_of(lang: &str, rt: ResourceType, version: &str, artifact: &[u8]) -> Vec<u8> {
     let mut f = fields(version);
@@ -263,11 +263,33 @@ fn golden_vectors_keep_their_behaviour_with_a_dictionary() {
             assert_eq!(x.composing, y.composing, "{name}: composing");
             assert_eq!(x.commit, y.commit, "{name}: commit");
             assert_eq!(x.delete_before, y.delete_before, "{name}: delete_before");
+            // The transliteration candidates stay in front: the default first, its alternatives
+            // after it (known words may move up, ADR 0004 U6). Only when completions take their
+            // reserved slots is the tail of a long transliteration list cut.
+            let t = y
+                .candidates
+                .iter()
+                .take_while(|c| c.kind == CandidateKind::Transliteration)
+                .count()
+                .min(x.candidates.len());
             assert_eq!(
-                x.candidates[..],
-                y.candidates[..x.candidates.len()],
+                x.candidates.first(),
+                y.candidates.first(),
+                "{name}: default"
+            );
+            assert!(
+                y.candidates[..t].iter().all(|c| x.candidates.contains(c)),
                 "{name}: transliteration prefix"
             );
+            if t < x.candidates.len() {
+                assert_eq!(y.candidates.len(), 5, "{name}: cut only in a full strip");
+                assert!(
+                    y.candidates[t..]
+                        .iter()
+                        .all(|c| c.kind != CandidateKind::Transliteration),
+                    "{name}: cut only for completions"
+                );
+            }
         }
     }
 }
