@@ -307,9 +307,12 @@ class LanguagesIT {
 		pack().version("1.4.0").key("packs-retiring").insert(); // RETIRING keys still verify
 		pack().version("1.5.0").key("packs-revoked").insert(); // clients would reject it: not served
 		pack().version("1.6.0").size(null).insert(); // no artifact size: not a valid discovery entry
-		pack().type("GLOSSARY").version("1.0.0").insert(); // not expressible in the contract's ResourceType
+		pack().type("GLOSSARY").version("1.0.0").insert(); // ResourceType has GLOSSARY since ADR 0007 D20
 		JsonNode items = list("platform=ANDROID&appVersion=2.0.0", null);
-		assertThat(versions(items)).containsExactlyInAnyOrder("DICTIONARY:1.0.0", "DICTIONARY:1.4.0");
+		assertThat(versions(items)).containsExactlyInAnyOrder("DICTIONARY:1.0.0", "DICTIONARY:1.4.0",
+				"GLOSSARY:1.0.0");
+		assertThat(versions(list("platform=ANDROID&appVersion=2.0.0&type=GLOSSARY", null)))
+				.containsExactly("GLOSSARY:1.0.0");
 		mvc.perform(get("/api/v1/language-resources/" + jdbc.queryForObject(
 				"SELECT id FROM language_resources WHERE resource_version = '1.1.0'", UUID.class)))
 				.andExpect(status().isNotFound());
@@ -317,6 +320,9 @@ class LanguagesIT {
 				"SELECT id FROM language_resources WHERE resource_version = '1.5.0'", UUID.class)))
 				.andExpect(status().isNotFound());
 		mvc.perform(get("/api/v1/language-resources/" + UUID.randomUUID())).andExpect(status().isNotFound());
+		// a malformed id is a 400 Problem, which the contract declares on getLanguageResource
+		mvc.perform(get("/api/v1/language-resources/not-a-uuid")).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 	}
 
 	@Test

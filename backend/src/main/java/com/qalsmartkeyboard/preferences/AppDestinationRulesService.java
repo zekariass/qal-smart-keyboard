@@ -61,6 +61,14 @@ class AppDestinationRulesService {
 		return new RulesDocument(revision, rules);
 	}
 
+	/** The account's rule key, created on first read (idempotent, under the same per-user lock as the rules PUT). */
+	AppRuleKeys.RuleKey key(UUID userId) {
+		return tx.execute(status -> {
+			DestinationProfilesService.lock(jdbc, userId);
+			return keys.material(userId);
+		});
+	}
+
 	/** @throws ApiException 400 invalid, 409 {@code REVISION_CONFLICT} */
 	RulesDocument replace(UUID userId, RulesDocument in) {
 		return tx.execute(status -> {

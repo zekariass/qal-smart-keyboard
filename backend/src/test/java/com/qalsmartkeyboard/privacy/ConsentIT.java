@@ -12,12 +12,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.web.context.WebApplicationContext;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import jakarta.servlet.Filter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -62,13 +57,6 @@ class ConsentIT {
 
 	@Autowired
 	MockMvc mvc;
-	/** Same application and security chain, no contract validation: the contract lists no 403 for PUT /me/preferences. */
-	MockMvc unvalidated;
-	@Autowired
-	WebApplicationContext context;
-	@Autowired
-	@Qualifier("springSecurityFilterChain")
-	Filter securityChain;
 	@Autowired
 	JdbcTemplate jdbc;
 	@Autowired
@@ -81,11 +69,6 @@ class ConsentIT {
 	ConsentGate gate;
 	@Autowired
 	ConsentService consents;
-
-	@BeforeEach
-	void buildUnvalidatedMvc() {
-		unvalidated = MockMvcBuilders.webAppContextSetup(context).addFilters(securityChain).build();
-	}
 
 	User user() {
 		UUID id = transactions.execute(s -> {
@@ -108,7 +91,7 @@ class ConsentIT {
 	}
 
 	ResultActions savePreferences(User u, int revision, boolean history) throws Exception {
-		return unvalidated.perform(put("/api/v1/me/preferences").header("Authorization", u.bearer())
+		return mvc.perform(put("/api/v1/me/preferences").header("Authorization", u.bearer())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"revision\":" + revision + ",\"historyEnabled\":" + history + "}"));
 	}
@@ -132,7 +115,7 @@ class ConsentIT {
 				.andExpect(jsonPath("$.isGranted").value(false)).andExpect(jsonPath("$.revokedAt").exists())
 				.andExpect(jsonPath("$.grantedAt").exists());
 		assertThat(gate.hasConsent(u.id(), ConsentType.SAVE_AI_HISTORY)).isFalse();
-		unvalidated.perform(get("/api/v1/me/preferences").header("Authorization", u.bearer())).andExpect(status().isOk())
+		mvc.perform(get("/api/v1/me/preferences").header("Authorization", u.bearer())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.historyEnabled").value(false)).andExpect(jsonPath("$.revision").value(2));
 		savePreferences(u, 2, true).andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.code").value("CONSENT_REQUIRED"));
@@ -156,6 +139,35 @@ class ConsentIT {
 				.andExpect(jsonPath("$.items.length()").value(1))
 				.andExpect(jsonPath("$.items[0].consentVersion").value("2"))
 				.andExpect(jsonPath("$.items[0].isGranted").value(true));
+	}
+
+	/** ADR 0007 D23: the history operation pages through the caller's own decisions, oldest first. */
+	@Test
+	void historyEndpointPagesTheCallersOwnDecisionsOldestFirst() throws Exception {
+		User a = user();
+		User b = user();
+		decide(a, "ANALYTICS", "1", true).andExpect(status().isOk());
+		decide(a, "MARKETING", "1", true).andExpect(status().isOk());
+		decide(a, "ANALYTICS", "1", false).andExpect(status().isOk());
+		decide(b, "ANALYTICS", "9", true).andExpect(status().isOk());
+		String first = mvc.perform(get("/api/v1/me/consents/history?limit=2").header("Authorization", a.bearer()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2))
+				.andExpect(jsonPath("$.items[0].consentCode").value("ANALYTICS"))
+				.andExpect(jsonPath("$.items[1].consentCode").value("MARKETING")).andExpect(jsonPath("$.nextCursor").exists())
+				.andReturn().getResponse().getContentAsString();
+		String cursor = com.jayway.jsonpath.JsonPath.read(first, "$.nextCursor");
+		mvc.perform(get("/api/v1/me/consents/history?limit=2&cursor=" + cursor).header("Authorization", a.bearer()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+				.andExpect(jsonPath("$.items[0].isGranted").value(false)).andExpect(jsonPath("$.nextCursor").doesNotExist());
+		mvc.perform(get("/api/v1/me/consents/history?consentCode=MARKETING").header("Authorization", a.bearer()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1));
+		mvc.perform(get("/api/v1/me/consents/history?cursor=garbage").header("Authorization", a.bearer()))
+				.andExpect(status().isBadRequest());
+		mvc.perform(get("/api/v1/me/consents/history?limit=0").header("Authorization", a.bearer()))
+				.andExpect(status().isBadRequest());
+		mvc.perform(get("/api/v1/me/consents/history?consentCode=NOPE").header("Authorization", a.bearer()))
+				.andExpect(status().isBadRequest());
+		mvc.perform(get("/api/v1/me/consents/history")).andExpect(status().isUnauthorized());
 	}
 
 	@Test

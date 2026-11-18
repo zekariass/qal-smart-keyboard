@@ -208,7 +208,7 @@ class OtpControllerTest {
 		String guest = tokens.issue(UUID.randomUUID(), UUID.randomUUID(), null, "GUEST").value();
 		mvc.perform(post(VERIFY).header("Authorization", "Bearer " + guest).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"challengeId\":\"" + UUID.randomUUID() + "\",\"code\":\"123456\"}"))
-				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("GUEST_SESSION_INVALID"))
 				.andExpect(header().string("WWW-Authenticate", containsString("invalid_token")));
 		verify(service, org.mockito.Mockito.never()).verify(any(), any(), anyBoolean(), any(), any(), any(),
 				any(GuestCaller.class));

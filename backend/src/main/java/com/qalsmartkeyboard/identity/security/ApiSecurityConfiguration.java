@@ -12,7 +12,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
@@ -79,7 +78,7 @@ public class ApiSecurityConfiguration {
 	static AccessTokenAuthentication authenticate(Jwt jwt, UserAccountStore accounts) {
 		AuthenticatedUser principal = AccessTokenService.principal(jwt);
 		if (principal.isGuest() && (accounts == null || !accounts.isActiveGuest(principal.userId()))) {
-			throw new InvalidBearerTokenException("The guest account is no longer active");
+			throw new GuestSessionInvalidException();
 		}
 		return new AccessTokenAuthentication(principal);
 	}

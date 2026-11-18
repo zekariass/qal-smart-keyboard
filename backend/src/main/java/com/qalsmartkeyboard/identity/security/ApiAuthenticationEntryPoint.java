@@ -22,6 +22,7 @@ import jakarta.servlet.http.HttpServletResponse;
  * 401 as a contract Problem (with correlation id) instead of Spring's empty 401:
  * <ul>
  * <li>a valid but expired access token: {@code TOKEN_EXPIRED} (the client refreshes);</li>
+ * <li>a guest token whose account is no longer an active guest: {@code GUEST_SESSION_INVALID} (discard the guest session);</li>
  * <li>no token, or any other invalid token (signature, {@code kid}, algorithm, claims): {@code UNAUTHENTICATED};</li>
  * <li>{@code /partner/v1/**}: {@code API_KEY_INVALID}.</li>
  * </ul>
@@ -41,6 +42,10 @@ final class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
 		ApiException problem;
 		if (ApiPaths.PARTNER.matches(request)) {
 			problem = problem(ApiErrorCode.API_KEY_INVALID, "A valid partner API key is required.", "Bearer");
+		}
+		else if (exception instanceof GuestSessionInvalidException) {
+			problem = problem(ApiErrorCode.GUEST_SESSION_INVALID,
+					"The guest session is no longer valid; discard the guest token.", "Bearer error=\"invalid_token\"");
 		}
 		else if (exception instanceof OAuth2AuthenticationException) {
 			problem = onlyExpired(exception)

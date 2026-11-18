@@ -115,7 +115,7 @@ class EntitlementResolverTest {
 	}
 
 	@ParameterizedTest
-	@CsvSource({ "SUBSCRIPTION,SUBSCRIPTION", "STORE_PURCHASE,SUBSCRIPTION", "PARTNER,SUBSCRIPTION",
+	@CsvSource({ "SUBSCRIPTION,SUBSCRIPTION", "STORE_PURCHASE,STORE_PURCHASE", "PARTNER,PARTNER",
 			"ORGANIZATION_SEAT,ORGANIZATION_SEAT", "DEFAULT,DEFAULT" })
 	void contractSourceMapping(PlanSource source, String contract) {
 		assertThat(source.contractValue()).isEqualTo(contract);

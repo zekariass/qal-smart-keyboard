@@ -161,7 +161,8 @@ public class GuestMergeService {
 	 * client drops the guest token and signs in without it.
 	 */
 	public static ApiException staleGuestToken() {
-		return new ApiException(ApiErrorCode.UNAUTHENTICATED, HttpStatus.UNAUTHORIZED, "The access token is not valid.",
+		return new ApiException(ApiErrorCode.GUEST_SESSION_INVALID, HttpStatus.UNAUTHORIZED,
+				"The guest session can no longer be linked; sign in without the guest token.",
 				List.of(), Map.of(), Map.of("WWW-Authenticate", "Bearer error=\"invalid_token\""));
 	}
 

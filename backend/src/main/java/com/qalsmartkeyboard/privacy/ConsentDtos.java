@@ -33,4 +33,9 @@ final class ConsentDtos {
 
 	record ConsentsDto(List<ConsentDto> items) {
 	}
+
+	/** One page of {@code GET /me/consents/history}; {@code nextCursor} is absent at the end. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	record ConsentHistoryDto(List<ConsentDto> items, String nextCursor) {
+	}
 }

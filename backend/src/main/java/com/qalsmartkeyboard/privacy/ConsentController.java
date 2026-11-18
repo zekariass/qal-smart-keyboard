@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.qalsmartkeyboard.identity.AuthenticatedUser;
@@ -21,13 +22,14 @@ import com.qalsmartkeyboard.platform.ApiErrorCode;
 import com.qalsmartkeyboard.platform.ApiException;
 import com.qalsmartkeyboard.platform.ApiFieldError;
 import com.qalsmartkeyboard.privacy.ConsentDtos.ConsentDto;
+import com.qalsmartkeyboard.privacy.ConsentDtos.ConsentHistoryDto;
 import com.qalsmartkeyboard.privacy.ConsentDtos.ConsentUpdateDto;
 import com.qalsmartkeyboard.privacy.ConsentDtos.ConsentsDto;
 
 import jakarta.validation.Valid;
 
 /**
- * {@code listConsents} and {@code setConsent}. Any valid access token may use them, guests included: the contract does not
+ * {@code listConsents}, {@code listConsentHistory} and {@code setConsent}. Any valid access token may use them, guests included: the contract does not
  * restrict them, a guest may decide (for example {@code ANALYTICS}) and the decisions are appended for the account on
  * sign-in (ADR 0010, {@link PrivacyGuestMerge}). Responses are {@code no-store}.
  */
@@ -43,6 +45,21 @@ class ConsentController {
 	@GetMapping("/api/v1/me/consents")
 	ResponseEntity<ConsentsDto> listConsents(@AuthenticationPrincipal AuthenticatedUser caller) {
 		return noStore(new ConsentsDto(consents.latest(caller.userId())));
+	}
+
+	/** {@code listConsentHistory}: the caller's own decisions, oldest first, cursor-paginated (ADR 0007 D23). */
+	@GetMapping("/api/v1/me/consents/history")
+	ResponseEntity<ConsentHistoryDto> listConsentHistory(@AuthenticationPrincipal AuthenticatedUser caller,
+			@RequestParam(name = "consentCode", required = false) String consentCode,
+			@RequestParam(name = "cursor", required = false) String cursor,
+			@RequestParam(name = "limit", required = false) Integer limit) {
+		ConsentType type = null;
+		if (consentCode != null) {
+			type = ConsentType.parse(consentCode).orElseThrow(() -> new ApiException(ApiErrorCode.VALIDATION_FAILED,
+					HttpStatus.BAD_REQUEST, null,
+					List.of(new ApiFieldError("consentCode", "UNKNOWN_CONSENT", "Unknown consent code.")), Map.of()));
+		}
+		return noStore(consents.historyPage(caller.userId(), type, cursor, limit == null ? ConsentService.DEFAULT_PAGE : limit));
 	}
 
 	@PutMapping(path = "/api/v1/me/consents/{consentCode}", consumes = MediaType.APPLICATION_JSON_VALUE)
