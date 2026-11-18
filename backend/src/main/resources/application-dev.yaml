@@ -1,0 +1,29 @@
+# Profile "dev" (local development only; infra/scripts/run-backend-dev.sh activates it).
+# Only dev-safe switches, no secrets. Every one of them is refused at startup under prod/production/staging by the
+# component that reads it, and the launcher refuses to run with such a profile. The KMS key-encryption key is NOT here:
+# it comes from QAL_LOCAL_KMS_KEK (the launcher generates and keeps one so stored data stays readable across restarts).
+qal:
+  crypto:
+    kms:
+      provider: local
+  identity:
+    otp:
+      allow-ephemeral-secret-key: true
+    tokens:
+      signing-key:
+        allow-ephemeral: true
+    attestation:
+      mock:
+        enabled: true
+  entitlements:
+    token:
+      signing-key:
+        allow-ephemeral: true
+  notifications:
+    sms:
+      provider: capture            # ADR 0007 D28: in-memory capture, GET /dev/sms/last?phone=%2B251...
+      capture:
+        endpoint-enabled: true
+  ai:
+    mock:
+      enabled: true

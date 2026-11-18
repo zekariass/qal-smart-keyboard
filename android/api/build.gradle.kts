@@ -103,7 +103,7 @@ dependencies {
 
 // Local-stack test (needs a running backend): excluded from `test`, run with
 //   ./gradlew :api:localStackTest -PlocalStack=true [-PlocalStackUrl=http://localhost:8080]
-//                                 [-PlocalStackOtpCode=123456]
+//                                 [-PlocalStackOtpCode=123456]   (default: read from the backend's dev SMS capture)
 val localStackEnabled = providers.gradleProperty("localStack").map { it.toBoolean() }.orElse(false)
 
 tasks.test {

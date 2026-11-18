@@ -710,6 +710,25 @@ response headers (`new ApiException(code, status, detail, errors, extensions, he
 sends nothing and logs a masked number. To see codes locally set `qal.notifications.sms.log.include-message=true`
 (DEV ONLY). The real aggregator adapter comes with OI-11 (WireMock stub: `infra/compose/wiremock`, `/sms/v1/messages`).
 
+**Dev SMS capture (ADR 0007 D28, DEV ONLY).** `provider=capture` also sends nothing; it keeps the last message per number in
+memory (max 1000 numbers, lost on restart) and logs only a masked number. With
+`qal.notifications.sms.capture.endpoint-enabled=true` (default off) the app serves `GET /dev/sms/last?phone=%2B251911234567`
+(`{phone, body, code, receivedAt}`, 404 when nothing was captured; encode the `+`) so the Android `:api:localStackTest` reads
+the OTP itself. It is not under `/api/v1`, not in the OpenAPI contract, anonymous, and answers only to loopback callers.
+Fail closed: the `capture` provider and the endpoint both stop startup under `prod`/`production`/`staging`, and the endpoint
+also stops startup unless the provider is `capture`. `DevSmsCaptureTest` covers the guards and `DevSmsCaptureAbsentIT` proves the
+endpoint does not exist by default.
+
+## Local development launcher
+
+`infra/scripts/run-backend-dev.sh` starts the backend with the `dev` profile (`src/main/resources/application-dev.yaml`, dev-safe
+switches only, no secrets): local KMS (KEK from `QAL_LOCAL_KMS_KEK`, else generated once into the git-ignored
+`infra/scripts/.dev-state/kek` so stored data stays readable), ephemeral OTP secret, access-token and entitlement-token keys,
+mock attestation, AI mock, SMS `capture` + `/dev/sms/last`, and the compose Postgres at `localhost:5434` (started if it is not
+up; `DB_URL`/`DB_USER`/`DB_PASSWORD` override). It refuses to run when `SPRING_PROFILES_ACTIVE` or `SPRING_PROFILES_INCLUDE`
+contains `prod`, `production` or `staging` (exit 2), and each switch is refused by its own component under those profiles
+anyway. Never deploy the `dev` profile. Ctrl-C stops the backend; `docker compose -f infra/compose/docker-compose.yml down` stops Postgres.
+
 ## AI gateway: provider SPI and registry (B5.1, ADR 0014, SD 11)
 
 `aigateway.spi` (Modulith named interface `spi`) is the vendor-neutral contract: `AiProvider` with
@@ -797,7 +816,8 @@ Android and iOS client generation are added with their own steps (A2.1, I-steps)
 ## Build
 
 `./mvnw verify` (CI: Java 25; locally `-Djava.version=21` on JDK 21). `QalSmartKeyboardApplicationTests` needs PostgreSQL at
-`DB_URL` (default `localhost:5434`); `*IT` classes use Testcontainers and need Docker. Running the application
+`DB_URL` (default `localhost:5434`); `*IT` classes use Testcontainers and need Docker. For local development use
+`infra/scripts/run-backend-dev.sh` (above). Running the application by hand
 (`./mvnw spring-boot:run`) also needs the KMS, OTP secret, SMS provider and access-token key settings above, e.g.
 `QAL_KMS_PROVIDER=local QAL_LOCAL_KMS_KEK=$(openssl rand -base64 32) QAL_OTP_SECRET_KEY=$(openssl rand -base64 32) QAL_SMS_PROVIDER=log`
 (plus `QAL_ATTESTATION_MOCK=true` for `POST /auth/guest` to work locally)
