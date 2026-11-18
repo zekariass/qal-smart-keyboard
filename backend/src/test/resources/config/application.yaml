@@ -20,6 +20,11 @@ qal:
     attestation:
       mock:
         enabled: true
+  # B4.4: random per-JVM Ed25519 entitlement-token key.
+  entitlements:
+    token:
+      signing-key:
+        allow-ephemeral: true
   notifications:
     sms:
       provider: log
