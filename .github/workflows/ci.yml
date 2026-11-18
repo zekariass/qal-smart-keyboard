@@ -124,7 +124,29 @@ jobs:
           cargo install cargo-ndk --locked
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" >/dev/null
       - name: Assemble and unit test
-        run: ./gradlew --no-daemon :app:assemblePlayDebug :app:assembleDirectDebug testDebugUnitTest :app:testPlayDebugUnitTest :app:testDirectDebugUnitTest
+        run: ./gradlew --no-daemon --continue :app:assemblePlayDebug :app:assembleDirectDebug testDebugUnitTest :app:testPlayDebugUnitTest :app:testDirectDebugUnitTest 2>&1 | tee "$RUNNER_TEMP/gradle.log"; exit "${PIPESTATUS[0]}"
+        shell: bash
+      # Job logs need a GitHub login; annotations do not. On failure, surface failing tests and compile
+      # errors as annotations (test names and assertion messages only; tests never carry user data).
+      - name: Report failures as annotations
+        if: failure()
+        shell: bash
+        run: |
+          grep -E '^(e: |FAILURE: |\* What went wrong)' "$RUNNER_TEMP/gradle.log" | head -20 | while IFS= read -r line; do
+            echo "::error title=Gradle::${line//$'\r'/}"
+          done
+          find . -path '*/build/test-results/*' -name 'TEST-*.xml' -print0 | xargs -0 -r grep -l -E '<(failure|error)' | while read -r f; do
+            python3 - "$f" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          for case in ET.parse(sys.argv[1]).getroot().iter('testcase'):
+              for kind in ('failure', 'error'):
+                  el = case.find(kind)
+                  if el is not None:
+                      msg = (el.get('message') or el.text or '').strip().splitlines()[:3]
+                      msg = ' | '.join(msg)[:600].replace('%', '%25').replace('\n', ' ')
+                      print(f"::error title={case.get('classname')}.{case.get('name')}::{kind}: {msg}")
+          PY
+          done | head -30
 
   language-data:
     name: Language data (eval harness, Fidel table)
