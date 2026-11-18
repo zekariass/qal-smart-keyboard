@@ -47,6 +47,8 @@ class AiControllerCancelTest {
 	@MockitoBean
 	AiPipeline pipeline;
 	@MockitoBean
+	AiFeedback feedback;
+	@MockitoBean
 	RateLimiter limiter;
 	@MockitoBean
 	ProviderRegistry registry;

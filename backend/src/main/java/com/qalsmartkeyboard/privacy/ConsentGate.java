@@ -2,6 +2,7 @@ package com.qalsmartkeyboard.privacy;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -34,6 +35,18 @@ public class ConsentGate {
 				SELECT is_granted FROM user_consents WHERE user_id = :user AND consent_code = :code
 				ORDER BY recorded_at DESC, id DESC LIMIT 1
 				""").param("user", userId).param("code", type.name()).query(Boolean.class).optional().orElse(false);
+	}
+
+	/**
+	 * The id of the grant record that is the user's latest decision for {@code type}; empty when the latest decision is a
+	 * withdrawal or there is none. For rows that must point at the consent they were stored under (V1
+	 * {@code ai_feedback.consent_record_id}).
+	 */
+	public Optional<UUID> grantedRecord(UUID userId, ConsentType type) {
+		return jdbc.sql("""
+				SELECT id FROM (SELECT id, is_granted FROM user_consents WHERE user_id = :user AND consent_code = :code
+				ORDER BY recorded_at DESC, id DESC LIMIT 1) latest WHERE is_granted
+				""").param("user", userId).param("code", type.name()).query(UUID.class).optional();
 	}
 
 	/** @throws ApiException 403 {@code CONSENT_REQUIRED} with the extension member {@code consentCode} */

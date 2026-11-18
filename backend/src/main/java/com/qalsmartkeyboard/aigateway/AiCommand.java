@@ -67,10 +67,19 @@ public sealed interface AiCommand permits AiCommand.Translate, AiCommand.Transfo
 	 * @param glossaryId           accepted but not applied yet (glossaries are a later step)
 	 * @param addressee            per-field fallback to the destination profile, then preferences (SD 11.5)
 	 * @param destinationProfileId fills addressee, style and glossary defaults; explicit fields win
+	 * @param saveToHistory        the request's {@code saveToHistory} (default false); history is kept only when it is
+	 *                             true and the user's history gates hold (B5.7)
 	 */
 	record Translate(Caller caller, UserText text, String sourceLanguage, String destinationLanguage, String style,
 			Boolean preserveNames, UUID glossaryId, Addressee addressee, CulturalOptions culturalOptions,
-			UUID destinationProfileId) implements AiCommand {
+			UUID destinationProfileId, boolean saveToHistory) implements AiCommand {
+
+		public Translate(Caller caller, UserText text, String sourceLanguage, String destinationLanguage, String style,
+				Boolean preserveNames, UUID glossaryId, Addressee addressee, CulturalOptions culturalOptions,
+				UUID destinationProfileId) {
+			this(caller, text, sourceLanguage, destinationLanguage, style, preserveNames, glossaryId, addressee,
+					culturalOptions, destinationProfileId, false);
+		}
 
 		public Translate {
 			Objects.requireNonNull(caller, "caller");
@@ -96,9 +105,15 @@ public sealed interface AiCommand permits AiCommand.Translate, AiCommand.Transfo
 	 * @param language language of the text; null = detect from its script
 	 * @param mode     GRAMMAR | SPELLING_ONLY (grammar), NATURAL | SHORTEN | EXPAND | CLARIFY (rewrite)
 	 * @param tone     required for TONE_ADJUST
+	 * @param saveToHistory see {@link Translate}
 	 */
 	record Transform(Caller caller, AiFeature task, UserText text, String language, String mode, String tone,
-			String targetLength, Addressee addressee, UUID glossaryId) implements AiCommand {
+			String targetLength, Addressee addressee, UUID glossaryId, boolean saveToHistory) implements AiCommand {
+
+		public Transform(Caller caller, AiFeature task, UserText text, String language, String mode, String tone,
+				String targetLength, Addressee addressee, UUID glossaryId) {
+			this(caller, task, text, language, mode, tone, targetLength, addressee, glossaryId, false);
+		}
 
 		public Transform {
 			Objects.requireNonNull(caller, "caller");

@@ -95,6 +95,8 @@ class AiControllerTest {
 	EntitlementResolver entitlements;
 	@MockitoBean
 	AiUserContext users;
+	@MockitoBean
+	AiFeedback feedback;
 
 	final UUID userId = UUID.randomUUID();
 
