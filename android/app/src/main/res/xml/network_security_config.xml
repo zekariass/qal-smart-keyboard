@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Transport security (ADR 0016, SD 18): TLS only, system trust anchors only (no user-added CAs),
+  no certificate pinning for the API. Debug builds additionally allow cleartext to the local
+  stack (see src/debug/res/xml/network_security_config.xml).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -3,7 +3,8 @@
 Gradle project for the Qal Smart Keyboard Android app (one APK: IME service + companion UI).
 
 Modules: `:app` (companion UI, flavours `play` / `direct`, ABI splits), `:core-bindings` (Rust core +
-UniFFI Kotlin bindings, SD 6.2), `:ime`, `:data`, `:billing-play`, `:billing-direct`.
+UniFFI Kotlin bindings, SD 6.2), `:ime`, `:data`, `:api` (generated API client, interceptors, refresh authenticator; plain JVM, see
+`api/README.md`), `:billing-play`, `:billing-direct`.
 Versions live in `gradle/libs.versions.toml`; `qal.minSdk` and `qal.abis` in `gradle.properties`.
 
 ## Building the Rust core (A1.1)
