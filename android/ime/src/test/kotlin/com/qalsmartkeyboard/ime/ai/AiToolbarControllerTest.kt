@@ -18,6 +18,7 @@ class AiToolbarControllerTest {
         val ed = FakeEditor(initial)
         val adapter = InputConnectionAdapter { ed }.also { it.startSession(false, initial.length, initial.length) }
         var changes = 0
+        var now = 1_000_000L
         val clipboard = ArrayList<String>()
         private var n = 0
         val c = AiToolbarController(
@@ -27,6 +28,7 @@ class AiToolbarControllerTest {
             copyToClipboard = { clipboard += it },
             newKey = { "key-${++n}" },
             onChanged = { changes++ },
+            clock = { now },
         ).also { it.onFieldStarted(InputProfile.DEFAULT, "com.example.chat") }
 
         val panel get() = c.panel
@@ -243,7 +245,7 @@ class AiToolbarControllerTest {
         val h = H("secret")
         h.c.onFieldStarted(InputProfile.from(T.TYPE_CLASS_TEXT or T.TYPE_TEXT_VARIATION_PASSWORD, 0, false, 0), "x")
         h.c.onTask(AiTaskKind.TRANSLATE)
-        h.c.onKeyboardShown()
+        h.c.openPicker(AiPicker.TONE)
         assertTrue(h.actions.submitted.isEmpty())
         assertEquals(0, h.actions.refreshCount)
         assertFalse(h.ed.calls.any { it == "getTextBeforeCursor" || it == "getSelectedText" })
@@ -254,7 +256,6 @@ class AiToolbarControllerTest {
         h.c.onFieldStarted(InputProfile.DEFAULT, "x")
         h.c.openPicker(AiPicker.DESTINATION)
         h.c.chooseDestination(mum)
-        h.c.onKeyboardShown()
         assertFalse(h.ed.calls.any { it == "getTextBeforeCursor" || it == "getSelectedText" })
         assertTrue(h.actions.submitted.isEmpty())
     }
@@ -340,10 +341,36 @@ class AiToolbarControllerTest {
         assertEquals(before + 1, h.changes)
     }
 
-    @Test fun keyboardShownRefreshesPlanStateWithoutText() {
+    @Test fun showingAndHidingTheKeyboardNeverRefreshes() {
         val h = H("secret words")
-        h.c.onKeyboardShown()
-        assertEquals(1, h.actions.refreshCount)
+        repeat(25) {
+            h.c.onFieldStarted(InputProfile.DEFAULT, "com.example.chat") // the keyboard appears in a field
+            h.c.onKeyboardHidden()
+        }
+        assertEquals(0, h.actions.refreshCount)
         assertTrue(h.actions.submitted.isEmpty())
+    }
+
+    @Test fun openingTheToolbarRefreshesOncePerCacheWindow() {
+        val h = H("secret words")
+        h.c.openPicker(AiPicker.DESTINATION)
+        h.c.openPicker(AiPicker.TONE)
+        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.onFieldStarted(InputProfile.DEFAULT, "com.other") // another field: still inside the window
+        h.c.openPicker(AiPicker.DESTINATION)
+        assertEquals(1, h.actions.refreshCount)
+        h.now += AiToolbarController.REFRESH_WINDOW_MS
+        h.c.openPicker(AiPicker.TONE)
+        assertEquals(2, h.actions.refreshCount)
+    }
+
+    @Test fun choosingADestinationIsRememberedForThatApp() {
+        val h = H("x")
+        h.c.openPicker(AiPicker.DESTINATION)
+        h.c.chooseDestination(mum)
+        assertEquals(listOf<Pair<String?, AiDestination>>("com.example.chat" to mum), h.actions.remembered)
+        h.c.onFieldStarted(InputProfile.DEFAULT, "com.other")
+        h.c.chooseDestination(mum)
+        assertEquals("com.other", h.actions.remembered.last().first)
     }
 }

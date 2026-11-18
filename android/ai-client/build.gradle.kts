@@ -23,13 +23,20 @@ android {
     }
 }
 
+// The token tests verify real Ed25519 signatures through the Rust core (host build via JNA), like :ime's tests.
+tasks.withType<Test>().configureEach {
+    dependsOn(":core-bindings:cargoHostBuild")
+    systemProperty("jna.library.path", rootProject.layout.projectDirectory.dir("../core/target/release").asFile.absolutePath)
+}
+
 dependencies {
     implementation(project(":ime"))
     implementation(project(":data"))
     implementation(project(":api"))
     implementation(project(":sync"))
-    // Ed25519 verification on every API level (the JDK's Ed25519 Signature exists from Android 13 only).
-    implementation(libs.bouncycastle.bcprov)
+    // Ed25519 verification of the entitlement token goes through keyboard-core's `verifyEd25519` (ADR 0013 D4.3).
+    implementation(project(":core-bindings"))
     testImplementation(libs.junit)
+    testImplementation(libs.jna.jvm)
     testImplementation(libs.okhttp.mockwebserver)
 }

@@ -63,7 +63,11 @@ and the D22 renewal lag apply as for every other gate.
 2. `alg` exactly `EdDSA` (rejects `none`, `HS*`, `ES*`, `RS*` and the fully specified `Ed25519` name before any key
    lookup); `typ` exactly `qal-ent+jwt`; no `crit`, `jwk`, `jku`, `x5u`, `x5c`; `kid` present in the **key set pinned
    in the app build**.
-3. Ed25519 signature (64 bytes) over `ASCII(header.payload)` with that key.
+3. Ed25519 signature (64 bytes) over `ASCII(header.payload)` with that key. On Android this one step is done by
+   `keyboard-core`'s `verify_ed25519(public_key, message, signature) -> bool` (strict verification: canonical `S`,
+   small-order keys rejected, wrong lengths give `false`; the same `ed25519-dalek` rules as pack signatures), so the
+   app ships no second Ed25519 implementation (BouncyCastle was dropped, ADR 0007 D40). The Kotlin side keeps every
+   other step (JWS parsing, header and claim checks, time windows).
 4. `iss`, `aud`, `ver = 1`; `sub` is the signed-in user; `deviceId`, when present, is this device; `iat < exp <= iat +
    24 h`; `exp <= offlineGraceUntil <= exp + 72 h`; `features` an object of booleans; `planCode` and `jti` present;
    `iat` at most the clock skew (5 min) in the future.
@@ -73,7 +77,8 @@ and the D22 renewal lag apply as for every other gate.
 6. A 401 or 403 from the token endpoint means: delete the cached token.
 
 The reference verifier is an independent implementation (JDK Ed25519, hand-written compact parsing; Nimbus only parses
-JSON) so the tests check the format, not one library against itself. Android, iOS and `keyboard-core` implement the same
+JSON) so the tests check the format, not one library against itself. (The Android client's tests mint tokens with the
+JDK signer and verify them through the Rust core, so they cross-check the two implementations.) Android, iOS and `keyboard-core` implement the same
 steps (sync point B4.4 ↔ A2.5).
 
 ### D5. Who gets a token

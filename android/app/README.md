@@ -124,3 +124,22 @@ a visual check of the screens.
 Triggers (`MainActivity`): app start and every session change to signed-in (first emission), a sign-in finishing (also guest -> account: the rule key may change, `SyncEngine.signedIn()`), a change of
 languages/numerals/theme/haptics (2 s debounce, then the worker's 5 s), and the periodic job. A transition from signed-in to signed-out wipes the account's sync state and local profiles/rules (`accountChanged()`).
 The destination-profile/app-rule editor is deferred (see `android/sync/README.md`).
+
+## Toolbar deep links and background refresh (A2.5, ADR 0007 D40; packages `link`, `ai`)
+The keyboard's toolbar link buttons start the launcher activity with `EXTRA_OPEN_LINK` = `AiLink.name` (`CLEAR_TOP`;
+`MainActivity` reads it in `onCreate` and `onNewIntent`). `link/DeepLinks` (pure, unit-tested) maps it to an action:
+
+| `AiLink` | Action |
+|---|---|
+| `SIGN_IN` | the sign-in pane (settings when already signed in with an account) |
+| `AI_SETTINGS` | the settings screen |
+| `UPGRADE` | `PlansScreen`, a **placeholder** (text and Back) until the billing/plans UI exists |
+| `UPDATE_APP` | the store page (`openStorePage`), also during first-run setup |
+
+During first-run setup every link except `UPDATE_APP` is ignored (the setup has its own account step). An unknown
+extra does nothing. The link is applied once the stored onboarding flag has loaded.
+
+Plan state and the entitlement token also refresh from `SyncWorker` (`AiGraph.actions.refreshNow()` after the sync
+run; throttled and a no-op when signed out), so the keyboard never needs to fetch them when it appears. `AiGraph`
+passes a `LastDestinationStore` (device-local last destination per app, see `android/ai-client/README.md`).
+Tests: `link/DeepLinksTest`.

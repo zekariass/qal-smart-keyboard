@@ -1,5 +1,6 @@
 package com.qalsmartkeyboard.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -42,6 +43,8 @@ import com.qalsmartkeyboard.app.auth.SignInViewModel
 import com.qalsmartkeyboard.app.auth.UpdateRequiredScreen
 import com.qalsmartkeyboard.app.auth.openStorePage
 import com.qalsmartkeyboard.app.onboarding.ImeStatusReader
+import com.qalsmartkeyboard.app.link.DeepLinkAction
+import com.qalsmartkeyboard.app.link.DeepLinks
 import com.qalsmartkeyboard.app.packs.PackUpdateScheduler
 import com.qalsmartkeyboard.app.sync.DictionarySyncSection
 import com.qalsmartkeyboard.app.sync.SyncGraph
@@ -54,6 +57,7 @@ import com.qalsmartkeyboard.core.CoreSmoke
 import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.data.ThemeMode
+import com.qalsmartkeyboard.ime.ai.AiLink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -77,9 +81,13 @@ class MainActivity : ComponentActivity() {
         viewModelFactory { initializer { SignInViewModel(graph.repository) } }
     }
 
+    // The keyboard toolbar's link (ADR 0007 D40), consumed once the screen state is known.
+    private var pendingLink by mutableStateOf<AiLink?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) pendingLink = DeepLinks.fromIntent(intent)
         // A2.3: language-pack updates. The first value is the app-start check; a later change of the
         // mobile-data switch re-queues the check with the new network constraint.
         lifecycleScope.launch {
@@ -126,6 +134,19 @@ class MainActivity : ComponentActivity() {
             val updateRequired by graph.updateRequired.collectAsState()
             var updateDismissed by rememberSaveable { mutableStateOf(false) }
             var showSignIn by rememberSaveable { mutableStateOf(false) }
+            var showPlans by rememberSaveable { mutableStateOf(false) }
+            val link = pendingLink
+            LaunchedEffect(link, completed) {
+                if (link == null || completed == null) return@LaunchedEffect // wait until the stored flag is read
+                pendingLink = null
+                when (DeepLinks.route(link, graph.repository.currentStatus(), completed == true)) {
+                    DeepLinkAction.NONE -> Unit
+                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; rerun = false }
+                    DeepLinkAction.SHOW_SIGN_IN -> { signIn.reset(); showPlans = false; showSignIn = true }
+                    DeepLinkAction.SHOW_PLANS -> { showSignIn = false; showPlans = true }
+                    DeepLinkAction.OPEN_STORE -> openStorePage(this@MainActivity)
+                }
+            }
             val googleSource = remember { CredentialManagerGoogleSource(this@MainActivity, BuildConfig.GOOGLE_WEB_CLIENT_ID) }
             val actions = SignInActions(
                 onPhone = signIn::setPhone,
@@ -160,6 +181,7 @@ class MainActivity : ComponentActivity() {
                             onDismiss = { updateDismissed = true },
                             modifier = Modifier.padding(innerPadding),
                         )
+                        showPlans && !showFlow -> PlansScreen(onBack = { showPlans = false }, modifier = Modifier.padding(innerPadding))
                         showSignIn && !showFlow -> Column(
                             Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
                         ) {
@@ -215,6 +237,13 @@ class MainActivity : ComponentActivity() {
         const val SETTINGS_DEBOUNCE_MS = 2_000L
     }
 
+    // CLEAR_TOP from the keyboard reaches a running activity here.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        DeepLinks.fromIntent(intent)?.let { pendingLink = it }
+    }
+
     override fun onResume() {
         super.onResume()
         onboarding.onSystemState(ImeStatusReader.read(this))
@@ -224,6 +253,16 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) onboarding.onSystemState(ImeStatusReader.read(this))
+    }
+}
+
+/** Placeholder for the plans screen the toolbar's "See plans" link opens (billing UI comes with the payments steps). */
+@Composable
+fun PlansScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Text(stringResource(R.string.plans_title), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.plans_body))
+        OutlinedButton(onClick = onBack) { Text(stringResource(R.string.onb_back)) }
     }
 }
 

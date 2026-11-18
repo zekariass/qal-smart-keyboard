@@ -19,9 +19,15 @@ content, nor put it in error messages. Tests use synthetic text only.
 | `langid` | code-switching language ID | C1.8 |
 | `calendar` | Ethiopian calendar, clock, numerals | C1.9 |
 | `pack` | pack format, Ed25519 verification (N11) | C1.2 |
+| `signature` | `verify_ed25519` FFI function (entitlement token) | A2.5 / D40 |
 | `error` | `CoreError` | C1.1 |
 
 ## FFI API summary
+- `verify_ed25519(public_key: Vec<u8>, message: Vec<u8>, signature: Vec<u8>) -> bool` (module `signature`): strict
+  Ed25519 verification (`ed25519-dalek` `verify_strict`: canonical `S`, small-order keys and `R` rejected) of a raw
+  32-byte key and 64-byte signature; wrong lengths or an undecodable key give `false`, never a panic. Android's
+  entitlement-token verifier (ADR 0013 D4.3) uses it, so the app needs no other Ed25519 library. Tests: RFC 8032
+  vectors, the RFC 8037 A.4 JWS example, malleable `S + L`, a small-order key, malformed lengths.
 - `KeyboardEngine` (object): `new(EngineConfig) -> Result<KeyboardEngine, CoreError>` (fails with
   `InvalidConfig` on a bad trusted key or limits), `load_pack(Vec<u8>) -> Result<PackInfo, CoreError>`,
   `loaded_packs() -> Vec<PackInfo>`, `set_input_mode(language_code, InputMode)`,

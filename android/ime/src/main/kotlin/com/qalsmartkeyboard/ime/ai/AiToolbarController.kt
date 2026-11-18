@@ -47,7 +47,7 @@ interface AiEditor {
  * The AI toolbar's state machine (A2.5), free of Views so it runs on the JVM. Rules:
  *
  * - **Explicit action only:** the only code that calls [AiActions.submit] is [onTask] (a tap) and
- *   [retry] (a tap). Typing, selection changes, focus and [onKeyboardShown] never send text.
+ *   [retry] (a tap). Typing, selection changes and focus never send text.
  * - **Targets:** see [AiTextTarget]. Read at tap time, never earlier.
  * - **Non-blocking:** [AiActions.submit] returns at once; results arrive through [post] on the main
  *   thread. Keys keep working during a request; the panel stays open.
@@ -69,6 +69,7 @@ class AiToolbarController(
     private val copyToClipboard: (String) -> Unit,
     private val newKey: () -> String = { UUID.randomUUID().toString() },
     private val onChanged: () -> Unit = {},
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     var visible: Boolean = false
         private set
@@ -95,6 +96,9 @@ class AiToolbarController(
     private var lastKind: AiTaskKind? = null
     private var source: AiSource? = null
     private var listener: AutoCloseable? = null
+    private var currentPackage: String? = null
+    private var lastRefreshMs = 0L
+    private var refreshed = false
 
     init {
         listener = actions.addAvailabilityListener { post { onChanged() } }
@@ -103,6 +107,7 @@ class AiToolbarController(
     /** A field was focused: show the toolbar where AI is allowed, drop everything of the last field. */
     fun onFieldStarted(profile: InputProfile, packageName: String?) {
         discard()
+        currentPackage = packageName
         val was = visible
         visible = profile.allowsAi
         if (visible) destination = actions.defaultDestination(packageName)
@@ -110,11 +115,17 @@ class AiToolbarController(
     }
 
     /**
-     * The keyboard became visible: refresh plan state and the offline token in the background.
-     * Sends no text and is not called from the key path.
+     * The user touched the toolbar (opened a picker or tapped an action): refresh plan state and the
+     * offline token in the background, at most once per [REFRESH_WINDOW_MS] (the implementation
+     * throttles its calls further). Showing the keyboard never refreshes (ADR 0007 D40): the toolbar
+     * renders cached state until the user acts. Sends no text.
      */
-    fun onKeyboardShown() {
-        if (visible) actions.refresh()
+    fun onToolbarOpened() {
+        val now = clock()
+        if (refreshed && now - lastRefreshMs < REFRESH_WINDOW_MS) return
+        refreshed = true
+        lastRefreshMs = now
+        actions.refresh()
     }
 
     /** The keyboard was hidden or the service ends: cancel and forget. */
@@ -134,12 +145,15 @@ class AiToolbarController(
     // ---------------------------------------------------------------- chips
 
     fun openPicker(p: AiPicker) {
+        if (!visible) return
+        onToolbarOpened()
         picker = if (picker == p) AiPicker.NONE else p
         onChanged()
     }
 
     fun chooseDestination(d: AiDestination) {
         destination = d
+        actions.rememberDestination(currentPackage, d)
         picker = AiPicker.NONE
         onChanged()
     }
@@ -155,6 +169,7 @@ class AiToolbarController(
     /** A tap on Translate, Grammar or Rewrite. */
     fun onTask(kind: AiTaskKind) {
         if (!visible) return
+        onToolbarOpened()
         if (flight != null) return // one request at a time; Cancel aborts it
         picker = AiPicker.NONE
         lastKind = kind
@@ -305,6 +320,11 @@ class AiToolbarController(
     }
 
     val inFlight: Boolean get() = flight != null
+
+    companion object {
+        /** Matches the plan-state cache of `:ai-client` (5 minutes). */
+        const val REFRESH_WINDOW_MS = 5L * 60_000
+    }
 }
 
 /** [AiEditor] over the keyboard's adapter. [commit] commits the open composition through the composer. */
