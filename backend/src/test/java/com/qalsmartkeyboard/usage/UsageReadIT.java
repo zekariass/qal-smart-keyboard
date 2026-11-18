@@ -40,7 +40,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import com.jayway.jsonpath.JsonPath;
-import com.qalsmartkeyboard.entitlements.EntitlementTokenIssuer;
 import com.qalsmartkeyboard.identity.token.AccessTokenService;
 import com.qalsmartkeyboard.testsupport.contract.ContractValidated;
 
@@ -89,13 +88,6 @@ class UsageReadIT {
 				}
 			};
 		}
-
-		/** Stands in for the B4.4 signer. */
-		@Bean
-		EntitlementTokenIssuer fakeTokenIssuer() {
-			return (entitlements, deviceId) -> new EntitlementTokenIssuer.Issued("aGVhZGVy.cGF5bG9hZA.c2ln", "ent-test",
-					Instant.now().plus(Duration.ofHours(24)), Instant.now().plus(Duration.ofHours(72)));
-		}
 	}
 
 	@Autowired
@@ -140,7 +132,10 @@ class UsageReadIT {
 				.doesNotContainKeys("used", "remaining", "resetsAt", "includedUnits");
 		// a gated feature the plan excludes is listed as not enabled
 		assertThat(feature(body, "ON_DEVICE_AI_MODELS")).containsEntry("accessEnabled", false);
-		assertThat(JsonPath.<String>read(body, "$.entitlementToken.keyId")).isEqualTo("ent-test");
+		// the real signer: a JWS (three parts) valid 24 h, offline grace 72 h after exp, for this user
+		assertThat(JsonPath.<String>read(body, "$.entitlementToken.jws").split("\\.")).hasSize(3);
+		assertThat(Duration.between(Instant.parse(JsonPath.read(body, "$.entitlementToken.expiresAt")),
+				Instant.parse(JsonPath.read(body, "$.entitlementToken.offlineGraceUntil")))).isEqualTo(Duration.ofHours(72));
 	}
 
 	@Test

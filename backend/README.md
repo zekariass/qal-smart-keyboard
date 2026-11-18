@@ -449,7 +449,7 @@ Module `entitlements`: `EntitlementResolver.resolve(userId)` / `resolve(userId, 
 effective plan (`EffectivePlan`: plan, rank, `PlanSource`, subscription or organisation id, `effectiveUntil`, grace flag,
 `periodStart` = the paid period start that anchors MONTHLY usage windows)
 and one `FeatureEntitlement` per active `feature_catalog` feature (`accessEnabled`, `includedUnits`, `unit`,
-`resetPeriod`, `creditCostPerUnit`, `creditsUsable`, `origin`). No HTTP yet: metering (B4.2), the token (B4.4) and
+`resetPeriod`, `creditCostPerUnit`, `creditsUsable`, `origin`). Metering (B4.2), the token (B4.4, below) and
 `/me/entitlements` (B4.5) call this API. It reads the tables through its own package-private JDBC adapter (billing and
 organisations have no Java API yet).
 
@@ -485,6 +485,46 @@ organisations have no Java API yet).
   `PlanSource.contractValue()` (ADR 0007 D20 added STORE_PURCHASE and PARTNER to the contract enum; it equals the enum name).
 - **Tests:** `EntitlementSeedMatrixTest` (5 plans x 24 features read from `V1__baseline.sql`), `EntitlementResolverTest`
   (precedence, edges, grace, accounts, overrides, cache), `EntitlementResolverIT` (real seed and source tables).
+
+## Entitlements: offline entitlement token (B4.4, ADR 0013, SD 15.5)
+
+`entitlements.token.EntitlementTokenService.issue(userId, deviceId)` signs a compact JWS of the caller's **offline**
+gates from `EntitlementResolver.resolve(userId)`. Clients use it only where they cannot ask the server (on-device
+models); every server feature is re-checked on each call.
+
+- **Operations:** `GET /api/v1/me/entitlements/token` (bearer, any ACTIVE account incl. guests, `no-store`) and
+  `GET /.well-known/jwks.json` (anonymous, `Authorization` ignored, `max-age=3600, public`; public keys only).
+  `getEntitlements` (B4.5) embeds the same `EntitlementToken`.
+- **Format:** header `alg EdDSA` (Ed25519), `typ qal-ent+jwt`, `kid`. Claims: `iss` (`qal-smart-keyboard`), `aud`
+  (`qal-keyboard`), `sub` (user id), `deviceId` (when the access token has `did`), `planCode`, `features` (feature code
+  -> boolean), `policyVersion`, `ver` (1), `iat`, `exp` = iat + `qal.entitlements.token.ttl` (24h, at most 24h) but never later than the winning source's end +
+  `qal.entitlements.renewal-lag` (no lag for a GRACE_PERIOD source; ADR 0007 D27),
+  `offlineGraceUntil` = exp + `offline-grace` (72h, at most 72h), `jti`. No personal data, allowances or usage.
+- **Offline gates:** `qal.entitlements.token.offline-features` (default `ON_DEVICE_AI_MODELS`). Only gated features
+  with unit `NONE` are written; metered (server AI) or unknown codes are left out with a warning.
+- **Rate limit:** `GET /me/entitlements/token` 60 per hour per user (`platform.ratelimit` policy `entitlements.token.user`), 429
+  `RATE_LIMITED` with `Retry-After`/`RateLimit-*`.
+- **Refused:** SUSPENDED 403 `ACCOUNT_SUSPENDED`, DELETION_PENDING/DELETED 403 `DELETION_PENDING`, MERGED 401
+  `GUEST_SESSION_INVALID`, PENDING/unknown 401 `UNAUTHENTICATED`.
+- **Signing key (required):** `QAL_ENTITLEMENT_TOKEN_PRIVATE_KEY` (PKCS#8 PEM, or an OKP JWK with `d` and `x`),
+  `QAL_ENTITLEMENT_TOKEN_PUBLIC_KEY` (SPKI PEM; optional with a JWK), `QAL_ENTITLEMENT_TOKEN_KEY_ID` (default `ent-1`).
+  Must be Ed25519 and match, otherwise startup fails:
+  ```sh
+  openssl genpkey -algorithm ed25519 -out ent-private.pem
+  openssl pkey -in ent-private.pem -pubout -out ent-public.pem
+  ```
+  Tests use `qal.entitlements.token.signing-key.allow-ephemeral=true` (dev/test only, refused under
+  `prod`/`production`/`staging`). Ed25519 runs on the JDK (`JdkEd25519Signer`); Nimbus' own Ed25519 classes need
+  Tink, which the build does not include.
+- **Rotation** (clients pin keys in the app build): ship the new public key in app builds first; then sign with it
+  and list the old key under `qal.entitlements.token.previous-keys[n].key-id|public-key`; remove it 96 h later
+  (24 h validity + 72 h grace). See ADR 0013 D7.
+- **Client rules** (ADR 0013 D4): reference verifier `EntitlementTokenVerifier` (test scope): `alg` EdDSA only,
+  `typ`, pinned `kid`, Ed25519 signature, `iss`/`aud`/`ver`/`sub`/`deviceId`, lifetime caps; valid before `exp`,
+  offline only until `offlineGraceUntil`, void after.
+- **Tests:** `EntitlementTokenServiceTest` (issue/verify, tampering, `none`/HS256/ES256/kid confusion, expiry and grace
+  edges, rotation, RFC 8037 A.4 vector), `EntitlementTokenKeysTest`, `EntitlementTokenControllerTest` (contract),
+  `EntitlementTokenIT` (PostgreSQL: plans, suspended, deletion-pending, merged).
 
 ## Usage: metering engine (B4.2, ADR 0011, SD 15.3)
 
@@ -572,8 +612,7 @@ depends on `entitlements`). Any valid access token, guests included (a guest see
   `remaining` = `max(0, included - used - reserved)` (reservations in flight count against it; absent when unlimited),
   `resetsAt` = window end (absent for reset period NONE). `creditBalance` = `Credits.balance(user, now).display` (whole credits,
   rounded down). Ungated typing features are listed with `accessEnabled: true` and no usage; boolean gates and features the plan
-  excludes carry no usage either. `entitlementToken` comes from the `entitlements.EntitlementTokenIssuer` port (the B4.4
-  signer implements it; with no implementation the endpoint is 503 `PROVIDER_UNAVAILABLE`).
+  excludes carry no usage either. `entitlementToken` comes from `EntitlementTokenService.issue(userId, deviceId)` (B4.4; `deviceId` is the access token's `did`).
 - **`/me/usage`**: without parameters, the current window of every metered feature the plan gives access to
   (`usedUnits`, `includedUnits`, `creditsConsumed` = sum of `credits_charged` of the window's settled reservations, 6 dp).
   With `from` and/or `to` (date-time): the user's counter rows whose window overlaps `[from, to)`, newest first (at most 500; the
@@ -601,8 +640,9 @@ no form/basic login) and works as a resource server for the access tokens above.
     never downgraded to anonymous (ADR 0007 D9). The contract declares that 401 on each of these operations, so a
     new optional-bearer operation must declare it too.
   - **No bearer** (`[{}]` / `[]`): `POST /auth/password/forgot`, `/auth/password/reset`, `/auth/refresh`,
-    `/auth/guest`, `/billing/webhooks/{provider}/{account}`, `/billing/store-notifications/{provider}`, and
-    `/actuator/health`. The `Authorization` header is ignored there.
+    `/auth/guest`, `/billing/webhooks/{provider}/{account}`, `/billing/store-notifications/{provider}`,
+    `GET /.well-known/jwks.json` (entitlement-token keys, B4.4) and `/actuator/health`. The `Authorization` header is
+    ignored there.
   - `/partner/v1/**` is closed (401 `API_KEY_INVALID`) until partner API keys exist. User tokens are never accepted
     there.
 - **Guest tokens** (`accountType = GUEST`) are accepted only while the account is an `ACTIVE` guest (one primary-key

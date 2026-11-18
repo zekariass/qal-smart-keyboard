@@ -1681,6 +1681,8 @@ paths:
         organisation seats (allowances are not summed). `entitlementToken` is an Ed25519 JWS
         valid 24 h with 72 h offline grace; clients may use it **only** for offline gates such as
         on-device premium models. Server-metered features are always re-checked server-side.
+        Claims and client verification rules are in the `EntitlementToken` schema; the public keys
+        are at `/.well-known/jwks.json`, and `getEntitlementToken` issues a token on its own.
         A subscription in `GRACE_PERIOD` keeps its plan for the grace period (default 3 days
         after the period end when no explicit end is set). An ACTIVE subscription just past its
         period end keeps access for a 24 h renewal lag so late store notifications do not cut
@@ -1719,6 +1721,69 @@ paths:
                   offlineGraceUntil: '2026-11-21T08:00:00Z'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/me/entitlements/token:
+    get:
+      tags: [Entitlements]
+      operationId: getEntitlementToken
+      summary: Get a fresh signed entitlement token
+      description: |
+        Issues a new `EntitlementToken` (the same token `getEntitlements` embeds) from the
+        entitlements in force now, without usage figures, so the keyboard can refresh its offline
+        gates cheaply. Any active account may call it, guests included (their gates are all false).
+        A suspended account gets 403 `ACCOUNT_SUSPENDED` and a deletion-pending one 403
+        `DELETION_PENDING`; on any 401 or 403 the client drops its cached token. Every call signs a
+        new token (new `jti`), so a user may call it 60 times per hour (429 `RATE_LIMITED` with
+        `Retry-After`). The response is `Cache-Control: no-store`.
+      responses:
+        '200':
+          description: A new entitlement token.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntitlementToken' }
+              example:
+                jws: eyJhbGciOiJFZERTQSIsInR5cCI6InFhbC1lbnQrand0Iiwia2lkIjoiZW50LTIwMjYtMTEifQ.eyJzdWIiOiIuLi4ifQ.c2ln
+                keyId: ent-2026-11
+                expiresAt: '2026-11-19T08:00:00Z'
+                offlineGraceUntil: '2026-11-22T08:00:00Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /.well-known/jwks.json:
+    get:
+      tags: [Entitlements]
+      operationId: getEntitlementTokenKeys
+      summary: Get the public keys that sign entitlement tokens
+      description: |
+        RFC 7517 JWK Set of the Ed25519 (RFC 8037) keys that sign entitlement tokens: the current
+        signing key first, then, during a rotation, previous keys, which stay listed until every
+        token they signed is past its offline grace (96 h after their last use). Clients verify
+        with the key set **pinned in the app build** and never trust a key only because it was
+        listed here; a new key is shipped in app builds before it starts signing (ADR 0013).
+        Anonymous (the `Authorization` header is ignored) and outside `/api/v1`, so the app-version
+        gate does not apply.
+      security: []
+      responses:
+        '200':
+          description: The published key set.
+          headers:
+            Cache-Control:
+              description: '`max-age=3600, public`.'
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JsonWebKeySet' }
+              example:
+                keys:
+                  - kty: OKP
+                    crv: Ed25519
+                    x: 11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo
+                    kid: ent-2026-11
+                    use: sig
+                    alg: EdDSA
   /api/v1/me/usage:
     get:
       tags: [Entitlements]
@@ -4627,14 +4692,52 @@ components:
           type: array
           items: { $ref: '#/components/schemas/FeatureEntitlement' }
         creditBalance: { type: number, minimum: 0 }
-        entitlementToken:
-          type: object
-          required: [jws, keyId, expiresAt, offlineGraceUntil]
-          properties:
-            jws: { type: string, description: 'Ed25519 JWS; claims: sub, deviceId, planCode, features (boolean gates), iat, exp.' }
-            keyId: { type: string }
-            expiresAt: { type: string, format: date-time }
-            offlineGraceUntil: { type: string, format: date-time }
+        entitlementToken: { $ref: '#/components/schemas/EntitlementToken' }
+    EntitlementToken:
+      type: object
+      description: |
+        Signed statement of the caller's **offline** gates (SD 15.5, ADR 0013). Clients use it only
+        where they cannot ask the server (on-device models, SD 11.9); every server feature is
+        re-checked server-side on every call.
+
+        `jws` is a compact JWS, header `alg: EdDSA` (Ed25519), `typ: qal-ent+jwt`, `kid`. Claims,
+        none of them personal data: `iss`, `aud` (the keyboard clients), `sub` (user id),
+        `deviceId` (when the access token is bound to a device), `planCode`, `features` (object of
+        feature code to boolean: offline gates only, currently `ON_DEVICE_AI_MODELS`; never a
+        metered allowance), `policyVersion` (quota policy that produced the gates), `ver` (token
+        format, 1), `iat`, `exp` (`iat` + 24 h), `offlineGraceUntil` (`exp` + 72 h) and `jti`.
+        Times are NumericDate seconds.
+
+        Client rules: accept only `alg` EdDSA and `typ` qal-ent+jwt (no `crit`, no embedded or
+        remote keys); find `kid` in the key set pinned in the app build; verify the Ed25519
+        signature; check `iss`, `aud`, `ver`, `sub` (the signed-in user), `deviceId` (when present),
+        `exp - iat <= 24 h` and `offlineGraceUntil - exp <= 72 h`. Before `exp` the gates apply;
+        from `exp` until `offlineGraceUntil` they apply only while offline (online, fetch a new
+        token); after that the token is void. "Now" is the later of the device clock and the newest
+        `iat` or server time seen, so turning the clock back does not extend a token.
+      required: [jws, keyId, expiresAt, offlineGraceUntil]
+      properties:
+        jws: { type: string, description: 'Compact Ed25519 JWS (claims and verification rules above).' }
+        keyId: { type: string, description: 'The `kid` of the signing key.' }
+        expiresAt: { type: string, format: date-time, description: 'The `exp` claim.' }
+        offlineGraceUntil: { type: string, format: date-time, description: 'The `offlineGraceUntil` claim.' }
+    JsonWebKeySet:
+      type: object
+      description: 'RFC 7517 JWK Set of the entitlement-token public keys (Ed25519, RFC 8037).'
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            required: [kty, crv, x, kid, alg]
+            properties:
+              kty: { type: string, const: OKP }
+              crv: { type: string, const: Ed25519 }
+              x: { type: string, description: 'Base64url of the raw 32-byte public key.' }
+              kid: { type: string }
+              use: { type: string, const: sig }
+              alg: { type: string, const: EdDSA }
     UsageReport:
       type: object
       required: [items]

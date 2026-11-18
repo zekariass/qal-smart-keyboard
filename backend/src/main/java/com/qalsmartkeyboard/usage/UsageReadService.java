@@ -18,10 +18,11 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 import com.qalsmartkeyboard.entitlements.EffectivePlan;
 import com.qalsmartkeyboard.entitlements.EntitlementResolver;
-import com.qalsmartkeyboard.entitlements.EntitlementTokenIssuer;
 import com.qalsmartkeyboard.entitlements.FeatureEntitlement;
 import com.qalsmartkeyboard.entitlements.MeteringUnit;
 import com.qalsmartkeyboard.entitlements.ResolvedEntitlements;
+import com.qalsmartkeyboard.entitlements.token.EntitlementTokenService;
+import com.qalsmartkeyboard.entitlements.token.EntitlementTokenService.EntitlementToken;
 import com.qalsmartkeyboard.platform.ApiErrorCode;
 import com.qalsmartkeyboard.platform.ApiException;
 import com.qalsmartkeyboard.usage.UsageReadDtos.EntitlementsDto;
@@ -62,7 +63,7 @@ final class UsageReadService {
 
 	// ------------------------------------------------------------------ /me/entitlements
 
-	EntitlementsDto entitlements(UUID userId, UUID deviceId, EntitlementTokenIssuer issuer) {
+	EntitlementsDto entitlements(UUID userId, UUID deviceId, EntitlementTokenService tokens) {
 		Instant now = clock.instant();
 		ResolvedEntitlements resolved = entitlements.resolve(userId);
 		EffectivePlan plan = requirePlan(resolved);
@@ -70,7 +71,7 @@ final class UsageReadService {
 		for (FeatureEntitlement f : resolved.features().values()) {
 			features.add(feature(userId, f, resolved, now));
 		}
-		EntitlementTokenIssuer.Issued token = issuer.issue(resolved, deviceId);
+		EntitlementToken token = tokens.issue(userId, deviceId);
 		return new EntitlementsDto(
 				new PlanDto(plan.planCode(), plan.displayName(), plan.planRank(), plan.source().contractValue(),
 						plan.subscriptionId(), plan.organizationId(), plan.effectiveUntil()),

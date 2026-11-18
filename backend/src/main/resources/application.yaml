@@ -38,6 +38,13 @@ qal:
     attestation:
       mock:
         enabled: ${QAL_ATTESTATION_MOCK:false}
+  # Entitlement tokens (B4.4, ADR 0013): Ed25519 key pair as PEM (or the private key as an OKP JWK). Startup fails without it.
+  entitlements:
+    token:
+      signing-key:
+        key-id: ${QAL_ENTITLEMENT_TOKEN_KEY_ID:ent-1}
+        private-key: ${QAL_ENTITLEMENT_TOKEN_PRIVATE_KEY:}
+        public-key: ${QAL_ENTITLEMENT_TOKEN_PUBLIC_KEY:}
   # SMS provider (B2.1). No default: 'log' (development only, refused under prod/production/staging).
   notifications:
     sms:

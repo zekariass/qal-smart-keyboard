@@ -1,7 +1,5 @@
 package com.qalsmartkeyboard.usage;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -19,15 +17,13 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.qalsmartkeyboard.entitlements.EntitlementTokenIssuer;
-import com.qalsmartkeyboard.identity.AuthenticatedUser;
+import com.qalsmartkeyboard.entitlements.token.EntitlementTokenService;
 import com.qalsmartkeyboard.identity.security.ApiSecurityConfiguration;
 import com.qalsmartkeyboard.identity.token.AccessTokenService;
 import com.qalsmartkeyboard.platform.ApiErrorCode;
@@ -61,7 +57,7 @@ class UsageReadControllerTest {
 	@MockitoBean
 	UsageReadService reads;
 	@MockitoBean
-	EntitlementTokenIssuer issuer;
+	EntitlementTokenService issuer;
 
 	final UUID userId = UUID.randomUUID();
 
@@ -188,14 +184,5 @@ class UsageReadControllerTest {
 				.andExpect(jsonPath("$.code").value("ACCOUNT_SUSPENDED"));
 		mvc.perform(get("/api/v1/me/usage").header("Authorization", bearer())).andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.code").value("DELETION_PENDING"));
-	}
-
-	@Test
-	void withoutATokenIssuerEntitlementsAre503() {
-		UsageReadController controller = new UsageReadController(reads,
-				new StaticListableBeanFactory().getBeanProvider(EntitlementTokenIssuer.class));
-		AuthenticatedUser caller = new AuthenticatedUser(userId, UUID.randomUUID(), null, "REGISTERED");
-		assertThatThrownBy(() -> controller.getEntitlements(caller)).isInstanceOfSatisfying(ApiException.class,
-				e -> assertThat(e.code()).isEqualTo(ApiErrorCode.PROVIDER_UNAVAILABLE));
 	}
 }

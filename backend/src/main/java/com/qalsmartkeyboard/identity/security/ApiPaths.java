@@ -36,8 +36,8 @@ final class ApiPaths {
 	static final RequestMatcher NO_BEARER = new OrRequestMatcher(List.of(post("/api/v1/auth/password/forgot"),
 			post("/api/v1/auth/password/reset"), post("/api/v1/auth/refresh"), post("/api/v1/auth/guest"),
 			post("/api/v1/billing/webhooks/{providerCode}/{accountCode}"),
-			post("/api/v1/billing/store-notifications/{providerCode}"), PATHS.matcher("/actuator/health"),
-			PATHS.matcher("/actuator/health/**")));
+			post("/api/v1/billing/store-notifications/{providerCode}"), get("/.well-known/jwks.json"),
+			PATHS.matcher("/actuator/health"), PATHS.matcher("/actuator/health/**")));
 
 	static final RequestMatcher PARTNER = PATHS.matcher("/partner/v1/**");
 

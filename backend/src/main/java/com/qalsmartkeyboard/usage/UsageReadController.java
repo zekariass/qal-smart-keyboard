@@ -2,20 +2,16 @@ package com.qalsmartkeyboard.usage;
 
 import java.time.Instant;
 
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.qalsmartkeyboard.entitlements.EntitlementTokenIssuer;
+import com.qalsmartkeyboard.entitlements.token.EntitlementTokenService;
 import com.qalsmartkeyboard.identity.AuthenticatedUser;
-import com.qalsmartkeyboard.platform.ApiErrorCode;
-import com.qalsmartkeyboard.platform.ApiException;
 import com.qalsmartkeyboard.usage.UsageReadDtos.EntitlementsDto;
 import com.qalsmartkeyboard.usage.UsageReadDtos.UsageReportDto;
 
@@ -27,20 +23,15 @@ import com.qalsmartkeyboard.usage.UsageReadDtos.UsageReportDto;
 class UsageReadController {
 
 	private final UsageReadService reads;
-	private final ObjectProvider<EntitlementTokenIssuer> issuer;
+	private final EntitlementTokenService tokens;
 
-	UsageReadController(UsageReadService reads, ObjectProvider<EntitlementTokenIssuer> issuer) {
+	UsageReadController(UsageReadService reads, EntitlementTokenService tokens) {
 		this.reads = reads;
-		this.issuer = issuer;
+		this.tokens = tokens;
 	}
 
 	@GetMapping("/api/v1/me/entitlements")
 	ResponseEntity<EntitlementsDto> getEntitlements(@AuthenticationPrincipal AuthenticatedUser caller) {
-		EntitlementTokenIssuer tokens = issuer.getIfAvailable();
-		if (tokens == null) {
-			throw new ApiException(ApiErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.SERVICE_UNAVAILABLE,
-					"Entitlement tokens cannot be issued right now.");
-		}
 		return noStore(reads.entitlements(caller.userId(), caller.deviceId(), tokens));
 	}
 
