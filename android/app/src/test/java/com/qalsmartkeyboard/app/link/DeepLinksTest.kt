@@ -29,10 +29,19 @@ class DeepLinksTest {
         assertEquals(DeepLinkAction.SHOW_PRIVACY, DeepLinks.route(AiLink.AI_SETTINGS, AccountStatus.Guest, true))
         assertEquals(DeepLinkAction.SHOW_PLANS, DeepLinks.route(AiLink.UPGRADE, AccountStatus.Registered, true))
         assertEquals(DeepLinkAction.OPEN_STORE, DeepLinks.route(AiLink.UPDATE_APP, out, true))
+        for (account in listOf(out, AccountStatus.Guest, AccountStatus.Registered)) {
+            assertEquals(DeepLinkAction.SHOW_KEYBOARD_SETTINGS, DeepLinks.route(AiLink.SETTINGS, account, true))
+        }
+    }
+
+    @Test fun keyboardGearExtraOpensKeyboardSettings() {
+        // The gear sends EXTRA_OPEN_LINK = "SETTINGS" (AiLink.name).
+        assertEquals(AiLink.SETTINGS, DeepLinks.parse("SETTINGS"))
+        assertEquals(DeepLinkAction.SHOW_KEYBOARD_SETTINGS, DeepLinks.route(DeepLinks.parse("SETTINGS"), out, true))
     }
 
     @Test fun firstRunSetupIsNotInterruptedExceptByAnUpdate() {
-        for (l in listOf(AiLink.SIGN_IN, AiLink.AI_SETTINGS, AiLink.UPGRADE)) {
+        for (l in listOf(AiLink.SIGN_IN, AiLink.AI_SETTINGS, AiLink.UPGRADE, AiLink.SETTINGS)) {
             assertEquals(DeepLinkAction.NONE, DeepLinks.route(l, out, false))
         }
         assertEquals(DeepLinkAction.OPEN_STORE, DeepLinks.route(AiLink.UPDATE_APP, out, false))

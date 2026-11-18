@@ -40,7 +40,7 @@ class EntitlementResolverIT {
 	@Test
 	void everySeededPlanResolvesToTheSeedForEveryFeature() {
 		SeedSql seed = SeedSql.load();
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM plan_entitlements", Integer.class)).isEqualTo(5 * 19);
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM plan_entitlements", Integer.class)).isEqualTo(5 * 20);
 		int checked = 0;
 		for (SeedSql.Plan plan : seed.plans) {
 			UUID user = plan.rank() < 0 ? user("GUEST", "ACTIVE") : user("REGISTERED", "ACTIVE");
@@ -75,7 +75,7 @@ class EntitlementResolverIT {
 				checked++;
 			}
 		}
-		assertThat(checked).isEqualTo(5 * 24);
+		assertThat(checked).isEqualTo(5 * 25);
 	}
 
 	@Test

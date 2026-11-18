@@ -12,8 +12,9 @@ enum class ShiftState { OFF, ONCE, LOCKED }
  *
  * Switching (A1.4, SD 7.1): the globe taps to the next enabled language and long-presses to cycle
  * the current language's layouts; the space bar long-press picks a language; the ABC key toggles
- * between Latin passthrough and the language's last native layout. Every switch first commits the
- * open composition as it is, so no text is lost or typed twice.
+ * between Latin passthrough and the language's last native layout. am/ti also have a writing-mode
+ * selector (Fidel, Phonetic, English = ABC; [writingModeOptions]) whose choice is remembered per
+ * language. Every switch first commits the open composition as it is, so no text is lost or typed twice.
  */
 class KeyboardController(
     private val sink: TextSink,
@@ -48,9 +49,24 @@ class KeyboardController(
     var language: String = languages.enabled().firstOrNull() ?: "en"
         private set
 
-    /** The layout the user picked inside [language]; ABC is the one-tap toggle. */
-    private var kind: LayoutKind =
-        prefs.lastNative(language) ?: prefs.preferredKind(language) ?: LanguageCatalog.nativeKinds(language).firstOrNull() ?: LayoutKind.ABC
+    /** The layout the user picked inside [language]; ABC is the one-tap toggle (am/ti: the English writing mode). */
+    private var kind: LayoutKind = startKind(language)
+
+    /** The user switched language or layout in this keyboard session (the first settings load then leaves the choice alone). */
+    private var userSwitched = false
+
+    /**
+     * The layout a language opens on before its data is known: the saved writing mode (am/ti), else
+     * the last native layout, else the language's input-mode setting, else its first native layout.
+     */
+    private fun startKind(lang: String): LayoutKind =
+        prefs.writingMode(lang) ?: prefs.lastNative(lang) ?: prefs.preferredKind(lang)
+            ?: LanguageCatalog.nativeKinds(lang).firstOrNull() ?: LayoutKind.ABC
+
+    /** The layout a switch to [lang] lands on: its saved writing mode if usable, else its last native layout. */
+    private fun landingKind(lang: String): LayoutKind =
+        prefs.writingMode(lang)?.takeIf { it == LayoutKind.ABC || composer.supports(TypingMode(lang, it)) }
+            ?: nativeToReturnTo(lang) ?: LayoutKind.ABC
 
     /**
      * The user's mode, falling back to ABC while its data is not loaded (before the core is ready,
@@ -81,7 +97,26 @@ class KeyboardController(
 
     /** Spoken form of the current language and layout, announced to accessibility services on a switch. */
     val modeDescription: String
-        get() = effectiveMode.let { "${LanguageCatalog.spokenName(it.language)}, ${LanguageCatalog.spokenKind(it.kind)}" }
+        get() = effectiveMode.let {
+            val kindName = if (LanguageCatalog.isEthiopic(it.language)) LanguageCatalog.spokenWritingMode(it.kind) else LanguageCatalog.spokenKind(it.kind)
+            "${LanguageCatalog.spokenName(it.language)}, $kindName"
+        }
+
+    /**
+     * The writing modes the selector offers in this field (am/ti: Fidel, Phonetic, English; only
+     * those whose data is loaded). Empty = no selector: om/en, fields that stay Latin (password,
+     * email, ...) and while the core is loading.
+     */
+    val writingModeOptions: List<LayoutKind>
+        get() {
+            if (!profile.allowsTransliteration) return emptyList()
+            val all = LanguageCatalog.writingModes(language).filter { it == LayoutKind.ABC || composer.supports(TypingMode(language, it)) }
+            return if (all.size >= 2) all else emptyList()
+        }
+
+    /** The active writing mode (what the selector shows as selected). */
+    val writingMode: LayoutKind
+        get() = effectiveMode.kind
 
     /** The mode indicator for the space bar (SD 7.1), e.g. `አማ · ABC→አ`. */
     val indicator: String
@@ -100,18 +135,24 @@ class KeyboardController(
         cachedLayout = null
         val all = availableLanguages()
         val first = languages.enabled().firstOrNull()
-        // The first settings load decides the starting language; later edits only move away from a disabled one.
-        val moveToFirst = !settled && first != null && first != language
+        // The first settings load decides the starting language and its saved writing mode (the
+        // controller may have been built from the defaults); later edits only move away from a disabled one.
+        val firstLoad = !settled && !userSwitched
+        val moveToFirst = firstLoad && first != null && first != language
         settled = true
         if (moveToFirst && first != null) {
             send(ComposerKey.Commit)
             language = first
-            kind = prefs.lastNative(first) ?: prefs.preferredKind(first) ?: LanguageCatalog.nativeKinds(first).firstOrNull() ?: LayoutKind.ABC
+            kind = startKind(first)
             afterSwitch()
         } else if (all.isNotEmpty() && language !in all && language !in languages.enabled()) {
             send(ComposerKey.Commit)
             language = all.first()
-            kind = nativeToReturnTo(language) ?: LayoutKind.ABC
+            kind = landingKind(language)
+            afterSwitch()
+        } else if (firstLoad && startKind(language) != kind) {
+            send(ComposerKey.Commit)
+            kind = startKind(language)
             afterSwitch()
         }
         onChanged()
@@ -134,7 +175,8 @@ class KeyboardController(
             val m = effectiveMode
             val key = LayoutKey(page, profile, m, availableLanguages(), prefs.ethiopicNumerals, prefs.keyHeightScale)
             cachedLayout?.takeIf { it.first == key }?.let { return it.second }
-            val ctx = LayoutContext(m, grid(m.language), indicator, languagePicker(), composer.isDraft(m), prefs.ethiopicNumerals)
+            val hints = if (m.kind == LayoutKind.PHONETIC) composer.phoneticHints(m.language) else null
+            val ctx = LayoutContext(m, grid(m.language), indicator, languagePicker(), composer.isDraft(m), prefs.ethiopicNumerals, hints)
             val base = Layouts.forPage(page, profile, ctx)
             val scaled = KeyboardLayout(base.page, base.rows, base.rowHeightDp * prefs.keyHeightScale)
             return scaled.also { cachedLayout = key to it }
@@ -258,7 +300,10 @@ class KeyboardController(
 
     private fun setKind(newKind: LayoutKind) {
         kind = newKind
+        userSwitched = true
         if (newKind != LayoutKind.ABC) prefs.setLastNative(language, newKind)
+        // am/ti remember the selected writing mode, English (ABC) included; om keeps ABC temporary.
+        if (newKind in LanguageCatalog.writingModes(language)) prefs.setWritingMode(language, newKind)
     }
 
     private fun afterSwitch() {
@@ -268,12 +313,13 @@ class KeyboardController(
         refreshAutoCapital()
     }
 
-    /** Switches to [lang] (a no-op if it is not available), landing on its last native layout. */
+    /** Switches to [lang] (a no-op if it is not available), landing on its saved writing mode or last native layout. */
     fun switchLanguage(lang: String) {
         if (!profile.allowsTransliteration || lang == language || lang !in availableLanguages()) return
         finishComposition()
         language = lang
-        kind = nativeToReturnTo(lang) ?: LayoutKind.ABC
+        userSwitched = true
+        kind = landingKind(lang)
         afterSwitch()
         onChanged()
     }
@@ -296,7 +342,22 @@ class KeyboardController(
         onChanged()
     }
 
-    /** One-tap ABC toggle (SD 7.1): passthrough <-> the language's last native layout. */
+    /**
+     * The writing-mode selector picked [newKind] (am/ti). The open composition is committed first;
+     * the choice is remembered for the language. A mode that is not offered is ignored.
+     */
+    fun selectWritingMode(newKind: LayoutKind) {
+        if (newKind !in writingModeOptions || newKind == mode.kind) return
+        finishComposition()
+        setKind(newKind)
+        afterSwitch()
+        onChanged()
+    }
+
+    /**
+     * One-tap ABC toggle (SD 7.1): passthrough <-> the language's last native layout. In am/ti this is
+     * the English writing mode and back to the last of Fidel/Phonetic.
+     */
     fun toggleAbc() {
         if (!profile.allowsTransliteration) return
         if (mode.isAbc) {

@@ -14,7 +14,7 @@ Preferences DataStore (`keyboard_settings`), wrapped by `SettingsRepository`. Pr
 ### Model and the contract
 `KeyboardSettings.languages` is the user's ordered list of all known languages (am, ti, om, en), enabled or not. Each `TypingLanguageSetting` maps to the contract's `TypingLanguage` (`/me/typing-languages`, SD 10.2): `languageCode`, `enabled`, `inputMode` (`DIRECT_SCRIPT_LAYOUT | PHONETIC_LATIN_TO_NATIVE | LATIN_PASSTHROUGH`), `transliterationProfileCode` (null = newest active profile), `conversionTrigger`, `showTransliterationCandidates`, `unknownTokenBehavior`. `sortOrder` is the list position (10, 20, ...) and `isPrimary` the first enabled entry; `toSyncItems()` produces exactly that shape. `numeralStyle` and `hapticsEnabled` map to the preferences document; `theme` to `keyboardTheme`. Local only: `keyHeightPercent` (80..130) and `lastModes` (last native layout per language). The sync `revision` and the last synced server documents are kept by `:sync` (A2.4), not here: `:data` stays network-free and its settings schema is unchanged.
 
-Defaults (ADR 0007): am, ti, om, en all enabled in that order; am and ti start on phonetic QWERTY (Fidel is one globe long-press away); numerals WESTERN; theme SYSTEM; haptics on; key height 100%.
+Defaults (ADR 0007): am, ti, om, en all enabled in that order; am and ti start on phonetic QWERTY (Fidel is one globe long-press away); numerals WESTERN; theme `system`; haptics on; key height 100%.
 
 Validation: at least one language enabled; unknown or duplicate languages dropped; missing known languages appended disabled; an input mode the language cannot use resets to its default; profile codes kept only in phonetic mode and only when well formed; key height clamped. Schema versioned by `schema_version` (1).
 
@@ -29,3 +29,5 @@ Validation: at least one language enabled; unknown or duplicate languages droppe
 
 ## Tests
 `./gradlew :data:testDebugUnitTest`. DataStore runs on the JVM over a temp file; "restart" = a new DataStore instance on the same file. The tests use `OkioStorage` because DataStore's File-based storage cannot replace an existing file on Windows (CI is Linux; production is Android).
+
+**Theme (`theme`).** A string id: `system` (default, Classic Light/Dark by the device mode) or a theme id of the IME's catalogue (`midnight`, `aurora`, ...), stored under the existing `theme` key and synced as `keyboardTheme` (max 40 characters). `ThemeIds.normalize` migrates the old enum values (`SYSTEM` -> `system`, `LIGHT` -> `classic_light`, `DARK` -> `classic_dark`) and turns anything malformed into `system`; an id that is well formed but unknown to this build is kept (a newer app version may know it) and the keyboard draws it as `system`.

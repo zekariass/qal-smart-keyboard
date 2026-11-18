@@ -3755,6 +3755,7 @@ components:
         - PERSONAL_STYLE
         - CUSTOM_GLOSSARY
         - ON_DEVICE_AI_MODELS
+        - PREMIUM_THEMES
     MeteringUnit:
       type: string
       description: REQUEST; SECOND (audio, rounded up per request to a whole second); CHARACTER (TTS); NONE (boolean access).
@@ -5339,7 +5340,7 @@ components:
         `jws` is a compact JWS, header `alg: EdDSA` (Ed25519), `typ: qal-ent+jwt`, `kid`. Claims,
         none of them personal data: `iss`, `aud` (the keyboard clients), `sub` (user id),
         `deviceId` (when the access token is bound to a device), `planCode`, `features` (object of
-        feature code to boolean: offline gates only, currently `ON_DEVICE_AI_MODELS`; never a
+        feature code to boolean: offline gates only, currently `ON_DEVICE_AI_MODELS` and `PREMIUM_THEMES`; never a
         metered allowance), `policyVersion` (quota policy that produced the gates), `ver` (token
         format, 1), `iat`, `exp` (`iat` + 24 h), `offlineGraceUntil` (`exp` + 72 h) and `jti`.
         Times are NumericDate seconds.

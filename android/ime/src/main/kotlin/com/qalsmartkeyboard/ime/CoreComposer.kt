@@ -15,7 +15,11 @@ import uniffi.qal_keyboard_core.TranslitProfileStatus
  * All calls come from the main thread; the engine is internally synchronised, so pack loading on
  * another thread is safe.
  */
-class CoreComposer(private val engine: KeyboardEngine) : Composer {
+class CoreComposer(
+    private val engine: KeyboardEngine,
+    /** Phonetic key hints per language, derived off the main thread by [deriveHints] before the engine is handed over. */
+    private val hints: Map<String, PhoneticHints> = emptyMap(),
+) : Composer {
     private val languages = listOf("am", "ti", "om", "en")
     private val draft = HashMap<TypingMode, Boolean>()
     private val grids = HashMap<String, FidelGrid>()
@@ -47,6 +51,8 @@ class CoreComposer(private val engine: KeyboardEngine) : Composer {
     }
 
     override fun fidelGrid(language: String): FidelGrid? = grids[language]
+
+    override fun phoneticHints(language: String): PhoneticHints? = hints[language]
 
     override fun onKey(key: ComposerKey): ComposerUpdate = engine.onKey(
         when (key) {
@@ -89,6 +95,35 @@ class CoreComposer(private val engine: KeyboardEngine) : Composer {
     override fun isDraft(mode: TypingMode): Boolean = when (mode.kind) {
         LayoutKind.FIDEL -> grids[mode.language]?.draft ?: false
         else -> draft[mode] ?: false
+    }
+
+    companion object {
+        /**
+         * Feeds every letter key alone (lower and upper case) into a fresh phonetic session of each
+         * language whose profile [engine] accepted, and returns what each produced (PhoneticHints).
+         * Call it on the loader thread **before** the engine is used for typing: it changes the
+         * engine's mode and leaves it reset (the composer sets the real mode afterwards). Languages
+         * without a usable profile get no entry; nothing typed here is ever kept or logged.
+         */
+        fun deriveHints(engine: KeyboardEngine, languages: List<String> = listOf("am", "ti")): Map<String, PhoneticHints> {
+            val out = HashMap<String, PhoneticHints>()
+            for (lang in languages) {
+                try {
+                    engine.setInputMode(lang, InputMode.PHONETIC_LATIN)
+                    val h = PhoneticHints.derive { key ->
+                        engine.reset()
+                        val u = engine.onKey(KeyEvent.Char(key))
+                        u.commit + u.composing
+                    }
+                    if (!h.isEmpty) out[lang] = h
+                } catch (_: CoreException) {
+                    // No usable profile for this language: no hints.
+                } finally {
+                    engine.reset()
+                }
+            }
+            return out
+        }
     }
 
     private fun FidelLayout.toGrid() = FidelGrid(

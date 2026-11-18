@@ -3,7 +3,7 @@ package com.qalsmartkeyboard.sync
 import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.NumeralStyle
 import com.qalsmartkeyboard.data.SettingsRepository
-import com.qalsmartkeyboard.data.ThemeMode
+import com.qalsmartkeyboard.data.ThemeIds
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -12,7 +12,7 @@ import kotlinx.serialization.json.contentOrNull
 
 /**
  * Sync of the keyboard's slice of `/me/preferences` (B3.3): `numeralStyle`, `keyboardTheme`
- * (our [ThemeMode] names) and `hapticsEnabled`. Every other member of the document (translation,
+ * (a theme id, see [ThemeIds]) and `hapticsEnabled`. Every other member of the document (translation,
  * history, voice, calendar, analytics ...) belongs to other screens and is carried through from the
  * server document untouched, because the PUT replaces the whole document.
  *
@@ -51,8 +51,9 @@ class PreferencesSync internal constructor(
                 if (v != null && cur.numeralStyle == start.numeralStyle) s = s.copy(numeralStyle = v)
             }
             (merged["keyboardTheme"] as? JsonPrimitive)?.contentOrNull?.let { n ->
-                val v = ThemeMode.entries.firstOrNull { it.name == n }
-                if (v != null && cur.theme == start.theme) s = s.copy(theme = v)
+                // Old clients wrote SYSTEM / LIGHT / DARK; any other value is a theme id (the IME resolves unknown ones).
+                val v = ThemeIds.normalize(n.take(ThemeIds.MAX_LENGTH + 1))
+                if (cur.theme == start.theme) s = s.copy(theme = v)
             }
             (merged["hapticsEnabled"] as? JsonPrimitive)?.booleanOrNull?.let { v ->
                 if (cur.hapticsEnabled == start.hapticsEnabled) s = s.copy(hapticsEnabled = v)
@@ -66,7 +67,7 @@ class PreferencesSync internal constructor(
 
         private fun ownedOf(s: KeyboardSettings): Map<String, JsonElement?> = mapOf(
             "numeralStyle" to JsonPrimitive(s.numeralStyle.name),
-            "keyboardTheme" to JsonPrimitive(s.theme.name),
+            "keyboardTheme" to JsonPrimitive(s.theme),
             "hapticsEnabled" to JsonPrimitive(s.hapticsEnabled),
         )
 

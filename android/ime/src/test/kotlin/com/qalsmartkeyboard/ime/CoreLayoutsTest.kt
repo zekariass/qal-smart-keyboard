@@ -51,9 +51,9 @@ class CoreLayoutsTest {
         val s = session()
         assertEquals("አማ · ፊደል", s.c.indicator)
         s.mode(amPhonetic)
-        assertEquals("አማ · QWERTY", s.c.indicator)
+        assertEquals("አማ · Phonetic", s.c.indicator)
         s.tap(s.key(KeyKind.ABC_TOGGLE))
-        assertEquals("አማ · ABC→አ", s.c.indicator)
+        assertEquals("አማ · English", s.c.indicator) // am/ti: ABC is the English writing mode
         assertEquals("አ", s.key(KeyKind.ABC_TOGGLE).label)
         s.mode(om)
         assertEquals("OM · Qubee", s.c.indicator)

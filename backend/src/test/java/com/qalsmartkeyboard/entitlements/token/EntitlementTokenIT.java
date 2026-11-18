@@ -112,19 +112,20 @@ class EntitlementTokenIT {
 		subscribe(premium.id(), "PREMIUM");
 		var p = fetchAndVerify(premium);
 		assertThat(p.planCode()).isEqualTo("PREMIUM");
-		assertThat(p.features()).containsExactly(Map.entry("ON_DEVICE_AI_MODELS", true));
+		assertThat(p.features()).containsExactly(Map.entry("ON_DEVICE_AI_MODELS", true), Map.entry("PREMIUM_THEMES", true));
+		assertThat(p.allows("PREMIUM_THEMES", false)).isTrue();
 		assertThat(p.policyVersion()).isEqualTo("PROVISIONAL_V2");
 		assertThat(p.allows("ON_DEVICE_AI_MODELS", false)).isTrue();
 
 		User free = registered();
 		var f = fetchAndVerify(free);
 		assertThat(f.planCode()).isEqualTo("FREE");
-		assertThat(f.features()).containsExactly(Map.entry("ON_DEVICE_AI_MODELS", false));
+		assertThat(f.features()).containsExactly(Map.entry("ON_DEVICE_AI_MODELS", false), Map.entry("PREMIUM_THEMES", false));
 
 		User guest = guest();
 		var g = fetchAndVerify(guest);
 		assertThat(g.planCode()).isEqualTo("GUEST");
-		assertThat(g.features()).containsExactly(Map.entry("ON_DEVICE_AI_MODELS", false));
+		assertThat(g.features()).containsExactly(Map.entry("ON_DEVICE_AI_MODELS", false), Map.entry("PREMIUM_THEMES", false));
 	}
 
 	@Test

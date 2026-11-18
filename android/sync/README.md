@@ -29,7 +29,7 @@ the step fails as retryable `REVISION_CONFLICT` (WorkManager backoff). The answe
 merged document equals the server's.
 
 ## Merge rules (field level, three-way; base = last synced document, schema defaults before the first sync)
-- **Preferences** (`numeralStyle`, `keyboardTheme` = `ThemeMode` name, `hapticsEnabled`): changed on this device since the last
+- **Preferences** (`numeralStyle`, `keyboardTheme` = theme id (`ThemeIds`; old `SYSTEM`/`LIGHT`/`DARK` values from older clients are migrated), `hapticsEnabled`): changed on this device since the last
   sync -> local wins (even if the server changed it too); otherwise the server value wins and is adopted locally; a field the
   server lacks keeps the local value. Every other member is the server's. `keyHeightPercent`, `lastModes`, pack settings are
   device-local and never sent. Server values are applied locally per field only if the user did not edit that field meanwhile.

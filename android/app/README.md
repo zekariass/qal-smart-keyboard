@@ -135,6 +135,7 @@ The keyboard's toolbar link buttons start the launcher activity with `EXTRA_OPEN
 | `AI_SETTINGS` | the privacy dashboard (A2.6: consents, AI history, export, deletion; where a `CONSENT_REQUIRED` failure leads) |
 | `UPGRADE` | `PlansScreen`, a **placeholder** (text and Back) until the billing/plans UI exists |
 | `UPDATE_APP` | the store page (`openStorePage`), also during first-run setup |
+| `SETTINGS` | the keyboard settings screen (the keyboard's gear), with a "Back to typing" bar (`KeyboardReturnBar`): it and the system Back call `finishAndRemoveTask()`, so the user lands back in the app they were typing in |
 
 During first-run setup every link except `UPDATE_APP` is ignored (the setup has its own account step). An unknown
 extra does nothing. The link is applied once the stored onboarding flag has loaded.
@@ -142,7 +143,7 @@ extra does nothing. The link is applied once the stored onboarding flag has load
 Plan state and the entitlement token also refresh from `SyncWorker` (`AiGraph.actions.refreshNow()` after the sync
 run; throttled and a no-op when signed out), so the keyboard never needs to fetch them when it appears. `AiGraph`
 passes a `LastDestinationStore` (device-local last destination per app, see `android/ai-client/README.md`).
-Tests: `link/DeepLinksTest`.
+Tests: `link/DeepLinksTest`, `KeyboardReturnBarTest` (Robolectric: button and Back).
 
 ## Privacy dashboard, consents, history, export, deletion (A2.6, package `privacy`)
 Entry: the "Privacy" card in settings (`PrivacyEntryCard`) and the deep link `AI_SETTINGS` (`DeepLinkAction.SHOW_PRIVACY`). Screens
@@ -211,3 +212,14 @@ system document picker and a provider writing the file, a visual check of every 
 `SharedPreferences` flag read by the keyboard, sign-out and wipe on real Keystore files, polling while the app is backgrounded, and an
 end-to-end run against the backend (history actually saved after enabling, the export archive opened, deletion and cancel after a second
 sign-in). Placeholders: `terms_url` and `privacy_notice_url` in `strings.xml`.
+
+## Themes (package `themes`)
+Settings > Theme shows the current theme and opens `ThemesScreen` (route state `themesOpen` in `MainActivity`). Free section (System, then the free themes) and Premium section of cards, each with a miniature keyboard (`KeyboardThemePreview`, drawn from the IME's own `KeyboardTheme` tokens), a Premium badge with a padlock while locked, and "Applied" on the current one. A tap opens a larger preview; **preview never changes the keyboard**: Apply writes the id into the `theme` setting (synced as `keyboardTheme`), a locked premium theme shows "Unlock with Premium", which opens the plans screen. When the applied theme is premium but not available the screen says why (signed out, plan without themes, or "connect once to check your plan") and which free theme the keyboard shows meanwhile. Access comes from `ThemeAccessHolder` (`QalApplication` registers `AiGraph.themeAccess`, `ServerThemeAccess` in `:ai-client`).
+
+| File | Role |
+|---|---|
+| `ThemePickerModel.kt` | Android-free logic: preview state (never writes), `apply` (refuses premium without access), `ThemeStore`. JVM-tested. |
+| `ThemePreview.kt` | `KeyboardThemePreview` canvas and the padlock icon. |
+| `ThemesScreen.kt` | Cards, large preview, locked banner; `ThemesHost` wires model, store and entitlement. |
+
+**Add a theme:** add a catalogue entry in `:ime` (`ime/README.md`, "Themes"); the picker lists it under its tier automatically.

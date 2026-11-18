@@ -11,6 +11,9 @@ import com.qalsmartkeyboard.data.NumeralStyle
  */
 class SettingsPreferences(
     private val settings: () -> KeyboardSettings,
+    /** Saves the selected writing mode of am/ti (`KeyboardSettings.writingModes`). */
+    private val saveWritingMode: (language: String, mode: String) -> Unit = { _, _ -> },
+    /** Last (a trailing lambda): saves the last native layout (`KeyboardSettings.lastModes`). */
     private val saveLastMode: (language: String, mode: String) -> Unit = { _, _ -> },
 ) : EnabledLanguages, ModePreferences {
 
@@ -29,6 +32,15 @@ class SettingsPreferences(
 
     override fun setLastNative(language: String, kind: LayoutKind) {
         if (settings().lastModes[language] != kind.name) saveLastMode(language, kind.name)
+    }
+
+    override fun writingMode(language: String): LayoutKind? =
+        settings().writingModes[language]?.let { n -> LayoutKind.entries.firstOrNull { it.name == n } }
+            ?.takeIf { it in LanguageCatalog.writingModes(language) }
+
+    override fun setWritingMode(language: String, kind: LayoutKind) {
+        if (kind !in LanguageCatalog.writingModes(language)) return
+        if (settings().writingModes[language] != kind.name) saveWritingMode(language, kind.name)
     }
 
     override fun showCandidates(language: String): Boolean =

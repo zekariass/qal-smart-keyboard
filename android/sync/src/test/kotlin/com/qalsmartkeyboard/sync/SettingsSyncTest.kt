@@ -3,7 +3,7 @@ package com.qalsmartkeyboard.sync
 import com.qalsmartkeyboard.data.ConversionTrigger
 import com.qalsmartkeyboard.data.InputMode
 import com.qalsmartkeyboard.data.NumeralStyle
-import com.qalsmartkeyboard.data.ThemeMode
+import com.qalsmartkeyboard.data.ThemeIds
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -47,12 +47,12 @@ class SettingsSyncTest {
         assertEquals(StepResult.Unchanged, a.sync().steps[SyncStep.PREFERENCES]) // nothing changed anywhere
 
         // Device B (online) switches the theme to DARK and the haptics off.
-        b.settings.update { it.copy(theme = ThemeMode.DARK, hapticsEnabled = false) }
+        b.settings.update { it.copy(theme = ThemeIds.CLASSIC_DARK, hapticsEnabled = false) }
         assertEquals(StepResult.Synced, b.sync().steps[SyncStep.PREFERENCES])
         val revAfterB = (prefs()["revision"] as JsonPrimitive).content
 
         // Device A is offline and edits numerals (a field B did not touch) and the theme (the same field B changed).
-        a.settings.update { it.copy(numeralStyle = NumeralStyle.ETHIOPIC, theme = ThemeMode.LIGHT) }
+        a.settings.update { it.copy(numeralStyle = NumeralStyle.ETHIOPIC, theme = ThemeIds.CLASSIC_LIGHT) }
         backend.requests.clear()
         assertEquals(StepResult.Synced, a.sync().steps[SyncStep.PREFERENCES])
 
@@ -65,11 +65,11 @@ class SettingsSyncTest {
         // Rule: local edits since the last sync win (theme: both changed it; numerals), the server wins elsewhere (haptics), foreign members survive.
         val doc = prefs()
         assertEquals("ETHIOPIC", str(doc, "numeralStyle"))
-        assertEquals("LIGHT", str(doc, "keyboardTheme"))
+        assertEquals("classic_light", str(doc, "keyboardTheme"))
         assertEquals("false", str(doc, "hapticsEnabled"))
         assertEquals("PROMPT", str(doc, "translationMode"))
         val local = a.settings.current()
-        assertEquals(ThemeMode.LIGHT, local.theme)
+        assertEquals(ThemeIds.CLASSIC_LIGHT, local.theme)
         assertEquals(NumeralStyle.ETHIOPIC, local.numeralStyle)
         assertFalse(local.hapticsEnabled) // adopted from the server
 
@@ -78,7 +78,7 @@ class SettingsSyncTest {
         val bs = b.settings.current()
         assertEquals(NumeralStyle.ETHIOPIC, bs.numeralStyle)
         assertFalse(bs.hapticsEnabled)
-        assertEquals(ThemeMode.LIGHT, bs.theme)
+        assertEquals(ThemeIds.CLASSIC_LIGHT, bs.theme)
         // Device-local settings never travel.
         assertFalse(backend.bodiesOf("PUT").any { it.contains("keyHeight") || it.contains("packChannel") })
     }
@@ -89,14 +89,14 @@ class SettingsSyncTest {
         backend.setDoc("preferences") { JsonObject(it + ("keyboardTheme" to JsonPrimitive("LIGHT"))) }
         backend.requests.clear()
         a.sync()
-        assertEquals(ThemeMode.LIGHT, a.settings.current().theme)
+        assertEquals(ThemeIds.CLASSIC_LIGHT, a.settings.current().theme)
         assertEquals(0, backend.requests.count { it.method == "PUT" })
     }
 
     @Test fun boundedRetriesGiveUpOnPersistentConflict() = runBlocking {
         val a = device()
         a.sync()
-        a.settings.update { it.copy(theme = ThemeMode.DARK) }
+        a.settings.update { it.copy(theme = ThemeIds.CLASSIC_DARK) }
         backend.alwaysConflict = true
         backend.requests.clear()
         val r = a.sync().steps[SyncStep.PREFERENCES] as StepResult.Failed
@@ -106,7 +106,7 @@ class SettingsSyncTest {
         // The local edit is not lost: once the conflict clears it goes through.
         backend.alwaysConflict = false
         a.sync()
-        assertEquals("DARK", str(prefs(), "keyboardTheme"))
+        assertEquals("classic_dark", str(prefs(), "keyboardTheme"))
     }
 
     @Test fun signedOutDoesNothing() = runBlocking {

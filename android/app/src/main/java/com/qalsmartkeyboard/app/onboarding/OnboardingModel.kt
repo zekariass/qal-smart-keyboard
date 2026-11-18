@@ -87,14 +87,14 @@ data class LanguageDraft(
         if (mode in LanguageRules.allowedModes(code)) copy(modes = modes + (code to mode)) else this
 
     /**
-     * Writes the draft into [s]. A language whose mode was changed forgets its remembered layout, so
+     * Writes the draft into [s]. A language whose mode was changed forgets its remembered layout and writing mode, so
      * the keyboard opens in the chosen mode (the IME prefers the remembered layout over the setting).
      */
     fun applyTo(s: KeyboardSettings): KeyboardSettings {
         val byCode = s.languages.associateBy { it.languageCode }
         val languages = order.mapNotNull { c -> byCode[c]?.let { l -> l.copy(enabled = c in enabled, inputMode = modes[c] ?: l.inputMode) } }
         val changedMode = languages.filter { byCode[it.languageCode]?.inputMode != it.inputMode }.map { it.languageCode }.toSet()
-        return s.copy(languages = languages, lastModes = s.lastModes - changedMode)
+        return s.copy(languages = languages, lastModes = s.lastModes - changedMode, writingModes = s.writingModes - changedMode)
     }
 
     companion object {

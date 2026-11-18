@@ -4,6 +4,9 @@
     <!-- N9: shown on the candidate strip while the transliteration profile is DRAFT (not native-speaker approved). -->
     <string name="candidate_strip_draft">DRAFT</string>
     <string name="candidate_strip_draft_description">Draft suggestions, not verified by native speakers</string>
+    <!-- Top bar: settings gear and the writing-mode selector (am/ti: Fidel, Phonetic, English). -->
+    <string name="top_bar_settings">Keyboard settings</string>
+    <string name="top_bar_mode">Writing mode %1$s, tap to change</string>
     <string name="user_dictionary_added">Added to your dictionary</string>
     <string name="user_dictionary_not_added">Could not add this word</string>
     <!-- A2.5: AI toolbar. Nothing is sent until the user taps an action. -->

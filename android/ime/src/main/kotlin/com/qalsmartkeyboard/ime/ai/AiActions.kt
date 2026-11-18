@@ -119,7 +119,12 @@ sealed interface AiOutcome {
 }
 
 /** Where a failure message sends the user (the companion app; the service opens it). */
-enum class AiLink { SIGN_IN, AI_SETTINGS, UPGRADE, UPDATE_APP }
+enum class AiLink {
+    SIGN_IN, AI_SETTINGS, UPGRADE, UPDATE_APP,
+
+    /** The keyboard settings screen, opened by the top bar's gear (not an AI failure link). */
+    SETTINGS,
+}
 
 /**
  * Every way a request ends without a result. [retrySameKey]: a retry should reuse the

@@ -126,6 +126,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val HAPTICS = booleanPreferencesKey("haptics_enabled")
         private val KEY_HEIGHT = intPreferencesKey("key_height_percent")
         private val LAST_MODES = stringPreferencesKey("last_modes")
+        private val WRITING_MODES = stringPreferencesKey("writing_modes")
         private val PACK_MOBILE_DATA = booleanPreferencesKey("pack_updates_mobile_data")
         private val PACK_CHANNEL = stringPreferencesKey("pack_channel")
         private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
@@ -142,12 +143,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 ).joinToString(FIELD)
             }
             p[NUMERALS] = s.numeralStyle.name
-            p[THEME] = s.theme.name
+            p[THEME] = s.theme
             p[HAPTICS] = s.hapticsEnabled
             p[KEY_HEIGHT] = s.keyHeightPercent
             p[PACK_MOBILE_DATA] = s.packUpdatesOnMobileData
             p[PACK_CHANNEL] = s.packChannel.name
-            p[LAST_MODES] = s.lastModes.entries.joinToString(LINE) { "${it.key}$FIELD${it.value}" }
+            p[LAST_MODES] = encodeMap(s.lastModes)
+            p[WRITING_MODES] = encodeMap(s.writingModes)
         }
 
         /** Lenient decode: anything missing or unrecognised takes its default; the result is sanitised. */
@@ -167,21 +169,27 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                     unknownTokenBehavior = enumOrNull<UnknownTokenBehavior>(f.getOrNull(6)) ?: UnknownTokenBehavior.PRESERVE_LATIN,
                 )
             }
-            val lastModes = p[LAST_MODES].orEmpty().split(LINE).mapNotNull { line ->
-                val f = line.split(FIELD)
-                if (f.size == 2) f[0] to f[1] else null
-            }.toMap()
+            val lastModes = decodeMap(p[LAST_MODES])
             return KeyboardSettings(
                 languages = languages,
                 numeralStyle = enumOrNull<NumeralStyle>(p[NUMERALS]) ?: d.numeralStyle,
-                theme = enumOrNull<ThemeMode>(p[THEME]) ?: d.theme,
+                theme = ThemeIds.normalize(p[THEME]),
                 hapticsEnabled = p[HAPTICS] ?: d.hapticsEnabled,
                 keyHeightPercent = p[KEY_HEIGHT] ?: d.keyHeightPercent,
                 lastModes = lastModes,
+                // Additive key (schema stays 1): files written before it decode to an empty map.
+                writingModes = decodeMap(p[WRITING_MODES]),
                 packUpdatesOnMobileData = p[PACK_MOBILE_DATA] ?: d.packUpdatesOnMobileData,
                 packChannel = enumOrNull<PackChannel>(p[PACK_CHANNEL]) ?: d.packChannel,
             ).sanitized()
         }
+
+        private fun encodeMap(m: Map<String, String>) = m.entries.joinToString(LINE) { "${it.key}$FIELD${it.value}" }
+
+        private fun decodeMap(stored: String?): Map<String, String> = stored.orEmpty().split(LINE).mapNotNull { line ->
+            val f = line.split(FIELD)
+            if (f.size == 2) f[0] to f[1] else null
+        }.toMap()
 
         private inline fun <reified E : Enum<E>> enumOrNull(name: String?): E? =
             name?.let { n -> enumValues<E>().firstOrNull { it.name == n } }
