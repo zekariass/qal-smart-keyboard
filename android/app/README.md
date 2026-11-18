@@ -22,10 +22,14 @@ System state is re-read in `MainActivity.onResume` and `onWindowFocusChanged` (t
 |---|---|
 | `OnboardingModel.kt` | Android-free state machine (`OnboardingFlow` step rules, `LanguageDraft`, `OnboardingModel` over `SettingsRepository`). JVM-tested. |
 | `OnboardingViewModel.kt` | Thin `ViewModel` (survives rotation) and `ImeStatusReader` (system facts). |
+| `OnboardingSaver.kt` | Keeps the step and the language draft in the `SavedStateHandle` (ADR 0007 D12), so the flow resumes the same step after process death (for example after enabling the keyboard in system settings). The IME status is re-read on resume; restoring is lenient (garbage falls back to defaults). |
 | `OnboardingScreen.kt` | Compose UI: scrollable content with pinned Back/Continue, content descriptions, status as text (not colour only); works in portrait, landscape and large text. |
+
+## Personal dictionary (A1.8)
+`PersonalDictionarySection` (bottom of the settings screen): per language the number of words, "Show words" (paged, 50 at a time) with a Delete button per word, and "Clear all" behind a confirmation. It uses the same process-wide `UserDictionary` as the keyboard (`android/ime/README.md`), so a deletion also reaches a running keyboard and is saved encrypted. Words appear on screen only; nothing is logged or uploaded.
 
 All user-visible text is in `res/values/strings.xml` (English; add `values-am`, `values-ti`, `values-om` later).
 
 ## Tests
-`./gradlew :app:testDebugUnitTest` (from `android/`): step rules, IME status parsing, language draft rules and the whole new-user
+`./gradlew :app:testPlayDebugUnitTest :app:testDirectDebugUnitTest` (from `android/`; `testDebugUnitTest` skips the flavoured app tests): step rules, IME status parsing, language draft rules and the whole new-user
 flow over a real DataStore on a temp file (including restart persistence of the completed flag and the language choice).

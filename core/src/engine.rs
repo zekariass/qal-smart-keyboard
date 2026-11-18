@@ -118,6 +118,9 @@ struct State {
     phonetic: Option<PhoneticSession>,
 }
 
+/// A language's user overlay as exported by the host: ("QUD1" dictionary, "QBG1" bigrams).
+type UserData = (Vec<u8>, Vec<u8>);
+
 /// Rollback-protection slot: one loaded pack per (language, resource type, platform).
 type PackSlot = (String, ResourceType, PackPlatform);
 
@@ -221,6 +224,9 @@ pub struct KeyboardEngine {
     /// SHA-256 of verified `DICTIONARY` / `FREQUENCY_LIST` artifacts whose payload does not
     /// parse (reported as `PackInfo::payload_usable == false`).
     unusable_payloads: Mutex<HashSet<String>>,
+    /// User overlays imported before the language's dictionary was loaded ("QUD1" dictionary,
+    /// "QBG1" bigrams); applied when its model is first built.
+    pending_user: Mutex<HashMap<String, UserData>>,
     key_ring: KeyRing,
     pack_limits: PackLimits,
     config: EngineConfig,
@@ -252,6 +258,7 @@ impl KeyboardEngine {
             models: Mutex::new(HashMap::new()),
             model_build: Mutex::new(()),
             unusable_payloads: Mutex::new(HashSet::new()),
+            pending_user: Mutex::new(HashMap::new()),
             key_ring,
             pack_limits,
             config,
@@ -547,6 +554,90 @@ impl KeyboardEngine {
         EditorUpdate::default()
     }
 
+    /// Replaces the user overlay of `language_code` with the host's stored copy: `dictionary` is
+    /// `Lexicon::export_user_dictionary` output, `bigrams` is `Ranker::export_user_bigrams`
+    /// output (either may be empty to mean "none"). Both are validated first; on error nothing
+    /// changes. If the language has no dictionary yet the overlay is kept and applied when its
+    /// model is built, and a later pack load never drops it (A1.8).
+    pub fn import_user_data(
+        &self,
+        language_code: String,
+        dictionary: Vec<u8>,
+        bigrams: Vec<u8>,
+    ) -> Result<(), CoreError> {
+        Self::check_language(&language_code)?;
+        // Validate on throw-away objects so a bad payload changes nothing.
+        let probe = Lexicon::new_empty();
+        if !dictionary.is_empty() {
+            probe
+                .import_user_dictionary(dictionary.clone())
+                .map_err(|_| Self::bad_user_data())?;
+        }
+        if !bigrams.is_empty() {
+            Ranker::new(probe)
+                .import_user_bigrams(bigrams.clone())
+                .map_err(|_| Self::bad_user_data())?;
+        }
+        let _build = self.lock_model_build();
+        let model = self.lock_models().get(&language_code).cloned();
+        match model {
+            Some(m) => Self::apply_user_data(&m, &dictionary, &bigrams),
+            None => {
+                self.lock_pending_user()
+                    .insert(language_code, (dictionary, bigrams));
+            }
+        }
+        Ok(())
+    }
+
+    /// Adds `word` to the user dictionary of `language_code` (explicit "add to dictionary").
+    /// False if refused (invalid word, full, or no dictionary loaded for the language).
+    pub fn add_user_word(&self, language_code: String, word: String) -> bool {
+        self.lock_models()
+            .get(&language_code)
+            .is_some_and(|m| m.lexicon.add_user_word(word))
+    }
+
+    /// Learns one committed `word` (counts a use) and, when `previous` is the committed word
+    /// before it, the bigram. The host decides *whether* to learn (never in password, no-learning
+    /// or incognito fields). False if refused or no dictionary is loaded for the language.
+    pub fn learn_user_word(
+        &self,
+        language_code: String,
+        word: String,
+        previous: Option<String>,
+    ) -> bool {
+        let Some(m) = self.lock_models().get(&language_code).cloned() else {
+            return false;
+        };
+        if !m.lexicon.learn_word(word.clone()) {
+            return false;
+        }
+        if let Some(p) = previous {
+            m.ranker.learn_bigram(p, word);
+        }
+        true
+    }
+
+    /// Forgets a user word; base-lexicon words stay visible. True if it was in the user
+    /// dictionary.
+    pub fn forget_user_word(&self, language_code: String, word: String) -> bool {
+        self.lock_models()
+            .get(&language_code)
+            .is_some_and(|m| m.lexicon.forget_user_word(word))
+    }
+
+    /// Forgets everything the user added, learned or removed, and learned word pairs, for the
+    /// language ("clear learned words").
+    pub fn clear_user_data(&self, language_code: String) {
+        let _build = self.lock_model_build();
+        self.lock_pending_user().remove(&language_code);
+        if let Some(m) = self.lock_models().get(&language_code) {
+            m.lexicon.clear_user_dictionary();
+            m.ranker.clear_user_bigrams();
+        }
+    }
+
     pub fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
     }
@@ -608,6 +699,40 @@ impl KeyboardEngine {
         }
     }
 
+    fn check_language(code: &str) -> Result<(), CoreError> {
+        if SUPPORTED_LANGUAGES.contains(&code) {
+            Ok(())
+        } else {
+            Err(CoreError::UnsupportedLanguage {
+                code: code.to_string(),
+            })
+        }
+    }
+
+    fn bad_user_data() -> CoreError {
+        CoreError::InvalidState {
+            reason: "malformed user dictionary data".to_string(),
+        }
+    }
+
+    /// Payloads were validated by `import_user_data`, so the imports cannot fail.
+    fn apply_user_data(m: &LangModel, dictionary: &[u8], bigrams: &[u8]) {
+        if dictionary.is_empty() {
+            m.lexicon.clear_user_dictionary();
+        } else {
+            let _ = m.lexicon.import_user_dictionary(dictionary.to_vec());
+        }
+        if bigrams.is_empty() {
+            m.ranker.clear_user_bigrams();
+        } else {
+            let _ = m.ranker.import_user_bigrams(bigrams.to_vec());
+        }
+    }
+
+    fn lock_pending_user(&self) -> MutexGuard<'_, HashMap<String, UserData>> {
+        self.pending_user.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     fn lock_model_build(&self) -> MutexGuard<'_, ()> {
         self.model_build.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -664,6 +789,25 @@ impl KeyboardEngine {
                 ranker.load_bigrams(last.artifact().to_vec()).ok()?;
                 Some(last)
             });
+        // The user overlay outlives pack changes: take what the host imported before any
+        // dictionary existed, or carry it over from the model being replaced.
+        let pending = self.lock_pending_user().remove(language_code);
+        if let Some((d, b)) = pending {
+            if d.is_empty() {
+                lexicon.clear_user_dictionary();
+            } else {
+                let _ = lexicon.import_user_dictionary(d);
+            }
+            if !b.is_empty() {
+                let _ = ranker.import_user_bigrams(b);
+            }
+        } else if let Some(old) = &current {
+            // A reused lexicon object keeps its overlay already.
+            if !Arc::ptr_eq(&old.lexicon, &lexicon) {
+                let _ = lexicon.import_user_dictionary(old.lexicon.export_user_dictionary());
+            }
+            let _ = ranker.import_user_bigrams(old.ranker.export_user_bigrams());
+        }
         self.lock_models().insert(
             language_code.to_string(),
             Arc::new(LangModel {
