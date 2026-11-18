@@ -19,6 +19,7 @@ pub mod lexicon;
 pub mod pack;
 pub mod ranker;
 pub mod segmenter;
+pub mod signature;
 pub mod translit;
 
 pub use composer::{FidelDigit, FidelForm, FidelKey, FidelLayout, FidelVowelKey};

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.qalsmartkeyboard.app.ai.AiGraph
 import com.qalsmartkeyboard.app.auth.AccountStatus
 import com.qalsmartkeyboard.app.auth.AuthGraph
 import com.qalsmartkeyboard.sync.RunStatus
@@ -24,6 +25,13 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val guest = AuthGraph.get(ctx).repository.currentStatus() == AccountStatus.Guest
         val report = graph.engine.runOnce(SyncRequest(isGuest = guest))
         Log.i(TAG, "sync ${report.status}")
+        // Plan state and the entitlement token refresh here (and on a toolbar tap), never when the keyboard
+        // appears (ADR 0007 D40). Metadata only; the manager throttles and does nothing when signed out.
+        try {
+            AiGraph.get(ctx).actions.refreshNow()
+        } catch (e: Exception) {
+            Log.w(TAG, "ai refresh failed: ${e.javaClass.simpleName}")
+        }
         if (report.status == RunStatus.DONE && report.retryable && runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.success()
     }
 

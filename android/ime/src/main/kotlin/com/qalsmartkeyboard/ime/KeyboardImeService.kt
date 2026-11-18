@@ -108,7 +108,6 @@ class KeyboardImeService : InputMethodService() {
                     aiToolbar = toolbar
                     aiView?.controller = toolbar
                     toolbar.onFieldStarted(controller.profile, currentInputEditorInfo?.packageName)
-                    if (isInputViewShown) toolbar.onKeyboardShown()
                 }
             }
         }, "qal-ai-attach").start()
@@ -318,7 +317,6 @@ class KeyboardImeService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         checkPackUpdates()
-        aiToolbar?.onKeyboardShown()
         controller.refreshAutoCapital()
         refreshViews()
     }
@@ -358,11 +356,11 @@ class KeyboardImeService : InputMethodService() {
         surface?.onLayoutChanged()
     }
 
-    private companion object {
-        const val TAG = "QalIme"
+    companion object {
+        private const val TAG = "QalIme"
 
         /** Intent extra on the launch intent of the companion app: the [AiLink] name to show. */
         const val EXTRA_OPEN_LINK = "com.qalsmartkeyboard.OPEN_LINK"
-        const val POPUP_HEADROOM_DP = 190f
+        private const val POPUP_HEADROOM_DP = 190f
     }
 }

@@ -55,6 +55,7 @@ class ServerAiActions(
     private val entitlements: EntitlementManager,
     private val updateRequired: () -> Boolean,
     private val background: Executor = Executors.newSingleThreadExecutor { r -> Thread(r, "qal-ai-refresh").apply { isDaemon = true } },
+    private val lastDestinations: LastDestinationStore? = null,
 ) : AiActions {
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     @Volatile private var snapshot: Pair<List<DestinationProfile>, List<AppRule>> = emptyList<DestinationProfile>() to emptyList()
@@ -66,6 +67,7 @@ class ServerAiActions(
         background.execute {
             entitlements.loadCached()
             snapshot = destinationSource.load()
+            lastDestinations?.load()
             changed()
         }
     }
@@ -89,12 +91,21 @@ class ServerAiActions(
         return profiles + PLAIN_LANGUAGES.map(::plain)
     }
 
+    /**
+     * Precedence: 1. the A2.4 app rule for this app (enabled; its profile if it still exists, else its
+     * language); 2. the destination the user last picked in this app on this device, if it still exists;
+     * 3. the first profile (sort order, label); 4. English.
+     */
     override fun defaultDestination(packageName: String?): AiDestination {
         val (profiles, rules) = snapshot
         val rule = packageName?.let { pkg -> rules.firstOrNull { it.enabled && it.packageName == pkg } }
         if (rule != null) {
             rule.profileLocalId?.let { id -> profiles.firstOrNull { it.localId == id }?.let { return toDestination(it) } }
             rule.language?.let { return plain(it) }
+        }
+        lastDestinations?.lastFor(packageName)?.let { id ->
+            profiles.firstOrNull { it.localId == id }?.let { return toDestination(it) }
+            if (id.startsWith("lang:") && id.removePrefix("lang:") in PLAIN_LANGUAGES) return plain(id.removePrefix("lang:"))
         }
         return profiles.minWithOrNull(compareBy({ it.sortOrder }, { it.label }))?.let(::toDestination) ?: plain("en")
     }
@@ -137,12 +148,24 @@ class ServerAiActions(
         return AiOutcome.Success(result)
     }
 
+    override fun rememberDestination(packageName: String?, destination: AiDestination) {
+        val store = lastDestinations ?: return
+        if (packageName == null) return
+        background.execute { store.remember(packageName, destination.id) } // encrypted disk write, off the caller's thread
+    }
+
     override fun refresh() {
-        background.execute {
-            snapshot = destinationSource.load()
-            entitlements.refresh()
-            changed()
-        }
+        background.execute { refreshNow() }
+    }
+
+    /**
+     * Blocking [refresh] for a background worker (`SyncWorker`): reloads the destination snapshot and
+     * refreshes plan state and the offline token (the entitlement manager throttles the calls).
+     */
+    fun refreshNow() {
+        snapshot = destinationSource.load()
+        entitlements.refresh()
+        changed()
     }
 
     override fun addAvailabilityListener(listener: () -> Unit): AutoCloseable {

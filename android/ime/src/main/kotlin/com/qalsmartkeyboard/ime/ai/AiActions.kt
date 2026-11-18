@@ -18,8 +18,14 @@ interface AiActions {
     /** Destination profiles (A2.4's local store) first, then plain languages. Cached, never blocks. */
     fun destinations(): List<AiDestination>
 
-    /** The destination to preselect in an app (a per-app rule, else the first profile, else English). */
+    /**
+     * The destination to preselect in an app. Precedence: the app's A2.4 rule, else the destination the
+     * user last picked in that app (device-local), else the first profile, else English.
+     */
     fun defaultDestination(packageName: String?): AiDestination
+
+    /** The user picked [destination] in [packageName]: remember it as that app's last-used one (device-local, never synced). */
+    fun rememberDestination(packageName: String?, destination: AiDestination)
 
     /**
      * Starts one request. Returns at once; [onOutcome] is called exactly once, on any thread, unless
@@ -32,6 +38,8 @@ interface AiActions {
     /**
      * Refreshes plan state and the offline-gate token in the background (throttled by the
      * implementation). Sends no user text. [availability] listeners fire when something changed.
+     * Called on a user action in the toolbar ([AiToolbarController.onToolbarOpened]) and by the app's
+     * background worker, never because the keyboard appeared.
      */
     fun refresh()
 
