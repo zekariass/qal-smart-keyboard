@@ -16,7 +16,12 @@ import io.micrometer.core.instrument.MeterRegistry;
  * need native-speaker review (gate G0) and come with the notification templates.
  *
  * <p>Counts {@code qal.notifications.sms.sent{provider,outcome=accepted|failed}}. A provider failure is logged with
- * the exception class only (provider errors can echo the number or the body) and rethrown without a cause.
+ * the {@link SmsDeliveryException.Reason} (or the exception class for an untyped failure; provider errors can echo the
+ * number or the body) and rethrown without a cause. No retry here: the user may request a new code after the cooldown.
+ * Adapters count their own per-outcome meter (e.g. {@code qal.notifications.sms.provider.responses}).
+ *
+ * <p>The English text is about 80 GSM-7 characters, one SMS segment (160 GSM-7 / 70 UCS-2 characters per segment;
+ * the SMS Ethiopia free test campaign appends a footer). Keep any localised template within one segment.
  */
 final class SmsOtpSender implements OtpSender {
 
@@ -38,7 +43,8 @@ final class SmsOtpSender implements OtpSender {
 		}
 		catch (RuntimeException e) {
 			count("failed");
-			log.warn("SMS provider {} rejected an OTP message ({})", provider.id(), e.getClass().getName());
+			log.warn("SMS provider {} rejected an OTP message ({})", provider.id(),
+					e instanceof SmsDeliveryException typed ? typed.reason().tag() : e.getClass().getName());
 			throw new OtpDeliveryException("SMS provider " + provider.id() + " did not accept the message");
 		}
 		count("accepted");

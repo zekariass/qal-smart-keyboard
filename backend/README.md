@@ -830,9 +830,48 @@ response headers (`new ApiException(code, status, detail, errors, extensions, he
 ## Notifications: SMS (B2.1)
 
 `notifications.OtpSender` delivers OTP messages through an `SmsProvider`. **Required:** `qal.notifications.sms.provider`
-/ env `QAL_SMS_PROVIDER`. Only `log` exists (development and tests; refused under `prod`/`production`/`staging`): it
-sends nothing and logs a masked number. To see codes locally set `qal.notifications.sms.log.include-message=true`
-(DEV ONLY). The real aggregator adapter comes with OI-11 (WireMock stub: `infra/compose/wiremock`, `/sms/v1/messages`).
+/ env `QAL_SMS_PROVIDER`, no default:
+
+| Provider | Use | Notes |
+|---|---|---|
+| `sms-ethiopia` | production (ADR 0007 D48, ADR 0025) | SMS Ethiopia v2 API; allowed under `prod`/`production`/`staging` |
+| `log` | development, tests | sends nothing, logs a masked number; refused under `prod`/`production`/`staging` |
+| `capture` | development (Android local-stack test) | see below; refused under `prod`/`production`/`staging` |
+
+With `log`, set `qal.notifications.sms.log.include-message=true` (DEV ONLY) to see codes locally.
+
+**SMS Ethiopia (`provider=sms-ethiopia`, ADR 0025).** `POST {base-url}/api/v2/sms/send` with header `KEY` and
+`{"msisdn":"2519XXXXXXXX","text":"..."}`. Only `+2519` + 8 digits (Ethio Telecom) is sent; anything else is refused
+locally. Settings (`qal.notifications.sms.sms-ethiopia.*`):
+
+| Env | Property | Default | |
+|---|---|---|---|
+| `QAL_SMS_ETHIOPIA_API_KEY` | `api-key` | none | **required**: startup fails if blank; never logged (redacted in `toString`) |
+| `QAL_SMS_ETHIOPIA_BASE_URL` | `base-url` | `https://smsethiopia.com/` | must be `https` under production-like profiles; `http://localhost:8089/` for the compose WireMock |
+| `QAL_SMS_ETHIOPIA_CONNECT_TIMEOUT` | `connect-timeout` | `2s` | |
+| `QAL_SMS_ETHIOPIA_READ_TIMEOUT` | `read-timeout` | `5s` | |
+
+No retries (the user can ask for a new code after the cooldown). After a 429 with `Retry-After` (seconds) the adapter
+refuses sends locally until it elapses (capped at 5 minutes). Logs carry the outcome, the vendor error code, the HTTP
+status and the vendor message id only (never the number, the text, the vendor's `error_message` or the key). Meter
+`qal.notifications.sms.provider.responses{provider,outcome,code,alert}` next to `qal.notifications.sms.sent{provider,outcome}`;
+alert on `alert="true"`: `insufficient_balance` (vendor 10005, top up; also an ERROR log `INSUFFICIENT SMS BALANCE`),
+`provider_misconfigured` (10002 campaign inactive, 10006 sender ID not approved), `authentication_failed` (401/403),
+`integration_error` and `invalid_response`.
+
+*Testing with a real account.* A new SMS Ethiopia account has a free **Default** test campaign (100 SMS, shared sender
+`8726`, test footer) that only delivers to numbers verified (whitelisted) in the SMS Ethiopia dashboard; any other number
+fails with vendor error 10007 (`recipient_not_whitelisted`, not alertable). Create an API key in that campaign, then
+`QAL_SMS_PROVIDER=sms-ethiopia QAL_SMS_ETHIOPIA_API_KEY=...` and sign in with a whitelisted number. **Production** needs a
+paid campaign (prepaid SMS package) with a custom sender ID approved by Ethio Telecom (sends fail with 10006 while it is
+pending) and an API key created in that campaign. Keys expire: track the expiry date.
+
+*Locally without an account:* start the compose WireMock and run with `QAL_SMS_PROVIDER=sms-ethiopia
+QAL_SMS_ETHIOPIA_API_KEY=dev QAL_SMS_ETHIOPIA_BASE_URL=http://localhost:8089/`. The stubs
+(`infra/compose/wiremock/mappings/sms-ethiopia-*.json`) accept any `2519XXXXXXXX` and have magic numbers for errors
+(`+251900010005` → 10005, `+251900010007` → 10007, `+251900000429` → 429, `+251900000500` → 500). The code is not
+visible this way; use `provider=capture` to sign in locally. `SmsEthiopiaProviderTest` covers every outcome against an
+in-process WireMock; nothing in the build calls smsethiopia.com.
 
 **Dev SMS capture (ADR 0007 D28, DEV ONLY).** `provider=capture` also sends nothing; it keeps the last message per number in
 memory (max 1000 numbers, lost on restart) and logs only a masked number. With
@@ -870,13 +909,39 @@ the same code, satisfies the data policy of the request (ZDR; region allow-list)
 feature, language pair, minimum tier (default BETA) and input size. Descriptors are cached `qal.ai.registry-cache-ttl`
 (30 s). Routing order, failover, circuit breaker, kill switch and cost caps are `AiRouter` (below).
 
-**No real vendor adapter exists**: the shortlist is gate G0 (OI-R1/OI-P5). Development adapters, off by default and
+Real vendors (OpenAI, Google Cloud Translation) are below. Development adapters, off by default and
 refused under `prod`/`production`/`staging`: `qal.ai.mock.enabled` / `QAL_AI_MOCK` (`MockAiProvider`: deterministic,
 configurable latency and failure) and `qal.ai.http.enabled` / `QAL_AI_HTTP` (`HttpJsonAiProvider` against the compose
 WireMock stubs, `QAL_AI_HTTP_BASE_URL` default `http://localhost:8089`, key `QAL_AI_HTTP_API_KEY`, never logged). V10 seeds
 the two matching provider rows `DISABLED`; enable one locally with
 `UPDATE ai_providers SET provider_status='ACTIVE', dpa_signed_at=NOW() WHERE provider_code='mock'`. Tests use WireMock
 in-process (`wiremock-standalone`, serving `infra/compose/wiremock`).
+
+## AI gateway: OpenAI and Google Cloud Translation (ADR 0007 D46, ADR 0023)
+
+OpenAI (`openai`, Chat Completions, `store: false` on every call) is primary for TRANSLATE and GRAMMAR_CORRECTION /
+REWRITE / TONE_ADJUST; Google Cloud Translation Basic v2 (`google-translate`, API key in the `x-goog-api-key` header,
+text in a JSON body) is the TRANSLATE fallback and never serves transforms. Both adapters share `adapter/JsonHttpTransport`
+(the mechanics and status mapping of `HttpJsonAiProvider`) and are allowed under every profile; a bean exists only when
+its key is non-blank.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `QAL_OPENAI_API_KEY` | empty | OpenAI secret key; blank = no OpenAI adapter |
+| `QAL_OPENAI_MODEL` | empty | OpenAI model id; **required** when the key is set (startup fails otherwise) |
+| `QAL_OPENAI_MAX_OUTPUT_TOKENS` | `4096` | `max_completion_tokens` (includes reasoning tokens); `0` = not sent |
+| `QAL_OPENAI_REASONING_EFFORT` | empty | `reasoning_effort` for reasoning models (e.g. `low`); empty = model default |
+| `QAL_OPENAI_BASE_URL` | `https://api.openai.com/v1` | tests only |
+| `QAL_GOOGLE_TRANSLATE_API_KEY` | empty | API key restricted to the Cloud Translation API; blank = no Google adapter |
+| `QAL_GOOGLE_TRANSLATE_BASE_URL` | `https://translation.googleapis.com` | tests only |
+
+V19 seeds both providers `DISABLED` (OpenAI ZDR FALSE until granted, Google ZDR TRUE; no training; regions `{us}` /
+`{global}`), models `openai-llm` (the configured model), `google-nmt`, `google-lid`, BETA capabilities (TRANSLATE en↔am/ti/om
+on both, transforms am/ti/om/en on OpenAI; Google DETECT_LANGUAGE EXPERIMENTAL) and routing policies (TRANSLATE openai 1,
+google-translate 2; transforms openai 1) seeded **disabled** because an enabled policy is an allow-list that would starve
+the dev mocks. No prices or budgets are seeded. To go live: set the keys and model, record `dpa_signed_at` (and ZDR when
+granted), insert prices and a daily hard limit, then set both providers `ACTIVE` and enable their policy rows (SQL in ADR
+0023). The test configuration pins both keys to empty; `AiVendorRoutingIT` runs the real adapters against WireMock.
 
 ## AI gateway: routing (B5.2, ADR 0014 "Routing (B5.2)", SD 11/17/19)
 

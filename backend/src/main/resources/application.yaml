@@ -45,10 +45,16 @@ qal:
         key-id: ${QAL_ENTITLEMENT_TOKEN_KEY_ID:ent-1}
         private-key: ${QAL_ENTITLEMENT_TOKEN_PRIVATE_KEY:}
         public-key: ${QAL_ENTITLEMENT_TOKEN_PUBLIC_KEY:}
-  # SMS provider (B2.1). No default: 'log' (development only, refused under prod/production/staging).
+  # SMS provider (B2.1, ADR 0025). No default: 'sms-ethiopia' (production, needs the API key), or 'log' / 'capture'
+  # (development only, refused under prod/production/staging).
   notifications:
     sms:
       provider: ${QAL_SMS_PROVIDER:}
+      sms-ethiopia:
+        api-key: ${QAL_SMS_ETHIOPIA_API_KEY:}
+        base-url: ${QAL_SMS_ETHIOPIA_BASE_URL:https://smsethiopia.com/}
+        connect-timeout: ${QAL_SMS_ETHIOPIA_CONNECT_TIMEOUT:2s}
+        read-timeout: ${QAL_SMS_ETHIOPIA_READ_TIMEOUT:5s}
   # Language packs (B3.1). Download URLs are pre-signed S3 (MinIO locally, infra/compose: bucket qal-language-packs).
   # Without credentials stored s3:// locations cannot be served (500); the prod/production/staging profiles refuse to start.
   languages:
@@ -110,9 +116,21 @@ qal:
     enabled: ${QAL_RETENTION_ENABLED:true}
     cron: ${QAL_RETENTION_CRON:0 0 3 * * *}
     batch-size: ${QAL_RETENTION_BATCH_SIZE:1000}
-  # AI provider SPI (B5.1, ADR 0014). No real vendor adapter exists until gate G0. The mock and the WireMock-shaped HTTP
-  # adapter are for development only (refused under prod/production/staging); the API key comes from the environment.
+  # AI provider SPI (B5.1, ADR 0014). The mock and the WireMock-shaped HTTP adapter are for development only (refused
+  # under prod/production/staging). Real vendors (ADR 0007 D46, ADR 0023): OpenAI and Google Cloud Translation; each
+  # adapter exists only when its key is set, and keys come from the environment only. Their ai_providers rows (V19) stay
+  # DISABLED until an operator records the DPA and enables them.
   ai:
+    openai:
+      api-key: ${QAL_OPENAI_API_KEY:}
+      # Required when the key is set (startup fails otherwise): the OpenAI model id. No default on purpose.
+      model: ${QAL_OPENAI_MODEL:}
+      base-url: ${QAL_OPENAI_BASE_URL:https://api.openai.com/v1}
+      max-output-tokens: ${QAL_OPENAI_MAX_OUTPUT_TOKENS:4096}
+      reasoning-effort: ${QAL_OPENAI_REASONING_EFFORT:}
+    google-translate:
+      api-key: ${QAL_GOOGLE_TRANSLATE_API_KEY:}
+      base-url: ${QAL_GOOGLE_TRANSLATE_BASE_URL:https://translation.googleapis.com}
     registry-cache-ttl: ${QAL_AI_REGISTRY_CACHE_TTL:30s}
     # Routing (B5.2, ADR 0014): ordering from ai_routing_policies, failover limits, circuit breaker, kill switch, cost cap.
     # Kill switch without a deploy: app_configurations row ai.kill_switch (BACKEND scope); the sets below are the
