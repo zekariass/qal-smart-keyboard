@@ -69,13 +69,13 @@
 |---|---|---|---|---|---|---|---|
 | Phase 0 | Foundations (M0) | 6 | 6 | 0 | 0 | 0 | 100% |
 | Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 21 | 0 | 0 | 1 | 95% |
-| Phase 2 | Backend + P0 AI (M2) | 39 | 37 | 0 | 0 | 2 | 95% |
+| Phase 2 | Backend + P0 AI (M2) | 39 | 38 | 0 | 0 | 1 | 97% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
 | Phase 4 | Monetisation (M4) | 10 | 0 | 0 | 0 | 10 | 0% |
 | Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
 | Phase 6 | Differentiation (M6) | 8 | 0 | 0 | 0 | 8 | 0% |
 | Phase 7 | Expansion + B2B (M7) | 5 | 0 | 0 | 0 | 5 | 0% |
-| **Total** | | **109** | 64 | 0 | 0 | 45 | 59% |
+| **Total** | | **109** | 65 | 0 | 0 | 44 | 60% |
 
 ### Human gates
 
@@ -164,6 +164,8 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 | 2026-11-18 | B5.6 | 🟩 DONE | d3ce847, merge 440efce | `POST /ai/feedback` (202): rating `POSITIVE`/`NEGATIVE` (stored ±1) on the caller's own SUCCEEDED `ai_requests` row (else 404), resend replaces; a comment or `includeContent` needs a granted `FEEDBACK_TEXT` consent (else 403, nothing stored); texts sealed per column/row, `consent_record_id` = the grant used (`ConsentGate.grantedRecord`); 60/min; hand-parsed body. **V17 migration** (reason codes widened to the contract's, content columns, content-needs-consent check, history unique index). Verified: see B5.7. |
 | 2026-11-18 | B5.7 | 🟩 DONE | 86cfb8c, merge 440efce | History **off by default**: a row only when the request has `saveToHistory: true` AND `ai_history_enabled` AND a granted `SAVE_AI_HISTORY` AND the `HISTORY_SYNC` entitlement; only translate/transform; never for failures, cache replays or recomputes. `AiHistorySink` port in the pipeline (after settle, before caching, so replays return the same `historyItemId`), implemented by `personalization.AiHistoryRecorder` (failures never fail the AI call). `expires_at` from `history_retention_days` (1–365, default 30); favourites never expire. Input/output sealed per column/row. `/me/history` list (cursor, filters) / get / PATCH favourite / DELETE one / DELETE all, independent of preference/consent. Log-scrub caught a binding-error leak in PATCH (now hand-parsed). Done-when: `AiHistoryIT` (off by default, gate matrix, encryption, plaintext scan, replay no-duplicate, paging/ownership/favourite/delete, expiry + purge keeps favourites, withdrawal, log scrub) + `AiFeedbackIT`. Verified by me after merging main: 952 unit + 352 IT on JDK 21, 0 failures; JDK 25 compile OK; contract sync + lint 0 errors. Decision: ADR 0007 D41. |
 | 2026-11-18 | D40 follow-up | 🟩 DONE | 9bf3934, 548690f, merge 2e9a826 | Core `verify_ed25519` (UniFFI, `verify_strict`, never panics; RFC 8032 + RFC 8037 A.4 vectors, malleable and small-order cases) replaces BouncyCastle in the entitlement-token verifier (Kotlin JWS/claim checks unchanged; native-load failure fails closed); `bcprov` removed everywhere — play universal debug APK 28.29 MB → 25.40 MB (−2.9 MB, measured by me). No network on keyboard show: refresh only on the first toolbar interaction (≤ 1 per 5 min) and from `SyncWorker` (50 show/hide cycles = 0 requests, tested against MockWebServer). Deep links from the toolbar into sign-in/settings/plans (placeholder)/store. Last-used destination per app in an encrypted device-local store keyed by HMAC with a device key (precedence: app rule > last used > first profile > English). Verified by me after merging main: core fmt/clippy x2 + 249 tests; Android CI command green (`:ai-client` 55, `:ime` 181, `:app` 150, others unchanged), 0 failures. |
+| 2026-11-18 | Startup fix | 🟩 DONE | 6847132 | Found while preparing a phone test: the real backend failed to start (bean-name clash between the B6.3 retention task and the `PrivacyRetention` participant) whenever `qal.retention.enabled` is on — the production default — while every test passed because the test config turns all background tasks off. Renamed the bean; new `AllBackgroundTasksContextIT` boots the app with every db-scheduler task enabled. |
+| 2026-11-18 | B6.1 | 🟩 DONE | a08c3fd, 2e5d238 (D41), merge 1992406 | `POST /me/data-exports` (202; one open export per user, 3/24 h), async job (10 s poll) where every module contributes via `UserExportParticipant`; one JSON document `{manifest, data}` with 32 sections (row counts in the manifest, exclusions with reasons: keystrokes/drafts never leave the device, audio, audit/security records, credentials and keys, replay cache, other users). Archive sealed with `UserDataEncryption` under the user's data key bound to the export id, stored at a random non-guessable key in a private bucket; download only via the authenticated `GET /me/data-exports/{id}/archive` (no-store); 7-day expiry, then object deleted. Guests and DELETION_PENDING accounts can export; closed/shredded cannot. Deletion removes export rows and objects. Schema guard test: every per-user table must be exported or explicitly excluded. D41: withdrawing `FEEDBACK_TEXT` clears stored feedback text; `ai-feedback` retention 13 months. Done-when: `DataExportIT` (PG18 + MinIO) seeds every SD §19.2 class, exports, downloads, decrypts and checks each section. Verified by me after merging main: 954 unit + 365 IT on JDK 21 (incl. the all-background-tasks boot), 0 failures; JDK 25 compile OK; contract sync + lint 0 errors. Decision: ADR 0007 D42. |
 
 ---
 
@@ -292,7 +294,7 @@ Goal: identity, devices, preferences, packs, AI gateway, translate/grammar/rewri
 
 | ID | Step | Depends on | Done when | Status |
 |---|---|---|---|---|
-| B6.1 | Data export job (async, encrypted download link, expiry). | B3.x, B5.7 | Export contains all user data classes in SD §19. | ⬜ TODO |
+| B6.1 | Data export job (async, encrypted download link, expiry). | B3.x, B5.7 | Export contains all user data classes in SD §19. | 🟩 DONE |
 | B6.2 | Account deletion: soft-delete grace, then crypto-shred + purge; append-only exceptions documented in SD. | B1.5 | Test proves data unreadable after shred. | 🟩 DONE |
 | B6.3 | Retention scheduler for logs, caches, history, OTP records. | B1.4 | Purge tests. | 🟩 DONE |
 
