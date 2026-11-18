@@ -135,7 +135,8 @@ fun SettingsScreen(
             onValueChange = { v -> scope.launch { repository.update { it.copy(keyHeightPercent = v.toInt()) } } },
             valueRange = KeyboardSettings.KEY_HEIGHT_MIN.toFloat()..KeyboardSettings.KEY_HEIGHT_MAX.toFloat(),
         )
-        Button(onClick = { scope.launch { repository.update { KeyboardSettings.DEFAULT } } }) { Text("Reset to defaults") }
+        // A privacy decision is not a keyboard preference: "Reset to defaults" never turns crash reports back on.
+        Button(onClick = { scope.launch { repository.update { KeyboardSettings.DEFAULT.copy(crashReports = it.crashReports) } } }) { Text("Reset to defaults") }
         HorizontalDivider()
         PersonalDictionarySection()
     }

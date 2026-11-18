@@ -1148,6 +1148,25 @@ consent link; the rating and reason codes stay) in the withdrawal's transaction,
 (`ai-feedback` retention rule, `AiRetention`).
 Proof: `AiFeedbackHistoryIT` (PG18, 15 tests, contract-validated, DB scan of every table, log scrub of comment and history text).
 
+## Crash reporting: Sentry (ADR 0024, ADR 0007 D47)
+
+Off unless `QAL_SENTRY_DSN` is set (`sentry.dsn`, blank by default: local, CI and tests send nothing). SDK
+`sentry-spring-boot-4-starter` + `sentry-logback` 8.62.0 (`sentry-bom`). Content-free by construction:
+
+- `platform.observability.SentryConfiguration` forces, whatever the `sentry.*` properties say: `sendDefaultPii=false`, no
+  request bodies, no tracing, no Sentry Logs, zero breadcrumbs, and `SentryScrubber` as `beforeSend`.
+- `SentryScrubber`: exception messages always become `[redacted]` (type and stack frames stay); log events keep the message
+  template only (no formatted text, no arguments); no user, extras, cookies, query string, fragment, env or body; request
+  headers limited to `User-Agent`, `X-Correlation-Id`, `X-Request-Id`, `X-App-Version`, `X-Client-Platform`,
+  `X-Client-Surface`, `Content-Type`, `Accept`, `Content-Length`; contexts limited to os/runtime/app/trace/spring and the
+  MDC `correlationId`.
+- Events come from uncaught exceptions and ERROR log lines (`ProblemExceptionHandler` logs every 5xx at ERROR); 4xx are not
+  reported. Log lines never become breadcrumbs.
+- Environment: `QAL_SENTRY_ENVIRONMENT`, else the active profiles (`default`). Release: `SENTRY_RELEASE` (optional).
+- In the Sentry project turn on *Prevent Storing of IP Addresses* and the server-side scrubbers (ADR 0024 item 5).
+- Tests: `SentryScrubberTest` (unit), `SentryContextIT` (blank DSN: disabled), `SentryEnabledContextIT` (fake DSN on a
+  local socket: enabled, hardened, no connection at startup).
+
 ## Contract tests
 
 Controller tests validate every response against `contracts/openapi.yaml` (OpenAPI 3.1) by adding one annotation:

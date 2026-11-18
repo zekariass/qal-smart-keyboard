@@ -31,6 +31,9 @@ fun PrivacyHost(
     onPlans: () -> Unit,
     modifier: Modifier = Modifier,
     syncCard: @Composable () -> Unit = {},
+    /** ADR 0024: the crash-report switch lives in the local settings, not on the server. */
+    crashReportsOn: Boolean = true,
+    onCrashReports: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val consents by viewModel.consents.state.collectAsState()
@@ -64,7 +67,11 @@ fun PrivacyHost(
 
     val back = { onRoute(PrivacyRoute.DASHBOARD) }
     when (route) {
-        PrivacyRoute.DASHBOARD -> PrivacyDashboardScreen(account, consents, deletion, history.enabled && history.consentGranted == true, onRoute, onSignIn, onClose, modifier)
+        PrivacyRoute.DASHBOARD -> PrivacyDashboardScreen(
+            account, consents, deletion, history.enabled && history.consentGranted == true, onRoute, onSignIn, onClose, modifier,
+            crashReportsOn = crashReportsOn,
+            onCrashReports = onCrashReports,
+        )
         PrivacyRoute.CONSENTS -> ConsentsScreen(
             account, consents,
             onSet = viewModel::setConsent,
