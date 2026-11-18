@@ -1,5 +1,5 @@
 /**
- * Consents, data export and account deletion.
+ * Consents (append-only decisions, ConsentGate), data export and account deletion.
  */
 @ApplicationModule(displayName = "Privacy")
 package com.qalsmartkeyboard.privacy;
