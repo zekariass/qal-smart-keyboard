@@ -11,8 +11,9 @@ import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okio.FileSystem
@@ -33,7 +34,7 @@ class OnboardingModelTest {
     @Before fun setUp() { dir = Files.createTempDirectory("qal-onboarding").toFile() }
 
     @After fun tearDown() {
-        scopes.forEach { it.cancel() }
+        runBlocking { restart() }
         dir.deleteRecursively()
     }
 
@@ -47,7 +48,11 @@ class OnboardingModelTest {
         return SettingsRepository(store)
     }
 
-    private fun restart() { scopes.forEach { it.cancel() }; scopes.clear() }
+    /** Cancel every DataStore scope and wait for completion, so the file is released before it is reopened. */
+    private suspend fun restart() {
+        scopes.forEach { it.coroutineContext[Job]!!.cancelAndJoin() }
+        scopes.clear()
+    }
 
     private val none = ImeStatus(enabled = false, selected = false)
     private val enabledOnly = ImeStatus(enabled = true, selected = false)

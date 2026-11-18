@@ -6,8 +6,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -33,7 +34,7 @@ class SettingsRepositoryTest {
     @Before fun setUp() { dir = Files.createTempDirectory("qal-settings").toFile() }
 
     @After fun tearDown() {
-        scopes.forEach { it.cancel() }
+        runBlocking { closeAll() }
         dir.deleteRecursively()
     }
 
@@ -51,7 +52,16 @@ class SettingsRepositoryTest {
         scope = scope,
     )
 
-    private fun closeAll() { scopes.forEach { it.cancel() }; scopes.clear() }
+    /**
+     * The "restart": cancel every DataStore scope **and wait for it to complete**. DataStore keeps a process-wide
+     * registry of active files and only releases a file when its scope's job has completed; cancelling without
+     * joining let the next `open()` race the release ("multiple DataStores active for the same file"), which
+     * failed intermittently on the Linux CI runner.
+     */
+    private suspend fun closeAll() {
+        scopes.forEach { it.coroutineContext[Job]!!.cancelAndJoin() }
+        scopes.clear()
+    }
 
     private val profile = ProfileRef("AM_PHONETIC_V2", "am", 200)
     private val oldProfile = ProfileRef("AM_PHONETIC_V1", "am", 100)
