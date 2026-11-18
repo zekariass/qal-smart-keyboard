@@ -870,13 +870,39 @@ the same code, satisfies the data policy of the request (ZDR; region allow-list)
 feature, language pair, minimum tier (default BETA) and input size. Descriptors are cached `qal.ai.registry-cache-ttl`
 (30 s). Routing order, failover, circuit breaker, kill switch and cost caps are `AiRouter` (below).
 
-**No real vendor adapter exists**: the shortlist is gate G0 (OI-R1/OI-P5). Development adapters, off by default and
+Real vendors (OpenAI, Google Cloud Translation) are below. Development adapters, off by default and
 refused under `prod`/`production`/`staging`: `qal.ai.mock.enabled` / `QAL_AI_MOCK` (`MockAiProvider`: deterministic,
 configurable latency and failure) and `qal.ai.http.enabled` / `QAL_AI_HTTP` (`HttpJsonAiProvider` against the compose
 WireMock stubs, `QAL_AI_HTTP_BASE_URL` default `http://localhost:8089`, key `QAL_AI_HTTP_API_KEY`, never logged). V10 seeds
 the two matching provider rows `DISABLED`; enable one locally with
 `UPDATE ai_providers SET provider_status='ACTIVE', dpa_signed_at=NOW() WHERE provider_code='mock'`. Tests use WireMock
 in-process (`wiremock-standalone`, serving `infra/compose/wiremock`).
+
+## AI gateway: OpenAI and Google Cloud Translation (ADR 0007 D46, ADR 0023)
+
+OpenAI (`openai`, Chat Completions, `store: false` on every call) is primary for TRANSLATE and GRAMMAR_CORRECTION /
+REWRITE / TONE_ADJUST; Google Cloud Translation Basic v2 (`google-translate`, API key in the `x-goog-api-key` header,
+text in a JSON body) is the TRANSLATE fallback and never serves transforms. Both adapters share `adapter/JsonHttpTransport`
+(the mechanics and status mapping of `HttpJsonAiProvider`) and are allowed under every profile; a bean exists only when
+its key is non-blank.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `QAL_OPENAI_API_KEY` | empty | OpenAI secret key; blank = no OpenAI adapter |
+| `QAL_OPENAI_MODEL` | empty | OpenAI model id; **required** when the key is set (startup fails otherwise) |
+| `QAL_OPENAI_MAX_OUTPUT_TOKENS` | `4096` | `max_completion_tokens` (includes reasoning tokens); `0` = not sent |
+| `QAL_OPENAI_REASONING_EFFORT` | empty | `reasoning_effort` for reasoning models (e.g. `low`); empty = model default |
+| `QAL_OPENAI_BASE_URL` | `https://api.openai.com/v1` | tests only |
+| `QAL_GOOGLE_TRANSLATE_API_KEY` | empty | API key restricted to the Cloud Translation API; blank = no Google adapter |
+| `QAL_GOOGLE_TRANSLATE_BASE_URL` | `https://translation.googleapis.com` | tests only |
+
+V19 seeds both providers `DISABLED` (OpenAI ZDR FALSE until granted, Google ZDR TRUE; no training; regions `{us}` /
+`{global}`), models `openai-llm` (the configured model), `google-nmt`, `google-lid`, BETA capabilities (TRANSLATE en↔am/ti/om
+on both, transforms am/ti/om/en on OpenAI; Google DETECT_LANGUAGE EXPERIMENTAL) and routing policies (TRANSLATE openai 1,
+google-translate 2; transforms openai 1) seeded **disabled** because an enabled policy is an allow-list that would starve
+the dev mocks. No prices or budgets are seeded. To go live: set the keys and model, record `dpa_signed_at` (and ZDR when
+granted), insert prices and a daily hard limit, then set both providers `ACTIVE` and enable their policy rows (SQL in ADR
+0023). The test configuration pins both keys to empty; `AiVendorRoutingIT` runs the real adapters against WireMock.
 
 ## AI gateway: routing (B5.2, ADR 0014 "Routing (B5.2)", SD 11/17/19)
 
