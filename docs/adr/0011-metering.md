@@ -70,8 +70,7 @@ rows (B4.5 can sum them per window for `UsageReport.creditsConsumed`).
 
 `CreditWallet` is the port to B4.3: `balance`, `hold(user, reservation, amount)` (all-or-nothing, never below zero),
 `settle(user, reservation, held, charged)` (keep `charged`, return the rest). Implementations join the engine's
-transaction and are called under the reservation row lock at most once per transition. Until B4.3 the bean is
-`NoCreditWallet` (always empty: nothing is paid with credits, `creditBalance` 0); no purchase or grant path exists yet.
+transaction and are called under the reservation row lock at most once per transition. B4.3 implements it on credit lots (`JdbcCredits`, see "Credits (B4.3)" below; the interim always-empty `NoCreditWallet` is gone).
 
 ### Settle, over-settle, release
 - Settle ≤ reserved: allowance units first, then credit units; unused credits go back first.
@@ -147,3 +146,51 @@ separate commit.
   PURCHASE/GRANT/REFUND (ADJUSTMENT either sign), so giving held credits back needs ADJUSTMENT or REFUND rows.
 - `upgradeOptions` ignore market price books and channel policy (checked at checkout, SD 16.3).
 - Flyway runs in order: if this V9 is deployed before the parallel V8, a later V8 is refused; merge V8 first or renumber.
+
+## Credits (B4.3)
+
+Module `usage` owns the credit tables (SD 24 has no separate credits module; billing, M4, will call the `usage.Credits` API).
+No migration: V1 already models accounts, lots and an append-only ledger (trigger `fn_forbid_update_delete` on
+`ai_credit_transactions`). `JdbcCredits` implements both `Credits` (grant, balance, reverse, adjust, expireDue) and
+`CreditWallet`.
+
+- **Lots and idempotency:** `grant(user, units, source, sourceRef, expiresAt)` creates a lot and its opening ledger row
+  (`PURCHASE`/`GRANT`/`REFUND`/`ADJUSTMENT` by source; `PROMOTION` is written as `GRANT`). V1 has no source-reference
+  column, so the lot id is a deterministic name-based UUID of `(user, source, sourceRef)`: a replay hits the primary key,
+  returns the existing lot (`created = false`) and a different amount or expiry is refused. `PURCHASE` needs the payment
+  order id as `sourceRef` (V1 FK). Lots are `NUMERIC(18,6)`; units must be positive with at most 6 decimals.
+- **Balance:** `balance(user, at)` = sum of remainders of lots with `expires_at IS NULL OR expires_at > at` (exclusive end,
+  the injected clock), read from the lots; `display` is rounded down to whole credits (SD 15.4). `ai_credit_accounts.
+  balance_units` is the sum of all remainders including expired-but-unswept lots, kept in step by every writer;
+  `balance_after` on a ledger row is that account value after the row.
+- **FIFO:** `hold` locks the account row, then the active lots `ORDER BY expires_at NULLS LAST, created_at, id FOR UPDATE`
+  (the order of V1 `ix_credit_lots_consumption`), checks the total, then takes from lot to lot, one `CONSUMPTION` row per
+  lot (key `hold:<reservation>:<n>`, `ai_request_id` = reservation id). All or nothing: when the active total is short,
+  nothing is written. Expired lots are never touched.
+- **Return to the same lots:** `settle(held, charged)` reads what the reservation drew per lot (consumptions minus
+  returns by `ai_request_id`) and gives `held - charged` back **latest expiry first**, so the result equals consuming
+  `charged` FIFO; the earliest lots stay the ones paying. Returns are `ADJUSTMENT` rows (V1 `ck_credit_tx_sign`: positive
+  deltas only for `PURCHASE/GRANT/REFUND/ADJUSTMENT`, `REVERSAL` is negative only, ADR 0007 D25). A lot that
+  expired meanwhile still receives its part and the next expiry run writes `EXPIRY` for it. Settle is idempotent (a second
+  call finds net held equal to charged and does nothing); a `held` that differs from what the ledger shows is an
+  `IllegalStateException`. The reservation id is stored in `ai_request_id`; B5.3 should create `ai_requests` with the
+  same id (or link it) so the logical reference stays meaningful.
+- **Refund/adjust API:** `reverse(user, source, sourceRef)` empties a purchase lot with one `REVERSAL` row (SD 15.4:
+  the unconsumed remainder; consumed credit is never driven negative; idempotent). `grant(..., REFUND, ref, expiresAt)`
+  gives credit back as a new `REFUND` lot; `adjust(user, lot, delta, ref, description)` writes an `ADJUSTMENT` of either
+  sign within `0..initial_units`, idempotent per `(lot, ref)`.
+- **Expiry job:** db-scheduler `usage-credit-expiry` (`qal.usage.credit-expiry-interval` 1h, `credit-expiry-batch-size`
+  100, `credit-expiry-enabled`). Per lot, one transaction: lock the account, lock the lot, re-check, write `EXPIRY`
+  (`-remaining`) and zero the lot. Idempotent and safe on several instances (the lock plus the re-check make a second
+  run find nothing). The job only settles the books; spendability ends at the instant `expires_at` anyway.
+- **Locking:** every writer takes the account row first, then lots in FIFO order, so writers on one account serialise
+  and cannot deadlock; the engine's order stays reservation, counter, wallet. `hold` and `settle` refuse to run without
+  a transaction (they must join the engine's).
+- **Ledger types used:** `PURCHASE`, `GRANT`, `REFUND`, `ADJUSTMENT` (opening rows, returns of unused credit, manual
+  corrections), `CONSUMPTION`, `EXPIRY`, `REVERSAL`.
+- **Proof:** `CreditsIT` (PG18): FIFO by expiry, grant time and never-expiring last; hold across lots; settle return;
+  expiry boundary and job idempotency (also with six parallel runs); 40 parallel holds against 10 credits (13 x 0.75
+  succeed, 0.25 left); mixed hold/settle/grant/expiry races keep lot remainders equal to the sum of their ledger deltas;
+  UPDATE/DELETE on the ledger fail; metering end to end with real lots. `MeteringIT` now runs on the real wallet.
+- **Not covered:** a successful `PURCHASE` grant (needs a payment order; M4.1 will add it); credit sharing for
+  organizations (accounts are per user here).
