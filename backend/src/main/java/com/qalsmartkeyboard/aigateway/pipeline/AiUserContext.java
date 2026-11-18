@@ -15,14 +15,14 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  */
 public interface AiUserContext {
 
-	/** Preference defaults; every field non-null (V1 column defaults when the user has no preferences row). */
+	/** Preference defaults (and {@code ai_processing_preference}); every field non-null (V1 column defaults when the user has no preferences row). */
 	record Defaults(String formality, String gender, String translationStyle, boolean preserveNames, String calendar,
-			String timeNotation, String numerals, ZoneId timeZone) {
+			String timeNotation, String numerals, ZoneId timeZone, String aiProcessingPreference) {
 
 		public static final ZoneId MARKET_ZONE = ZoneId.of("Africa/Addis_Ababa");
 
 		public static final Defaults NONE = new Defaults("INFORMAL", "UNKNOWN", "NATURAL", true, "GREGORIAN",
-				"INTERNATIONAL", "WESTERN", MARKET_ZONE);
+				"INTERNATIONAL", "WESTERN", MARKET_ZONE, "SERVER");
 	}
 
 	/**
@@ -46,7 +46,8 @@ public interface AiUserContext {
 			public Defaults defaults(UUID userId) {
 				return jdbc.sql("""
 						SELECT u.time_zone, p.default_formality, p.default_addressee_gender, p.default_translation_style,
-						       p.preserve_names_in_translation, p.calendar_system, p.time_notation, p.numeral_style
+						       p.preserve_names_in_translation, p.calendar_system, p.time_notation, p.numeral_style,
+						       p.ai_processing_preference
 						  FROM users u LEFT JOIN user_preferences p ON p.user_id = u.id
 						 WHERE u.id = :user
 						""").param("user", userId).query((rs, n) -> {
@@ -54,12 +55,14 @@ public interface AiUserContext {
 					String formality = rs.getString("default_formality");
 					if (formality == null) {
 						return new Defaults(d.formality(), d.gender(), d.translationStyle(), d.preserveNames(),
-								d.calendar(), d.timeNotation(), d.numerals(), zone(rs.getString("time_zone")));
+								d.calendar(), d.timeNotation(), d.numerals(), zone(rs.getString("time_zone")),
+								d.aiProcessingPreference());
 					}
 					return new Defaults(formality, rs.getString("default_addressee_gender"),
 							rs.getString("default_translation_style"), rs.getBoolean("preserve_names_in_translation"),
 							rs.getString("calendar_system"), rs.getString("time_notation"),
-							rs.getString("numeral_style"), zone(rs.getString("time_zone")));
+							rs.getString("numeral_style"), zone(rs.getString("time_zone")),
+							rs.getString("ai_processing_preference"));
 				}).optional().orElse(Defaults.NONE);
 			}
 

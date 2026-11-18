@@ -35,6 +35,7 @@ public enum ApiErrorCode {
 	REVISION_CONFLICT(HttpStatus.CONFLICT, "Revision conflict"),
 	IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "Idempotency key reused with a different request"),
 	REQUEST_IN_PROGRESS(HttpStatus.CONFLICT, "Request is already in progress"),
+	ON_DEVICE_ONLY_PREFERRED(HttpStatus.FORBIDDEN, "Server AI is turned off in the settings"),
 	CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "Consent required"),
 	FEATURE_NOT_ENTITLED(HttpStatus.FORBIDDEN, "Feature not included in the current plan"),
 	QUOTA_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "Allowance used"),

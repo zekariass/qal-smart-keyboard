@@ -1199,6 +1199,10 @@ paths:
         When `addressee.gender` is `UNKNOWN` the response may include gender `alternatives` and an
         `AMBIGUITY` note. Calendar/time/numeral options convert dates and times (e.g. Ethiopian
         clock hours count from 06:00).
+
+        403 codes: `ACCOUNT_SUSPENDED`, `DELETION_PENDING`, `FEATURE_NOT_ENTITLED`, `CONSENT_REQUIRED`
+        and `ON_DEVICE_ONLY_PREFERRED` (the account's `aiProcessingPreference` is `ON_DEVICE_ONLY`:
+        server AI is never called, nothing is charged).
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/ClientPlatform'
@@ -1275,6 +1279,9 @@ paths:
         Events: `event: delta` (`{"text":"..."}`), `event: done` (a full `TransformResponse`),
         `event: error` (a `Problem`). Usage is settled on `done`; a dropped stream before `done`
         releases the reservation. The keyboard uses JSON with an 8 s client timeout.
+
+        403 codes are those of `/ai/translate`, including `ON_DEVICE_ONLY_PREFERRED`. Tasks the server
+        cannot serve yet answer 400 `VALIDATION_FAILED` on `task`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/ClientPlatform'
@@ -1372,7 +1379,11 @@ paths:
       tags: [AI]
       operationId: detectLanguage
       summary: Detect language(s) of explicitly submitted text
-      description: Feature `DETECT_LANGUAGE` — unmetered, rate-limited. Prefer the on-device language-ID model when installed.
+      description: |
+        Feature `DETECT_LANGUAGE` — unmetered, rate-limited. Prefer the on-device language-ID model when installed.
+        Available to an account whose deletion is pending; a suspended account gets 403
+        `ACCOUNT_SUSPENDED`, and an account whose `aiProcessingPreference` is `ON_DEVICE_ONLY` gets 403
+        `ON_DEVICE_ONLY_PREFERRED`.
       requestBody:
         required: true
         content:
@@ -1385,7 +1396,11 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DetectLanguageResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/ai/feedback:
     post:
       tags: [AI]
@@ -3014,6 +3029,13 @@ components:
           recomputed **without a second charge**. PostgreSQL never stores AI text.
         - Reusing a key with a different body returns 409 `IDEMPOTENCY_KEY_REUSED`; an in-flight
           duplicate returns 409 `REQUEST_IN_PROGRESS` with `Retry-After`.
+        - **Keys older than 24 h** may be refused with 409 `IDEMPOTENCY_KEY_REUSED`: the server keeps the
+          request fingerprint for 24 h only and never hands out a result it cannot verify against the body.
+          Use a new key for anything older.
+        - A replay served from the cache keeps the **original `requestId` and `usage`** (`replayed: true`);
+          it never reports a second charge.
+        - Replaying a key whose original request was **cancelled** (the client went away before the
+          result) returns 503 `PROVIDER_UNAVAILABLE`, like any other released original; use a new key.
       schema: { type: string, format: uuid }
     ClientPlatform:
       name: X-Client-Platform
@@ -3398,6 +3420,10 @@ components:
           description: Replace idioms with natural equivalents and explain them in `notes`.
     AiNote:
       type: object
+      description: |
+        A short static message from the server, never text derived from the user's content.
+        Calendar, clock and numeral conversions are reported as `CULTURAL`; the server does not
+        emit a separate conversion type.
       required: [type, message]
       properties:
         type:
@@ -3464,7 +3490,7 @@ components:
             ATTESTATION_REQUIRED, ATTESTATION_FAILED, ACCOUNT_SUSPENDED, DELETION_PENDING,
             GUEST_NOT_ALLOWED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, NOT_ACCEPTABLE,
             UNSUPPORTED_MEDIA_TYPE, REVISION_CONFLICT, IDEMPOTENCY_KEY_REUSED,
-            REQUEST_IN_PROGRESS, CONSENT_REQUIRED, FEATURE_NOT_ENTITLED, QUOTA_EXCEEDED,
+            REQUEST_IN_PROGRESS, ON_DEVICE_ONLY_PREFERRED, CONSENT_REQUIRED, FEATURE_NOT_ENTITLED, QUOTA_EXCEEDED,
             RATE_LIMITED, LANGUAGE_NOT_SUPPORTED, LANGUAGE_PAIR_UNAVAILABLE, PROFILE_NOT_ACTIVE,
             OUTPUT_GUARDRAIL_FAILED, CONTENT_REJECTED, PROVIDER_UNAVAILABLE, PROVIDER_TIMEOUT,
             ZERO_RETENTION_UNAVAILABLE, UPLOAD_EXPIRED, AUDIO_TOO_LONG, UNSUPPORTED_AUDIO_FORMAT,
