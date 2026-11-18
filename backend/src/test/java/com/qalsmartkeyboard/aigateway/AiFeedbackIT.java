@@ -333,6 +333,46 @@ class AiFeedbackIT {
 		feedback(user, feedbackBody(requestId, "POSITIVE", ",\"comment\":\"" + COMMENT + "\"")).andExpect(status().isForbidden());
 	}
 
+	/** ADR 0007 D41: withdrawing FEEDBACK_TEXT erases the stored comment and content; the rating stays. */
+	@Test
+	void withdrawingFeedbackTextDeletesTheStoredWordsButKeepsTheRating() throws Exception {
+		UUID user = user("REGISTERED");
+		UUID bystander = user("REGISTERED");
+		String requestId = translated(user, false).get("requestId").asString();
+		String otherRequest = translated(bystander, false).get("requestId").asString();
+		consent(user, "FEEDBACK_TEXT", true);
+		consent(bystander, "FEEDBACK_TEXT", true);
+		String words = ",\"reasonCodes\":[\"WRONG_TONE\"],\"comment\":\"" + COMMENT + "\",\"includeContent\":true,"
+				+ "\"inputText\":\"" + CONTENT_IN + "\",\"outputText\":\"" + CONTENT_OUT + "\"";
+		feedback(user, feedbackBody(requestId, "NEGATIVE", words)).andExpect(status().isAccepted());
+		feedback(bystander, feedbackBody(otherRequest, "NEGATIVE", words)).andExpect(status().isAccepted());
+		assertThat(jdbc.queryForObject("SELECT comment_ciphertext IS NOT NULL AND input_ciphertext IS NOT NULL"
+				+ " AND output_ciphertext IS NOT NULL FROM ai_feedback WHERE user_id = ?", Boolean.class, user)).isTrue();
+
+		consent(user, "FEEDBACK_TEXT", false);
+
+		Map<String, Object> row = jdbc.queryForMap("SELECT * FROM ai_feedback WHERE user_id = ?", user);
+		assertThat(row.get("comment_ciphertext")).isNull();
+		assertThat(row.get("input_ciphertext")).isNull();
+		assertThat(row.get("output_ciphertext")).isNull();
+		assertThat(row.get("key_version")).isNull();
+		assertThat(row.get("consent_record_id")).isNull();
+		assertThat(((Number) row.get("rating")).intValue()).isEqualTo(-1);
+		assertThat(jdbc.queryForObject("SELECT array_to_string(reason_codes, ',') FROM ai_feedback WHERE user_id = ?",
+				String.class, user)).isEqualTo("WRONG_TONE");
+		// only the person who withdrew is affected
+		assertThat(jdbc.queryForObject("SELECT comment_ciphertext IS NOT NULL AND output_ciphertext IS NOT NULL"
+				+ " FROM ai_feedback WHERE user_id = ?", Boolean.class, bystander)).isTrue();
+		// withdrawing again is harmless; granting again does not bring anything back, new words can be sent again
+		consent(user, "FEEDBACK_TEXT", false);
+		consent(user, "FEEDBACK_TEXT", true);
+		assertThat(jdbc.queryForObject("SELECT comment_ciphertext IS NULL FROM ai_feedback WHERE user_id = ?",
+				Boolean.class, user)).isTrue();
+		feedback(user, feedbackBody(requestId, "POSITIVE", ",\"comment\":\"" + COMMENT + "\"")).andExpect(status().isAccepted());
+		assertThat(jdbc.queryForObject("SELECT comment_ciphertext IS NOT NULL FROM ai_feedback WHERE user_id = ?",
+				Boolean.class, user)).isTrue();
+	}
+
 	@Test
 	void feedbackIsRateLimited() throws Exception {
 		UUID user = user("REGISTERED");

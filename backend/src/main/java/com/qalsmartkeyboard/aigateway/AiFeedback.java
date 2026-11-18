@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -17,6 +18,7 @@ import com.qalsmartkeyboard.platform.ApiFieldError;
 import com.qalsmartkeyboard.platform.crypto.EncryptedValue;
 import com.qalsmartkeyboard.platform.crypto.EncryptionContext;
 import com.qalsmartkeyboard.platform.crypto.UserDataEncryption;
+import com.qalsmartkeyboard.privacy.ConsentChanged;
 import com.qalsmartkeyboard.privacy.ConsentGate;
 import com.qalsmartkeyboard.privacy.ConsentType;
 
@@ -36,6 +38,7 @@ import tools.jackson.databind.json.JsonMapper;
  * user's data key ({@link EncryptionContext} {@code ai_feedback}, {@code comment_ciphertext | input_ciphertext |
  * output_ciphertext}, the row id) and the row points at the consent record it was stored under (V1 composite FK).
  * Without {@code includeContent} the texts are ignored, not stored.</li>
+ * <li>Withdrawing {@code FEEDBACK_TEXT} erases the stored comment and content ({@link #onConsentChanged}).</li>
  * <li>The body is read by hand so that no value, least of all the comment, can reach a log through a framework binding
  * error (same reason as {@link AiRequestParser}).</li>
  * </ul>
@@ -73,6 +76,24 @@ class AiFeedback {
 		this.consents = consents;
 		this.transactions = transactions;
 		this.mapper = mapper;
+	}
+
+	/**
+	 * Withdrawing {@code FEEDBACK_TEXT} deletes the stored feedback text (ADR 0007 D41): the comment and the attached
+	 * input/output ciphertext of every feedback row of the user are erased, in the withdrawal's own transaction, together
+	 * with the key version and the consent-record link that only the text needed. The rating and the reason codes stay
+	 * (they carry no content). Idempotent: a repeated withdrawal finds nothing left.
+	 */
+	@EventListener
+	void onConsentChanged(ConsentChanged event) {
+		if (event.type() == ConsentType.FEEDBACK_TEXT && !event.granted()) {
+			jdbc.sql("""
+					UPDATE ai_feedback SET comment_ciphertext = NULL, input_ciphertext = NULL, output_ciphertext = NULL,
+					       key_version = NULL, consent_record_id = NULL, updated_at = NOW()
+					WHERE user_id = :user
+					  AND (comment_ciphertext IS NOT NULL OR input_ciphertext IS NOT NULL OR output_ciphertext IS NOT NULL)
+					""").param("user", event.userId()).update();
+		}
 	}
 
 	void submit(UUID userId, byte[] body) {

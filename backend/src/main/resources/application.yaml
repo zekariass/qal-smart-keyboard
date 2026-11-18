@@ -85,6 +85,24 @@ qal:
     deletion:
       grace-period: ${QAL_DELETION_GRACE_PERIOD:14d}
       executor-interval: ${QAL_DELETION_EXECUTOR_INTERVAL:5m}
+    # Data export (B6.1, ADR 0022): asynchronous archive, sealed with the user's data key, kept in a private bucket
+    # (infra/compose: qal-exports, give it a 7-day lifecycle rule) and downloaded through the API for 7 days. Without
+    # credentials the job fails its exports (FAILED); the prod/production/staging profiles refuse to start.
+    export:
+      link-ttl: ${QAL_EXPORT_LINK_TTL:7d}
+      max-per-window: ${QAL_EXPORT_MAX_PER_WINDOW:3}
+      window: ${QAL_EXPORT_WINDOW:24h}
+      max-archive-bytes: ${QAL_EXPORT_MAX_ARCHIVE_BYTES:67108864}
+      job-enabled: ${QAL_EXPORT_JOB_ENABLED:true}
+      poll-interval: ${QAL_EXPORT_POLL_INTERVAL:10s}
+      public-base-url: ${QAL_PUBLIC_BASE_URL:}
+      storage:
+        endpoint: ${QAL_EXPORTS_S3_ENDPOINT:}
+        bucket: ${QAL_EXPORTS_S3_BUCKET:qal-exports}
+        region: ${QAL_EXPORTS_S3_REGION:us-east-1}
+        access-key: ${QAL_EXPORTS_S3_ACCESS_KEY:}
+        secret-key: ${QAL_EXPORTS_S3_SECRET_KEY:}
+        path-style: ${QAL_EXPORTS_S3_PATH_STYLE:true}
   # Retention (B6.3, ADR 0020): a daily db-scheduler task (cron, UTC) purges every data class past its period. Defaults
   # come from SD 19.2 and are listed in ADR 0020; override one with qal.retention.periods.<rule-code>, for example
   # QAL_RETENTION_PERIODS_OTP_CHALLENGES=48h. An unknown or kept (financial) rule code stops the application at start.

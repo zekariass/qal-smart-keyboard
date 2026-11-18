@@ -163,7 +163,7 @@ class RetentionIT {
 		assertThat(codes).doesNotHaveDuplicates().contains("otp-challenges", "attestation-nonces", "user-sessions",
 				"password-reset-tokens", "ai-request-fingerprints", "ai-replay-cache", "processed-events",
 				"outbox-published", "outbox-dead", "dictionary-applied-changes", "dictionary-tombstones",
-				"user-history-items", "ai-requests", "usage-reservations", "user-consents-deleted-accounts",
+				"user-history-items", "ai-requests", "ai-feedback", "usage-reservations", "user-consents-deleted-accounts",
 				"merged-guest-accounts", "deleted-account-tombstones", "data-export-requests", "payment-webhook-events",
 				"audit-events-security", "audit-events-financial", "operational-logs", "audio-objects",
 				"financial-records", "usage-events", "ai-credit-ledger");
@@ -185,6 +185,8 @@ class RetentionIT {
 		assertThat(period("audit-events-security")).isEqualTo(Duration.ofDays(730));
 		assertThat(period("audit-events-financial")).isEqualTo(Duration.ofDays(2557));
 		assertThat(period("ai-requests")).isEqualTo(Duration.ofDays(396));
+		assertThat(period("ai-feedback")).isEqualTo(Duration.ofDays(396)); // ADR 0007 D41
+		assertThat(policy.rule("ai-feedback").orElseThrow().ownerModule()).isEqualTo("aigateway");
 		assertThat(period("payment-webhook-events")).isEqualTo(Duration.ofDays(548));
 		assertThat(policy.rule("financial-records").orElseThrow().action()).isEqualTo(RetentionAction.KEEP);
 		assertThat(policy.rule("usage-events").orElseThrow().action()).isEqualTo(RetentionAction.KEEP);
@@ -460,6 +462,28 @@ class RetentionIT {
 		assertThat(exists("ai_request_fingerprints", "request_id", fpKept)).isTrue();
 		assertThat(exists("ai_requests", "id", reqGone)).isFalse();
 		assertThat(exists("ai_requests", "id", reqKept)).isTrue();
+	}
+
+	/** ADR 0007 D41: ai_feedback is kept 13 months from created_at; the row exactly at the cutoff survives. */
+	@Test
+	void aiFeedbackIsPurgedThirteenMonthsAfterItWasGiven() {
+		UUID user = activeUser();
+		UUID gone = feedback(user, outside("ai-feedback"));
+		UUID atEdge = feedback(user, atCutoff("ai-feedback"));
+		UUID kept = feedback(user, inside("ai-feedback"));
+
+		assertThat(run().purged()).containsEntry("ai-feedback", 1);
+
+		assertThat(exists("ai_feedback", "id", gone)).isFalse();
+		assertThat(exists("ai_feedback", "id", atEdge)).isTrue();
+		assertThat(exists("ai_feedback", "id", kept)).isTrue();
+	}
+
+	UUID feedback(UUID user, Instant created) {
+		UUID id = UUID.randomUUID();
+		jdbc.update("INSERT INTO ai_feedback (id, ai_request_id, user_id, feature_code, rating, created_at, updated_at)"
+				+ " VALUES (?, ?, ?, 'TRANSLATE', 1, ?, ?)", id, UUID.randomUUID(), user, ts(created), ts(created));
+		return id;
 	}
 
 	UUID fingerprint(UUID user, Instant created) {
