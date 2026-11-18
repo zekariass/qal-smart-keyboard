@@ -10,12 +10,16 @@ plugins {
 //   qal.apiBaseUrl                 API base URL (debug default http://10.0.2.2:8080, the emulator's host loopback)
 //   qal.googleWebClientId          OAuth *web* client id the backend lists as an accepted audience (blank: Google sign-in hidden)
 //   qal.playIntegrityProjectNumber Google Cloud project number linked to the Play Integrity API (0: real attestation unavailable)
+//   qal.entitlementJwksFile        JWK Set (the format of /.well-known/jwks.json) of the entitlement-token public keys pinned in this build
+//                                  (ADR 0013). Without it the set is empty: tokens never verify and no offline gate opens (fail closed).
 //   qal.mockAttestation            true/false, debug builds only: use MockAttestationProvider (default true for debug)
 val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.isFile) f.inputStream().use { load(it) }
 }
 fun deployProp(name: String): String? = providers.gradleProperty(name).orNull ?: localProps.getProperty(name)
+// The pinned entitlement keys (ADR 0013 D4.2): compiled in, never fetched. A path is resolved against android/.
+val entitlementJwks: String = deployProp("qal.entitlementJwksFile")?.let { rootProject.file(it).readText() } ?: "{\"keys\":[]}"
 fun quoted(v: String) = "\"" + v.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
@@ -36,6 +40,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", quoted(deployProp("qal.googleWebClientId").orEmpty()))
+        buildConfigField("String", "ENTITLEMENT_JWKS", quoted(entitlementJwks.replace(Regex("\\s+"), " ")))
         buildConfigField("long", "PLAY_INTEGRITY_PROJECT_NUMBER", (deployProp("qal.playIntegrityProjectNumber")?.toLongOrNull() ?: 0L).toString() + "L")
     }
 
@@ -94,6 +99,7 @@ dependencies {
     implementation(project(":api"))
     implementation(project(":packs-sync"))
     implementation(project(":sync"))
+    implementation(project(":ai-client"))
     implementation(libs.androidx.work.runtime)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.credentials)

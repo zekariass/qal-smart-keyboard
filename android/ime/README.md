@@ -157,3 +157,24 @@ bundled packs loaded by the `PackManager`.
 
 ## Settings (A1.5)
 `KeyboardImeService` owns a `SettingsSnapshot` (from `:data`): `current` is a plain field read (defaults until the first load, so nothing blocks the main thread at IME start), refreshed by a background collector; each change posts `KeyboardController.onPreferencesChanged()` to the main thread, which drops cached layouts, re-reads languages, numerals and key height, and moves off a language that was disabled. Haptics are read per key press. The first load also selects the starting language (first enabled). `conversionTrigger` and `unknownTokenBehavior` are stored and synced but not applied by the engine yet; `showTransliterationCandidates` hides the strip. Settings values are never logged.
+
+## AI toolbar (A2.5)
+
+`com.qalsmartkeyboard.ime.ai`: a toolbar above the candidate strip (Translate + destination chip, Grammar,
+Rewrite + tone chip, plan hint) and a review panel. `:ime` stays network-free: it only defines the `AiActions`
+port (pure Kotlin); `:ai-client` implements it and `:app` registers the factory (`QalApplication` ->
+`AiActionsHolder`). The service builds the actions on a background thread.
+
+- **Explicit action only.** `AiActions.submit` is called only from a tap (`AiToolbarController.onTask` / `retry`).
+  The editor is read only then. Typing, selection changes and focus send and read nothing. The keyboard-shown
+  `refresh()` carries no text. The result enters the editor only via Replace or Insert; nothing presses Send.
+- **Target text.** The selection if there is one, else the sentence before the cursor (after the previous
+  `. ! ? ... ። ፧ ፨` or line break; a sentence that just ended counts; trailing whitespace is kept). Text after the
+  cursor is never read. Longer than 5000 chars: refused, not cut.
+- **Hidden** in password, email, URI, number, phone, date fields, TYPE_NULL hosts and
+  `IME_FLAG_NO_PERSONALIZED_LEARNING` (`InputProfile.allowsAi`).
+- **One request at a time**: a tap while one is in flight is ignored; Cancel aborts the call. Typing keeps working.
+  Retry after a network error/timeout/503/`REQUEST_IN_PROGRESS` reuses the `Idempotency-Key`; any other retry or
+  "another result" uses a new one. A field change or keyboard hide cancels and drops the answer.
+- Replace re-checks that the original text is still there; if not, the result is inserted at the cursor instead.
+- Tests: `ai/` (controller, targets, `AiTypingLatencyTest` benchmark + no-call-on-keystroke test).

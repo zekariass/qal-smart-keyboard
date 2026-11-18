@@ -23,6 +23,12 @@ interface EditorOps {
 
     /** `InputConnection.getCursorCapsMode`. */
     fun getCursorCapsMode(reqModes: Int): Int
+
+    /** The selected text, or null when there is none or the editor does not answer (AI toolbar, A2.5). */
+    fun getSelectedText(): CharSequence? = null
+
+    /** `InputConnection.setSelection` (absolute offsets); false when not supported. */
+    fun setSelection(start: Int, end: Int): Boolean = false
 }
 
 /** Editor-side operations the [KeyboardController] needs. */
@@ -143,6 +149,18 @@ class InputConnectionAdapter(private val editor: () -> EditorOps?) : TextSink {
 
     override fun wantsAutoCapital(capsFlags: Int): Boolean =
         (editor()?.getCursorCapsMode(capsFlags) ?: 0) != 0
+
+    /** The editor, for edits the user asked for explicitly (the AI toolbar's Replace/Insert). */
+    fun editorOps(): EditorOps? = editor()
+
+    /** The selection end the editor last reported, or -1 when unknown. */
+    val selectionEnd: Int get() = selEnd
+
+    /**
+     * An edit was made outside the composer (the AI toolbar replaced text): forget the expected
+     * cursor so the next report re-synchronises instead of looking like a user cursor move.
+     */
+    fun editedExternally() = unpredictable()
 
     /** `InputMethodService.onUpdateSelection`. */
     fun onSelectionUpdate(newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
