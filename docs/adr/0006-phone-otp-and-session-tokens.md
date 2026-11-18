@@ -79,8 +79,8 @@ bound the cost of junk). Revisit for per-country diaspora rules.
 `SmsProvider` adapters. Only `log` exists (`qal.notifications.sms.provider`, no default, refused under production-like
 profiles). It logs a masked number (`+251*******67`) and never the body. The DEV-ONLY switch
 `qal.notifications.sms.log.include-message=true` prints the body so a developer can sign in locally. Provider errors
-are rethrown without cause or message. The WireMock stubs under `infra/compose/wiremock` (`/sms/v1/messages`) are
-ready for an HTTP adapter once OI-11 picks an aggregator.
+are rethrown without cause or message. The real adapter is SMS Ethiopia (ADR 0025); its WireMock stubs
+under `infra/compose/wiremock` (`sms-ethiopia-*.json`) replaced the earlier `/sms/v1/messages` placeholder.
 
 ### Metrics and logs
 `qal.identity.otp.started{outcome,destination=ET|INTL}`, `qal.identity.otp.verified{outcome}`,
