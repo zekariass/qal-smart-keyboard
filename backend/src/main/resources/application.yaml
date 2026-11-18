@@ -144,3 +144,19 @@ qal:
       enabled: ${QAL_AI_HTTP:false}
       base-url: ${QAL_AI_HTTP_BASE_URL:http://localhost:8089}
       api-key: ${QAL_AI_HTTP_API_KEY:}
+  # Crash reporting (ADR 0024, ADR 0007 D47): the environment tag; blank = the active Spring profiles ("default").
+  observability:
+    sentry:
+      environment: ${QAL_SENTRY_ENVIRONMENT:}
+
+# Crash reporting (ADR 0024). Off unless QAL_SENTRY_DSN is set (blank DSN = SDK disabled, nothing sent). Content-free:
+# platform.observability.SentryConfiguration forces no default PII, no request bodies, no tracing, no breadcrumbs, and
+# scrubs every event (exception messages, user, cookies, query strings, headers outside an allow-list).
+sentry:
+  dsn: ${QAL_SENTRY_DSN:}
+  send-default-pii: false
+  max-request-body-size: none
+  logging:
+    # Only ERROR log lines become events (with their message template only); no log line becomes a breadcrumb.
+    minimum-event-level: error
+    minimum-breadcrumb-level: error

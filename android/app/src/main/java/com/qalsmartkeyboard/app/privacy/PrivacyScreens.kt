@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
@@ -133,6 +135,9 @@ fun PrivacyDashboardScreen(
     onSignIn: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** ADR 0024: the local crash-report switch (on by default; works signed out too). */
+    crashReportsOn: Boolean = true,
+    onCrashReports: (Boolean) -> Unit = {},
 ) {
     val uri = LocalUriHandler.current
     val privacyUrl = stringResource(R.string.privacy_notice_url)
@@ -172,6 +177,17 @@ fun PrivacyDashboardScreen(
             Button(onClick = { onOpen(PrivacyRoute.CONSENTS) }) { Text(stringResource(R.string.pv_manage_consents)) }
             OutlinedButton(onClick = { onOpen(PrivacyRoute.HISTORY) }) { Text(stringResource(R.string.pv_open_history)) }
             OutlinedButton(onClick = { onOpen(PrivacyRoute.CONSENT_HISTORY) }) { Text(stringResource(R.string.pv_open_consent_history)) }
+        }
+        Section(stringResource(R.string.pv_crash_title)) {
+            // One toggleable row, so TalkBack reads the label with the state.
+            Row(
+                Modifier.fillMaxWidth().toggleable(value = crashReportsOn, role = Role.Switch, onValueChange = onCrashReports),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.pv_crash_switch), Modifier.weight(1f))
+                Switch(checked = crashReportsOn, onCheckedChange = null)
+            }
+            Small(stringResource(R.string.pv_crash_body))
         }
         Section(stringResource(R.string.pv_data_title)) {
             Text(stringResource(R.string.pv_data_body))
