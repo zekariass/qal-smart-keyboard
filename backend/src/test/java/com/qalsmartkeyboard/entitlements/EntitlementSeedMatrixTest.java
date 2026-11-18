@@ -47,7 +47,7 @@ class EntitlementSeedMatrixTest {
 		FakeEntitlementData data = new FakeEntitlementData();
 		UUID userId = userOnPlan(data, seed, planCode);
 		EntitlementResolver resolver = new EntitlementResolver(data,
-				new EntitlementProperties("PROVISIONAL_V2", "GUEST", Duration.ofDays(3), Duration.ZERO, 100),
+				new EntitlementProperties("PROVISIONAL_V2", "GUEST", Duration.ofDays(3), Duration.ZERO, 100, Duration.ofHours(24)),
 				Clock.fixed(NOW, ZoneOffset.UTC));
 
 		ResolvedEntitlements resolved = resolver.resolve(userId);

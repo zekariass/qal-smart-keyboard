@@ -397,10 +397,14 @@ organisations have no Java API yet).
   `STORE_PURCHASE`, PARTNER = `PARTNER`; store and partner grants converge on that table, SD 16.1/16.7) and active
   organisation seats (`ORGANIZATION_SEAT`: ACTIVE assignment + ACTIVE member + ACTIVE organisation + ACTIVE/GRACE_PERIOD
   organisation subscription). Valid at `at` when the start (if any) has been reached and either status ACTIVE and `at <`
-  period end (none = open-ended), or status GRACE_PERIOD and `at <` `grace_period_end` (else period end +
+  period end + `qal.entitlements.renewal-lag` (none = open-ended), or status GRACE_PERIOD and `at <` `grace_period_end` (else period end +
   `qal.entitlements.default-grace-period`, 3 days, SD 16.5). Period ends are exclusive. PENDING, PAST_DUE, PAUSED,
   CANCELLED (cancel-at-period-end stays ACTIVE), EXPIRED, REVOKED and UPGRADED grant nothing; a STORE subscription whose
   purchase is REFUNDED/REVOKED grants nothing. `plan_status` is not consulted (sold BUSINESS is still DRAFT in the seed).
+- **Renewal lag (ADR 0007 D22):** an ACTIVE subscription or organisation subscription just past `current_period_end`
+  keeps granting for `qal.entitlements.renewal-lag` (default `24h`, `0s` = off; env `QAL_ENTITLEMENTS_RENEWAL_LAG`), so a
+  late store/gateway renewal notification does not cut off a paying user. `effectiveUntil` keeps reporting the period
+  end (in the past during the lag: renewal pending). GRACE_PERIOD ends are not lagged; other statuses never grant.
 - **Precedence:** highest `plan_rank` among valid sources and the default plan (FREE, or `qal.entitlements.guest-plan-code`
   = GUEST for guests; a guest has no subscription row). Allowances are never summed. Ties: ACTIVE before GRACE_PERIOD,
   later `effectiveUntil` (open-ended last), then SUBSCRIPTION, STORE_PURCHASE, ORGANIZATION_SEAT, PARTNER, then source id.
@@ -412,7 +416,7 @@ organisations have no Java API yet).
   allowance, so a feature the plan excludes opens with allowance 0 and is payable with credits only. Several overrides
   on one feature: disable wins. Typing/ungated features and denied accounts ignore overrides.
 - **Cache:** `resolve(userId)` is cached per user for `qal.entitlements.cache-ttl` (30s, `0s` = off), never beyond the winning
-  source's `effectiveUntil`; `resolve(userId, at)` always computes. Billing/organisation code must call
+  source's validity end (`effectiveUntil`, plus the renewal lag for an ACTIVE source); `resolve(userId, at)` always computes. Billing/organisation code must call
   `invalidate(userId)` after changing a user's sources or overrides (otherwise visible after the TTL).
 - **Contract mapping:** `Entitlements.plan.source` only has DEFAULT, SUBSCRIPTION, ORGANIZATION_SEAT; use
   `PlanSource.contractValue()` (STORE_PURCHASE and PARTNER map to SUBSCRIPTION).
