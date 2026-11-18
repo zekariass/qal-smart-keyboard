@@ -76,6 +76,7 @@ period counts from; a row is due when that column is **strictly older** than `no
 | `ai-replay-cache` | `ai_replay_cache` | aigateway | 10 minutes | deleted by its own sweeper (`EncryptedReplayCache.sweep`, B5.4); the job does not repeat it | SD 11.6 |
 | `ai-request-fingerprints` | `ai_request_fingerprints` | aigateway | 24 h after `created_at` | delete (backstop to the B5.4 sweeper) | SD 8.3, ADR 0017 |
 | `ai-requests` | `ai_requests` metadata | aigateway | 13 months after `created_at` | delete (**"then aggregated"** has no target, see Open 1) | SD 19.2 |
+| `ai-feedback` | `ai_feedback` rows (rating, reason codes, sealed comment and content) | aigateway | 13 months after `created_at` (like the request it rates) | delete | ADR 0007 D41 (SD 19.2 names no period for feedback) |
 | `usage-reservations` | `usage_reservations` SETTLED/RELEASED | usage | 13 months after `closed_at`; open rows never | delete | **UNDEFINED**; ADR 0011 (13-month usage history) |
 | `usage-events` | `usage_events` ledger | usage | none | **keep** (append-only metering ledger) | **UNDEFINED** |
 | `ai-credit-ledger` | `ai_credit_accounts`, `ai_credit_lots`, `ai_credit_transactions` | usage | 10 years (assumed) | **keep** | SD 19.2 financial records |

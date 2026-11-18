@@ -1077,6 +1077,10 @@ expire). Listing and deleting work with history off or the consent withdrawn. Wi
 (the client offers that using `DELETE /me/history`). Account deletion and guest merge need no change: `PrivacyDeletion`
 already deletes `user_history_items` and `ai_feedback` (crypto-shredded), `PrivacyGuestMerge` re-encrypts history rows
 (same contexts, new user) and does not move `ai_feedback` (shredded with the guest, ADR 0010).
+Withdrawing `FEEDBACK_TEXT` **deletes the stored comment and content** of the person's feedback rows (ciphertext, key version,
+consent link; the rating and reason codes stay) in the withdrawal's transaction, through the `ConsentChanged` event
+(`AiFeedback.onConsentChanged`, ADR 0007 D41); `ai_feedback` rows are purged 13 months after `created_at`
+(`ai-feedback` retention rule, `AiRetention`).
 Proof: `AiFeedbackHistoryIT` (PG18, 15 tests, contract-validated, DB scan of every table, log scrub of comment and history text).
 
 ## Contract tests

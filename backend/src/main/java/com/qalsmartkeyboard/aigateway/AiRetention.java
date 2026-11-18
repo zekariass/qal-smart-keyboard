@@ -25,6 +25,9 @@ import com.qalsmartkeyboard.platform.retention.RetentionSupport;
  * <li>{@code ai_requests}: <b>13 months</b> (SD 19.2 "13 months, then aggregated"). The SD's "aggregated" has no target
  * yet (no rollup table exists), so the rows are deleted; cost and usage reporting must roll them up before then (open
  * item of ADR 0020). Metadata only, never an FK target.</li>
+ * <li>{@code ai_feedback}: <b>13 months</b>, like the {@code ai_requests} row it rates (ADR 0007 D41; SD 19.2 names no
+ * period for feedback). Counted from {@code created_at}; a rating sent again replaces the row's content but keeps its
+ * {@code created_at}. Whole rows are deleted (rating, reason codes and any sealed text).</li>
  * </ul>
  */
 @Component
@@ -33,6 +36,7 @@ class AiRetention implements RetentionParticipant {
 	static final String REPLAY_CACHE = "ai-replay-cache";
 	static final String FINGERPRINTS = "ai-request-fingerprints";
 	static final String REQUESTS = "ai-requests";
+	static final String FEEDBACK = "ai-feedback";
 
 	private final JdbcClient jdbc;
 
@@ -53,7 +57,9 @@ class AiRetention implements RetentionParticipant {
 				new RetentionRule(FINGERPRINTS, "aigateway", RetentionAction.DELETE, Duration.ofHours(24),
 						"SD 8.3, ADR 0017", "ai_request_fingerprints, counted from created_at (backstop to the B5.4 sweeper)"),
 				new RetentionRule(REQUESTS, "aigateway", RetentionAction.DELETE, Duration.ofDays(396),
-						"SD 19.2 (13 months, then aggregated)", "ai_requests metadata, counted from created_at"));
+						"SD 19.2 (13 months, then aggregated)", "ai_requests metadata, counted from created_at"),
+				new RetentionRule(FEEDBACK, "aigateway", RetentionAction.DELETE, Duration.ofDays(396),
+						"ADR 0007 D41 (13 months, like ai_requests)", "ai_feedback rows, counted from created_at"));
 	}
 
 	@Override
@@ -62,6 +68,8 @@ class AiRetention implements RetentionParticipant {
 			case FINGERPRINTS -> RetentionSupport.deleteBatch(jdbc, "ai_request_fingerprints", "request_id",
 					"created_at < :cutoff", now, cutoff, limit);
 			case REQUESTS -> RetentionSupport.deleteBatch(jdbc, "ai_requests", "id", "created_at < :cutoff", now, cutoff,
+					limit);
+			case FEEDBACK -> RetentionSupport.deleteBatch(jdbc, "ai_feedback", "id", "created_at < :cutoff", now, cutoff,
 					limit);
 			default -> throw new IllegalArgumentException("Not an executable AI rule: " + rule.code());
 		};
