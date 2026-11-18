@@ -7,7 +7,7 @@ import android.view.View
 import android.widget.LinearLayout
 
 /**
- * The input view's vertical column (headroom, AI toolbar, top bar, keys). Its padding holds the
+ * The input view's vertical column (headroom, AI panel, the one bar, keys). Its padding holds the
  * navigation-bar and cutout insets ([KeyboardInsets]); it paints the keyboard background ([fill],
  * the key surface's background colour) everywhere below the transparent popup [headroom], so the
  * keyboard looks continuous under a transparent navigation bar and beside a landscape cutout.

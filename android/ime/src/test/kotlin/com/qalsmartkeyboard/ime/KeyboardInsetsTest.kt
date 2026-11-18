@@ -9,48 +9,69 @@ import org.junit.Test
 class KeyboardInsetsTest {
     private fun ltrb(l: Int = 0, t: Int = 0, r: Int = 0, b: Int = 0) = intArrayOf(l, t, r, b)
 
-    @Test fun gestureNavigationPadsTheBottomByTheBarHeight() {
+    /** The fixed gap under the bottom row at density 1 (8 px) and 2.625 (21 px). */
+    private val gap1 = KeyboardInsets.bottomGapPx(1f)
+    private val gapPixel = KeyboardInsets.bottomGapPx(2.625f)
+
+    @Test fun bottomGapIsSmallFixedAndScalesWithDensity() {
+        assertEquals(8, gap1)
+        assertEquals(21, gapPixel)
+        assertEquals(24, KeyboardInsets.bottomGapPx(3f))
+        assertEquals(16, KeyboardInsets.bottomGapPx(2f))
+        assertTrue("never zero", KeyboardInsets.bottomGapPx(0f) >= 1)
+    }
+
+    @Test fun gestureNavigationPadsTheBottomByTheBarHeightPlusTheGap() {
         // Pixel-class phone, gesture navigation, density 2.625: a 24dp handle area = 63px.
-        assertEquals(InsetPadding(0, 0, 63), KeyboardInsets.padding(nav = ltrb(b = 63), cutout = ltrb()))
+        assertEquals(InsetPadding(0, 0, 63 + gapPixel), KeyboardInsets.padding(nav = ltrb(b = 63), cutout = ltrb(), density = 2.625f))
     }
 
     @Test fun threeButtonNavigationPadsTheBottomInPortrait() {
         // 48dp bar at density 3.0 = 144px.
-        assertEquals(InsetPadding(0, 0, 144), KeyboardInsets.padding(nav = ltrb(b = 144), cutout = ltrb()))
+        assertEquals(InsetPadding(0, 0, 144 + 24), KeyboardInsets.padding(nav = ltrb(b = 144), cutout = ltrb(), density = 3f))
     }
 
     @Test fun threeButtonNavigationOnTheSideInLandscapePadsThatSide() {
-        assertEquals(InsetPadding(0, 126, 0), KeyboardInsets.padding(nav = ltrb(r = 126), cutout = ltrb()))
-        assertEquals(InsetPadding(126, 0, 0), KeyboardInsets.padding(nav = ltrb(l = 126), cutout = ltrb()))
+        assertEquals(InsetPadding(0, 126, gap1), KeyboardInsets.padding(nav = ltrb(r = 126), cutout = ltrb()))
+        assertEquals(InsetPadding(126, 0, gap1), KeyboardInsets.padding(nav = ltrb(l = 126), cutout = ltrb()))
     }
 
     @Test fun landscapeCutoutSidesArePaddedAndCombineWithTheBar() {
         // Notch on the left, gesture handle at the bottom.
-        assertEquals(InsetPadding(90, 0, 50), KeyboardInsets.padding(nav = ltrb(b = 50), cutout = ltrb(l = 90)))
+        assertEquals(InsetPadding(90, 0, 50 + gap1), KeyboardInsets.padding(nav = ltrb(b = 50), cutout = ltrb(l = 90)))
         // Bar and cutout on the same side: the larger one wins (they overlap, they do not add up).
-        assertEquals(InsetPadding(0, 130, 0), KeyboardInsets.padding(nav = ltrb(r = 126), cutout = ltrb(r = 130)))
+        assertEquals(InsetPadding(0, 130, gap1), KeyboardInsets.padding(nav = ltrb(r = 126), cutout = ltrb(r = 130)))
     }
 
     @Test fun theImesOwnNavigationStripIsClearedToo() {
         // Landscape phone, 3-button navigation: the system bar is on the right (the window already
         // ends before it, inset 0) but the IME back/switcher strip (48dp = 126px) is at the bottom.
-        assertEquals(InsetPadding(0, 0, 126), KeyboardInsets.padding(nav = ltrb(), cutout = ltrb(), imeNavBarPx = 126))
+        assertEquals(InsetPadding(0, 0, 126 + gapPixel), KeyboardInsets.padding(nav = ltrb(), cutout = ltrb(), imeNavBarPx = 126, density = 2.625f))
         // Portrait gesture navigation: the strip and the bar inset are the same area, not added up.
-        assertEquals(InsetPadding(0, 0, 63), KeyboardInsets.padding(nav = ltrb(b = 63), cutout = ltrb(), imeNavBarPx = 63))
+        assertEquals(InsetPadding(0, 0, 63 + gapPixel), KeyboardInsets.padding(nav = ltrb(b = 63), cutout = ltrb(), imeNavBarPx = 63, density = 2.625f))
+    }
+
+    @Test fun theGapIsTheSameWithGestureThreeButtonAndFittedNavigation() {
+        // Whatever is under the keyboard, the bottom row keeps the same distance above it.
+        val d = 2.625f
+        for ((nav, strip) in listOf(63 to 0, 126 to 126, 0 to 126, 0 to 0)) {
+            val p = KeyboardInsets.padding(nav = ltrb(b = nav), cutout = ltrb(), imeNavBarPx = strip, density = d)
+            assertEquals("nav=$nav strip=$strip", maxOf(nav, strip) + gapPixel, p.bottom)
+        }
     }
 
     @Test fun topInsetsNeverPadTheKeyboard() {
-        // Portrait notch and status bar are at the top of the screen, far from the keyboard.
-        assertEquals(InsetPadding.NONE, KeyboardInsets.padding(nav = ltrb(t = 80), cutout = ltrb(t = 120)))
+        // Portrait notch and status bar are at the top of the screen, far from the keyboard: only the gap.
+        assertEquals(InsetPadding(0, 0, gap1), KeyboardInsets.padding(nav = ltrb(t = 80), cutout = ltrb(t = 120)))
     }
 
-    @Test fun consumedInsetsOnOlderReleasesPadNothing() {
+    @Test fun consumedInsetsOnOlderReleasesPadOnlyTheGap() {
         // API < 35 (or a decor that already fits the window): the dispatched insets are zero.
-        assertEquals(InsetPadding.NONE, KeyboardInsets.padding(nav = ltrb(), cutout = ltrb()))
+        assertEquals(InsetPadding(0, 0, gap1), KeyboardInsets.padding(nav = ltrb(), cutout = ltrb()))
     }
 
     @Test fun negativeValuesAreIgnored() {
-        assertEquals(InsetPadding.NONE, KeyboardInsets.padding(nav = ltrb(-5, -5, -5, -5), cutout = ltrb()))
+        assertEquals(InsetPadding(0, 0, gap1), KeyboardInsets.padding(nav = ltrb(-5, -5, -5, -5), cutout = ltrb()))
     }
 
     @Test fun contentTopIsTheBottomOfTheHeadroomAndUnknownBeforeLayout() {

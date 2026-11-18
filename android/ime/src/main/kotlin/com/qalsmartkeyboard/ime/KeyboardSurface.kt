@@ -4,12 +4,21 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
+import android.os.Bundle
 import android.view.HapticFeedbackConstants
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.accessibility.AccessibilityEvent
+import android.widget.Button
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
+import androidx.customview.widget.ExploreByTouchHelper
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 import kotlin.math.ceil
@@ -24,6 +33,11 @@ import kotlin.math.min
  * the hit-testing, so a slide-and-release picks an item. Keys with a popup or a long-press action act on release; other
  * keys act on press. It draws no key-preview popups, so characters typed in password fields are
  * never echoed by us.
+ *
+ * Accessibility: every key is a virtual view ([KeyNodes], `ExploreByTouchHelper`) with its spoken
+ * name and the Button role; an accessibility click types the key like a tap, and keys with a
+ * long-press action (the globe) offer it as a long click. Long-press popups (Fidel forms, Ethiopic
+ * punctuation and numerals) are touch-only.
  */
 class KeyboardSurface(context: Context) : View(context) {
     var controller: KeyboardController? = null
@@ -137,6 +151,7 @@ class KeyboardSurface(context: Context) : View(context) {
     fun onLayoutChanged() {
         dismissPopup()
         placed = emptyList()
+        keyNodes.invalidateRoot()
         controller?.let { c ->
             val spoken = c.modeDescription
             contentDescription = "Keyboard, $spoken"
@@ -168,6 +183,7 @@ class KeyboardSurface(context: Context) : View(context) {
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         placed = emptyList()
         bgShader = null
+        keyNodes.invalidateRoot()
     }
 
     private fun fitText(label: String, maxWidth: Float, size: Float) {
@@ -244,11 +260,12 @@ class KeyboardSurface(context: Context) : View(context) {
                 label.length > 2 -> 15f
                 else -> 21f
             } * d
-            fitText(label, p.rect.width() - 4f * d, base)
-            var y = p.rect.centerY() - (text.descent() + text.ascent()) / 2
-            // Short keys (landscape): keep the label clear of the DRAFT badge above it.
-            if (key.draftBadge) y += max(0f, p.rect.top + BADGE_BOTTOM_DP * d - (y + text.ascent()))
-            canvas.drawText(label, p.rect.centerX(), y, text)
+            if (key.draftBadge) {
+                drawWithDraftTag(canvas, p.rect, label, base)
+            } else {
+                fitText(label, p.rect.width() - 4f * d, base)
+                canvas.drawText(label, p.rect.centerX(), p.rect.centerY() - (text.descent() + text.ascent()) / 2, text)
+            }
             // Secondary label: the first alternative, or (phonetic letters) the native character
             // for the current shift state. Read from the layout model only: no engine call here.
             val hint = if (key.shiftHint != null && c.shift != ShiftState.OFF) key.shiftHint else key.hint
@@ -257,12 +274,30 @@ class KeyboardSurface(context: Context) : View(context) {
                 hintPaint.textSize = 11f * d
                 canvas.drawText(hint, p.rect.right - 4f * d, p.rect.top + 12f * d, hintPaint)
             }
-            if (key.draftBadge) {
-                text.color = accentText
-                text.textSize = 8f * d
-                canvas.drawText("DRAFT", p.rect.centerX(), p.rect.top + 9f * d, text)
-            }
         }
+    }
+
+    private val draftLabel = context.getString(R.string.candidate_strip_draft)
+
+    /**
+     * A label with the DRAFT tag (N9): stacked above it on tall keys, beside it on short (landscape)
+     * keys, dropped when neither fits ([DraftTagLayout]), so the two never overlap. [text]'s colour is
+     * the label's.
+     */
+    private fun drawWithDraftTag(canvas: Canvas, r: RectF, label: String, size: Float) {
+        val labelColor = text.color
+        text.textSize = size
+        val l = DraftTagLayout.Text(text.measureText(label), text.ascent(), text.descent())
+        text.textSize = TAG_TEXT_DP * d
+        val t = DraftTagLayout.Text(text.measureText(draftLabel), text.ascent(), text.descent())
+        val p = DraftTagLayout.place(r.width(), r.height(), l, t, pad = 2f * d, gap = TAG_GAP_DP * d)
+        if (p.showsTag) {
+            text.color = accentText
+            canvas.drawText(draftLabel, r.left + p.tagX, r.top + p.tagBaseline, text)
+        }
+        text.color = labelColor
+        text.textSize = size * p.labelScale
+        canvas.drawText(label, r.left + p.labelX, r.top + p.labelBaseline, text)
     }
 
     /** The language key as a drawn globe in the special-key label colour (no colour emoji). */
@@ -453,8 +488,95 @@ class KeyboardSurface(context: Context) : View(context) {
     }
 
     private companion object {
-        /** Bottom of the DRAFT badge below the key top, plus a 1dp gap. */
-        const val BADGE_BOTTOM_DP = 11f
+        /** Size of the DRAFT tag text, and the space between it and the label. */
+        const val TAG_TEXT_DP = 8f
+        const val TAG_GAP_DP = 3f
+    }
+
+    // ------------------------------------------------------------------ accessibility
+
+    private val keyNodes = KeyNodes()
+
+    init {
+        ViewCompat.setAccessibilityDelegate(this, keyNodes)
+    }
+
+    override fun dispatchHoverEvent(event: MotionEvent): Boolean =
+        keyNodes.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+        keyNodes.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        keyNodes.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+    }
+
+    /** What an accessibility service says for [key] in the current state (shift, Enter action, DRAFT). */
+    internal fun spokenFor(key: Key): String {
+        val c = controller
+        return when (key.kind) {
+            KeyKind.ENTER -> c?.profile?.enterLabel?.let { if (it == EnterLabel.RETURN) "Enter" else enterText(it) } ?: "Enter"
+            KeyKind.SHIFT -> when (c?.shift) {
+                ShiftState.LOCKED -> "Shift, caps lock on"
+                ShiftState.ONCE -> "Shift, on"
+                else -> key.spoken
+            }
+            KeyKind.CHAR -> if (key.isLetter && key.description.isEmpty() && c != null && c.shift != ShiftState.OFF) key.label.uppercase() else key.spoken
+            else -> key.spoken
+        }.let { if (key.draftBadge) "$it, ${context.getString(R.string.key_draft_description)}" else it }
+    }
+
+    /** One virtual accessibility node per key (index into [placed]). */
+    private inner class KeyNodes : ExploreByTouchHelper(this) {
+        private fun ensurePlaced() {
+            if (placed.isEmpty() && width > 0 && height > 0) place()
+        }
+
+        override fun getVirtualViewAt(x: Float, y: Float): Int {
+            ensurePlaced()
+            val p = hit(x, y) ?: return INVALID_ID
+            return placed.indexOf(p).takeIf { it >= 0 } ?: INVALID_ID
+        }
+
+        override fun getVisibleVirtualViews(virtualViewIds: MutableList<Int>) {
+            ensurePlaced()
+            placed.forEachIndexed { i, p -> if (!p.key.isSpacer) virtualViewIds += i }
+        }
+
+        override fun onPopulateNodeForVirtualView(virtualViewId: Int, node: AccessibilityNodeInfoCompat) {
+            ensurePlaced()
+            val p = placed.getOrNull(virtualViewId)
+            if (p == null) {
+                // Stale id (the layout changed): an empty node, as the helper requires bounds and a name.
+                node.contentDescription = ""
+                node.setBoundsInParent(Rect(0, 0, 1, 1))
+                return
+            }
+            node.contentDescription = spokenFor(p.key)
+            node.className = Button::class.java.name
+            node.setBoundsInParent(Rect(p.rect.left.toInt(), p.rect.top.toInt(), ceil(p.rect.right).toInt(), ceil(p.rect.bottom).toInt()))
+            node.isClickable = true
+            node.addAction(AccessibilityActionCompat.ACTION_CLICK)
+            if (p.key.longAction) {
+                node.isLongClickable = true
+                node.addAction(AccessibilityActionCompat(AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, context.getString(R.string.key_globe_long_action)))
+            }
+        }
+
+        override fun onPerformActionForVirtualView(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
+            ensurePlaced() // a key press may have reset the placement (shift, page) before the next draw
+            val p = placed.getOrNull(virtualViewId) ?: return false
+            val c = controller ?: return false
+            when (action) {
+                AccessibilityNodeInfoCompat.ACTION_CLICK -> c.onKey(p.key)
+                AccessibilityNodeInfoCompat.ACTION_LONG_CLICK -> if (p.key.longAction) c.onLongPress(p.key) else return false
+                else -> return false
+            }
+            invalidate()
+            sendEventForVirtualView(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
+            return true
+        }
     }
 
     override fun onDetachedFromWindow() {

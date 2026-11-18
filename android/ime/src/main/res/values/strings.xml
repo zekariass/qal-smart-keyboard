@@ -6,7 +6,17 @@
     <string name="candidate_strip_draft_description">Draft suggestions, not verified by native speakers</string>
     <!-- Top bar: settings gear and the writing-mode selector (am/ti: Fidel, Phonetic, English). -->
     <string name="top_bar_settings">Keyboard settings</string>
-    <string name="top_bar_mode">Writing mode %1$s, tap to change</string>
+    <string name="top_bar_mode">Writing mode: %1$s</string>
+    <string name="top_bar_mode_change">Change writing mode</string>
+    <string name="top_bar_mode_option">%1$s writing mode</string>
+    <!-- The one bar above the keys: the AI entry opens the AI actions in the bar's middle. -->
+    <string name="top_bar_ai_label" translatable="false">AI</string>
+    <string name="top_bar_ai_open">AI tools</string>
+    <string name="top_bar_ai_close">Close AI tools</string>
+    <string name="top_bar_candidate_add">Add to your dictionary</string>
+    <!-- Accessibility: keys. -->
+    <string name="key_draft_description">draft, not verified by native speakers</string>
+    <string name="key_globe_long_action">Change layout</string>
     <string name="user_dictionary_added">Added to your dictionary</string>
     <string name="user_dictionary_not_added">Could not add this word</string>
     <!-- A2.5: AI toolbar. Nothing is sent until the user taps an action. -->

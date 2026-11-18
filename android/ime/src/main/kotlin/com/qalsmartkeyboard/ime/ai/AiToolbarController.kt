@@ -151,6 +151,13 @@ class AiToolbarController(
         onChanged()
     }
 
+    /** Closes an open picker without choosing (the AI actions were closed). Sends nothing. */
+    fun closePicker() {
+        if (picker == AiPicker.NONE) return
+        picker = AiPicker.NONE
+        onChanged()
+    }
+
     fun chooseDestination(d: AiDestination) {
         destination = d
         actions.rememberDestination(currentPackage, d)

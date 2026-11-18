@@ -52,6 +52,7 @@ import uniffi.qal_keyboard_core.KeyboardEngine
 class KeyboardImeService : InputMethodService() {
     private var surface: KeyboardSurface? = null
     private var strip: CandidateStripView? = null
+    private var bar: KeyboardBar? = null
     private var engine: KeyboardEngine? = null
     private var runtime: PackRuntime? = null
     private var loaded: PackRuntime.Loaded? = null
@@ -174,6 +175,7 @@ class KeyboardImeService : InputMethodService() {
                     aiToolbar = toolbar
                     aiView?.controller = toolbar
                     toolbar.onFieldStarted(controller.profile, currentInputEditorInfo?.packageName)
+                    aiView?.render() // the bar shows the AI entry now (its height does not change)
                 }
             }
         }, "qal-ai-attach").start()
@@ -337,6 +339,8 @@ class KeyboardImeService : InputMethodService() {
             it.onLink = ::openCompanion
             aiView = it
         }
+        // One bar above the keys: pill, AI entry (its actions open in the bar's middle), candidates, gear.
+        val b = KeyboardBar(this, s, ai).also { bar = it }
         val overlay = PopupOverlay(this).also { overlayView = it }
         val k = KeyboardSurface(this).also {
             it.controller = controller
@@ -347,7 +351,7 @@ class KeyboardImeService : InputMethodService() {
         val column = KeyboardColumn(this, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.apply {
             addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
             addView(ai, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            addView(s, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val root = OverlayStack(this).apply {
@@ -385,6 +389,7 @@ class KeyboardImeService : InputMethodService() {
             intArrayOf(nav.left, nav.top, nav.right, nav.bottom),
             intArrayOf(cut.left, cut.top, cut.right, cut.bottom),
             imeNavBarHeight(root),
+            root.resources.displayMetrics.density,
         )
         if (column.paddingLeft != p.left || column.paddingRight != p.right || column.paddingBottom != p.bottom) {
             // Posted: changing padding inside a layout pass would be ignored until the next one.
@@ -461,6 +466,7 @@ class KeyboardImeService : InputMethodService() {
             customActionId = info.actionId,
         )
         controller.startField(profile)
+        bar?.closeAi()
         aiToolbar?.onFieldStarted(profile, info.packageName)
     }
 
@@ -489,6 +495,7 @@ class KeyboardImeService : InputMethodService() {
         // Keyboard hidden: the editor keeps the composition as plain text.
         adapter.finishComposition()
         controller.onCompositionAbandoned()
+        bar?.closeAi()
         aiToolbar?.onKeyboardHidden()
         super.onFinishInputView(finishingInput)
     }
@@ -501,8 +508,8 @@ class KeyboardImeService : InputMethodService() {
     }
 
     private fun refreshViews() {
-        // The top bar (mode pill, candidates, settings gear) is always shown so the keyboard keeps
-        // one height; candidates and the DRAFT tag only where the strip applies (phonetic, not passwords).
+        // The one bar (mode pill, AI entry, candidates, settings gear) is always shown so the keyboard
+        // keeps one height; candidates and the DRAFT tag only where the strip applies (phonetic, not passwords).
         strip?.let {
             it.visibility = View.VISIBLE
             val candidates = controller.showCandidateStrip
