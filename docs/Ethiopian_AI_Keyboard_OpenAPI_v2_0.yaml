@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Qal Smart Keyboard API
   version: 2.0.0
-  summary: App API (/api/v1) and partner API (/partner/v1) for the Qal Smart Keyboard.
+  summary: App API (/api/v1) and partner API (/partner/v1) for the Qal Smart Keyboard, plus the interim admin operations (/admin/v1).
   description: |
     Implementation contract for the Qal Smart Keyboard backend (System Design v2.0,
     Architecture Review v2.0). Update this file in the same change as controller/DTO changes.
@@ -75,6 +75,12 @@ tags:
     description: User and organisation terminology enforced in translation and rewriting.
   - name: Partner
     description: Partner/enterprise language API authenticated with API keys.
+  - name: Admin
+    description: |
+      Admin console operations under /admin/v1 (`x-internal`: not for apps or partners). Interim authentication
+      (ADR 0019): an access token of a registered user with an unexpired `user_admin_roles` assignment whose role
+      grants the operation's permission; workforce OIDC with MFA (SD 9.2, 18) replaces it. Off unless the server
+      enables it (every operation is then 404). Every action and every refusal is written to `audit_events`.
 
 paths:
   # ---------------------------------------------------------------- Auth
@@ -3000,6 +3006,288 @@ paths:
               schema: { $ref: '#/components/schemas/PartnerLanguages' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  # ---------------------------------------------------------------- Admin (interim, B3.2)
+  /admin/v1/language-datasets:
+    post:
+      tags: [Admin]
+      operationId: registerLanguageDatasets
+      summary: Register source datasets with their licences (admin)
+      description: |
+        Records the corpora, wordlists and other inputs that packs are built from (`language_datasets`, rule N10).
+        Accepts the `datasets.manifest.json` document written by the pack build as is (unknown members are
+        ignored). Every licence must be on the commercial-use allow-list (`language-data/licenses.json`: unknown
+        codes fail closed, any `-NC` code is refused). New rows get `permittedUses` `[COMMERCIAL]` and review status
+        `PENDING_REVIEW`; an existing code is left unchanged and must carry the same licence (otherwise
+        `PUBLICATION_CONFLICT`). Permission `resources:upload`.
+      x-internal: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterLanguageDatasetsRequest' }
+      responses:
+        '200':
+          description: The datasets as stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LanguageDatasetList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/v1/language-resources:
+    post:
+      tags: [Admin]
+      operationId: uploadLanguageResource
+      summary: Upload a signed language pack (admin)
+      description: |
+        The body is one pack container (`docs/specs/pack-format-v1.md`), at most 33 685 504 bytes by default.
+        It is verified exactly as a device verifies it (size, framing, key, strict Ed25519 signature, manifest,
+        key-id match, size, SHA-256) against `resource_signing_keys`, then checked against the publishing policy:
+        no delta packs yet, signed by an `ACTIVE` key, a catalogue language, a commercial licence on the
+        allow-list, at least one registered commercial dataset (`datasetCode`), for `TRANSLITERATION_RULES` a
+        profile id equal to a backend `profile_code` of the language (ADR 0007 D21), and a version newer than every
+        version of the (language, type, platform) slot that was ever released. A refusal is a `PACK_REJECTED`
+        Problem whose `reason` names the failed check. The accepted pack is stored and listed as `DRAFT`
+        (invisible to clients). Permission `resources:upload`.
+      x-internal: true
+      parameters:
+        - name: datasetCode
+          in: query
+          description: Code of a registered source dataset the pack was built from; repeat for several (1-50).
+          schema:
+            type: array
+            maxItems: 50
+            items: { type: string, pattern: '^[A-Za-z0-9._-]{1,80}$' }
+          style: form
+          explode: true
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201':
+          description: Uploaded as a draft.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLanguageResource' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PackRejected' }
+        '415':
+          description: The body is not `application/octet-stream` (`UNSUPPORTED_MEDIA_TYPE`).
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/PackRejected' }
+  /admin/v1/language-resources/{resourceId}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Admin]
+      operationId: getAdminLanguageResource
+      summary: Get a language resource in any state (admin)
+      description: Permission `languages:read`.
+      x-internal: true
+      responses:
+        '200':
+          description: The resource.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLanguageResource' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/v1/language-resources/{resourceId}/stage:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Admin]
+      operationId: stageLanguageResource
+      summary: Stage a draft on the INTERNAL channel (admin)
+      description: |
+        `DRAFT` to `STAGED`: re-checks the policy, re-signs the pack with the server key with
+        `releaseChannel` `INTERNAL` in its signed manifest, and publishes it on the `INTERNAL` channel at 100 %
+        (visible to internal builds only). A rules pack may use a `DRAFT` or `ACTIVE` profile here. Permission
+        `resources:edit`.
+      x-internal: true
+      responses:
+        '200':
+          description: Staged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLanguageResource' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/PackRejected' }
+  /admin/v1/language-resources/{resourceId}/stable-approval:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Admin]
+      operationId: approveLanguageResourceForStable
+      summary: Approve a staged or beta resource for STABLE (admin, four-eyes)
+      description: |
+        Records the second pair of eyes that publishing to `STABLE` needs (Review D25) as an audit event. The admin
+        who then publishes must be someone else. Permission `resources:approve`.
+      x-internal: true
+      responses:
+        '200':
+          description: Approved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLanguageResource' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/v1/language-resources/{resourceId}/publish:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Admin]
+      operationId: publishLanguageResource
+      summary: Publish a staged resource to BETA or STABLE (admin)
+      description: |
+        `STAGED` or `PUBLISHED` to `PUBLISHED` on `BETA` or `STABLE` with a rollout percentage and an optional
+        minimum app version (default: the current one). The channel never narrows (retire instead). Re-checks the
+        policy (a rules pack needs an `ACTIVE` profile, rule N9), re-signs the pack with the server key for that
+        channel and minimum app version (same resource id, version and artifact, so devices treat it as the same
+        pack) and links the rules pack to its `ACTIVE` profile. `STABLE` needs a prior approval by another admin
+        (`APPROVAL_REQUIRED` otherwise). Repeat the call to change the rollout or to re-sign after a key rotation.
+        Permission `resources:publish`.
+      x-internal: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublishLanguageResourceRequest' }
+      responses:
+        '200':
+          description: Published.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLanguageResource' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/PackRejected' }
+  /admin/v1/language-resources/{resourceId}/retire:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Admin]
+      operationId: retireLanguageResource
+      summary: Retire a draft, staged or published resource (admin)
+      description: Clients stop discovering it; its version still counts for downgrade protection. Permission `resources:publish`.
+      x-internal: true
+      responses:
+        '200':
+          description: Retired.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLanguageResource' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/v1/pack-signer:
+    get:
+      tags: [Admin]
+      operationId: getPackSigner
+      summary: The server's pack signing key (admin)
+      description: Public key only, and whether it is registered in `resource_signing_keys`. Permission `signing_keys:manage`.
+      x-internal: true
+      responses:
+        '200':
+          description: The signing key.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PackSigner' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/v1/resource-signing-keys:
+    post:
+      tags: [Admin]
+      operationId: registerResourceSigningKey
+      summary: Register a resource-signing public key (admin)
+      description: |
+        The server's own key is registered without an endorsement (it is pinned in app builds). Any other key is
+        endorsed by the server key (`docs/specs/pack-format-v1.md` 7.4), which must be registered `ACTIVE`, unless
+        `endorse` is false (a key that may only sign uploads, such as a build pipeline key; devices never trust it).
+        Permission `signing_keys:manage`.
+      x-internal: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterSigningKeyRequest' }
+      responses:
+        '201':
+          description: Registered as `ACTIVE`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSigningKey' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/v1/resource-signing-keys/{keyId}/retire:
+    parameters:
+      - $ref: '#/components/parameters/SigningKeyIdPath'
+    post:
+      tags: [Admin]
+      operationId: retireResourceSigningKey
+      summary: Mark an ACTIVE signing key RETIRING (admin)
+      description: Its packs still verify; it may no longer sign uploads. Permission `signing_keys:manage`.
+      x-internal: true
+      responses:
+        '200':
+          description: Retiring.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSigningKey' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/v1/resource-signing-keys/{keyId}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/SigningKeyIdPath'
+    post:
+      tags: [Admin]
+      operationId: revokeResourceSigningKey
+      summary: Revoke a signing key (admin)
+      description: Never verifies again; discovery stops serving packs it signed until they are re-signed. Permission `signing_keys:manage`.
+      x-internal: true
+      responses:
+        '200':
+          description: Revoked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSigningKey' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3096,6 +3384,11 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    SigningKeyIdPath:
+      name: keyId
+      in: path
+      required: true
+      schema: { type: string, maxLength: 120 }
     LanguageCodePath:
       name: languageCode
       in: path
@@ -3259,6 +3552,28 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    PackRejected:
+      description: |
+        The uploaded or re-checked pack failed verification or the publishing policy (`PACK_REJECTED`; 413 when it
+        is larger than the upload limit). The extension member `reason` (string) names the failed check.
+        Verification (`docs/specs/pack-format-v1.md` section 6): MALFORMED, TOO_LARGE, UNSUPPORTED_FORMAT_VERSION,
+        UNKNOWN_KEY, REVOKED_KEY, BAD_SIGNATURE, INVALID_MANIFEST, UNSUPPORTED_RESOURCE_TYPE, KEY_MISMATCH,
+        SIZE_MISMATCH, CHECKSUM_MISMATCH. Publishing policy: DELTA_NOT_SUPPORTED, KEY_NOT_ACTIVE, UNKNOWN_LANGUAGE,
+        LICENSE_MISSING, LICENSE_UNKNOWN, LICENSE_NOT_COMMERCIAL, DATASET_MISSING, DATASET_UNKNOWN,
+        DATASET_NOT_COMMERCIAL, INVALID_ARTIFACT, PROFILE_UNKNOWN, PROFILE_MISMATCH, PROFILE_NOT_ACTIVE, DOWNGRADE.
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://api.example.com/problems/pack-rejected
+            title: Language pack rejected
+            status: 422
+            code: PACK_REJECTED
+            correlationId: 0b6f2d1e-5c4a-4f3e-9d8c-7b6a5f4e3d2c
+            detail: The pack licence is not on the commercial-use allow-list
+            reason: LICENSE_NOT_COMMERCIAL
     TooManyRequests:
       description: |
         `RATE_LIMITED` (short-term abuse/rate limit; honour `Retry-After`) or `QUOTA_EXCEEDED`
@@ -3479,7 +3794,8 @@ components:
         on 403 `CONSENT_REQUIRED` (the consent to request), `currentRevision` on 409
         `REVISION_CONFLICT` (the revision the client should re-read), `featureCode`, `resetAt`,
         `creditBalance` and `upgradeOptions` on 429 `QUOTA_EXCEEDED`, `attemptsRemaining` (integer)
-        on 401 `OTP_INVALID` for a wrong code of a known challenge.
+        on 401 `OTP_INVALID` for a wrong code of a known challenge, `reason` on 413/422 `PACK_REJECTED`
+        (admin pack publishing).
         `GUEST_SESSION_INVALID` (401, `WWW-Authenticate: Bearer error="invalid_token"`) means the
         guest bearer token's account was merged, upgraded, ended or suspended: discard the guest
         session (do not refresh it) and sign in or create a new guest session.
@@ -3508,7 +3824,7 @@ components:
             ORDER_EXPIRED, PAYMENT_VERIFICATION_FAILED, MANDATE_NOT_SUPPORTED,
             STORE_PURCHASE_INVALID, STORE_PURCHASE_ALREADY_LINKED, SUBSCRIPTION_NOT_RENEWABLE,
             SEAT_UNAVAILABLE, API_KEY_INVALID, API_SCOPE_MISSING, WEBHOOK_SIGNATURE_INVALID,
-            APP_VERSION_UNSUPPORTED, INTERNAL_ERROR.
+            APP_VERSION_UNSUPPORTED, PACK_REJECTED, PUBLICATION_CONFLICT, APPROVAL_REQUIRED, INTERNAL_ERROR.
           pattern: '^[A-Z][A-Z0-9_]*$'
         correlationId: { type: string, maxLength: 100 }
         errors:
@@ -4021,6 +4337,129 @@ components:
         notAfter: { type: string, format: date-time }
         endorsedByKeyId: { type: string }
         endorsementSignature: { type: string }
+
+    # ------------------------------------------------------------ admin (interim, B3.2)
+    AdminLanguageResource:
+      type: object
+      description: |
+        A language resource as the publisher sees it. `state`: `DRAFT` (uploaded and validated, invisible),
+        `STAGED` (published on the `INTERNAL` channel only), `PUBLISHED` (`BETA` or `STABLE`), `RETIRED`, `REVOKED`.
+      required: [id, languageCode, resourceType, version, platform, state, channel, rolloutPercentage, sha256,
+        artifactUri, datasetCodes, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        languageCode: { $ref: '#/components/schemas/LanguageCode' }
+        resourceType: { $ref: '#/components/schemas/ResourceType' }
+        version: { type: string, maxLength: 40 }
+        platform:
+          type: string
+          enum: [SHARED, ANDROID, IOS]
+        state:
+          type: string
+          enum: [DRAFT, STAGED, PUBLISHED, RETIRED, REVOKED]
+        channel: { $ref: '#/components/schemas/ReleaseChannel' }
+        rolloutPercentage: { type: integer, minimum: 0, maximum: 100 }
+        minAppVersion: { type: string, maxLength: 40 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$', description: SHA-256 of the artifact inside the container. }
+        sizeBytes: { type: integer, format: int64, minimum: 0, description: Artifact size. }
+        containerSizeBytes: { type: integer, format: int64, minimum: 0, description: Size of the stored container file. }
+        licenseCode: { type: string, maxLength: 60 }
+        signatureKeyId: { type: string, description: 'Key that signed the stored container (the uploader''s key while DRAFT, the server key once staged).' }
+        artifactUri: { type: string, description: 'Storage location of the current container (`s3://bucket/key`).' }
+        datasetCodes:
+          type: array
+          items: { type: string }
+        releaseNotes: { type: string }
+        publishedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PublishLanguageResourceRequest:
+      type: object
+      required: [channel, rolloutPercentage]
+      properties:
+        channel:
+          type: string
+          enum: [BETA, STABLE]
+        rolloutPercentage: { type: integer, minimum: 0, maximum: 100 }
+        minAppVersion: { type: string, maxLength: 40, description: Semantic version; omitted keeps the current one. }
+        releaseNotes: { type: string, maxLength: 2000 }
+    LanguageDatasetRecord:
+      type: object
+      description: One source dataset; the shape of a `datasets.manifest.json` entry (other members are ignored).
+      required: [datasetCode, licenseCode]
+      properties:
+        datasetCode: { type: string, pattern: '^[A-Za-z0-9._-]{1,80}$' }
+        name: { type: string, maxLength: 200 }
+        languageCode: { type: string, description: 'Catalogue language, or `mul` / absent for multilingual.' }
+        sourceUrl: { type: string }
+        licenseCode: { type: string, maxLength: 60 }
+        licenseUrl: { type: string }
+    RegisterLanguageDatasetsRequest:
+      type: object
+      required: [datasets]
+      properties:
+        datasets:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: '#/components/schemas/LanguageDatasetRecord' }
+    LanguageDataset:
+      type: object
+      required: [datasetCode, licenseCode, reviewStatus, permittedUses, created]
+      properties:
+        datasetCode: { type: string }
+        licenseCode: { type: string }
+        reviewStatus:
+          type: string
+          enum: [PENDING_REVIEW, APPROVED, RESTRICTED, REJECTED]
+        permittedUses:
+          type: array
+          items:
+            type: string
+            enum: [TRAINING, EVALUATION, DICTIONARY, COMMERCIAL, RESEARCH_ONLY]
+        created: { type: boolean, description: False when the code was already registered. }
+    LanguageDatasetList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/LanguageDataset' }
+    PackSigner:
+      type: object
+      required: [keyId, algorithm, publicKey, registered]
+      properties:
+        keyId: { type: string }
+        algorithm:
+          type: string
+          const: Ed25519
+        publicKey: { type: string, description: Base64 raw public key. }
+        registered: { type: boolean, description: True when `resource_signing_keys` holds this key id with the same public key. }
+        status:
+          type: string
+          enum: [ACTIVE, RETIRING, REVOKED]
+    RegisterSigningKeyRequest:
+      type: object
+      required: [keyId, publicKey]
+      properties:
+        keyId: { type: string, pattern: '^[A-Za-z0-9._-]{1,120}$' }
+        publicKey: { type: string, description: Base64 of the raw 32-byte Ed25519 public key. }
+        endorse: { type: boolean, default: true, description: 'Endorse with the server key (ignored for the server''s own key).' }
+    AdminSigningKey:
+      type: object
+      required: [keyId, algorithm, publicKey, status]
+      properties:
+        keyId: { type: string }
+        algorithm:
+          type: string
+          const: Ed25519
+        publicKey: { type: string, description: Base64 raw public key. }
+        status:
+          type: string
+          enum: [ACTIVE, RETIRING, REVOKED]
+        validFrom: { type: string, format: date-time }
+        endorsedByKeyId: { type: string }
+        endorsementSignature: { type: string, description: 'Base64 Ed25519 signature over the endorsement message of `docs/specs/pack-format-v1.md` 7.4.' }
 
     # ------------------------------------------------------------ preferences
     Formality:

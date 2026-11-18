@@ -1,6 +1,6 @@
 # android/app
 
-Application module (Compose companion UI). Assembles ime, data, billing-* libraries; play/direct flavours. Plan steps A1.1, A1.7, A2.x.
+Application module (Compose companion UI). Assembles ime, data, billing-* libraries; play/direct flavours. Plan steps A1.1, A1.7, A2.x. Depends on `:sync` (A2.4).
 
 ## Onboarding (A1.7, package `onboarding`)
 First launch shows a six-step flow (the account step is optional, A2.2); the result ("completed or skipped") is stored by `:data`
@@ -113,3 +113,14 @@ OTP/Google upgrade and merge, stale guest token retry, sign-out on `REFRESH_TOKE
 Robolectric). **Needs a device or emulator later:** the Credential Manager account chooser and a real Google ID token, a real Play
 Integrity token, the Android Keystore itself on real hardware (StrongBox/TEE behaviour, key loss after restore), SMS delivery, and
 a visual check of the screens.
+
+## Sync (A2.4, package `sync`; the engine is `android/sync/README.md`)
+| File | Role |
+|---|---|
+| `SyncGraph.kt` | Process singleton: `SyncEngine` over the shared API client, `SettingsRepository` and the process-wide `UserDictionary` (through `UserDictionaryPort`; remote words are explicit adds, ADR 0007 D18). State and destination profiles are encrypted under `noBackupFilesDir/sync` with their own Keystore alias `qal.sync.v1`. |
+| `SyncScheduler.kt`, `SyncWorker.kt` | WorkManager: periodic every 12 h on an unmetered network; `requestSoon` (unique, REPLACE with a 5 s initial delay = debounce) on any connected network for the event-driven runs. The worker loads the dictionary off the main thread, tells the engine whether the account is a guest and retries (at most 3) only transient failures. |
+| `DictionarySyncSection.kt` | Settings card with the `DICTIONARY_SYNC` switch (`PUT /me/consents/DICTIONARY_SYNC`, surface `settings`); registered accounts only (guests see why it is off); adopts the server's decision on a new device. |
+
+Triggers (`MainActivity`): app start and every session change to signed-in (first emission), a sign-in finishing (also guest -> account: the rule key may change, `SyncEngine.signedIn()`), a change of
+languages/numerals/theme/haptics (2 s debounce, then the worker's 5 s), and the periodic job. A transition from signed-in to signed-out wipes the account's sync state and local profiles/rules (`accountChanged()`).
+The destination-profile/app-rule editor is deferred (see `android/sync/README.md`).

@@ -87,4 +87,6 @@ data class UpdateReport(
     val failures: List<Failure> = emptyList(),
     /** True when a later retry (backoff) may succeed: a network or server problem. */
     val retryable: Boolean = false,
+    /** D34: installed packs moved to quarantine in this run because their signing key was revoked (file names). */
+    val quarantined: List<String> = emptyList(),
 )

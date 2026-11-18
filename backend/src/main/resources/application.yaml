@@ -61,6 +61,25 @@ qal:
       secret-key: ${QAL_PACKS_S3_SECRET_KEY:}
       url-ttl: ${QAL_PACKS_S3_URL_TTL:15m}
       path-style: ${QAL_PACKS_S3_PATH_STYLE:true}
+    # Admin pack publishing (B3.2, ADR 0019). The server re-signs staged/published packs with this Ed25519 key (32-byte
+    # seed, base64 or hex; a KMS signer replaces it later). Without it staging and publishing fail; an ephemeral key is
+    # refused under prod/production/staging. Uploads and re-signed packs are written with the separate write credential.
+    publishing:
+      max-container-bytes: ${QAL_PACKS_MAX_UPLOAD_BYTES:33685504}
+      license-allow-list: ${QAL_LICENSE_ALLOW_LIST:}
+      signing:
+        provider: ${QAL_PACK_SIGNING_PROVIDER:local}
+        key-id: ${QAL_PACK_SIGNING_KEY_ID:}
+        private-key: ${QAL_PACK_SIGNING_PRIVATE_KEY:}
+        kms-key-name: ${QAL_PACK_SIGNING_KMS_KEY_NAME:}
+      storage:
+        endpoint: ${QAL_PACKS_S3_WRITE_ENDPOINT:}
+        access-key: ${QAL_PACKS_S3_WRITE_ACCESS_KEY:}
+        secret-key: ${QAL_PACKS_S3_WRITE_SECRET_KEY:}
+  # Admin API /admin/v1 (B3.2, ADR 0019): interim, app access tokens + admin_roles until workforce OIDC with MFA exists.
+  # Off by default (every admin operation answers 404).
+  admin:
+    enabled: ${QAL_ADMIN_ENABLED:false}
   # Account deletion (B6.2, ADR 0015): cancellable grace period (SD 19.4: 14 days) and the executor's db-scheduler task.
   privacy:
     deletion:

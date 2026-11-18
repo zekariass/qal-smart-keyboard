@@ -27,3 +27,8 @@ qal:
   ai:
     mock:
       enabled: true
+  # B3.2: re-sign staged/published packs with a random per-JVM key (register it via POST /admin/v1/resource-signing-keys).
+  languages:
+    publishing:
+      signing:
+        allow-ephemeral: true

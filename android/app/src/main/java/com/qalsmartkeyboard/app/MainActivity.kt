@@ -43,6 +43,10 @@ import com.qalsmartkeyboard.app.auth.UpdateRequiredScreen
 import com.qalsmartkeyboard.app.auth.openStorePage
 import com.qalsmartkeyboard.app.onboarding.ImeStatusReader
 import com.qalsmartkeyboard.app.packs.PackUpdateScheduler
+import com.qalsmartkeyboard.app.sync.DictionarySyncSection
+import com.qalsmartkeyboard.app.sync.SyncGraph
+import com.qalsmartkeyboard.app.sync.SyncScheduler
+import com.qalsmartkeyboard.api.SessionState
 import com.qalsmartkeyboard.app.onboarding.OnboardingScreen
 import com.qalsmartkeyboard.app.onboarding.OnboardingViewModel
 import com.qalsmartkeyboard.app.ui.theme.QalSmartKeyboardTheme
@@ -50,10 +54,16 @@ import com.qalsmartkeyboard.core.CoreSmoke
 import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.data.ThemeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
+@OptIn(FlowPreview::class)
 class MainActivity : ComponentActivity() {
     private val repository by lazy { SettingsRepository.get(applicationContext) }
 
@@ -77,6 +87,31 @@ class MainActivity : ComponentActivity() {
             repository.settings.map { it.packUpdatesOnMobileData }.distinctUntilChanged().collect { allow ->
                 PackUpdateScheduler.schedule(applicationContext, allow, replaceNow = !first)
                 first = false
+            }
+        }
+        // A2.4: sync triggers. Periodic (unmetered); app start and a settings change (debounced); sign-in;
+        // sign-out forgets the account's sync state. All network work is in SyncWorker, never here.
+        SyncScheduler.schedulePeriodic(applicationContext)
+        lifecycleScope.launch {
+            repository.settings.map { listOf(it.languages, it.numeralStyle, it.theme, it.hapticsEnabled) }
+                .distinctUntilChanged().debounce(SETTINGS_DEBOUNCE_MS).collect { SyncScheduler.requestSoon(applicationContext) }
+        }
+        lifecycleScope.launch {
+            var previous: SessionState? = null
+            graph.session.state.collect { s ->
+                if (s is SessionState.SignedIn) {
+                    SyncScheduler.requestSoon(applicationContext)
+                } else if (previous is SessionState.SignedIn) {
+                    withContext(Dispatchers.IO) { SyncGraph.get(applicationContext).engine.accountChanged() }
+                }
+                previous = s
+            }
+        }
+        lifecycleScope.launch {
+            // Sign-in finished (also guest -> account, which keeps the session state SignedIn).
+            signIn.state.map { it.step == SignInStep.DONE }.distinctUntilChanged().filter { it }.collect {
+                withContext(Dispatchers.IO) { SyncGraph.get(applicationContext).engine.signedIn() }
+                SyncScheduler.requestSoon(applicationContext)
             }
         }
         setContent {
@@ -160,6 +195,8 @@ class MainActivity : ComponentActivity() {
                             SettingsScreen(settings, repository, onRunSetup = {
                                 onboarding.restart()
                                 rerun = true
+                            }, syncContent = {
+                                DictionarySyncSection(accountStatus)
                             }, accountContent = {
                                 AccountSection(
                                     status = accountStatus,
@@ -172,6 +209,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private companion object {
+        const val SETTINGS_DEBOUNCE_MS = 2_000L
     }
 
     override fun onResume() {

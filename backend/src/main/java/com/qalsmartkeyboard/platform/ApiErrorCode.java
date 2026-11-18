@@ -69,6 +69,9 @@ public enum ApiErrorCode {
 	API_SCOPE_MISSING(HttpStatus.FORBIDDEN, "API key scope missing"),
 	WEBHOOK_SIGNATURE_INVALID(HttpStatus.UNAUTHORIZED, "Webhook signature invalid"),
 	APP_VERSION_UNSUPPORTED(HttpStatus.UPGRADE_REQUIRED, "App version is no longer supported"),
+	PACK_REJECTED(HttpStatus.UNPROCESSABLE_CONTENT, "Language pack rejected"),
+	PUBLICATION_CONFLICT(HttpStatus.CONFLICT, "Publication state conflict"),
+	APPROVAL_REQUIRED(HttpStatus.FORBIDDEN, "A second admin must approve this action"),
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
 
 	private final HttpStatus defaultStatus;
