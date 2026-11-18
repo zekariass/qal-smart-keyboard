@@ -23,3 +23,7 @@ qal:
   notifications:
     sms:
       provider: log
+  # B4.2: the reservation expiry sweeper (a db-scheduler task) is off in tests; UsageSweeperSchedulerIT turns it on and
+  # the metering ITs call the sweep directly.
+  usage:
+    sweeper-enabled: false

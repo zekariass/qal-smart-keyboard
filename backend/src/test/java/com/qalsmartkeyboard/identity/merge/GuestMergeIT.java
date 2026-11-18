@@ -452,11 +452,16 @@ class GuestMergeIT {
 		consent(g, "ANALYTICS", false, now.minusSeconds(60));
 		consent(t, "MARKETING", false, now.minusSeconds(600));
 		consent(g, "MARKETING", true, now.minusSeconds(60));
-		// usage: TRANSLATE today 3 (guest) + 2 (target); GRAMMAR 1 used + 1 reserved on the guest only
+		// usage: TRANSLATE today 3 (guest) + 2 (target); GRAMMAR 1 used + 1 reserved on the guest only. The target's
+		// counter is its real FREE DAILY window (its time zone, Africa/Addis_Ababa); the guest's window differs from it
+		// (B4.2: the carry-over lands in the window the metering engine computes for the target)
 		jdbc.update("""
 				INSERT INTO usage_counters (subject_type, user_id, feature_code, period_start, period_end, used_units)
 				VALUES ('USER', ?, 'TRANSLATE', now() - interval '1 hour', now() + interval '23 hours', 3),
-				       ('USER', ?, 'TRANSLATE', now() - interval '2 hours', now() + interval '22 hours', 2)
+				       ('USER', ?, 'TRANSLATE',
+				        date_trunc('day', now() AT TIME ZONE 'Africa/Addis_Ababa') AT TIME ZONE 'Africa/Addis_Ababa',
+				        (date_trunc('day', now() AT TIME ZONE 'Africa/Addis_Ababa') + interval '1 day')
+				            AT TIME ZONE 'Africa/Addis_Ababa', 2)
 				""", g, t);
 		jdbc.update("""
 				INSERT INTO usage_counters (subject_type, user_id, feature_code, period_start, period_end, used_units,

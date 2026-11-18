@@ -73,6 +73,9 @@ void activate(...) {
   Writes through the Spring-managed transaction are therefore applied once per event id. External side effects must use `event.id()` as an
   idempotency key. Keep `consumerName` stable. `processed_events` purge belongs to B6.3.
 - Config (`qal.outbox.*`): `dispatcher-enabled` (true), `poll-interval` (1s), `batch-size` (20), `lease` (60s; must exceed handler time), `base-backoff` (5s), `max-backoff` (1h).
+- **Shared scheduler (B4.2):** any module can run a recurring job on the same db-scheduler instance by declaring a
+  db-scheduler `RecurringTask` bean (one instance at a time across the cluster; the job itself must still be idempotent).
+  `dispatcher-enabled=false` only leaves the outbox task out; `poll-interval` is the scheduler's polling interval.
 - Metrics: `qal.outbox.attempts{outcome=published|failed|dead|lease_reclaimed}`, `qal.outbox.duplicates.skipped`, gauges `qal.outbox.pending`, `qal.outbox.dead`.
   Logs carry event id and type only.
 - Schema: `V2__outbox_scheduler.sql` adds db-scheduler's `scheduled_tasks` and `processed_events`.
@@ -367,8 +370,8 @@ is linked. Code: `identity.merge.GuestMergeService`; module rules: `identity.Gue
   history, dictionary, term-suggestion attribution, current usage counters, glossaries), re-encrypting ciphertext for
   the target (`UserDataEncryption.reencrypt`/`reencryptRow`), target wins on conflicts; unspent nonces burned; guest
   sessions revoked (`ACCOUNT_MERGED`); guest `MERGED` with `merged_into_user_id`; guest keys crypto-shredded; then the target's session. Per-table rules: ADR 0010.
-- **Quota:** the guest's consumption in current windows (`used + reserved`) is added to the target's current counter of
-  the same feature, so signing in never resets an allowance.
+- **Quota:** the guest's consumption in current windows (`used + reserved`) is added to the target's counter of the same
+  feature for the window the metering engine computes for the target (B4.2), so signing in never resets an allowance.
 - **Exactly once:** the guest row is locked (`FOR NO KEY UPDATE`); a concurrent or replayed sign-in with the same guest
   token gets the 401 above. Guest access tokens are checked against `users` on every request (one indexed read), so a
   merged or upgraded guest's tokens stop working at once (registered tokens stay stateless, 15 min window).
@@ -384,7 +387,8 @@ is linked. Code: `identity.merge.GuestMergeService`; module rules: `identity.Gue
 ## Entitlements: resolver (B4.1, SD 15)
 
 Module `entitlements`: `EntitlementResolver.resolve(userId)` / `resolve(userId, at)` returns `ResolvedEntitlements`: the
-effective plan (`EffectivePlan`: plan, rank, `PlanSource`, subscription or organisation id, `effectiveUntil`, grace flag)
+effective plan (`EffectivePlan`: plan, rank, `PlanSource`, subscription or organisation id, `effectiveUntil`, grace flag,
+`periodStart` = the paid period start that anchors MONTHLY usage windows)
 and one `FeatureEntitlement` per active `feature_catalog` feature (`accessEnabled`, `includedUnits`, `unit`,
 `resetPeriod`, `creditCostPerUnit`, `creditsUsable`, `origin`). No HTTP yet: metering (B4.2), the token (B4.4) and
 `/me/entitlements` (B4.5) call this API. It reads the tables through its own package-private JDBC adapter (billing and
@@ -422,6 +426,62 @@ organisations have no Java API yet).
   `PlanSource.contractValue()` (STORE_PURCHASE and PARTNER map to SUBSCRIPTION).
 - **Tests:** `EntitlementSeedMatrixTest` (5 plans x 24 features read from `V1__baseline.sql`), `EntitlementResolverTest`
   (precedence, edges, grace, accounts, overrides, cache), `EntitlementResolverIT` (real seed and source tables).
+
+## Usage: metering engine (B4.2, ADR 0011, SD 15.3)
+
+Module `usage`, API `Metering` (implemented by the package-private `JdbcMetering`):
+
+```java
+Reservation r = metering.reserve(userId, "TRANSLATE", 1, idempotencyKey); // 429 QuotaExceededException, 403 FEATURE_NOT_ENTITLED
+try {
+    ... provider call, outside any transaction ...
+    Settlement s = metering.settle(r.id(), actualUnits);                   // -> UsageSummary / ai_requests
+} catch (RuntimeException e) {
+    metering.release(r.id(), ReleaseReason.FAILED);                       // SD 11.1: no charge on failure
+}
+```
+
+- **Reserve** (one short transaction): resolve the entitlement (B4.1); unknown/unmetered features (typing,
+  `DETECT_LANGUAGE`, boolean features) are `IllegalArgumentException`, no access is 403 `FEATURE_NOT_ENTITLED`. Compute the
+  window, upsert + `SELECT ... FOR UPDATE` its `usage_counters` row, take `min(estimate, included - used - reserved)` from
+  the allowance and the rest from credits (`units x credit_cost_per_unit`, `BigDecimal`, 6 dp) when `creditsUsable`,
+  else 429 `QUOTA_EXCEEDED` (`QuotaExceededException`: `featureCode`, `resetAt` = window end (absent for NONE),
+  `creditBalance` rounded down, `upgradeOptions` from ACTIVE `billing_products`: higher-rank sellable plans with access to
+  the feature and credit packs; none for guests; empty while all products are DRAFT). All or nothing. Writes a
+  `usage_reservations` row (V9), bumps `reserved_units` with a conditional UPDATE that re-checks the limit, appends a
+  `usage_events` RESERVE (UUIDv7, `expires_at` = now + `qal.usage.reservation-ttl`, 15m).
+- **No overspend:** the counter row lock serialises every reserve of one user/feature/window; the UPDATE's `WHERE` is a
+  second guard; credits go through the `CreditWallet` port (all-or-nothing hold in the same transaction). Lock order:
+  reservation, counter, wallet. Proven by `MeteringIT` (40 parallel reserves vs 10/day: exactly 10; seconds; credits).
+- **Settle** (`actualUnits`): up to the reservation, allowance first (unused credits go back first); above it
+  (over-settle) the free room of the window, then credits; anything neither covers is `uncoveredUnits`, **not charged**
+  (allowances and credits are never overdrawn; log + `qal.usage.settlements.uncovered`). `0` = release `NOTHING_USED`.
+  A split request reports `usageSource = AI_CREDITS` (V1 `ck_ai_request_credits_source`). Appends SETTLE (units charged).
+- **Release** gives the allowance units and held credits back and appends RELEASE. Settle-after-release and settle with
+  other units throw `ReservationClosedException`; release-after-settle is a no-op (`replayed`).
+- **Idempotency:** `(user, Idempotency-Key)` is unique (`usage_reservations`, like `ux_usage_events_idempotency`). The same
+  key returns the original reservation (`replayed = true`, current status: RESERVED = in flight, B5.4 answers
+  `REQUEST_IN_PROGRESS`); another feature or estimate is 409 `IDEMPOTENCY_KEY_REUSED`; a refused reserve stores nothing.
+  Settle/release replays return the original outcome.
+- **Windows** (`UsageWindows`, pure): user time zone `users.time_zone` (V1 default `Africa/Addis_Ababa`; invalid id ->
+  `qal.usage.default-time-zone`). DAILY = local calendar day (23/25 h on DST days; a missing midnight starts at the first
+  valid local time). MONTHLY = calendar month for the DEFAULT plan (FREE/GUEST), else anchored to the paid period start
+  (`EffectivePlan.periodStart`): `[anchor + k months, anchor + k + 1 months)` computed from the anchor (31st -> 28th/29th
+  -> 31st, local time kept across DST). WEEKLY (ISO week) and YEARLY are supported; NONE = lifetime (no `resetAt`).
+- **Expiry sweep:** db-scheduler task `usage-reservation-sweeper` (`qal.usage.sweep-interval` 1m,
+  `qal.usage.sweep-batch-size` 100, `qal.usage.sweeper-enabled`) releases RESERVED rows past `expires_at` with reason
+  `EXPIRED`, one transaction per row with `FOR UPDATE SKIP LOCKED`: idempotent, safe next to a concurrent settle.
+- **Credits port:** `CreditWallet` (`balance`, `hold`, `settle(held, charged)`), joins the engine's transaction. Until B4.3
+  the bean is `NoCreditWallet` (always empty: nothing is paid with credits). B4.3 replaces the bean.
+- **Guest merge** (`UsageGuestMerge`, ADR 0010): the guest's current `used + reserved` goes into the counter of the
+  window the engine computes for the *target* now, so a guest window that overlaps but differs from the target's (other
+  zone, DAILY vs anchored MONTHLY) is neither lost nor counted twice.
+- **Metrics:** `qal.usage.reservations{outcome}`, `qal.usage.settlements{source}`, `qal.usage.releases{reason}`. Logs carry
+  ids, feature codes and unit counts only.
+- **Tests:** `UsageWindowsTest`, `QuotaExceededExceptionTest`, `MeteringIT` (PG18: concurrency, credits, fractional
+  credits, settle/over-settle/release, idempotency, sweep with a locked row, DST/midnight/month-end windows, upgrade
+  options, DB guards, guest carry-over), `UsageSweeperSchedulerIT` (the scheduled task end to end). Tests switch the
+  sweeper off globally (`src/test/resources/config/application.yaml`).
 
 ## Security chain (B2.4, OI-P11)
 

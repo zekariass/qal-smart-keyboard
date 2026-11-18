@@ -172,7 +172,8 @@ public class EntitlementResolver {
 
 		EffectivePlan plan = new EffectivePlan(winner.row().plan().id(), winner.row().plan().code(),
 				winner.row().plan().displayName(), winner.row().plan().rank(), winner.row().source(),
-				winner.row().subscriptionId(), winner.row().organizationId(), winner.until(), winner.grace());
+				winner.row().subscriptionId(), winner.row().organizationId(), winner.until(), winner.grace(),
+				winner.row().start());
 
 		Map<String, PlanFeature> planRows = new HashMap<>();
 		for (PlanFeature f : data.planFeatures(plan.planId(), version)) {
