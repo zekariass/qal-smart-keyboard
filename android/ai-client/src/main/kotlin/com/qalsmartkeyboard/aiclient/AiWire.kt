@@ -32,7 +32,7 @@ internal object AiWire {
      * about what the user wrote). `Idempotency-Key` is [AiRequest.requestId]: the same value on a
      * retry after a network error lets the server replay. User text only goes in the body.
      */
-    fun request(baseUrl: String, r: AiRequest): Request {
+    fun request(baseUrl: String, r: AiRequest, saveToHistory: Boolean = false): Request {
         val (path, body) = when (val t = r.task) {
             is AiTask.Translate -> "/ai/translate" to buildJsonObject {
                 put("text", r.text)
@@ -60,11 +60,13 @@ internal object AiWire {
                 putJsonObject("options") { if (tone == null) put("mode", "NATURAL") else put("tone", tone.name) }
             }
         }
+        // Sent only when the user turned history on (A2.6); the server still needs the preference, the consent and the plan.
+        val sent = if (saveToHistory) JsonObject(body + ("saveToHistory" to JsonPrimitive(true))) else body
         return Request.Builder()
             .url(baseUrl.trimEnd('/') + "/api/v1" + path)
             .header("Accept", "application/json")
             .header("Idempotency-Key", r.requestId)
-            .post(Json.encodeToString(JsonObject.serializer(), body).toRequestBody(JSON))
+            .post(Json.encodeToString(JsonObject.serializer(), sent).toRequestBody(JSON))
             .build()
     }
 

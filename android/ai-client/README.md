@@ -5,7 +5,9 @@ OkHttp stack (bearer, client headers with `X-Client-Surface: KEYBOARD`, refresh 
 8 s client timeout. `:app` wires it (`AiGraph`, `QalApplication`).
 
 - `POST /ai/translate`, `POST /ai/transform` (GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST); `Idempotency-Key` = the
-  request id; source language left to server detection. Errors map to `AiFailure` by Problem `code`
+  request id; source language left to server detection. `saveToHistory: true` is added only while the `saveToHistory`
+  supplier of `ServerAiActions` returns true (A2.6: the person turned AI history on; default never, the member is then absent).
+  Errors map to `AiFailure` by Problem `code`
   (`QUOTA_EXCEEDED` with `resetAt`/`upgradeOptions`, `FEATURE_NOT_ENTITLED`, `ON_DEVICE_ONLY_PREFERRED`,
   `CONSENT_REQUIRED`, `OUTPUT_GUARDRAIL_FAILED`, `REQUEST_IN_PROGRESS`, 426, sign-in codes, ...).
 - Offline: no call is made (`AndroidConnectivity`, needs ACCESS_NETWORK_STATE, merged into `:app`).

@@ -56,6 +56,8 @@ class ServerAiActions(
     private val updateRequired: () -> Boolean,
     private val background: Executor = Executors.newSingleThreadExecutor { r -> Thread(r, "qal-ai-refresh").apply { isDaemon = true } },
     private val lastDestinations: LastDestinationStore? = null,
+    /** True only while the user has history turned on (A2.6); read per request, must not block. Default: never. */
+    private val saveToHistory: () -> Boolean = { false },
 ) : AiActions {
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     @Volatile private var snapshot: Pair<List<DestinationProfile>, List<AppRule>> = emptyList<DestinationProfile>() to emptyList()
@@ -115,7 +117,7 @@ class ServerAiActions(
             onOutcome(AiOutcome.Failure(AiFailure.Offline))
             return AiCall { }
         }
-        val call = aiClient.newCall(AiWire.request(baseUrl, request))
+        val call = aiClient.newCall(AiWire.request(baseUrl, request, saveToHistory()))
         // OkHttp also marks a call cancelled when its call timeout fires, so only the user's cancel is silent.
         val userCancelled = java.util.concurrent.atomic.AtomicBoolean(false)
         call.enqueue(object : Callback {

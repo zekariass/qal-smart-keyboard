@@ -119,7 +119,7 @@ a visual check of the screens.
 |---|---|
 | `SyncGraph.kt` | Process singleton: `SyncEngine` over the shared API client, `SettingsRepository` and the process-wide `UserDictionary` (through `UserDictionaryPort`; remote words are explicit adds, ADR 0007 D18). State and destination profiles are encrypted under `noBackupFilesDir/sync` with their own Keystore alias `qal.sync.v1`. |
 | `SyncScheduler.kt`, `SyncWorker.kt` | WorkManager: periodic every 12 h on an unmetered network; `requestSoon` (unique, REPLACE with a 5 s initial delay = debounce) on any connected network for the event-driven runs. The worker loads the dictionary off the main thread, tells the engine whether the account is a guest and retries (at most 3) only transient failures. |
-| `DictionarySyncSection.kt` | Settings card with the `DICTIONARY_SYNC` switch (`PUT /me/consents/DICTIONARY_SYNC`, surface `settings`); registered accounts only (guests see why it is off); adopts the server's decision on a new device. |
+| `DictionarySyncSection.kt` | Card with the `DICTIONARY_SYNC` switch (`PUT /me/consents/DICTIONARY_SYNC`, surface `settings`); registered accounts only (guests see why it is off); adopts the server's decision on a new device. Since A2.6 it is embedded in the consents screen (the one place for consents) instead of the settings list. |
 
 Triggers (`MainActivity`): app start and every session change to signed-in (first emission), a sign-in finishing (also guest -> account: the rule key may change, `SyncEngine.signedIn()`), a change of
 languages/numerals/theme/haptics (2 s debounce, then the worker's 5 s), and the periodic job. A transition from signed-in to signed-out wipes the account's sync state and local profiles/rules (`accountChanged()`).
@@ -132,7 +132,7 @@ The keyboard's toolbar link buttons start the launcher activity with `EXTRA_OPEN
 | `AiLink` | Action |
 |---|---|
 | `SIGN_IN` | the sign-in pane (settings when already signed in with an account) |
-| `AI_SETTINGS` | the settings screen |
+| `AI_SETTINGS` | the privacy dashboard (A2.6: consents, AI history, export, deletion; where a `CONSENT_REQUIRED` failure leads) |
 | `UPGRADE` | `PlansScreen`, a **placeholder** (text and Back) until the billing/plans UI exists |
 | `UPDATE_APP` | the store page (`openStorePage`), also during first-run setup |
 
@@ -143,3 +143,71 @@ Plan state and the entitlement token also refresh from `SyncWorker` (`AiGraph.ac
 run; throttled and a no-op when signed out), so the keyboard never needs to fetch them when it appears. `AiGraph`
 passes a `LastDestinationStore` (device-local last destination per app, see `android/ai-client/README.md`).
 Tests: `link/DeepLinksTest`.
+
+## Privacy dashboard, consents, history, export, deletion (A2.6, package `privacy`)
+Entry: the "Privacy" card in settings (`PrivacyEntryCard`) and the deep link `AI_SETTINGS` (`DeepLinkAction.SHOW_PRIVACY`). Screens
+(`PrivacyRoute`, hosted by `PrivacyHost`; Back always returns to the dashboard, the dashboard closes the area): **dashboard**
+(what stays on the device, what is sent and when, states of AI processing / history / dictionary sync / analytics, links, pending
+deletion banner), **consents** (all 12 codes of SD 19.3), **consent history**, **AI history**, **export**, **delete account**.
+Guests and accounts reach all of them (guests: dictionary sync is "needs an account", the rest as for accounts); a signed-out
+device sees the on-device facts and a sign-in button, and nothing calls the server.
+
+| File | Role |
+|---|---|
+| `PrivacyApi.kt` | The calls (hand-written JSON over `:sync`'s `SyncHttp`, so unknown members of the preferences document survive a PUT) and their models. |
+| `ConsentCatalog.kt`, `ConsentsModel.kt` | Texts and kinds per code; latest state, grant/withdraw, paged decision history. |
+| `HistoryModel.kt` | Enable/disable, retention, plan warning, list/favourite/delete/delete all; the device-local `HistoryFlag`. |
+| `ExportModel.kt` | Request, poll, stream the archive into a caller-supplied output stream. |
+| `DeletionModel.kt` | Confirmation word, request, pending state, cancel, and the `LocalWipe` port. |
+| `PrivacyMessage.kt` | Failure causes the screens word (never a server title). |
+| `PrivacyGraph.kt`, `PrivacyViewModel.kt`, `PrivacyHost.kt`, `PrivacyScreens.kt` | Wiring (process singleton), view model (survives rotation), navigation + document picker, Compose screens. |
+
+**Consents** (`GET /me/consents`, `PUT /me/consents/{code}` with `consentVersion` `"1"` and `details.surface = settings`, history from
+`GET /me/consents/history`, oldest first, 20 per page). Granting is one tap; withdrawing asks first and shows what it does (text per
+code in `ConsentCatalog`; for `FEEDBACK_TEXT` that stored comments are deleted, ADR 0007 D41; for `SAVE_AI_HISTORY` a link to the
+saved items). `TERMS_ACCEPTANCE` and `PRIVACY_NOTICE` are shown as accepted and required, with a link to the text and no switch; a
+withdrawal that reaches the server anyway is 422 `CONSENT_NOT_REVOCABLE` and shown as "cannot be withdrawn, delete your account".
+`DICTIONARY_SYNC` is the A2.4 card embedded in the list (it owns the local sync flag), not a second switch. `PAYMENT_MANDATE` is
+read-only here (it belongs to the payment flow, where withdrawing cancels the mandate). Withdrawing `SAVE_AI_HISTORY` also turns the
+local history flag off and, best effort, the server preference.
+
+**AI history** (B5.7, D41). Enable = `PUT /me/consents/SAVE_AI_HISTORY` (only if not already granted), then the preference
+(`historyEnabled` + `historyRetentionDays` in the full-replace `/me/preferences` document: other members carried through, `updatedAt`
+dropped, 409 `REVISION_CONFLICT` re-read and resent up to 3 times), then the local flag. Disable = preference off first, then the consent
+withdrawn, so one switch stands for both. Retention 1 to 365 days (presets 7/30/90/365 and a field; saved even while history is off).
+**Plan warning:** `GET /me/entitlements` feature `HISTORY_SYNC` with `accessEnabled=false` shows a warning banner while history is on
+and a "Turn on anyway / See plans" dialog when turning it on; an unreadable plan (403 `DELETION_PENDING`, offline) shows no warning.
+The list (`GET /me/history`, 20 per page, works whatever the setting), favourite (`PATCH`), delete one, delete all (confirmation,
+`DELETE /me/history`).
+**Toolbar:** `ServerAiActions` takes `saveToHistory: () -> Boolean` (default never) and adds `"saveToHistory": true` to translate and
+transform bodies only while it returns true. `AiGraph` passes the `HistoryFlag` (`SharedPreferences` `qal_privacy`, one boolean), which
+means "preference on and consent granted" as last seen on this device; it is refreshed at sign-in, on the dashboard and on the history
+screen, and cleared on sign-out. The server still needs the entitlement too.
+
+**Export** (B6.1, D42). `POST /me/data-exports` (`format` JSON), then `GET /me/data-exports/{id}` every 3 s (10 s after a minute, 120 reads
+at most per visit); the id of the last export is remembered (`qal_privacy` prefs) so leaving the screen loses nothing. Asking while one
+runs returns that export ("already being prepared"). 429 shows when to retry (`Retry-After`) and disables the button until then. When
+`READY` the screen shows the 7-day expiry and "Save to…": `ActivityResultContracts.CreateDocument("application/json")` (name
+`qal-data-export-<day>.json`, no storage permission), then `GET .../archive` is streamed with the bearer token straight into the chosen
+document (nothing is kept by the app; a write failure is "could not be saved there" and the half-written document is deleted; a 404
+re-reads the status and shows "expired"). The screen warns that the saved file is plain JSON.
+
+**Delete account** (B6.2). Explains what is deleted, the 14-day window and that AI stops at once, and offers the export first. The person
+types `DELETE` (checked by the screen and by `DeletionModel`), then `POST /me/deletion-request` `{confirm: true}`. **Registered account:**
+right after the server accepts, `LocalWipe` signs this device out (best-effort logout, tokens and account kind deleted) and wipes the
+cached account data (`SyncEngine.accountChanged()`: sync state, synced profiles and rules; the history flag; the remembered export).
+The screen then says when the deletion happens and how to cancel: sign in again with the same phone number or Google account (the
+server lets sign-in through during the window), then Privacy, Delete my account. **Guest:** the session stays (a guest cannot sign in
+again to cancel) and the same cached data is wiped. Typing, languages, language packs, the personal dictionary and keyboard settings
+are never touched. When signed in with a pending request the dashboard shows a banner and the delete screen shows the date, store
+subscriptions still to cancel in the store, and "Cancel deletion" (`DELETE /me/deletion-request`; 409 once the purge started: "can no
+longer be cancelled").
+
+Nothing in this package logs; consent details, history text and export contents only live in screen state or the chosen document.
+Tests (`app/src/test/.../privacy`): `ConsentsModelTest`, `HistoryModelTest`, `ExportModelTest`, `DeletionModelTest` (real `:api` client
+and `MockWebServer`; the document is a `ByteArrayOutputStream`), `PrivacyScreensTest` (Compose on Robolectric), plus
+`ServerAiActionsTest.saveToHistoryIsSentOnlyWhileHistoryIsOn` and the `AI_SETTINGS` route in `DeepLinksTest`. **Needs a device:** the
+system document picker and a provider writing the file, a visual check of every screen (large text, rotation), the real
+`SharedPreferences` flag read by the keyboard, sign-out and wipe on real Keystore files, polling while the app is backgrounded, and an
+end-to-end run against the backend (history actually saved after enabling, the export archive opened, deletion and cancel after a second
+sign-in). Placeholders: `terms_url` and `privacy_notice_url` in `strings.xml`.
