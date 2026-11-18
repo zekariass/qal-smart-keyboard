@@ -47,6 +47,18 @@ content, nor put it in error messages. Tests use synthetic text only.
   payload does not parse (A1.6) is still activated (it counts for rollback protection) and returned with
   `payload_usable: false`, but never replaces a working model: the language keeps its last good lexicon
   and bigrams (without one, no lexicon candidates). Hosts should treat it as corrupt.
+- User overlay (A1.8), per language: `import_user_data(language_code, dictionary, bigrams) ->
+  Result<(), CoreError>` (the host's stored `Lexicon::export_user_dictionary` / `Ranker::export_user_bigrams`
+  bytes; either may be empty; validated first, so a bad payload changes nothing and returns
+  `InvalidState`), `add_user_word(language_code, word) -> bool`, `learn_user_word(language_code, word,
+  previous: Option<String>) -> bool` (counts one use and, with `previous`, the word pair),
+  `forget_user_word(language_code, word) -> bool` (drops a user word; shipped words stay visible),
+  `clear_user_data(language_code)`. Per-language calls need that language's `DICTIONARY` pack: without it
+  `add`/`learn`/`forget` return false and an import is parked and applied when the model is first
+  built. The overlay is carried over whenever a pack load rebuilds the language's lexicon or ranker,
+  so a newer dictionary never drops what the user learned. `Lexicon` also gained `user_words()` (alphabetical,
+  for a settings list) and `forget_user_word`. The engine never decides whether to learn (password and
+  incognito fields are the host's call, SD 7.4) and never persists anything.
 - `EngineConfig { max_candidates, trusted_keys: Vec<TrustedKey>, pack_limits: Option<PackLimits> }`.
 - `TrustedKey { key_id, public_key (32 raw bytes), status: KeyStatus }`,
   `KeyStatus { Active, Retiring, Revoked }`,

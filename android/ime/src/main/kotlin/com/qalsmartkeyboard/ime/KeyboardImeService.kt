@@ -10,6 +10,8 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
+import android.widget.Toast
+import com.qalsmartkeyboard.ime.userdict.UserDictionary
 import com.qalsmartkeyboard.ime.packs.PackStorage
 import com.qalsmartkeyboard.ime.packs.installedProfiles
 import kotlinx.coroutines.runBlocking
@@ -21,8 +23,8 @@ import uniffi.qal_keyboard_core.KeyboardEngine
  * IME lifecycle and EditorInfo inspection (SD 6.2 `KeyboardImeService`). Keys go through the Rust
  * core ([CoreComposer]) and reach the editor through [InputConnectionAdapter]. Typed text is only
  * ever passed to the InputConnection and the candidate strip; it is never logged, stored or sent
- * anywhere (rules N1, N2). Nothing is learned from any field yet; [InputProfile.learningAllowed]
- * is honoured by the user dictionary in A1.8.
+ * anywhere (rules N1, N2). Words committed in fields that allow learning ([InputProfile.learnsWords])
+ * go to the local encrypted [UserDictionary] (A1.8); it never touches the network.
  */
 class KeyboardImeService : InputMethodService() {
     private var surface: KeyboardSurface? = null
@@ -57,7 +59,8 @@ class KeyboardImeService : InputMethodService() {
     private val settingsPrefs by lazy {
         SettingsPreferences({ snapshot.current }) { lang, mode -> snapshot.launchUpdate { it.copy(lastModes = it.lastModes + (lang to mode)) } }
     }
-    private val controller by lazy { KeyboardController(adapter, settingsPrefs, settingsPrefs) { refreshViews() } }
+    private val userDictionary by lazy { UserDictionary.get(applicationContext) }
+    private val controller by lazy { KeyboardController(adapter, settingsPrefs, settingsPrefs, userDictionary) { refreshViews() } }
 
     override fun onCreate() {
         super.onCreate()
@@ -93,6 +96,13 @@ class KeyboardImeService : InputMethodService() {
                 Log.e(TAG, "core unavailable: ${e.javaClass.simpleName}")
                 null
             }
+            // The personal dictionary is read after the packs (off the main thread) and handed to the engine.
+            try {
+                userDictionary.load()
+                created?.let { userDictionary.attach(it) }
+            } catch (e: Exception) {
+                Log.w(TAG, "user dictionary skipped: ${e.javaClass.simpleName}")
+            }
             if (created != null) {
                 main.post {
                     engine = created
@@ -104,6 +114,8 @@ class KeyboardImeService : InputMethodService() {
 
     override fun onDestroy() {
         snapshot.stop()
+        engine?.let { userDictionary.detach(it) }
+        userDictionary.flush()
         engine?.close()
         engine = null
         super.onDestroy()
@@ -120,6 +132,10 @@ class KeyboardImeService : InputMethodService() {
         val d = resources.displayMetrics.density
         val s = CandidateStripView(this).also {
             it.onSelect = { i -> controller.selectCandidate(i) }
+            it.onLongSelect = { i ->
+                val added = controller.addCandidateToDictionary(i)
+                Toast.makeText(this, if (added) R.string.user_dictionary_added else R.string.user_dictionary_not_added, Toast.LENGTH_SHORT).show()
+            }
             strip = it
         }
         val overlay = PopupOverlay(this)
@@ -205,6 +221,7 @@ class KeyboardImeService : InputMethodService() {
     override fun onFinishInput() {
         adapter.finishComposition()
         controller.onCompositionAbandoned()
+        userDictionary.saveSoon()
         super.onFinishInput()
     }
 

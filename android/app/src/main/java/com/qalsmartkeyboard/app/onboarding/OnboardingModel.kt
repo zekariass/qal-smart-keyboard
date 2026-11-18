@@ -116,8 +116,12 @@ data class OnboardingState(
 }
 
 /** Onboarding state machine over [SettingsRepository]; Android-free so it is JVM-tested. */
-class OnboardingModel(private val repository: SettingsRepository) {
-    private val _state = MutableStateFlow(OnboardingState())
+class OnboardingModel(
+    private val repository: SettingsRepository,
+    /** State restored after process death (see [OnboardingSaver]); null on a fresh start. */
+    initial: OnboardingState? = null,
+) {
+    private val _state = MutableStateFlow(initial ?: OnboardingState())
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
     /** Starts (or restarts) the flow with the saved language choice as the draft. */

@@ -6,6 +6,7 @@ import com.qalsmartkeyboard.ime.packs.PackManager
 import com.qalsmartkeyboard.ime.packs.PackOrigin
 import com.qalsmartkeyboard.ime.packs.PackTrust
 import com.qalsmartkeyboard.ime.packs.VersionStore
+import com.qalsmartkeyboard.ime.userdict.WordLearningSink
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
@@ -19,9 +20,12 @@ object CoreTestEnv {
     val packDir = File("src/main/assets/packs")
     val log = ArrayList<String>()
 
-    val engine: KeyboardEngine by lazy {
+    val engine: KeyboardEngine by lazy { freshEngine() }
+
+    /** A new engine over the bundled packs, for tests that change its user overlay. */
+    fun freshEngine(): KeyboardEngine {
         val tmp = Files.createTempDirectory("qal-versions").toFile().also { it.deleteOnExit() }
-        PackManager(
+        return PackManager(
             trust = PackTrust.configured(),
             bundled = { bundledFiles() },
             installedDir = null,
@@ -47,16 +51,19 @@ object CoreTestEnv {
         type: Int = InputType.TYPE_CLASS_TEXT,
         languages: EnabledLanguages = DefaultEnabledLanguages,
         prefs: ModePreferences = InMemoryModePreferences(),
+        dictionary: WordLearningSink = WordLearningSink.None,
+        imeOptions: Int = 0,
+        engine: KeyboardEngine = CoreTestEnv.engine,
     ) {
         val ed = FakeEditor()
         val adapter = InputConnectionAdapter { ed }
-        val c = KeyboardController(adapter, languages, prefs) {}
+        val c = KeyboardController(adapter, languages, prefs, dictionary) {}
 
         init {
             adapter.onCompositionAbandoned = { c.onCompositionAbandoned() }
             adapter.startSession(type == InputType.TYPE_NULL, 0, 0)
             c.composer = CoreComposer(engine)
-            c.startField(InputProfile.from(type, 0, false, 0))
+            c.startField(InputProfile.from(type, imeOptions, false, 0))
         }
 
         fun key(kind: KeyKind) = c.layout.rows.flatten().first { it.kind == kind }

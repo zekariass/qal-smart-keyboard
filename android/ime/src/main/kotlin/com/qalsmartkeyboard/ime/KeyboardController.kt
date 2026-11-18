@@ -1,5 +1,8 @@
 package com.qalsmartkeyboard.ime
 
+import com.qalsmartkeyboard.ime.userdict.WordLearner
+import com.qalsmartkeyboard.ime.userdict.WordLearningSink
+
 enum class ShiftState { OFF, ONCE, LOCKED }
 
 /**
@@ -18,8 +21,12 @@ class KeyboardController(
     private val languages: EnabledLanguages = DefaultEnabledLanguages,
     /** Remembered layouts, numeral style, haptics, key height (A1.5). */
     val prefs: ModePreferences = InMemoryModePreferences(),
+    /** Where learned and explicitly added words go (A1.8). */
+    private val dictionary: WordLearningSink = WordLearningSink.None,
     private val onChanged: () -> Unit,
 ) {
+    private val learner = WordLearner(dictionary)
+
     var profile: InputProfile = InputProfile.DEFAULT
         private set
     var page: Page = Page.LETTERS
@@ -145,6 +152,7 @@ class KeyboardController(
     /** The composition was given up (field change, cursor moved, keyboard hidden). */
     fun onCompositionAbandoned() {
         composer.reset()
+        learner.reset()
         candidates = emptyList()
         composing = false
         refreshAutoCapital()
@@ -201,6 +209,18 @@ class KeyboardController(
         apply(composer.selectCandidate(index))
         refreshAutoCapital()
         onChanged()
+    }
+
+    /**
+     * Long-press on candidate [index]: adds its text to the personal dictionary of the current
+     * language (A1.8). False (nothing added) in fields that do not learn, or if the text is not an
+     * acceptable word of the language.
+     */
+    fun addCandidateToDictionary(index: Int): Boolean {
+        val text = candidates.getOrNull(index)?.text ?: return false
+        val m = effectiveMode
+        if (!profile.learnsWords || !WordLearner.isLearnable(m.language, text)) return false
+        return dictionary.add(m.language, text)
     }
 
     // ------------------------------------------------------------------ language and layout switching
@@ -303,6 +323,7 @@ class KeyboardController(
     }
 
     private fun applyMode() {
+        learner.reset()
         candidates = emptyList()
         composing = false
         val m = effectiveMode
@@ -313,6 +334,9 @@ class KeyboardController(
 
     private fun apply(update: ComposerUpdate) {
         sink.apply(update)
+        val m = effectiveMode
+        // A Latin word typed in ABC is not an Amharic or Tigrinya word (SD 7.4: learn per language and script).
+        learner.observe(update, m.language, profile.learnsWords && !(m.isAbc && LanguageCatalog.isEthiopic(m.language)))
         candidates = update.candidates
         composing = update.composing.isNotEmpty()
     }

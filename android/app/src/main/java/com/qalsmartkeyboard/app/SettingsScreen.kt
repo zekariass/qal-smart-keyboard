@@ -128,5 +128,7 @@ fun SettingsScreen(
             valueRange = KeyboardSettings.KEY_HEIGHT_MIN.toFloat()..KeyboardSettings.KEY_HEIGHT_MAX.toFloat(),
         )
         Button(onClick = { scope.launch { repository.update { KeyboardSettings.DEFAULT } } }) { Text("Reset to defaults") }
+        HorizontalDivider()
+        PersonalDictionarySection()
     }
 }

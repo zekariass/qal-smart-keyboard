@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 
 /**
  * Candidate strip above the keys (SD 6.2 `KeyboardSurface`; custom View per ADR 0003). Shows the
@@ -22,6 +23,9 @@ import android.view.View
 class CandidateStripView(context: Context) : View(context) {
     /** Tap on the candidate at this index. */
     var onSelect: (Int) -> Unit = {}
+
+    /** Long press on the candidate at this index (A1.8: add it to the personal dictionary). */
+    var onLongSelect: (Int) -> Unit = {}
 
     private var items: List<Suggestion> = emptyList()
     private var draft = false
@@ -78,12 +82,41 @@ class CandidateStripView(context: Context) : View(context) {
         }
     }
 
+    private var pressed = -1
+    private var longFired = false
+    private val longPress = Runnable {
+        if (pressed >= 0) {
+            longFired = true
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            onLongSelect(pressed)
+        }
+    }
+
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        if (e.actionMasked == MotionEvent.ACTION_UP) {
-            hits.firstOrNull { it.first.contains(e.x, e.y) }?.let {
-                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                onSelect(it.second)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pressed = hits.firstOrNull { it.first.contains(e.x, e.y) }?.second ?: -1
+                longFired = false
+                if (pressed >= 0) postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
             }
+            MotionEvent.ACTION_UP -> {
+                removeCallbacks(longPress)
+                val hit = hits.firstOrNull { it.first.contains(e.x, e.y) }?.second
+                if (!longFired && hit != null && hit == pressed) {
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    onSelect(hit)
+                }
+                pressed = -1
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                removeCallbacks(longPress)
+                pressed = -1
+            }
+            MotionEvent.ACTION_MOVE ->
+                if (pressed >= 0 && hits.none { it.second == pressed && it.first.contains(e.x, e.y) }) {
+                    removeCallbacks(longPress)
+                    pressed = -1
+                }
         }
         return true
     }

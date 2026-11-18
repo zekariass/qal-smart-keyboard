@@ -15,7 +15,7 @@ Android `InputMethodService` and keyboard UI (plan steps A1.x). Design: SD §6.2
 | `PopupOverlay`, `OverlayStack` | The popup is drawn inside the input view, in a transparent non-touchable 190dp headroom above the strip (`onComputeInsets` keeps it out of the app layout and touch region). A `PopupWindow` was tried first: it is clipped to the IME window on API 35 and never appeared. |
 | `KeyboardLayout` (`Layouts`) | Layout model + builders: Fidel grid (from core data), phonetic/English/ABC QWERTY, Qubee (hudhaa key on the main page), symbol pages, number/phone pads. |
 | `TypingMode` (`LayoutKind`, `LanguageCatalog`, `EnabledLanguages`, `FidelGrid`) | Language + layout model, UI names, the enabled-language interface and the Kotlin copy of the core's `FidelLayout`. |
-| `InputProfile` | `EditorInfo` → field kind, learning, Enter action, caps, `allowsTransliteration`. |
+| `InputProfile` | `EditorInfo` → field kind, learning, Enter action, caps, `allowsTransliteration`, `learnsWords`. |
 | `packs/` (`PackManager`, `PackStorage`, `VersionStore`, `PackTrust`, `SemVer`) | Pack manager (A1.6, see below). Replaces the temporary `BundledPacks`. |
 | `SettingsPreferences` | Adapter from `:data`'s cached settings snapshot to `EnabledLanguages` + `ModePreferences` (preferred/last layout, candidates, numerals, haptics, key height). |
 
@@ -86,8 +86,40 @@ builds one core engine; until it is ready the keyboard types ABC (A1.3/A1.4 beha
 
 ## Privacy
 Typed text goes only to the InputConnection and the strip; it is never logged, stored or sent (N1,
-N2). The core keeps the previous word in memory for bigram ranking only. No learning yet (A1.8 honours
-`InputProfile.learningAllowed`).
+N2). The core keeps the previous word in memory for bigram ranking only. Words are learned only into the local,
+encrypted personal dictionary (below).
+
+## Personal dictionary (A1.8, package `userdict`)
+Local only: no network API or permission is used by `:ime` or `:data` (`NoNetworkTest` guards the sources and manifests;
+a unit test cannot prove the absence of network use in dependencies, so that stays a review item). Sync is a later,
+consented feature (`DICTIONARY_SYNC`).
+
+| File | Role |
+|---|---|
+| `WordLearner.kt` | Pure rules that turn committed text into learned words (`WordLearningSink`). |
+| `UserDictionary.kt` | Per-language overlay (core `Lexicon` + `Ranker`, user data only), encrypted persistence, engine sync. One instance per process (`UserDictionary.get`), shared with the settings screen. |
+
+**Learning rules** (SD 7.4): a word is learned when it is finished (space or Ethiopic wordspace after it), counted per language,
+with the previous word as a pair when a plain space separates them. Never learned: anything in password, email, URI, number and
+phone fields, or in a field with `IME_FLAG_NO_PERSONALIZED_LEARNING` (incognito) (`InputProfile.learnsWords`); nothing is even
+buffered there. A Latin word typed in ABC for am/ti; tokens with digits or symbols inside (addresses, handles), all-capital
+acronyms, single letters, words over 48 characters; the word being typed when the field is left or the mode switches; text the
+user is deleting (a backspace into committed text drops the open word and the context). Words must be in the language's script
+(Ethiopic for am/ti, Latin for om/en). **Explicit add:** long-press a candidate on the strip (same field rules). **Remove:**
+the settings screen ("Personal dictionary": per-word delete and "Clear all"). Deleting forgets the user entry; shipped words stay.
+
+**Storage:** one file per language under `noBackupFilesDir/userdict/` (a backup could not restore the Keystore key, so
+it is excluded). Content = `"QUF1"` + the core's user-dictionary bytes + the core's user-bigram bytes, encrypted by
+`:data`'s `EncryptedFileStore` with AES-256-GCM (fresh 96-bit IV per write, file name bound as AAD) under a non-exportable
+Android Keystore key (`qal.userdict.v1`, no user authentication). Writes are atomic (temp file, `fsync`, rename). A missing
+file starts empty; an unreadable, undecryptable (wrong or lost key) or malformed file also starts empty, is overwritten by the
+next save, and only a reason code is logged, never a word. If the Keystore cannot be used the dictionary works in memory only;
+nothing is ever written unencrypted. **Lifecycle:** `load` (and `attach` to the engine) run on the pack-loader thread after the
+packs are loaded; changes made before that are ignored. Saves are debounced (5 s) on a background thread, requested at once on
+`onFinishInput` and run synchronously on `onDestroy`.
+
+On JVM tests the key comes from an injected `AesGcmCipher { key }`; "restart" is a new `UserDictionary` and engine over the same
+directory.
 
 ## Tests
 `./gradlew :ime:testDebugUnitTest` (from `android/`): controller (fake composer), input profile, adapter (fake editor
