@@ -32,6 +32,10 @@ qal:
   # the metering ITs call the sweep directly.
   usage:
     sweeper-enabled: false
+  # B6.2: the account deletion executor (a db-scheduler task) is off in tests; DeletionIT calls it directly.
+  privacy:
+    deletion:
+      executor-enabled: false
   # B5.1: the in-process mock AI provider; descriptor cache off so ITs see provider row changes at once.
   ai:
     mock:

@@ -61,6 +61,11 @@ qal:
       secret-key: ${QAL_PACKS_S3_SECRET_KEY:}
       url-ttl: ${QAL_PACKS_S3_URL_TTL:15m}
       path-style: ${QAL_PACKS_S3_PATH_STYLE:true}
+  # Account deletion (B6.2, ADR 0015): cancellable grace period (SD 19.4: 14 days) and the executor's db-scheduler task.
+  privacy:
+    deletion:
+      grace-period: ${QAL_DELETION_GRACE_PERIOD:14d}
+      executor-interval: ${QAL_DELETION_EXECUTOR_INTERVAL:5m}
   # AI provider SPI (B5.1, ADR 0014). No real vendor adapter exists until gate G0. The mock and the WireMock-shaped HTTP
   # adapter are for development only (refused under prod/production/staging); the API key comes from the environment.
   ai:

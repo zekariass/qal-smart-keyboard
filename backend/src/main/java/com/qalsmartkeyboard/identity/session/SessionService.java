@@ -289,15 +289,37 @@ public class SessionService implements SessionIssuer, DeviceSessions {
 	 * @return the number of session rows revoked
 	 */
 	public int revokeAllForMerge(UUID userId, UUID keepFamily) {
+		int revoked = revokeFamilies(userId, keepFamily, "ACCOUNT_MERGED");
+		if (revoked > 0) {
+			count("guest_merged");
+		}
+		return revoked;
+	}
+
+	/**
+	 * Ends the session families of an account whose deletion was requested or is being executed (B6.2, ADR 0015, reason
+	 * {@code ACCOUNT_DELETED}). Joins the caller's transaction and takes the family locks (stable order) first, like
+	 * logout-all, so a concurrent rotation cannot leave a live successor behind.
+	 *
+	 * @param keepFamily the family of the session that asked for the deletion (it stays signed in during the grace
+	 *                   period so the person can cancel), or {@code null} to end every family
+	 * @return the number of session rows revoked
+	 */
+	public int revokeAllForDeletion(UUID userId, UUID keepFamily) {
+		int revoked = revokeFamilies(userId, keepFamily, "ACCOUNT_DELETED");
+		if (revoked > 0) {
+			count("account_deleted");
+		}
+		return revoked;
+	}
+
+	private int revokeFamilies(UUID userId, UUID keepFamily, String reason) {
 		List<UUID> families = store.activeFamiliesOfUser(userId).stream().filter(f -> !f.equals(keepFamily)).toList();
 		families.forEach(store::lockFamily);
 		Instant now = clock.instant();
 		int revoked = 0;
 		for (UUID family : families) {
-			revoked += store.revokeFamilyOfUser(family, userId, "ACCOUNT_MERGED", now);
-		}
-		if (revoked > 0) {
-			count("guest_merged");
+			revoked += store.revokeFamilyOfUser(family, userId, reason, now);
 		}
 		return revoked;
 	}

@@ -57,8 +57,14 @@ public class UserAccountStore {
 		}
 	}
 
-	private static final String USER_COLUMNS = "u.id, u.account_type, u.account_status, u.phone_e164, "
-			+ "u.phone_verified_at, u.display_name, u.ui_locale, u.time_zone, u.created_at";
+	/**
+	 * The effective status: {@code DELETED} as soon as {@code deleted_at} is set, which the account deletion executor
+	 * does when it starts (B6.2, ADR 0015) while the row is still {@code DELETION_PENDING}. So a sign-in or refresh in
+	 * that window is refused like one of a deleted account.
+	 */
+	private static final String USER_COLUMNS = "u.id, u.account_type, "
+			+ "CASE WHEN u.deleted_at IS NOT NULL THEN 'DELETED' ELSE u.account_status END AS account_status, "
+			+ "u.phone_e164, u.phone_verified_at, u.display_name, u.ui_locale, u.time_zone, u.created_at";
 
 	private final JdbcClient jdbc;
 
@@ -252,15 +258,18 @@ public class UserAccountStore {
 	}
 
 	/**
-	 * Whether the account is a live guest ({@code GUEST}, {@code ACTIVE}, not deleted). Guest access tokens are honoured
-	 * only while this holds (ADR 0010): the tokens of a merged, upgraded, suspended or deleted guest stop working at
-	 * once instead of after their 15 minute lifetime. One primary-key lookup.
+	 * The account's type and effective status, unlocked (one primary-key lookup). The security chain reads it for every
+	 * access token (ADR 0010 for guests, ADR 0015 for closed accounts).
+	 *
+	 * @return empty if there is no such user
 	 */
-	public boolean isActiveGuest(UUID userId) {
+	public Optional<AccountState> state(UUID userId) {
 		return jdbc.sql("""
-				SELECT EXISTS (SELECT 1 FROM users WHERE id = :id AND account_type = 'GUEST'
-				                                     AND account_status = 'ACTIVE' AND deleted_at IS NULL)
-				""").param("id", userId).query(Boolean.class).single();
+				SELECT account_type, CASE WHEN deleted_at IS NOT NULL THEN 'DELETED' ELSE account_status END AS status
+				FROM users WHERE id = :id
+				""").param("id", userId)
+				.query((rs, row) -> new AccountState(rs.getString("account_type"), rs.getString("status")))
+				.optional();
 	}
 
 	/** {@code account_type} and effective {@code account_status} ({@code DELETED} when {@code deleted_at} is set). */
@@ -268,6 +277,21 @@ public class UserAccountStore {
 
 		public boolean isActiveGuest() {
 			return "GUEST".equals(accountType) && "ACTIVE".equals(accountStatus);
+		}
+
+		/**
+		 * Whether a <b>guest</b> access token of this account is honoured: an {@code ACTIVE} guest, or one whose deletion
+		 * is pending (it keeps its session during the grace period so it can cancel, ADR 0015; it can no longer be
+		 * merged, which needs {@link #isActiveGuest()}).
+		 */
+		public boolean acceptsGuestToken() {
+			return "GUEST".equals(accountType)
+					&& ("ACTIVE".equals(accountStatus) || "DELETION_PENDING".equals(accountStatus));
+		}
+
+		/** {@code DELETED} (including a deletion in progress) or {@code MERGED}: no token of the account is honoured. */
+		public boolean isClosed() {
+			return "DELETED".equals(accountStatus) || "MERGED".equals(accountStatus);
 		}
 	}
 

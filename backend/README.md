@@ -242,6 +242,35 @@ guests included. Code in `com.qalsmartkeyboard.privacy`.
 - **Guest merge** (`PrivacyGuestMerge`, ADR 0010) is unchanged: it must preserve the guest's `recorded_at` and version, which
   the PUT path does not.
 
+## Account deletion (B6.2, ADR 0015, SD 19.4)
+
+`POST /me/deletion-request` (`{"confirm": true}`, 202), `GET /me/deletion-request` (the pending request or 404) and
+`DELETE /me/deletion-request` (cancel, 204); any valid token, guests included. Code in `com.qalsmartkeyboard.privacy`
+(request service, executor) and `identity` (`AccountDeletion` for the `users` row and sessions, the
+`UserDeletionParticipant` port).
+
+- **Grace period** `qal.privacy.deletion.grace-period` (default 14 days, SD 19.4; `QAL_DELETION_GRACE_PERIOD`). The
+  account becomes `DELETION_PENDING`: AI stops (no plan, ADR 0007 D22), typing and the other features keep working, the
+  requesting session stays, every other session is revoked (`ACCOUNT_DELETED`), sign-in still works (to cancel). A
+  second request is 409 `DELETION_PENDING`; a suspended account 403 `ACCOUNT_SUSPENDED`. `reason` is not stored.
+- **Cancel** while `SCHEDULED` (even past the purge time, until the executor starts): request `CANCELLED`, account
+  `ACTIVE`. Events `privacy.account.deletion_requested` / `privacy.account.deletion_cancelled`.
+- **Executor** (`DeletionExecutor`, db-scheduler task `privacy-account-deletion`, every
+  `qal.privacy.deletion.executor-interval` = 5 min; off in tests, `executor-enabled=false`): per due request three
+  committed steps recorded on the request (V11 columns): (1) close the account (`users.deleted_at`: every token refused,
+  sign-in no longer finds it), revoke all sessions, `UserDataEncryption.cryptoShred` → `shredded_at`; (2) every
+  `UserDeletionParticipant` purges its tables → `purged_at`; (3) anonymise the `users` row (`DELETED`), request
+  `COMPLETED`, event `privacy.account.deleted`. Each step locks the request `FOR UPDATE SKIP LOCKED`, so instances never
+  repeat or overlap a step; a crash resumes at the next step; a failing step rolls back and is retried after
+  `retry-backoff` (1 min) doubling up to `max-retry-backoff` (1 h), forever (alert on
+  `qal.privacy.account_deletion{outcome=failed}`; `processing_error` holds the step and exception class only).
+- **Kept** (pseudonymised: attached to the anonymised id only): `user_consents`, `usage_events`, credit accounts, lots
+  and ledger, `user_subscriptions`/payments (none yet), `ai_requests`, `audit_events`, `user_data_keys` (DESTROYED),
+  `user_deletion_requests`. Everything else of the user is deleted; per-table rules in ADR 0015. A module that adds a
+  per-user table must handle it in its `UserDeletionParticipant` in the same change.
+- **Re-registration:** identities are deleted and the row anonymised, so the same phone number or Google account later
+  creates a new, empty account; the deleted account can never be signed in to again.
+
 ## Identity: phone OTP (B2.1, ADR 0006)
 
 Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST /api/v1/auth/otp/verify` (200
@@ -645,9 +674,12 @@ no form/basic login) and works as a resource server for the access tokens above.
     ignored there.
   - `/partner/v1/**` is closed (401 `API_KEY_INVALID`) until partner API keys exist. User tokens are never accepted
     there.
-- **Guest tokens** (`accountType = GUEST`) are accepted only while the account is an `ACTIVE` guest (one primary-key
-  read per guest request, B2.6): a merged, upgraded, suspended or deleted guest's tokens are refused at once. Without
-  the account store (MVC slice tests) guest tokens are refused.
+- **Account check** (one primary-key read per request): **guest tokens** (`accountType = GUEST`) are accepted only
+  while the account is an `ACTIVE` guest or a guest whose deletion is pending (B2.6, B6.2): a merged, upgraded,
+  suspended or deleted guest's tokens are refused at once (`GUEST_SESSION_INVALID`). **Registered tokens** are refused
+  (`UNAUTHENTICATED`, `invalid_token`) once the account is deleted (from the moment the deletion executor starts) or
+  merged; otherwise they are stateless (15 minute revocation window). Without the account store (MVC slice tests) guest
+  tokens are refused and registered tokens pass.
 - **Everything else**, unknown paths included, needs a valid access token. 401 is a contract Problem with correlation
   id: `TOKEN_EXPIRED` for a correctly signed but expired token, otherwise `UNAUTHENTICATED`, with
   `WWW-Authenticate: Bearer`. 403 is a `FORBIDDEN` Problem. Both are written by `platform.ProblemResponseWriter`.

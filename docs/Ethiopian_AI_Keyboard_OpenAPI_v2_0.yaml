@@ -513,10 +513,22 @@ paths:
       operationId: requestAccountDeletion
       summary: Schedule account deletion
       description: |
-        Schedules deletion after a cancellation window. On purge the user data key is destroyed
-        (crypto-shredding encrypted history, dictionary, labels). Financial records required by
-        law are retained in pseudonymised form. Active store subscriptions must be cancelled in
-        the store; the response lists any that remain.
+        Schedules deletion after a cancellation window (14 days, server-configured; `scheduledPurgeAt`
+        says when). On purge the user data key is destroyed (crypto-shredding encrypted history,
+        dictionary, labels). Financial records required by law are retained in pseudonymised form.
+        Active store subscriptions must be cancelled in the store; the response lists any that remain.
+
+        During the window the account is `DELETION_PENDING`: AI features stop at once (entitlement
+        reads and the entitlement token answer 403 `DELETION_PENDING`), typing and the other account
+        features keep working, the requesting session stays signed in, every other session is signed
+        out, and signing in again is possible (to cancel). Guests may delete their account the same way.
+        `reason` is accepted for compatibility but not stored. When the purge starts, every token of
+        the account is refused (401) and the request can no longer be cancelled. A later sign-in with
+        the same phone number or Google account creates a new, empty account.
+
+        Errors: 403 `ACCOUNT_SUSPENDED` (a suspended account is deleted through support) or
+        `FORBIDDEN` (the account cannot be deleted in its state); 409 `DELETION_PENDING` when a
+        deletion is already pending (read it with `GET`).
       requestBody:
         required: true
         content:
@@ -528,14 +540,38 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DeletionRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      tags: [Me]
+      operationId: getAccountDeletion
+      summary: Get the pending deletion request
+      description: |
+        The caller's pending request (`SCHEDULED`, or `PROCESSING` at the moment the purge starts),
+        so a client can show when the account will be deleted and offer to cancel. 404 when nothing
+        is pending (never requested, cancelled or completed).
+      responses:
+        '200':
+          description: The pending request.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeletionRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Me]
       operationId: cancelAccountDeletion
       summary: Cancel a pending deletion request
+      description: |
+        Cancels a scheduled deletion; the account is `ACTIVE` again. Sessions that were signed out by
+        the request stay signed out. 409 `DELETION_PENDING` when the purge has already started.
       responses:
         '204': { description: Cancelled. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/me/data-exports:
     post:
       tags: [Me]
