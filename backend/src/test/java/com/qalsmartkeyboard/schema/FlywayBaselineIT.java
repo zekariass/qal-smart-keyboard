@@ -38,9 +38,9 @@ class FlywayBaselineIT {
     @Test
     void baselineIsAppliedByTheBootedApplicationAndValidates() {
         MigrationInfo[] all = flyway.info().all();
-        assertEquals(10, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
+        assertEquals(11, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
                 + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up), V5 attestation nonces (B2.3), V6 language-resource discovery columns (B3.1), V7 preferences revisions (B3.3),"
-                + " V8 destination profiles and app rules (B3.4), V9 usage reservations (B4.2), V11 account deletion progress (B6.2)");
+                + " V8 destination profiles and app rules (B3.4), V9 usage reservations (B4.2), V10 AI provider seeds (B5.1), V11 account deletion progress (B6.2)");
         assertEquals("1", all[0].getVersion().getVersion());
         assertEquals("baseline", all[0].getDescription());
         assertEquals(MigrationState.SUCCESS, all[0].getState());
@@ -56,9 +56,11 @@ class FlywayBaselineIT {
         assertEquals(MigrationState.SUCCESS, all[6].getState());
         assertEquals("8", all[7].getVersion().getVersion());
         assertEquals("9", all[8].getVersion().getVersion());
-        assertEquals(MigrationState.SUCCESS, all[7].getState());
-        assertEquals("11", all[9].getVersion().getVersion()); // V10 is reserved for B5.1
+        assertEquals("10", all[9].getVersion().getVersion());
         assertEquals(MigrationState.SUCCESS, all[9].getState());
+        assertEquals(MigrationState.SUCCESS, all[7].getState());
+        assertEquals("11", all[10].getVersion().getVersion());
+        assertEquals(MigrationState.SUCCESS, all[10].getState());
         flyway.validate(); // throws if an applied migration was edited
     }
 

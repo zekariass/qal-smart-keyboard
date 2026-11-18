@@ -710,6 +710,31 @@ response headers (`new ApiException(code, status, detail, errors, extensions, he
 sends nothing and logs a masked number. To see codes locally set `qal.notifications.sms.log.include-message=true`
 (DEV ONLY). The real aggregator adapter comes with OI-11 (WireMock stub: `infra/compose/wiremock`, `/sms/v1/messages`).
 
+## AI gateway: provider SPI and registry (B5.1, ADR 0014, SD 11)
+
+`aigateway.spi` (Modulith named interface `spi`) is the vendor-neutral contract: `AiProvider` with
+`translate` / `llmTransform` / `detectLanguage`, each taking a positive `Duration` deadline (no untimed call; cancel =
+interrupt), typed requests/results mirroring the contract schemas, `ProviderUsage` (characters, optional tokens/audio ms;
+`units(MeteredUnit)` for ADR 0011 settle), `ProviderCallMetadata` (provider, model, vendor request id, latency) and the
+sealed `ProviderException` family (`Unavailable`, `Timeout`, `ContentRejected`, `UnsupportedLanguagePair`,
+`QuotaExhaustedAtProvider`, `AuthenticationFailed`, `InvalidResponse`, `Cancelled`; each `Kind` knows its contract code,
+retryability and whether it counts against provider health). Text only travels as `UserText` (its `toString` prints a
+length), error bodies are never read, nothing is logged by adapters.
+
+`ProviderRegistry.resolve(RouteQuery)` returns providers whose `ai_providers` row is `ACTIVE` (seeded `DISABLED`; the
+schema's word for "inactive"), does not train on customer data, has a DPA (unless `SELF_HOSTED`), has an adapter bean with
+the same code, satisfies the data policy of the request (ZDR; region allow-list) and has an enabled capability for the
+feature, language pair, minimum tier (default BETA) and input size. Descriptors are cached `qal.ai.registry-cache-ttl`
+(30 s). Routing order, failover, circuit breaker and kill switch are B5.2.
+
+**No real vendor adapter exists**: the shortlist is gate G0 (OI-R1/OI-P5). Development adapters, off by default and
+refused under `prod`/`production`/`staging`: `qal.ai.mock.enabled` / `QAL_AI_MOCK` (`MockAiProvider`: deterministic,
+configurable latency and failure) and `qal.ai.http.enabled` / `QAL_AI_HTTP` (`HttpJsonAiProvider` against the compose
+WireMock stubs, `QAL_AI_HTTP_BASE_URL` default `http://localhost:8089`, key `QAL_AI_HTTP_API_KEY`, never logged). V10 seeds
+the two matching provider rows `DISABLED`; enable one locally with
+`UPDATE ai_providers SET provider_status='ACTIVE', dpa_signed_at=NOW() WHERE provider_code='mock'`. Tests use WireMock
+in-process (`wiremock-standalone`, serving `infra/compose/wiremock`).
+
 ## Contract tests
 
 Controller tests validate every response against `contracts/openapi.yaml` (OpenAPI 3.1) by adding one annotation:
