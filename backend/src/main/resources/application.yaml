@@ -42,3 +42,15 @@ qal:
   notifications:
     sms:
       provider: ${QAL_SMS_PROVIDER:}
+  # Language packs (B3.1). Download URLs are pre-signed S3 (MinIO locally, infra/compose: bucket qal-language-packs).
+  # Without credentials stored s3:// locations cannot be served (500); the prod/production/staging profiles refuse to start.
+  languages:
+    internal-channel-enabled: ${QAL_PACKS_INTERNAL_CHANNEL:false}
+    artifacts:
+      endpoint: ${QAL_PACKS_S3_ENDPOINT:}
+      bucket: ${QAL_PACKS_S3_BUCKET:qal-language-packs}
+      region: ${QAL_PACKS_S3_REGION:us-east-1}
+      access-key: ${QAL_PACKS_S3_ACCESS_KEY:}
+      secret-key: ${QAL_PACKS_S3_SECRET_KEY:}
+      url-ttl: ${QAL_PACKS_S3_URL_TTL:15m}
+      path-style: ${QAL_PACKS_S3_PATH_STYLE:true}

@@ -104,6 +104,51 @@ snapshot keeps being served.
   to one gets 401 before the version gate runs.
 - `/config` never fails on bad client headers (the contract declares no 400 for it): they count as unknown.
 
+## Languages and language packs (B3.1)
+
+Module `languages`: the five read operations `GET /languages`, `GET /languages/{code}/transliteration-profiles`,
+`GET /language-resources`, `GET /language-resources/{resourceId}`, `GET /resource-signing-keys`. All are optional-bearer
+(anonymous, or a valid token; an invalid token is 401). Publishing and signing are B3.2; this module only reads.
+
+- **Pack discovery** returns `LanguageResourceManifest` (discovery only, no signature: the signed manifest travels inside the
+  `.pack`, `docs/specs/pack-format-v1.md`). Served rows: `publication_status = PUBLISHED`, active language, a signing key that is
+  not `REVOKED` (`ACTIVE` and `RETIRING` verify), a known `size_bytes`, and a resource type the contract can express (`GLOSSARY`
+  is not in the contract enum, so it is never listed). `appVersion` (required) must be at least `min_app_version` (SemVer
+  precedence, `1.10.0 > 1.9.0`); `platform` ANDROID sees SHARED and ANDROID packs, IOS sees SHARED and IOS, WEB sees SHARED.
+- **Release channels:** `channel` defaults to `STABLE`; a channel also sees every more stable one (BETA sees BETA and STABLE),
+  because a client wants the newest valid pack per (language, type, platform) and picks it itself. `INTERNAL` needs a valid access
+  token (anonymous: 401) **and** `qal.languages.internal-channel-enabled=true` (env `QAL_PACKS_INTERNAL_CHANNEL`, default off; when
+  off, 400 on the channel parameter). An INTERNAL resource fetched by id is 404 unless both hold. There is no tester or staff role
+  yet, so any authenticated caller counts once the switch is on (development and internal builds only).
+- **Staged rollout:** `rollout_percentage` 100 is visible to everyone. Below 100 only to authenticated callers whose bucket
+  `SHA-256(deviceId else userId + ":" + resourceId)` first 4 bytes mod 100 is under the percentage; anonymous callers never see a
+  partial rollout (no stable identity). Applies to the detail endpoint too.
+- **Deltas:** `baseResourceId` is exposed as stored; clients refuse deltas today (C1.2, P5.4).
+- **Paging:** keyset on (`published_at`, `id`) newest first, `limit` 1-100 (default 20), opaque `nextCursor`. Rows removed by the
+  app-version or rollout rules are skipped inside the page loop, so pages stay full.
+- **`artifactUrl`** comes from `ArtifactUrlSigner`. `artifact_uri` is stored as `s3://<bucket>/<key>` (signed) or `https://...`
+  (public CDN, returned unchanged). The S3 adapter pre-signs a SigV4 query-string `GET` (JDK crypto only, verified against the AWS
+  documentation example) for `qal.languages.artifacts.*`: `endpoint` (client-reachable; `http://localhost:9000` for the MinIO in
+  `infra/compose`), `bucket` (default `qal-language-packs`; any other bucket in a row is refused), `region`, `access-key`,
+  `secret-key` (read-only credential, env only), `url-ttl` (default 15m, 1s-7d), `path-style` (MinIO true). Env:
+  `QAL_PACKS_S3_ENDPOINT`, `_BUCKET`, `_REGION`, `_ACCESS_KEY`, `_SECRET_KEY`, `_URL_TTL`, `_PATH_STYLE`. Fail closed: under
+  `prod`/`production`/`staging` the application does not start without endpoint, access key and secret; elsewhere without them an
+  `s3://` row cannot be served (500, logged) while `https://` rows still work. A row with an unusable location (other scheme or
+  bucket) is skipped and logged so one bad row cannot break discovery. The URL only carries the transfer: the client trusts the pack
+  signature and SHA-256, never the URL.
+- **Signing keys:** every key with its status (`ACTIVE`, `RETIRING`, `REVOKED`, so clients can distrust revoked ones), public key,
+  validity window and, if present, `endorsedByKeyId`/`endorsementSignature` (V6 columns, written by B3.2 key tooling). Public
+  material only; private keys live in KMS (ADR 0007 D10).
+- **Profiles:** `ACTIVE` and `RETIRED` profiles of an active language, with `status`, so a client holding a retired code falls back
+  to the newest active profile of the language (SD 10.2, F14). `DRAFT` is never listed. `rulesResourceId` is only given while that
+  rules pack is published on a client channel. Unknown or inactive language: 404.
+- **Languages:** active rows by `sort_order`; `inputModes` comes from `supported_languages.metadata.inputModes` when present
+  (the catalogue has no column for it).
+- **Caching:** the contract defines no `ETag`/`Cache-Control`, so none is set (Spring Security's default no-cache headers stay,
+  which is right for responses carrying signed URLs).
+- Migration `V6__language_resource_discovery.sql` adds `language_resources.container_size_bytes` and the two endorsement columns
+  of `resource_signing_keys`.
+
 ## Identity: phone OTP (B2.1, ADR 0006)
 
 Module `identity`: `POST /api/v1/auth/otp/start` (202 `OtpChallenge`) and `POST /api/v1/auth/otp/verify` (200

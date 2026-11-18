@@ -19,14 +19,14 @@ import java.util.regex.Pattern;
  * <li>Build metadata ({@code +...}) is ignored for precedence: {@code 2.0.0+5} equals {@code 2.0.0}.</li>
  * </ul>
  */
-record AppVersion(int major, int minor, int patch, String preRelease) implements Comparable<AppVersion> {
+public record AppVersion(int major, int minor, int patch, String preRelease) implements Comparable<AppVersion> {
 
 	static final int MAX_LENGTH = 40;
 	private static final String IDENTS = "[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*";
 	private static final Pattern FORMAT = Pattern
 			.compile("^(\\d{1,9})(?:\\.(\\d{1,9}))?(?:\\.(\\d{1,9}))?(?:-(" + IDENTS + "))?(?:\\+" + IDENTS + ")?$");
 
-	static Optional<AppVersion> parse(String value) {
+	public static Optional<AppVersion> parse(String value) {
 		if (value == null || value.length() > MAX_LENGTH) {
 			return Optional.empty();
 		}

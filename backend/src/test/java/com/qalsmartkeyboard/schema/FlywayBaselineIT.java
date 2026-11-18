@@ -38,8 +38,8 @@ class FlywayBaselineIT {
     @Test
     void baselineIsAppliedByTheBootedApplicationAndValidates() {
         MigrationInfo[] all = flyway.info().all();
-        assertEquals(5, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
-                + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up), V5 attestation nonces (B2.3)");
+        assertEquals(6, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
+                + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up), V5 attestation nonces (B2.3), V6 language-resource discovery columns (B3.1)");
         assertEquals("1", all[0].getVersion().getVersion());
         assertEquals("baseline", all[0].getDescription());
         assertEquals(MigrationState.SUCCESS, all[0].getState());
@@ -49,6 +49,8 @@ class FlywayBaselineIT {
         assertEquals(MigrationState.SUCCESS, all[3].getState());
         assertEquals("5", all[4].getVersion().getVersion());
         assertEquals(MigrationState.SUCCESS, all[4].getState());
+        assertEquals("6", all[5].getVersion().getVersion());
+        assertEquals(MigrationState.SUCCESS, all[5].getState());
         flyway.validate(); // throws if an applied migration was edited
     }
 
