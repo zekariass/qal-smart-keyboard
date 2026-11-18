@@ -1,7 +1,7 @@
 -- Premium keyboard themes: a boolean, unmetered, entitlement-gated PLATFORM feature.
 --
 -- The keyboard (client) decides which theme it draws; this feature only says whether the account may use the
--- premium ones. It is granted to PREMIUM and PREMIUM_PLUS and carried in the entitlement token as an offline gate
+-- premium ones. It is granted to PREMIUM, PREMIUM_PLUS and BUSINESS and carried in the entitlement token as an offline gate
 -- (qal.entitlements.token.offline-features), so a keyboard that is offline keeps its premium theme inside the
 -- token's offline grace (ADR 0013). V1 is never edited: the SeedSql test helper reads V1 and this file.
 
@@ -15,7 +15,8 @@ ON CONFLICT (feature_code) DO NOTHING;
 WITH enabled_seed (plan_code, feature_code, included_units, reset_period) AS (
     VALUES
     ('PREMIUM',      'PREMIUM_THEMES', NULL::BIGINT, 'NONE'),
-    ('PREMIUM_PLUS', 'PREMIUM_THEMES', NULL::BIGINT, 'NONE')
+    ('PREMIUM_PLUS', 'PREMIUM_THEMES', NULL::BIGINT, 'NONE'),
+    ('BUSINESS',     'PREMIUM_THEMES', NULL::BIGINT, 'NONE')
 )
 INSERT INTO plan_entitlements
     (plan_id, feature_code, metering_unit, is_entitlement_gated, access_enabled, included_units, reset_period, configuration)

@@ -36,7 +36,7 @@ class EntitlementSeedMatrixTest {
 				.containsExactly("GUEST", "FREE", "PREMIUM", "PREMIUM_PLUS", "BUSINESS");
 		assertThat(seed.catalog).hasSize(25);
 		assertThat(seed.catalog.stream().filter(SeedSql.Feature::gated)).hasSize(20);
-		assertThat(seed.enabled).hasSize(4 + 9 + 18 + 20 + 19); // GUEST, FREE, PREMIUM, PREMIUM_PLUS, BUSINESS rows
+		assertThat(seed.enabled).hasSize(4 + 9 + 18 + 20 + 20); // GUEST, FREE, PREMIUM, PREMIUM_PLUS, BUSINESS rows
 		assertThat(planByFeature().count()).isEqualTo(5 * 25);
 	}
 
