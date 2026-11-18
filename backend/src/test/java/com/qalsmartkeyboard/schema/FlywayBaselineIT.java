@@ -42,7 +42,7 @@ class FlywayBaselineIT {
                 + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up), V5 attestation nonces (B2.3), V6 language-resource discovery columns (B3.1), V7 preferences revisions (B3.3),"
                 + " V8 destination profiles and app rules (B3.4), V9 usage reservations (B4.2), V10 AI provider seeds (B5.1), V11 account deletion progress (B6.2), V12 AI provider cost control (B5.2), V13 dictionary sync (B3.6),"
                 + " V14 AI replay cache (B5.4), V15 language-resource datasets (B3.2),"
-                + " V16 retention: dictionary tombstone floor and purge indexes (B6.3), V17 AI feedback content and reason codes (B5.6)");
+                + " V16 retention: dictionary tombstone floor and purge indexes (B6.3), V17 AI feedback content and history uniqueness (B5.6, B5.7)");
         assertEquals("1", all[0].getVersion().getVersion());
         assertEquals("baseline", all[0].getDescription());
         assertEquals(MigrationState.SUCCESS, all[0].getState());

@@ -1454,6 +1454,11 @@ paths:
       tags: [History]
       operationId: listHistory
       summary: List opt-in AI history items
+      description: |
+        Newest first. Items past their expiry are not listed (favourites never expire). Texts are
+        decrypted for the owner only. Listing works whatever the history setting is, so a person
+        who turned history off can still review and delete what is left. A malformed `cursor` is
+        400 `VALIDATION_FAILED`.
       parameters:
         - name: favorite
           in: query
@@ -1476,11 +1481,13 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/HistoryItem' }
                   nextCursor: { $ref: '#/components/schemas/NextCursor' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
     delete:
       tags: [History]
       operationId: clearHistory
       summary: Delete all history items
+      description: Deletes every history item of the caller, favourites included. Idempotent.
       responses:
         '204': { description: All history deleted. }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -1497,12 +1504,15 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HistoryItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [History]
       operationId: updateHistoryItem
       summary: Mark or unmark a history item as favourite
-      description: Favourites are exempt from automatic retention expiry until unmarked.
+      description: |
+        Favourites are exempt from automatic retention expiry until unmarked; unmarking starts a
+        new expiry of `historyRetentionDays` from now.
       requestBody:
         required: true
         content:
@@ -1514,6 +1524,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HistoryItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [History]
@@ -1521,6 +1533,7 @@ paths:
       summary: Delete one history item
       responses:
         '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ---------------------------------------------------------------- Speech

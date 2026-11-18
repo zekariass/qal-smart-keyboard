@@ -27,7 +27,8 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code VALIDATION_FAILED} naming only the field, never the value, and the Jackson exception is dropped. Syntax errors
  * are {@code MALFORMED_REQUEST_BODY}. Unknown members are ignored (the contract may grow).
  *
- * <p>Parsed but not acted on yet: {@code saveToHistory} (history is a later step), {@code applyStyleProfile}
+ * <p>{@code saveToHistory} is read here (B5.7) and only offered to the history sink by the pipeline. Parsed but not
+ * acted on yet: {@code applyStyleProfile}
  * (PERSONAL_STYLE is a later step), {@code options.explainIn} and {@code options.sourceRomanization} (their tasks are
  * not served).
  */
@@ -49,7 +50,8 @@ final class AiRequestParser {
 		return new AiCommand.Translate(caller, UserText.of(text), string(n, "sourceLanguage"),
 				string(n, "destinationLanguage"), string(n, "style"), bool(n, "preserveNames"),
 				uuid(n, "glossaryId"), addressee(n.get("addressee"), "addressee"),
-				cultural(n.get("culturalOptions")), uuid(n, "destinationProfileId"));
+				cultural(n.get("culturalOptions")), uuid(n, "destinationProfileId"),
+				Boolean.TRUE.equals(bool(n, "saveToHistory")));
 	}
 
 	AiCommand.Transform transform(byte[] body, AiCommand.Caller caller, java.util.function.Function<String, AiFeature> tasks) {
@@ -68,7 +70,8 @@ final class AiRequestParser {
 				options == null ? null : string(options, "options.mode", "mode"),
 				options == null ? null : string(options, "options.tone", "tone"),
 				options == null ? null : string(options, "options.targetLength", "targetLength"),
-				addressee(n.get("addressee"), "addressee"), uuid(n, "glossaryId"));
+				addressee(n.get("addressee"), "addressee"), uuid(n, "glossaryId"),
+				Boolean.TRUE.equals(bool(n, "saveToHistory")));
 	}
 
 	AiCommand.Detect detect(byte[] body, AiCommand.Caller caller) {

@@ -150,6 +150,7 @@ public class AiPipeline {
 	private final Guardrails guardrails;
 	private final AiRequestLog requests;
 	private final AiIdempotency idempotency;
+	private final AiHistorySink history;
 	private final Clock clock;
 	private final MeterRegistry meters;
 	private final Settings settings;
@@ -158,6 +159,15 @@ public class AiPipeline {
 			ProviderRegistry registry, PromptTemplates templates, PromptRenderer renderer, LanguageCatalog languages,
 			AiUserContext users, Guardrails guardrails, AiRequestLog requests, AiIdempotency idempotency, Clock clock,
 			MeterRegistry meters, Settings settings) {
+		this(entitlements, consents, metering, router, registry, templates, renderer, languages, users, guardrails,
+				requests, idempotency, AiHistorySink.NONE, clock, meters, settings);
+	}
+
+	public AiPipeline(EntitlementResolver entitlements, ConsentGate consents, Metering metering, AiRouter router,
+			ProviderRegistry registry, PromptTemplates templates, PromptRenderer renderer, LanguageCatalog languages,
+			AiUserContext users, Guardrails guardrails, AiRequestLog requests, AiIdempotency idempotency,
+			AiHistorySink history, Clock clock, MeterRegistry meters, Settings settings) {
+		this.history = Objects.requireNonNull(history);
 		this.entitlements = Objects.requireNonNull(entitlements);
 		this.consents = Objects.requireNonNull(consents);
 		this.metering = Objects.requireNonNull(metering);
@@ -732,6 +742,9 @@ public class AiPipeline {
 		record(p, reservation, requestId, started, routed, AiRequestLog.Status.SUCCEEDED, null, usageSource, units,
 				credits);
 		AiResult result = response(p, routed, requestId, summary);
+		if (reservation != null) {
+			result = keepHistory(p, routed, requestId, result);
+		}
 		count(p.feature(), "SUCCEEDED");
 		if (reservation != null) {
 			try {
@@ -742,6 +755,40 @@ public class AiPipeline {
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * B5.7: offers a newly charged, settled request that said {@code saveToHistory} to the history sink (which applies the
+	 * user's gates), before the replay cache keeps the response, so a replay carries the same {@code historyItemId} and
+	 * never writes again. Only the request that reserved its key offers: a replay answered from the cache and an
+	 * uncharged recompute (no reservation) do not. A sink failure leaves the response without an item id.
+	 */
+	private AiResult keepHistory(Prepared p, Routed<?> routed, UUID requestId, AiResult result) {
+		boolean save = switch (p.command()) {
+			case AiCommand.Translate t -> t.saveToHistory();
+			case AiCommand.Transform t -> t.saveToHistory();
+			case AiCommand.Detect d -> false;
+		};
+		String output = switch (result) {
+			case AiResult.TranslateResponse t -> t.translatedText();
+			case AiResult.TransformResponse t -> t.resultText();
+			default -> null;
+		};
+		if (!save || output == null) {
+			return result;
+		}
+		try {
+			String detected = routed.value() instanceof TranslateResult t ? t.detectedSourceLanguage() : null;
+			String source = p.sourceLanguage() != null ? p.sourceLanguage() : detected;
+			return history.offer(new AiHistorySink.Entry(p.command().caller().userId(), requestId, p.feature().name(),
+					source, p.destinationLanguage(), p.text().value(), output)).map(result::withHistoryItemId)
+					.orElse(result);
+		}
+		catch (RuntimeException e) {
+			log.warn("AI {} history write failed: {}", p.feature(), e.getClass().getSimpleName());
+			increment("qal.ai.history.write-failures", p.feature());
+			return result;
+		}
 	}
 
 	private static AiResult.UsageSummary unmetered(Prepared p, MeteringUnit unit) {
