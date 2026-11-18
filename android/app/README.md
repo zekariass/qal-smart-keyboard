@@ -91,6 +91,16 @@ Core library desugaring is on (D28) for the generated client's `java.time` types
 
 All user-visible text is in `res/values/strings.xml` (English; add `values-am`, `values-ti`, `values-om` later).
 
+## Language-pack updates (A2.3, package `packs`)
+`PackUpdateWorker` (WorkManager `CoroutineWorker`) runs `:packs-sync`'s `PackUpdater` for the enabled languages, the channel from
+the settings (`packChannel`, default STABLE) and this app version, over the `AuthGraph` API client (signed-in callers see staged
+rollouts). `PackUpdateScheduler` queues it every 12 h and once at app start (`MainActivity`): network UNMETERED (Wi-Fi) by default,
+CONNECTED when the settings switch "Update language packs on mobile data" is on (`packUpdatesOnMobileData`, default off), battery
+not low, storage not low. Changing the switch re-queues the check. Transient failures retry with exponential backoff (max 3
+attempts per run). `:ime` has no network code; the updater and the IME talk only through files (`android/packs-sync/README.md`,
+`android/ime/README.md`). Nothing but file names, resource ids and reason codes is logged. Needs a device: the real WorkManager
+scheduling and constraints.
+
 ## Tests
 `./gradlew :app:testPlayDebugUnitTest :app:testDirectDebugUnitTest` (from `android/`; `testDebugUnitTest` skips the flavoured app tests): step rules, IME status parsing, language draft rules and the whole new-user
 flow over a real DataStore on a temp file (including restart persistence of the completed flag and the language choice).
