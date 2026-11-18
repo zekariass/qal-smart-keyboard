@@ -21,10 +21,22 @@ class VersionStore(private val file: File) {
         private set
 
     init {
+        reload()
+    }
+
+    /**
+     * Re-reads the file, dropping what is held in memory. The IME keeps one store for the life of the
+     * service while the updater (another component, same process) may change the file (D34 quarantine
+     * removes a floor), so a load starts from the file, not from a stale copy.
+     */
+    fun reload() {
+        highest.clear()
+        raw.clear()
+        readable = true
         try {
             if (file.exists()) {
                 for (line in file.readLines()) {
-                    val parts = line.split('\t')
+                    val parts = line.split('	')
                     if (parts.size != 2) continue
                     val v = SemVer.parse(parts[1]) ?: continue
                     highest[parts[0]] = v

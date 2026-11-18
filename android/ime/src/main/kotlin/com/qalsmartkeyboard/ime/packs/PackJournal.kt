@@ -55,7 +55,7 @@ data class PendingSwap(
  * ids and reason codes.
  */
 class PackJournal(
-    root: File,
+    private val root: File,
     private val installedDir: File,
     private val maxUnconfirmedStarts: Int = DEFAULT_MAX_UNCONFIRMED_STARTS,
     private val log: (String) -> Unit = {},
@@ -118,6 +118,56 @@ class PackJournal(
         } catch (_: IOException) {
             log("reload flag not written")
         }
+    }
+
+    /**
+     * ADR 0007 D34: quarantines the installed pack [file] because the key that signed it was revoked
+     * (the updater found out from `/resource-signing-keys`; the build trusts that key, so the pack
+     * still verified). The pack is moved to `<packs>/quarantine/` (outside the installed directory,
+     * so the IME never sees it; the newest [MAX_QUARANTINED] are kept for diagnosis, signed packs hold
+     * no user data), its `.prev` is dropped (the slot falls back to the **bundled** pack, the IME's
+     * final fallback), a pending swap entry for it is removed, the resource id + version is blacklisted
+     * and the IME is told to reload. The slot's version floor is removed: a floor raised by a pack
+     * from a revoked key must not lock out its legitimate replacement; the bundled pack raises it
+     * again when the IME next loads (the updater holds the slot until then, see `UpdateState`).
+     * Returns false only if the pack could be neither moved aside nor deleted.
+     */
+    fun quarantine(file: String, resourceId: String, version: String, slot: String, versions: VersionStore, reason: String): Boolean =
+        synchronized(LOCK) {
+            log("pack $file ($resourceId $version) quarantined: $reason")
+            val target = File(installedDir, file)
+            val qdir = File(root, QUARANTINE_DIR)
+            var gone = !target.exists()
+            if (!gone) {
+                try {
+                    qdir.mkdirs()
+                    val dest = File(qdir, "$file.${System.currentTimeMillis()}")
+                    gone = target.renameTo(dest) || (runCatching { target.copyTo(dest, overwrite = true) }.isSuccess && target.delete())
+                } catch (_: IOException) {
+                }
+                if (!gone) gone = target.delete()
+            }
+            prevOf(file).delete()
+            trimQuarantine(qdir)
+            try {
+                writePending(readPending().filter { it.file != file })
+            } catch (_: IOException) {
+                // Logged by writePending; the next load drops an entry whose pack is gone.
+            }
+            versions.restore(slot, null)
+            try {
+                versions.save()
+            } catch (_: IOException) {
+                log("version store not writable")
+            }
+            addToBlacklist(resourceId, version, reason)
+            requestReload()
+            gone
+        }
+
+    private fun trimQuarantine(dir: File) {
+        val files = dir.listFiles { f -> f.isFile }?.sortedBy { it.lastModified() } ?: return
+        for (f in files.dropLast(MAX_QUARANTINED)) f.delete()
     }
 
     // ------------------------------------------------------------------ IME side
@@ -258,6 +308,8 @@ class PackJournal(
 
     companion object {
         const val DEFAULT_MAX_UNCONFIRMED_STARTS = 2
+        const val QUARANTINE_DIR = "quarantine"
+        const val MAX_QUARANTINED = 8
         private val LOCK = Any()
         private var reloadCounter = 0L
     }
