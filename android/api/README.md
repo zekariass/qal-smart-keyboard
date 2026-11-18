@@ -71,10 +71,10 @@ are refused outside `localhost`, `127.0.0.1` and `10.0.2.2`.
 - `./gradlew :api:test` (also run by the CI command through the `testDebugUnitTest` alias): OkHttp `MockWebServer` tests for the interceptors, refresh rotation (two or four concurrent 401s -> one refresh; reuse -> signed out; lost refresh response; refresh 5xx/offline keeps the session; retry once), 426, 429, field errors, non-Problem bodies, timeouts and the pinning/cleartext config.
 - **Local stack (optional, skipped unless `-PlocalStack=true`):**
   ```sh
-  # 1. backend + Postgres (see backend/README.md; QAL_SMS_PROVIDER=log and qal.notifications.sms.log.include-message=true show the OTP in the log, DEV ONLY)
-  cd backend && ./mvnw spring-boot:run
+  # 1. backend + compose Postgres, dev profile with the SMS capture (infra/scripts/run-backend-dev.sh, DEV ONLY)
+  infra/scripts/run-backend-dev.sh
   # 2. in another shell
   cd android && ./gradlew :api:localStackTest -PlocalStack=true            # http://localhost:8080
-  ./gradlew :api:localStackTest -PlocalStack=true -PlocalStackUrl=http://localhost:8080 -PlocalStackOtpCode=123456
+  ./gradlew :api:localStackTest -PlocalStack=true -PlocalStackUrl=http://localhost:8080 [-PlocalStackOtpCode=123456]
   ```
-  It calls `GET /api/v1/config`, starts an OTP challenge for a fixed test number, verifies a wrong code (expects the `OTP_INVALID` Problem) and, when `-PlocalStackOtpCode` is given, completes the sign-in and checks the signed-in state. From an Android emulator the host is `http://10.0.2.2:8080` (allowed by the debug Network Security Config).
+  It calls `GET /api/v1/config`, starts an OTP challenge for a fixed test number, verifies a wrong code (expects the `OTP_INVALID` Problem), reads the real code from the backend's dev-only `GET /dev/sms/last` (or uses `-PlocalStackOtpCode`), completes the sign-in, calls `GET /me/preferences`, refreshes the session and calls it again. From an Android emulator the host is `http://10.0.2.2:8080` (allowed by the debug Network Security Config).
