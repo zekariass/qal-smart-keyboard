@@ -1,10 +1,7 @@
 package com.qalsmartkeyboard.aigateway.adapter;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpTimeoutException;
-import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -12,13 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
 
 import com.qalsmartkeyboard.aigateway.spi.AiProvider;
 import com.qalsmartkeyboard.aigateway.spi.DetectRequest;
@@ -39,13 +30,14 @@ import com.qalsmartkeyboard.aigateway.spi.UserText;
  * vendors are chosen at gate G0 and each gets its own adapter with its own wire format; this class documents and tests
  * the mechanics every one of them needs:
  * <ul>
- * <li>Spring {@link RestClient} on a shared JDK {@link HttpClient} (HTTP/1.1, no redirects) with the connect timeout
+ * <li>Spring {@code RestClient} on a shared JDK {@link HttpClient} (HTTP/1.1, no redirects) with the connect timeout
  * from configuration and a read timeout equal to the per-call {@code timeout}.</li>
  * <li>Bearer key from configuration only; never logged, never in an exception.</li>
  * <li>HTTP error status to typed {@link ProviderException} without ever reading the error body; I/O failures to
  * Timeout / Unavailable / Cancelled; undecodable or incomplete JSON to InvalidResponse. Nothing is logged here.</li>
  * <li>Optional {@code X-Mock-Scenario} header (dev and test only) to drive the stub scenarios {@code slow}/{@code error}.</li>
  * </ul>
+ * The mechanics live in {@link JsonHttpTransport}, shared with the real vendor adapters (ADR 0023).
  * Status mapping: 401/403 AuthenticationFailed; 402/429 QuotaExhaustedAtProvider (Retry-After honoured when numeric);
  * 408/504 Timeout; 422/451 ContentRejected; any other 4xx/5xx Unavailable (a 4xx other than those means our
  * integration is wrong, which is a provider-side outage to callers and an alert to operators).
@@ -70,16 +62,12 @@ public final class HttpJsonAiProvider implements AiProvider {
 		}
 	}
 
-	private static final ParameterizedTypeReference<Map<String, Object>> JSON_OBJECT = new ParameterizedTypeReference<>() {
-	};
-
 	private final Config config;
-	private final HttpClient httpClient;
+	private final JsonHttpTransport transport;
 
 	public HttpJsonAiProvider(Config config) {
 		this.config = config;
-		this.httpClient = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
-				.followRedirects(HttpClient.Redirect.NEVER).connectTimeout(config.connectTimeout()).build();
+		this.transport = new JsonHttpTransport(config.code(), config.baseUrl(), config.connectTimeout());
 	}
 
 	@Override
@@ -159,71 +147,13 @@ public final class HttpJsonAiProvider implements AiProvider {
 	}
 
 	private Exchange post(String path, Map<String, Object> body, Duration timeout) {
-		AiProvider.requirePositive(timeout);
-		long start = System.nanoTime();
-		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-		factory.setReadTimeout(timeout);
-		RestClient client = RestClient.builder().requestFactory(factory).baseUrl(config.baseUrl().toString()).build();
-		try {
-			RestClient.RequestBodySpec spec = client.post().uri(path).contentType(MediaType.APPLICATION_JSON)
-					.accept(MediaType.APPLICATION_JSON);
-			if (config.apiKey() != null && !config.apiKey().isBlank()) {
-				spec.header(HttpHeaders.AUTHORIZATION, "Bearer " + config.apiKey());
-			}
-			if (config.mockScenario() != null && !config.mockScenario().isBlank()) {
-				spec.header("X-Mock-Scenario", config.mockScenario());
-			}
-			var responseEntity = spec.body(body).retrieve()
-					.onStatus(HttpStatusCode::isError, (req, res) -> {
-						throw mapStatus(res.getStatusCode().value(), res.getHeaders().getFirst(HttpHeaders.RETRY_AFTER));
-					}).toEntity(JSON_OBJECT);
-			Map<String, Object> json = responseEntity.getBody();
-			if (json == null) {
-				throw new ProviderException.InvalidResponse(code(), null);
-			}
-			return new Exchange(json, responseEntity.getHeaders().getFirst("X-Request-Id"), start, code());
-		} catch (ProviderException e) {
-			throw e;
-		} catch (RestClientException e) {
-			throw mapFailure(e);
+		Map<String, String> headers = new LinkedHashMap<>();
+		if (config.apiKey() != null && !config.apiKey().isBlank()) {
+			headers.put(HttpHeaders.AUTHORIZATION, "Bearer " + config.apiKey());
 		}
-	}
-
-	private ProviderException mapStatus(int status, String retryAfter) {
-		return switch (status) {
-			case 401, 403 -> new ProviderException.AuthenticationFailed(code());
-			case 402, 429 -> new ProviderException.QuotaExhaustedAtProvider(code(), seconds(retryAfter));
-			case 408, 504 -> new ProviderException.Timeout(code(), null);
-			case 422, 451 -> new ProviderException.ContentRejected(code());
-			default -> new ProviderException.Unavailable(code(), null);
-		};
-	}
-
-	/** Cause chain walk only to classify; the original exception is dropped so no URL or body detail escapes. */
-	private ProviderException mapFailure(RestClientException e) {
-		for (Throwable t = e; t != null; t = t.getCause()) {
-			if (t instanceof InterruptedException) {
-				Thread.currentThread().interrupt();
-				return new ProviderException.Cancelled(code());
-			}
-			if (t instanceof HttpTimeoutException || t instanceof SocketTimeoutException) {
-				return new ProviderException.Timeout(code(), null);
-			}
-		}
-		for (Throwable t = e; t != null; t = t.getCause()) {
-			if (t instanceof IOException) {
-				return new ProviderException.Unavailable(code(), null);
-			}
-		}
-		return new ProviderException.InvalidResponse(code(), null); // decoding or other client-side failure
-	}
-
-	private static Duration seconds(String retryAfter) {
-		try {
-			return retryAfter == null ? null : Duration.ofSeconds(Long.parseLong(retryAfter.trim()));
-		} catch (NumberFormatException e) {
-			return null;
-		}
+		headers.put("X-Mock-Scenario", config.mockScenario());
+		JsonHttpTransport.Response r = transport.post(path, headers, body, timeout);
+		return new Exchange(r.json(), r.header("X-Request-Id"), r.startNanos(), code());
 	}
 
 	// ------------------------------------------------------------------ JSON helpers
