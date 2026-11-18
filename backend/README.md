@@ -406,6 +406,44 @@ is linked. Code: `identity.merge.GuestMergeService`; module rules: `identity.Gue
   log hygiene), `OtpControllerTest` (response field, registered token ignored, guest tokens refused without the
   account store), `EnvelopeEncryptionServiceTest` (re-encryption).
 
+## Entitlements: resolver (B4.1, SD 15)
+
+Module `entitlements`: `EntitlementResolver.resolve(userId)` / `resolve(userId, at)` returns `ResolvedEntitlements`: the
+effective plan (`EffectivePlan`: plan, rank, `PlanSource`, subscription or organisation id, `effectiveUntil`, grace flag)
+and one `FeatureEntitlement` per active `feature_catalog` feature (`accessEnabled`, `includedUnits`, `unit`,
+`resetPeriod`, `creditCostPerUnit`, `creditsUsable`, `origin`). No HTTP yet: metering (B4.2), the token (B4.4) and
+`/me/entitlements` (B4.5) call this API. It reads the tables through its own package-private JDBC adapter (billing and
+organisations have no Java API yet).
+
+- **Account:** only `ACTIVE`, undeleted accounts hold entitlements. SUSPENDED, DELETION_PENDING, DELETED, MERGED, PENDING
+  and unknown users get no plan and every gated feature disabled (`AccessState` says why). Ungated features (typing,
+  `DETECT_LANGUAGE`) are never gated (R-2) and stay allowed, even then.
+- **Sources** (SD 15.5): `user_subscriptions` (source_type PAYMENT/PROMOTION/ADMIN_GRANT = `SUBSCRIPTION`, STORE =
+  `STORE_PURCHASE`, PARTNER = `PARTNER`; store and partner grants converge on that table, SD 16.1/16.7) and active
+  organisation seats (`ORGANIZATION_SEAT`: ACTIVE assignment + ACTIVE member + ACTIVE organisation + ACTIVE/GRACE_PERIOD
+  organisation subscription). Valid at `at` when the start (if any) has been reached and either status ACTIVE and `at <`
+  period end (none = open-ended), or status GRACE_PERIOD and `at <` `grace_period_end` (else period end +
+  `qal.entitlements.default-grace-period`, 3 days, SD 16.5). Period ends are exclusive. PENDING, PAST_DUE, PAUSED,
+  CANCELLED (cancel-at-period-end stays ACTIVE), EXPIRED, REVOKED and UPGRADED grant nothing; a STORE subscription whose
+  purchase is REFUNDED/REVOKED grants nothing. `plan_status` is not consulted (sold BUSINESS is still DRAFT in the seed).
+- **Precedence:** highest `plan_rank` among valid sources and the default plan (FREE, or `qal.entitlements.guest-plan-code`
+  = GUEST for guests; a guest has no subscription row). Allowances are never summed. Ties: ACTIVE before GRACE_PERIOD,
+  later `effectiveUntil` (open-ended last), then SUBSCRIPTION, STORE_PURCHASE, ORGANIZATION_SEAT, PARTNER, then source id.
+- **Allowances** come from `plan_entitlements` rows whose `configuration->>'quotaPolicyVersion'` equals
+  `qal.entitlements.quota-policy-version` (default `PROVISIONAL_V2`; env `QAL_ENTITLEMENTS_QUOTA_POLICY_VERSION`). No row
+  for a gated feature = disabled (fail closed), so a new policy version needs its rows seeded first.
+- **Overrides:** `user_feature_overrides` rows count when unexpired and their flag has a `feature_code` (flags without
+  one are UI flags). Override beats plan: disable = no access and allowance 0; enable = access with the plan row's
+  allowance, so a feature the plan excludes opens with allowance 0 and is payable with credits only. Several overrides
+  on one feature: disable wins. Typing/ungated features and denied accounts ignore overrides.
+- **Cache:** `resolve(userId)` is cached per user for `qal.entitlements.cache-ttl` (30s, `0s` = off), never beyond the winning
+  source's `effectiveUntil`; `resolve(userId, at)` always computes. Billing/organisation code must call
+  `invalidate(userId)` after changing a user's sources or overrides (otherwise visible after the TTL).
+- **Contract mapping:** `Entitlements.plan.source` only has DEFAULT, SUBSCRIPTION, ORGANIZATION_SEAT; use
+  `PlanSource.contractValue()` (STORE_PURCHASE and PARTNER map to SUBSCRIPTION).
+- **Tests:** `EntitlementSeedMatrixTest` (5 plans x 24 features read from `V1__baseline.sql`), `EntitlementResolverTest`
+  (precedence, edges, grace, accounts, overrides, cache), `EntitlementResolverIT` (real seed and source tables).
+
 ## Security chain (B2.4, OI-P11)
 
 `identity.security.ApiSecurityConfiguration` is the only `SecurityFilterChain`. It is stateless (no session, no CSRF,
