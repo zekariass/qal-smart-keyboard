@@ -43,7 +43,7 @@ class RetentionConfiguration {
 	/** Runs the job on the platform's db-scheduler (B1.4): one run at a time across the cluster, daily by default. */
 	@Bean
 	@ConditionalOnProperty(prefix = "qal.retention", name = "enabled", havingValue = "true", matchIfMissing = true)
-	RecurringTask<Void> privacyRetention(RetentionJob job, RetentionProperties properties) {
+	RecurringTask<Void> privacyRetentionTask(RetentionJob job, RetentionProperties properties) {
 		return Tasks.recurring(TASK, Schedules.cron(properties.cron(), ZoneOffset.UTC))
 				.execute((instance, context) -> job.run());
 	}
