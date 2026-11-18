@@ -119,7 +119,7 @@ final class S3PresignedArtifactUrlSigner implements ArtifactUrlSigner {
 		return out.toString();
 	}
 
-	private static byte[] concat(String prefix, byte[] secret) {
+	static byte[] concat(String prefix, byte[] secret) {
 		byte[] p = prefix.getBytes(StandardCharsets.UTF_8);
 		byte[] out = new byte[p.length + secret.length];
 		System.arraycopy(p, 0, out, 0, p.length);
@@ -127,7 +127,7 @@ final class S3PresignedArtifactUrlSigner implements ArtifactUrlSigner {
 		return out;
 	}
 
-	private static byte[] hmac(byte[] key, String data) {
+	static byte[] hmac(byte[] key, String data) {
 		try {
 			Mac mac = Mac.getInstance("HmacSHA256");
 			mac.init(new SecretKeySpec(key, "HmacSHA256"));
@@ -138,7 +138,7 @@ final class S3PresignedArtifactUrlSigner implements ArtifactUrlSigner {
 		}
 	}
 
-	private static String sha256Hex(String data) {
+	static String sha256Hex(String data) {
 		try {
 			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data.getBytes(StandardCharsets.UTF_8)));
 		}

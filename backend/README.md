@@ -142,7 +142,7 @@ Module `languages`: the five read operations `GET /languages`, `GET /languages/{
   bucket) is skipped and logged so one bad row cannot break discovery. The URL only carries the transfer: the client trusts the pack
   signature and SHA-256, never the URL.
 - **Signing keys:** every key with its status (`ACTIVE`, `RETIRING`, `REVOKED`, so clients can distrust revoked ones), public key,
-  validity window and, if present, `endorsedByKeyId`/`endorsementSignature` (V6 columns, written by B3.2 key tooling). Public
+  validity window and, if present, `endorsedByKeyId`/`endorsementSignature` (V6 columns, written by the B3.2 key registration). Public
   material only; private keys live in KMS (ADR 0007 D10).
 - **Profiles:** `ACTIVE` and `RETIRED` profiles of an active language, with `status`, so a client holding a retired code falls back
   to the newest active profile of the language (SD 10.2, F14). `DRAFT` is never listed. `rulesResourceId` is only given while that
@@ -153,6 +153,47 @@ Module `languages`: the five read operations `GET /languages`, `GET /languages/{
   which is right for responses carrying signed URLs).
 - Migration `V6__language_resource_discovery.sql` adds `language_resources.container_size_bytes` and the two endorsement columns
   of `resource_signing_keys`.
+
+## Admin pack publishing (B3.2, ADR 0019)
+
+`/admin/v1` operations of the contract's `Admin` tag (`x-internal`), in module `languages` with `administration`
+(`AdminAccess`, `AuditTrail`):
+
+- **Access (interim):** off unless `qal.admin.enabled=true` (`QAL_ADMIN_ENABLED`; off = 404). A bearer access token of a
+  registered ACTIVE user with an unexpired `user_admin_roles` row whose role grants the permission: `resources:upload`
+  (datasets, upload), `resources:edit` (stage), `resources:publish` (publish, retire), `resources:approve` (STABLE approval),
+  `languages:read` (read), `signing_keys:manage` (keys; SUPER_ADMIN only). Guests never. Workforce OIDC + MFA replaces this.
+- **Audit:** every state-changing action and every refusal writes `audit_events` (actor, action code, entity, outcome
+  `SUCCESS`/`FAILURE`/`DENIED`, correlation id, metadata of ids and codes only). Refusals are committed separately.
+- **Flow:** `POST /admin/v1/language-datasets` (the build's `datasets.manifest.json`, licence allow-list checked) →
+  `POST /admin/v1/language-resources?datasetCode=...` (body = the `.pack` file, `application/octet-stream`, max
+  `qal.languages.publishing.max-container-bytes`, default 33 685 504) → `DRAFT` → `POST .../{id}/stage` (`STAGED` =
+  published on `INTERNAL`) → `POST .../{id}/publish` `{channel BETA|STABLE, rolloutPercentage, minAppVersion?,
+  releaseNotes?}`; STABLE needs `POST .../{id}/stable-approval` by another admin first (`403 APPROVAL_REQUIRED`) →
+  `POST .../{id}/retire`. Illegal transitions are `409 PUBLICATION_CONFLICT`.
+- **Validation:** the Java port of the core verifier (`languages.pack.PackVerifier`: size, framing, key, strict Ed25519,
+  manifest, key-id match, size, SHA-256; passes `core/tests/vectors/pack-v1/`) against `resource_signing_keys`, then the
+  policy: no deltas, ACTIVE upload key, known language, licence on `language-data/licenses.json` (classpath copy
+  `src/main/resources/languages/licenses.json`, kept identical by `PackPrimitivesTest`; or a file via
+  `QAL_LICENSE_ALLOW_LIST`), at least one commercial dataset, rules packs with a backend `profile_code` (D21; ACTIVE for
+  BETA/STABLE), newer than every released version of the (language, type, platform) slot. Refusal: `422 PACK_REJECTED`
+  with `reason` (413 when too large).
+- **Signing:** stage and publish re-sign the pack with the server key (signed `releaseChannel`/`minAppVersion` = where it
+  is served; same id, version and artifact). `qal.languages.publishing.signing`: `QAL_PACK_SIGNING_KEY_ID` +
+  `QAL_PACK_SIGNING_PRIVATE_KEY` (32-byte Ed25519 seed, base64 or hex), or `allow-ephemeral` (dev profile, tests; refused
+  under prod/production/staging); `provider=kms` needs a `KmsSigningClient` adapter (none yet). Register the server key
+  once: `GET /admin/v1/pack-signer`, then `POST /admin/v1/resource-signing-keys {keyId, publicKey}`. Other keys are
+  registered endorsed by it (spec 7.4) or with `endorse:false` (upload-only keys such as the seed packs' dev key from
+  `seed-packs.json`); `.../{keyId}/retire` and `.../revoke` move status forward only.
+- **Storage:** uploads at `uploads/<id>/<sha256>.pack`, served containers at
+  `packs/<lang>/<type>/<platform>/<version>/<id>-<sha>.pack` in the B3.1 bucket, written with the separate write credential
+  `QAL_PACKS_S3_WRITE_ACCESS_KEY`/`_SECRET_KEY` (endpoint `QAL_PACKS_S3_WRITE_ENDPOINT`, default the artifacts endpoint).
+  Without it uploads fail (500, logged). `artifact_uri` is `s3://bucket/key`; `container_size_bytes` is filled.
+- Publication changes emit the outbox event `language-resource.publication-changed` (discovery has no cache).
+- Migration `V15__language_resource_datasets.sql` links resources to their source datasets (V14 is reserved for B5.3).
+- Local try-out: `infra/compose` (MinIO), `QAL_ADMIN_ENABLED=true`, `QAL_PACKS_S3_ENDPOINT=http://localhost:9000`, read and
+  write keys `qal_minio`/`qal_minio_dev_only`, then give a user a role:
+  `INSERT INTO user_admin_roles (user_id, admin_role_id) SELECT '<user>', id FROM admin_roles WHERE role_code = 'SUPER_ADMIN'`.
 
 ## Preferences and typing languages (B3.3)
 
