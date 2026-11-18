@@ -175,11 +175,17 @@ class GoogleTranslateProviderTest {
 
 	@Test
 	void slowAnswerEndsInTimeout() {
-		answer(TRANSLATE, ok("{}").withFixedDelay(8000));
+		// Warm up first (class loading, HTTP client, JSON) so the timing below measures the timeout, not a cold start:
+		// this test can run first in the class, and on a loaded machine the cold start alone took several seconds.
+		answer(TRANSLATE, ok("{}"));
+		fails(() -> provider().translate(TranslateRequest.of(SECRET_TEXT, "en", "am"), T));
+		server.resetAll();
+		answer(TRANSLATE, ok("{}").withFixedDelay(15000));
+		GoogleTranslateProvider provider = provider();
 		long start = System.nanoTime();
-		assertThat(fails(() -> provider().translate(TranslateRequest.of(SECRET_TEXT, "en", "am"),
+		assertThat(fails(() -> provider.translate(TranslateRequest.of(SECRET_TEXT, "en", "am"),
 				Duration.ofMillis(300))).kind()).isEqualTo(Kind.TIMEOUT);
-		assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(6)); // cold JVM start included; the stub waits 8 s
+		assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5)); // the stub waits 15 s
 	}
 
 	@Test
