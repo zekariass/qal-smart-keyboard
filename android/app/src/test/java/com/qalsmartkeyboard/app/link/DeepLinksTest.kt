@@ -25,7 +25,8 @@ class DeepLinksTest {
         assertEquals(DeepLinkAction.SHOW_SIGN_IN, DeepLinks.route(AiLink.SIGN_IN, out, true))
         assertEquals(DeepLinkAction.SHOW_SIGN_IN, DeepLinks.route(AiLink.SIGN_IN, AccountStatus.Guest, true))
         assertEquals(DeepLinkAction.SHOW_SETTINGS, DeepLinks.route(AiLink.SIGN_IN, AccountStatus.Registered, true))
-        assertEquals(DeepLinkAction.SHOW_SETTINGS, DeepLinks.route(AiLink.AI_SETTINGS, out, true))
+        assertEquals(DeepLinkAction.SHOW_PRIVACY, DeepLinks.route(AiLink.AI_SETTINGS, out, true))
+        assertEquals(DeepLinkAction.SHOW_PRIVACY, DeepLinks.route(AiLink.AI_SETTINGS, AccountStatus.Guest, true))
         assertEquals(DeepLinkAction.SHOW_PLANS, DeepLinks.route(AiLink.UPGRADE, AccountStatus.Registered, true))
         assertEquals(DeepLinkAction.OPEN_STORE, DeepLinks.route(AiLink.UPDATE_APP, out, true))
     }

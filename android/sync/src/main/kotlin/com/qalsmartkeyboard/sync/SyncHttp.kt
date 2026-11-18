@@ -29,6 +29,8 @@ class SyncHttp(private val clients: ApiClients) {
 
     suspend fun put(path: String, body: JsonElement): JsonElement? = call("PUT", path, emptyMap(), body)
 
+    suspend fun patch(path: String, body: JsonElement): JsonElement? = call("PATCH", path, emptyMap(), body)
+
     suspend fun post(path: String, body: JsonElement): JsonElement? = call("POST", path, emptyMap(), body)
 
     suspend fun delete(path: String) {

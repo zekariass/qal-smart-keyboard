@@ -36,6 +36,7 @@ class ServerAiActionsTest {
     private var profiles = listOf(profile("p1", "Mum", "am", serverId = "11111111-1111-4111-8111-111111111111"), profile("p2", "Boss", "en", sort = 50))
     private var rules = listOf(rule("com.chat", profileId = "p1"), rule("com.mail", lang = "ti"))
     private var updateRequired = false
+    private var saveToHistory = false
 
     @Before fun setUp() {
         server = MockWebServer().also { it.start() }
@@ -46,7 +47,7 @@ class ServerAiActionsTest {
 
     private fun actions(client: okhttp3.OkHttpClient = rig.clients.okHttpClient): ServerAiActions {
         val entitlements = EntitlementManager(client, rig.baseUrl, session, EntitlementTokenVerifier(PinnedKeys.NONE), EntitlementTokenStore(rig.files))
-        return ServerAiActions(client, rig.baseUrl, session, conn, { profiles to rules }, entitlements, { updateRequired }, direct)
+        return ServerAiActions(client, rig.baseUrl, session, conn, { profiles to rules }, entitlements, { updateRequired }, direct, saveToHistory = { saveToHistory })
     }
 
     private fun json(code: Int, body: String, vararg headers: Pair<String, String>) =
@@ -102,6 +103,24 @@ class ServerAiActionsTest {
         assertEquals("FEMININE", body["addressee"]!!.jsonObject["gender"]!!.jsonPrimitive.content)
         assertFalse("source language is detected by the server", "sourceLanguage" in body)
         assertFalse("history is not saved", "saveToHistory" in body)
+    }
+
+    @Test fun saveToHistoryIsSentOnlyWhileHistoryIsOn() {
+        val translated = """{"requestId":"r","destinationLanguage":"en","translatedText":"Hi","qualityTier":"BETA","replayed":false}"""
+        val transformed = """{"requestId":"r","resultText":"Hi","qualityTier":"BETA","replayed":false}"""
+        server.enqueue(json(200, translated))
+        server.enqueue(json(200, transformed))
+        server.enqueue(json(200, translated))
+        val a = actions()
+        saveToHistory = true // read per request: it takes effect on the next call
+        run(a, tr)
+        run(a, AiTask.Grammar)
+        saveToHistory = false
+        run(a, tr)
+        val bodies = (1..3).map { Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject }
+        assertEquals("true", bodies[0]["saveToHistory"]!!.jsonPrimitive.content)
+        assertEquals("true", bodies[1]["saveToHistory"]!!.jsonPrimitive.content)
+        assertFalse("off again: the member is absent (contract default false)", "saveToHistory" in bodies[2])
     }
 
     @Test fun plainLanguageTranslateOmitsProfileAndAddressee() {

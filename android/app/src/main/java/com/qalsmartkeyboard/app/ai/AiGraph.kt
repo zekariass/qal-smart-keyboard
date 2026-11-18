@@ -17,6 +17,7 @@ import com.qalsmartkeyboard.api.ClientSurface
 import com.qalsmartkeyboard.api.TransportConfig
 import com.qalsmartkeyboard.app.BuildConfig
 import com.qalsmartkeyboard.app.auth.AuthGraph
+import com.qalsmartkeyboard.app.privacy.PrivacyGraph
 import com.qalsmartkeyboard.app.sync.SyncGraph
 import com.qalsmartkeyboard.data.secure.EncryptedFileStore
 import com.qalsmartkeyboard.data.secure.KeystoreKeys
@@ -70,6 +71,8 @@ class AiGraph private constructor(context: Context) {
         entitlements = entitlements,
         updateRequired = { updateRequired || auth.updateRequired.value },
         lastDestinations = LastDestinationStore(files),
+        // A2.6: only while the person turned history on (the privacy screens set it); the server still checks consent and plan.
+        saveToHistory = { PrivacyGraph.get(context).historyFlag.enabled },
     )
 
     companion object {

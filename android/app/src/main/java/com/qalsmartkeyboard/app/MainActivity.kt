@@ -46,6 +46,11 @@ import com.qalsmartkeyboard.app.onboarding.ImeStatusReader
 import com.qalsmartkeyboard.app.link.DeepLinkAction
 import com.qalsmartkeyboard.app.link.DeepLinks
 import com.qalsmartkeyboard.app.packs.PackUpdateScheduler
+import com.qalsmartkeyboard.app.privacy.PrivacyEntryCard
+import com.qalsmartkeyboard.app.privacy.PrivacyGraph
+import com.qalsmartkeyboard.app.privacy.PrivacyHost
+import com.qalsmartkeyboard.app.privacy.PrivacyRoute
+import com.qalsmartkeyboard.app.privacy.PrivacyViewModel
 import com.qalsmartkeyboard.app.sync.DictionarySyncSection
 import com.qalsmartkeyboard.app.sync.SyncGraph
 import com.qalsmartkeyboard.app.sync.SyncScheduler
@@ -81,6 +86,10 @@ class MainActivity : ComponentActivity() {
         viewModelFactory { initializer { SignInViewModel(graph.repository) } }
     }
 
+    private val privacy: PrivacyViewModel by viewModels {
+        viewModelFactory { initializer { PrivacyViewModel(PrivacyGraph.get(applicationContext)) } }
+    }
+
     // The keyboard toolbar's link (ADR 0007 D40), consumed once the screen state is known.
     private var pendingLink by mutableStateOf<AiLink?>(null)
 
@@ -109,8 +118,10 @@ class MainActivity : ComponentActivity() {
             graph.session.state.collect { s ->
                 if (s is SessionState.SignedIn) {
                     SyncScheduler.requestSoon(applicationContext)
+                    privacy.refreshHistoryFlag() // A2.6: another device may have turned AI history on or off
                 } else if (previous is SessionState.SignedIn) {
                     withContext(Dispatchers.IO) { SyncGraph.get(applicationContext).engine.accountChanged() }
+                    PrivacyGraph.get(applicationContext).onSignedOut() // the toolbar stops asking for history to be saved
                 }
                 previous = s
             }
@@ -135,15 +146,18 @@ class MainActivity : ComponentActivity() {
             var updateDismissed by rememberSaveable { mutableStateOf(false) }
             var showSignIn by rememberSaveable { mutableStateOf(false) }
             var showPlans by rememberSaveable { mutableStateOf(false) }
+            // The privacy area (A2.6): null = closed, else a PrivacyRoute name.
+            var privacyRoute by rememberSaveable { mutableStateOf<String?>(null) }
             val link = pendingLink
             LaunchedEffect(link, completed) {
                 if (link == null || completed == null) return@LaunchedEffect // wait until the stored flag is read
                 pendingLink = null
                 when (DeepLinks.route(link, graph.repository.currentStatus(), completed == true)) {
                     DeepLinkAction.NONE -> Unit
-                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; rerun = false }
-                    DeepLinkAction.SHOW_SIGN_IN -> { signIn.reset(); showPlans = false; showSignIn = true }
-                    DeepLinkAction.SHOW_PLANS -> { showSignIn = false; showPlans = true }
+                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; rerun = false }
+                    DeepLinkAction.SHOW_PRIVACY -> { showSignIn = false; showPlans = false; rerun = false; privacyRoute = PrivacyRoute.DASHBOARD.name }
+                    DeepLinkAction.SHOW_SIGN_IN -> { signIn.reset(); showPlans = false; privacyRoute = null; showSignIn = true }
+                    DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true }
                     DeepLinkAction.OPEN_STORE -> openStorePage(this@MainActivity)
                 }
             }
@@ -190,6 +204,17 @@ class MainActivity : ComponentActivity() {
                                 OutlinedButton(onClick = { signIn.reset(); showSignIn = false }) { Text(stringResource(R.string.onb_back)) }
                             }
                         }
+                        privacyRoute != null && !showFlow -> PrivacyHost(
+                            route = PrivacyRoute.entries.firstOrNull { it.name == privacyRoute } ?: PrivacyRoute.DASHBOARD,
+                            onRoute = { privacyRoute = it.name },
+                            onClose = { privacyRoute = null },
+                            account = accountStatus,
+                            viewModel = privacy,
+                            onSignIn = { signIn.reset(); showSignIn = true },
+                            onPlans = { showPlans = true },
+                            modifier = Modifier.padding(innerPadding),
+                            syncCard = { DictionarySyncSection(accountStatus) },
+                        )
                         showFlow -> OnboardingScreen(
                             state = flow,
                             onNext = onboarding::next,
@@ -218,7 +243,7 @@ class MainActivity : ComponentActivity() {
                                 onboarding.restart()
                                 rerun = true
                             }, syncContent = {
-                                DictionarySyncSection(accountStatus)
+                                PrivacyEntryCard(onOpen = { privacyRoute = PrivacyRoute.DASHBOARD.name })
                             }, accountContent = {
                                 AccountSection(
                                     status = accountStatus,
