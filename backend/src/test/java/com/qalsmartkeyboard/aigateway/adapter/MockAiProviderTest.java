@@ -54,8 +54,11 @@ class MockAiProviderTest {
 
 	@Test
 	void unsupportedOrIdenticalLanguagesAreRejected() {
-		assertThatThrownBy(() -> mock.translate(TranslateRequest.of("x", "en", "fr"), T))
+		assertThatThrownBy(() -> mock.translate(TranslateRequest.of("x", "en", "not a code"), T))
 				.isInstanceOf(ProviderException.UnsupportedLanguagePair.class);
+		// ADR 0040: any catalogue-shaped pair is translated; the registry decides which pairs are routed
+		assertThat(mock.translate(TranslateRequest.of("x", "fr", "am"), T).translatedText().value())
+				.isEqualTo("[mock:am] x");
 		assertThatThrownBy(() -> mock.translate(TranslateRequest.of("x", "en", "en"), T))
 				.isInstanceOf(ProviderException.UnsupportedLanguagePair.class);
 	}

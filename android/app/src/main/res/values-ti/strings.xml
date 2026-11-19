@@ -513,4 +513,8 @@
     <!-- ADR 0035: the keyboard's clipboard panel. DRAFT (N9). -->
     <string name="settings_clipboard_history">ታሪኽ ሰሌዳ ቅዳሕ</string>
     <string name="settings_clipboard_history_summary">ቀረባ ዝተቐድሑ፣ ኣብ ዝኽሪ ጥራይ ን1 ሰዓት ይጸንሑ</string>
+    <!-- Translation languages and AI reliability (ADR 0040). DRAFT (N9). -->
+    <string name="settings_translate_search">ቋንቋታት ድለዩ</string>
+    <string name="settings_translate_none_found">ዝኾነ ቋንቋ ኣይተረኽበን</string>
+    <string name="settings_translate_offline_note">እቲ ኣፕ ሓንሳእ ኣብ መስመር ምስ ኣተወ ተወሰኽቲ ቋንቋታት ኣብዚ ይርኣዩ።</string>
 </resources>

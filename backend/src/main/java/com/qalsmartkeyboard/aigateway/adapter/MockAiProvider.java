@@ -54,6 +54,9 @@ public final class MockAiProvider implements AiProvider {
 
 	public static final String DEFAULT_CODE = "mock";
 	public static final Set<String> LANGUAGES = Set.of("am", "ti", "om", "en", "ar");
+	/** Codes the mock translates from and into: the contract's LanguageCode shape, "und" excluded. */
+	private static final java.util.regex.Pattern TRANSLATABLE = java.util.regex.Pattern
+			.compile("^(?!und$)[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$");
 
 	/** What goes wrong. */
 	public enum FailureMode {
@@ -128,7 +131,9 @@ public final class MockAiProvider implements AiProvider {
 		String source = request.sourceLanguage() != null ? request.sourceLanguage()
 				: detect(request.text().value(), List.of()).get(0).languageCode();
 		String destination = request.destinationLanguage();
-		if (!LANGUAGES.contains(destination) || !LANGUAGES.contains(source) || source.equals(destination)) {
+		// ADR 0040: like the vendors, any catalogue-shaped code (the registry limits the pairs); detection stays am/ti/om/en/ar
+		if (!TRANSLATABLE.matcher(destination).matches() || !TRANSLATABLE.matcher(source).matches()
+				|| source.equals(destination)) {
 			throw new ProviderException.UnsupportedLanguagePair(code);
 		}
 		UserText out = UserText.of("[mock:" + destination + "] " + request.text().value());

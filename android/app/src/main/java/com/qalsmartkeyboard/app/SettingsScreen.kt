@@ -3,6 +3,8 @@ package com.qalsmartkeyboard.app
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -33,6 +35,8 @@ import com.qalsmartkeyboard.app.themes.themeStore
 import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.ime.AppLanguage
+import com.qalsmartkeyboard.ime.ai.AiLanguages
+import com.qalsmartkeyboard.ime.ai.TranslationCatalog
 import com.qalsmartkeyboard.ime.theme.PremiumThemeAccess
 import com.qalsmartkeyboard.ime.R as ImeR
 import kotlinx.coroutines.launch
@@ -45,7 +49,7 @@ internal fun languageName(code: String): String = when (code) {
     "om" -> stringResource(ImeR.string.language_name_om)
     "en" -> stringResource(ImeR.string.language_name_en)
     "ar" -> stringResource(ImeR.string.language_name_ar)
-    else -> code
+    else -> AiLanguages.name(code) // a translation language (ADR 0040): the platform's name, else the catalogue's
 }
 
 /**
@@ -89,6 +93,11 @@ fun SettingsScreen(
     appVersion: String = BuildConfig.VERSION_NAME,
     /** The native core's version (About); null hides the row (JVM tests have no native core). */
     coreVersion: String? = null,
+    /**
+     * The translation language catalogue for "Translate into" (ADR 0040): the host fetches or reads the device's copy
+     * off the main thread. The default (tests, no AI client) is the five keyboard languages.
+     */
+    translationCatalog: suspend () -> TranslationCatalog = { TranslationCatalog.BUNDLED },
 ) {
     val scope = rememberCoroutineScope()
     val update: SettingsUpdate = { transform -> scope.launch { repository.update(transform) } }
@@ -168,7 +177,10 @@ fun SettingsScreen(
         )
         SettingsPage.PREFERENCES -> PreferencesPage(settings, back, update, modifier)
         SettingsPage.VOICE -> VoiceTypingPage(settings, back, update, modifier)
-        SettingsPage.TRANSLATION -> TranslationPage(settings, back, update, modifier)
+        SettingsPage.TRANSLATION -> {
+            val catalog by produceState(TranslationCatalog.BUNDLED, translationCatalog) { value = translationCatalog() }
+            TranslationPage(settings, back, update, modifier, catalog)
+        }
         SettingsPage.DICTIONARY -> DictionaryPage(back, syncContent, dictionaryContent, modifier)
         SettingsPage.ACCOUNT -> AccountPage(back, accountContent, modifier)
         SettingsPage.APP_LANGUAGE -> AppLanguagePage(back, modifier)

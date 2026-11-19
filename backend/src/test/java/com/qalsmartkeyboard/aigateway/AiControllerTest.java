@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -39,6 +40,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.qalsmartkeyboard.aigateway.pipeline.AiUserContext;
+import com.qalsmartkeyboard.aigateway.pipeline.LanguageCatalog;
 import com.qalsmartkeyboard.aigateway.spi.Addressee;
 import com.qalsmartkeyboard.aigateway.spi.AiFeature;
 import com.qalsmartkeyboard.aigateway.spi.DataPolicy;
@@ -97,6 +99,8 @@ class AiControllerTest {
 	AiUserContext users;
 	@MockitoBean
 	AiFeedback feedback;
+	@MockitoBean
+	LanguageCatalog languages;
 
 	final UUID userId = UUID.randomUUID();
 
@@ -657,7 +661,9 @@ class AiControllerTest {
 	void capabilitiesForAnAnonymousCallerListEveryExposedServedPair() throws Exception {
 		providers();
 		mvc.perform(get("/api/v1/ai/capabilities")).andExpect(status().isOk())
-				.andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
+				.andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-cache")))
+				.andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("private")))
+				.andExpect(header().exists("ETag"))
 				.andExpect(jsonPath("$.generatedAt").exists()).andExpect(jsonPath("$.items.length()").value(4))
 				.andExpect(jsonPath("$.items[0].featureCode").value("DETECT_LANGUAGE"))
 				.andExpect(jsonPath("$.items[0].maxInputCharacters").value(1000))
@@ -714,5 +720,78 @@ class AiControllerTest {
 		mvc.perform(get("/api/v1/ai/capabilities")).andExpect(status().isTooManyRequests())
 				.andExpect(jsonPath("$.code").value("RATE_LIMITED"));
 		verifyNoInteractions(registry);
+	}
+
+	// ================================================================================ translation catalogue (ADR 0040)
+
+	static LanguageCatalog.Language lang(String code, String english, String nativeName, String script, boolean rtl,
+			boolean typing, int order) {
+		return new LanguageCatalog.Language(code, english, LanguageCatalog.script(script), true, nativeName, script, rtl,
+				typing, order);
+	}
+
+	void catalogue() {
+		when(languages.allActive()).thenReturn(List.of(lang("am", "Amharic", "አማርኛ", "Ethi", false, true, 10),
+				lang("en", "English", "English", "Latn", false, true, 40),
+				lang("ar", "Arabic", "العربية", "Arab", true, true, 45),
+				lang("aa", "Afar", "Qafár af", "Latn", false, true, 60),
+				lang("fr", "French", "Français", "Latn", false, false, 1000),
+				lang("he", "Hebrew", "עברית", "Hebr", true, false, 1000)));
+		when(registry.activeDescriptors()).thenReturn(List.of(
+				provider("a", new ProviderCapability(AiFeature.TRANSLATE, "en", "am", QualityTier.BETA, true, 5000, "m1"),
+						new ProviderCapability(AiFeature.TRANSLATE, null, null, QualityTier.BETA, true, 5000, "m1",
+								java.util.Set.of("am", "en", "ar", "fr", "he"), java.util.Set.of("am", "en", "ar", "fr"))),
+				provider("b", new ProviderCapability(AiFeature.TRANSLATE, "en", "am", QualityTier.PRODUCTION, false,
+						5000, "m2"))));
+	}
+
+	@Test
+	void capabilitiesListTheTranslationCatalogueInCatalogueOrder() throws Exception {
+		catalogue();
+		mvc.perform(get("/api/v1/ai/capabilities")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.translationLanguages.length()").value(5)) // Afar: no provider lists it
+				.andExpect(jsonPath("$.translationLanguages[*].code").value(
+						org.hamcrest.Matchers.contains("am", "en", "ar", "fr", "he")))
+				.andExpect(jsonPath("$.translationLanguages[0].nativeName").value("አማርኛ"))
+				.andExpect(jsonPath("$.translationLanguages[0].qualityTier").value("PRODUCTION"))
+				.andExpect(jsonPath("$.translationLanguages[0].isTypingLanguage").value(true))
+				.andExpect(jsonPath("$.translationLanguages[2].writingDirection").value("RTL"))
+				.andExpect(jsonPath("$.translationLanguages[3].isTypingLanguage").value(false))
+				.andExpect(jsonPath("$.translationLanguages[3].asSource").value(true))
+				.andExpect(jsonPath("$.translationLanguages[3].supportsAutoDetection").value(true))
+				.andExpect(jsonPath("$.translationLanguages[4].code").value("he"))
+				.andExpect(jsonPath("$.translationLanguages[4].asSource").value(true))
+				.andExpect(jsonPath("$.translationLanguages[4].asDestination").value(false))
+				.andExpect(jsonPath("$.translationLanguages[4].scriptCode").value("Hebr"))
+				// the any-pair row is one item without languages
+				.andExpect(jsonPath("$.items.length()").value(2))
+				.andExpect(jsonPath("$.items[1].featureCode").value("TRANSLATE"))
+				.andExpect(jsonPath("$.items[1].sourceLanguage").doesNotExist())
+				.andExpect(jsonPath("$.items[1].destinationLanguage").doesNotExist());
+	}
+
+	@Test
+	void capabilitiesRevalidateWithTheEtag() throws Exception {
+		catalogue();
+		String etag = mvc.perform(get("/api/v1/ai/capabilities")).andExpect(status().isOk()).andReturn().getResponse()
+				.getHeader("ETag");
+		assertThat(etag).matches("\"[0-9a-f]{32}\"");
+		mvc.perform(get("/api/v1/ai/capabilities").header("If-None-Match", etag)).andExpect(status().isNotModified())
+				.andExpect(header().string("ETag", etag)).andExpect(content().string(""));
+		mvc.perform(get("/api/v1/ai/capabilities").header("If-None-Match", "W/" + etag))
+				.andExpect(status().isNotModified());
+		mvc.perform(get("/api/v1/ai/capabilities").header("If-None-Match", "\"stale\"")).andExpect(status().isOk());
+		// a changed catalogue is a new tag
+		when(languages.allActive()).thenReturn(List.of(lang("am", "Amharic", "አማርኛ", "Ethi", false, true, 10)));
+		mvc.perform(get("/api/v1/ai/capabilities").header("If-None-Match", etag)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.translationLanguages.length()").value(1));
+	}
+
+	@Test
+	void theCatalogueFollowsThePlanLikeTheItems() throws Exception {
+		catalogue();
+		when(entitlements.resolve(userId)).thenReturn(plan(AccessState.GRANTED, "DETECT_LANGUAGE"));
+		mvc.perform(get("/api/v1/ai/capabilities").header("Authorization", bearer())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.translationLanguages").isEmpty());
 	}
 }

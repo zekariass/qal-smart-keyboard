@@ -142,7 +142,8 @@ class TypingLanguagesService {
 	}
 
 	private LanguageRow language(String code) {
-		return jdbc.sql("SELECT id, script_code FROM supported_languages WHERE language_code = :code AND is_active")
+		return jdbc.sql("SELECT id, script_code FROM supported_languages WHERE language_code = :code AND is_active"
+				+ " AND is_typing_language") // ADR 0040: translation-only languages are not typing languages
 				.param("code", code).query((rs, n) -> new LanguageRow(rs.getObject(1, UUID.class), rs.getString(2)))
 				.optional().orElse(null);
 	}

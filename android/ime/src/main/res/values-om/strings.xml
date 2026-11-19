@@ -566,4 +566,10 @@
     <string name="editor_dictate_stop">Sagaleedhaan barreessuu dhaabaatii barreeffama galchaa</string>
     <string name="wordart_open_preview">Agarsiisa guddaa banaa</string>
     <string name="wordart_typing_label">Barreeffama Aartii Jechaa</string>
+    <!-- Translation languages and AI reliability (ADR 0040). DRAFT (N9). -->
+    <string name="ai_err_unreachable">Sarvara Qal waliin walqunnamuun hin danda\'amne. Walqunnamtii interneetii keessanii mirkaneessaatii irra deebi\'aa yaalaa.</string>
+    <string name="translate_search_languages">Afaanota barbaadaa</string>
+    <string name="translate_search_clear">Barbaacha haqaa</string>
+    <string name="translate_no_languages">Afaan tokkollee hin argamne</string>
+    <string name="ai_output_more_languages">Afaanota dabalataa</string>
 </resources>

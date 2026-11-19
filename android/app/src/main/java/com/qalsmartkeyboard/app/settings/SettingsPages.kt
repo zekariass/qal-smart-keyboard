@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,6 +28,8 @@ import com.qalsmartkeyboard.app.languageName
 import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.LanguageRules
 import com.qalsmartkeyboard.data.NumeralStyle
+import com.qalsmartkeyboard.ime.ai.TranslationCatalog
+import com.qalsmartkeyboard.ime.ai.TranslationLanguageSearch
 import kotlin.math.roundToInt
 
 /** Applies a change to the stored settings (the host launches `SettingsRepository.update`). */
@@ -103,28 +106,57 @@ fun VoiceTypingPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: Se
     }
 }
 
-/** "Translate into" (ADR 0031): the keyboard's default translation destination; every language of `LanguageRules.KNOWN`. */
+/**
+ * "Translate into" (ADR 0031): the keyboard's default translation destination. ADR 0040: every destination of the
+ * translation catalogue ([catalog]: the server's list as cached on the device, else the five keyboard languages), the
+ * chosen one and the keyboard languages first, then by name, with a search over the UI-language name, the English name,
+ * the autonym and the code.
+ */
 @Composable
-fun TranslationPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: SettingsUpdate, modifier: Modifier = Modifier) {
+fun TranslationPage(
+    settings: KeyboardSettings,
+    onBack: () -> Unit,
+    onUpdate: SettingsUpdate,
+    modifier: Modifier = Modifier,
+    catalog: TranslationCatalog = TranslationCatalog.BUNDLED,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
     SettingsScaffold(stringResource(R.string.settings_translate_title), onBack, modifier) {
         SettingsNote(stringResource(R.string.settings_translate_body))
+        if (!catalog.fromServer) SettingsNote(stringResource(R.string.settings_translate_offline_note))
+        val searchLabel = stringResource(R.string.settings_translate_search)
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it.take(40) },
+            singleLine = true,
+            label = { Text(searchLabel) },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+        val chosen = settings.aiPreferredTarget
+        val languages = TranslationLanguageSearch.order(catalog.destinations, listOfNotNull(chosen))
+        val names = languages.associate { it.code to languageName(it.code) }
+        val shown = languages.filter { TranslationLanguageSearch.matches(query, it, names.getValue(it.code)) }
         Column(Modifier.selectableGroup()) {
-            SettingsRadioRow(
-                stringResource(R.string.settings_translate_auto),
-                selected = settings.aiPreferredTarget == null,
-                onSelect = { onUpdate { it.copy(aiPreferredTarget = null) } },
-                summary = stringResource(R.string.settings_translate_auto_hint),
-            )
-            LanguageRules.KNOWN.forEach { code ->
-                val native = nativeLanguageName(code)
-                val uiName = languageName(code)
+            if (query.isBlank()) {
+                SettingsRadioRow(
+                    stringResource(R.string.settings_translate_auto),
+                    selected = chosen == null,
+                    onSelect = { onUpdate { it.copy(aiPreferredTarget = null) } },
+                    summary = stringResource(R.string.settings_translate_auto_hint),
+                )
+            }
+            shown.forEach { language ->
+                val code = language.code
+                val native = if (code in LanguageRules.KNOWN) nativeLanguageName(code) else language.nativeName
+                val uiName = names.getValue(code)
                 SettingsRadioRow(
                     native,
-                    selected = settings.aiPreferredTarget == code,
+                    selected = chosen == code,
                     onSelect = { onUpdate { it.copy(aiPreferredTarget = code) } },
                     summary = uiName.takeIf { !it.equals(native, ignoreCase = true) },
                 )
             }
+            if (shown.isEmpty()) SettingsNote(stringResource(R.string.settings_translate_none_found))
         }
     }
 }

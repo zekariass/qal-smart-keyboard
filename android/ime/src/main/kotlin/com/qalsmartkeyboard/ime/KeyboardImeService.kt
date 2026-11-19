@@ -48,6 +48,7 @@ import com.qalsmartkeyboard.ime.ai.AiToolbarView
 import com.qalsmartkeyboard.ime.ai.EditorAiAccess
 import com.qalsmartkeyboard.ime.ai.TranslateController
 import com.qalsmartkeyboard.ime.ai.TranslateLanguagesView
+import com.qalsmartkeyboard.ime.ai.TranslationLanguages
 import com.qalsmartkeyboard.ime.ai.TranslatePanelView
 import com.qalsmartkeyboard.ime.ai.TranslatePicker
 import com.qalsmartkeyboard.ime.ai.forEditor
@@ -502,9 +503,12 @@ class KeyboardImeService : InputMethodService() {
         override val preferredTarget: String? get() = snapshot.current.aiPreferredTarget
         override fun lastTarget(source: String): String? = snapshot.current.aiTranslatePairs[source]
         override fun rememberTarget(source: String, destinationId: String) {
-            if (snapshot.current.aiTranslatePairs[source] == destinationId) return
-            snapshot.launchUpdate { it.copy(aiTranslatePairs = it.aiTranslatePairs + (source to destinationId)) }
+            val pairs = snapshot.current.aiTranslatePairs
+            if (pairs[source] == destinationId && pairs.keys.lastOrNull() == source) return
+            // Moved to the end: the order is the recency of the language lists (ADR 0040).
+            snapshot.launchUpdate { it.copy(aiTranslatePairs = (it.aiTranslatePairs - source) + (source to destinationId)) }
         }
+        override fun recentLanguages(): List<String> = AiLanguagePrefs.recentFrom(snapshot.current.aiTranslatePairs)
         override val senderName: String get() = snapshot.current.emailSenderName
         override fun rememberSenderName(name: String) {
             snapshot.launchUpdate { it.copy(emailSenderName = name) }
@@ -523,6 +527,7 @@ class KeyboardImeService : InputMethodService() {
                 main.post {
                     if (aiToolbar != null) return@post
                     aiActions = actions
+                    TranslationLanguages.current = actions.translationCatalog() // ADR 0040: the names the views show
                     val toolbar = AiToolbarController(
                         actions = actions,
                         editor = EditorAiAccess(adapter) { controller.commitComposition() },
@@ -552,6 +557,11 @@ class KeyboardImeService : InputMethodService() {
                     controller.fieldTyping = ::fieldTyping
                     aiPanelsHandle = actions.addAvailabilityListener {
                         main.post {
+                            val catalog = actions.translationCatalog()
+                            if (catalog != TranslationLanguages.current) {
+                                TranslationLanguages.current = catalog
+                                if (translate?.isOpen == true) translateDirty = true
+                            }
                             if (aiWorkspace?.isOpen == true) aiPanelDirty = true
                             if (translate?.isOpen == true) translateDirty = true
                             if (aiPanelDirty || translateDirty) refreshViews()
@@ -973,13 +983,14 @@ class KeyboardImeService : InputMethodService() {
             addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(search, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(wordArtStrip, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            // The translate language list sits where the keys are; above them while the keys type into its search (ADR 0040).
+            addView(languagesView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(wordArt, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(voiceView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(toolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(clipView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            addView(languagesView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val root = OverlayStack(ui).apply {
             addView(column)
@@ -1247,6 +1258,8 @@ class KeyboardImeService : InputMethodService() {
         val translateOpen = tr != null && tr.isOpen
         val picker = if (tr != null && translateOpen) tr.picker else TranslatePicker.NONE
         val picking = picker != TranslatePicker.NONE
+        // ADR 0040: while the list's search is typed, the keys show again under a shorter list.
+        val searchingLanguages = picking && tr?.searching == true
         translatePanel?.let {
             val was = it.visibility == View.VISIBLE
             val show = translateOpen && !picking
@@ -1277,7 +1290,7 @@ class KeyboardImeService : InputMethodService() {
             },
         )
         bar?.sync() // the field's shortcuts (clipboard, emoji, voice) follow the field and the settings
-        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE || picking) View.GONE else View.VISIBLE
+        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE || (picking && !searchingLanguages)) View.GONE else View.VISIBLE
         emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
         bar?.visibility = if (inSearch || inWordArtTyping || aiTyping) View.GONE else View.VISIBLE
         aiFieldBar?.let {

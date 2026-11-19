@@ -233,4 +233,41 @@ class ProviderRegistryTest {
 			return now;
 		}
 	}
+
+	// ADR 0040: one any-pair row per model, limited to the model's translation languages
+
+	static ProviderCapability anyPair(Set<String> sources, Set<String> destinations) {
+		return new ProviderCapability(AiFeature.TRANSLATE, null, null, QualityTier.BETA, true, 5000, "m", sources,
+				destinations);
+	}
+
+	@Test
+	void anAnyPairRowServesEveryPairOfItsLanguageSetsAndNothingElse() {
+		var reg = registry(List.of(
+				provider("a", ProviderStatus.ACTIVE, CLEAN, anyPair(Set.of("fr", "en", "am"), Set.of("am", "en", "ar"))),
+				provider("b", ProviderStatus.ACTIVE, CLEAN, anyPair(Set.of(), Set.of()))), "a", "b");
+		assertThat(codes(reg.resolve(RouteQuery.of(AiFeature.TRANSLATE, "fr", "am")))).containsExactly("a");
+		assertThat(codes(reg.resolve(RouteQuery.of(AiFeature.TRANSLATE, "en", "ar")))).containsExactly("a");
+		assertThat(codes(reg.resolve(RouteQuery.of(AiFeature.TRANSLATE, null, "ar")))).containsExactly("a"); // detect
+		assertThat(reg.resolve(RouteQuery.of(AiFeature.TRANSLATE, "ar", "en"))).isEmpty(); // ar is no source
+		assertThat(reg.resolve(RouteQuery.of(AiFeature.TRANSLATE, "fr", "es"))).isEmpty(); // es is no destination
+		assertThat(reg.resolve(RouteQuery.of(AiFeature.TRANSLATE, "am", "am"))).isEmpty(); // same language
+		// an empty set (a model without translation languages) matches nothing
+		assertThat(reg.resolve(RouteQuery.of(AiFeature.TRANSLATE, "en", "am"))).extracting(ResolvedProvider::code)
+				.containsExactly("a");
+	}
+
+	@Test
+	void aSetIsIgnoredOnAFixedSideAndRowsWithoutSetsKeepTheirMeaning() {
+		ProviderCapability fixed = new ProviderCapability(AiFeature.TRANSLATE, "en", null, QualityTier.BETA, true, null,
+				"m", Set.of("xx"), Set.of("am"));
+		assertThat(fixed.sourceLanguages()).isNull();
+		assertThat(fixed.servesSource("en")).isTrue();
+		assertThat(fixed.servesDestination("am")).isTrue();
+		assertThat(fixed.servesDestination("fr")).isFalse();
+		ProviderCapability transform = new ProviderCapability(AiFeature.REWRITE, "am", null, QualityTier.BETA, true,
+				null, "m");
+		var reg = registry(List.of(provider("a", ProviderStatus.ACTIVE, CLEAN, transform)), "a");
+		assertThat(codes(reg.resolve(RouteQuery.of(AiFeature.REWRITE, "am", null)))).containsExactly("a");
+	}
 }

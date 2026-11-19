@@ -77,7 +77,8 @@ class LanguagesRepository {
 		return jdbc.query("""
 				SELECT language_code, english_name, native_name, script_code, writing_direction, support_level,
 				       is_launch_language, metadata::text
-				FROM supported_languages WHERE is_active ORDER BY sort_order, english_name, language_code""",
+				FROM supported_languages WHERE is_active AND is_typing_language
+				ORDER BY sort_order, english_name, language_code""",
 				(rs, i) -> new LanguageRow(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
 						rs.getString(5), rs.getString(6), rs.getBoolean(7), rs.getString(8)));
 	}

@@ -206,7 +206,8 @@ class AiVendorRoutingIT {
 			assertThat(r.outcome()).as(pair[0] + ">" + pair[1]).isEqualTo(Outcome.SUCCEEDED);
 			assertThat(r.attempts()).extracting(a -> a.providerCode()).containsExactly("openai", "google-translate");
 		}
-		assertThat(translate("ar", "am").outcome()).isEqualTo(Outcome.LANGUAGE_PAIR_UNAVAILABLE);
+		// Afar is a (planned) typing language no provider lists (ADR 0040)
+		assertThat(translate("ar", "aa").outcome()).isEqualTo(Outcome.LANGUAGE_PAIR_UNAVAILABLE);
 
 		VENDORS.resetAll();
 		breakers.resetAll();

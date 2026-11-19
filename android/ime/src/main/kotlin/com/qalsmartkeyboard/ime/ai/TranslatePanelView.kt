@@ -361,7 +361,7 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
             }
         }
         // "Amharic → English": the server's detected source when it reported one, else the source shown in the header.
-        val from = r.result.sourceLanguage?.takeIf { it in AiLanguages.ALL }?.let(AiLanguages::name)
+        val from = r.result.sourceLanguage?.takeIf { c.catalog.isKnown(it) }?.let(AiLanguages::name)
             ?: r.task.sourceLanguage?.let(AiLanguages::name)
             ?: AiLanguages.name(c.direction.likelySource(c.detected))
         val to = r.task.destination.label
