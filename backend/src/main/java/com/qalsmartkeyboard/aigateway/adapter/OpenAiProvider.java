@@ -226,13 +226,14 @@ public final class OpenAiProvider implements AiProvider {
 		return sb.toString();
 	}
 
-	/** English names for the launch languages (the model knows them by name better than by code); other codes as is. */
+	/** English names for the launch languages and Arabic (the model knows them by name better than by code); other codes as is. */
 	static String languageName(String code) {
 		return switch (code) {
 			case "am" -> "Amharic (am)";
 			case "ti" -> "Tigrinya (ti)";
 			case "om" -> "Afaan Oromoo (om)";
 			case "en" -> "English (en)";
+			case "ar" -> "Arabic (ar)";
 			default -> "the language with code " + code;
 		};
 	}

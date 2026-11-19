@@ -4,7 +4,7 @@
 keyboard language … proper Arabic keyboard layout … right-to-left text entry … punctuation, spacing and cursor
 behaviour … represented correctly in settings and language selectors … in translation language options if the provider
 supports it") · **Builds on:** ADR 0007 (typing languages, N9), ADR 0026 (key previews), ADR 0029 (voice typing),
-ADR 0031 (AI panels), ADR 0032 (UI localisation) · **Contract:** none changed (backend activation is a follow-up)
+ADR 0031 (AI panels), ADR 0032 (UI localisation) · **Contract:** `LanguageCode` example adds `ar` (text only)
 
 ## Context
 The keyboard types the four launch languages (am, ti, om, en). Many users also write Arabic (family, religion, work in
@@ -106,10 +106,27 @@ order comparison, and is not an error or a reason to retry with backoff. After a
 the language, it is sent again, so activation on the server needs no app update. Preferences sync carries no typing
 language; dictionary sync does not include Arabic.
 
+## Server activation (migration V23)
+`V23__arabic_language.sql` activates Arabic on the server; no app update is needed (decision 6 stops holding `ar` back as
+soon as the server accepts it). The baseline row for `ar` was already `is_active` (only `support_level` was PLANNED), so
+`/me/typing-languages` accepted it from the start; what changes is:
+- **Catalogue:** `ar` becomes `BETA` (like the launch languages), `sort_order` 45 (right after English, before the
+  planned languages), `is_active` set explicitly; still `Arab` / `RTL`. It is **not** a launch language: the flag marks
+  the Ethiopian launch set and nothing reads it. Typing accepts `LATIN_PASSTHROUGH` only, as for om and en.
+- **AI capabilities** (BETA, auto-detection on, same limits as V10/V19/V20, `ON CONFLICT DO NOTHING`): `TRANSLATE`
+  en to ar and ar to en on `openai-llm` and `google-nmt` (and the dev/test mock models); `GRAMMAR_CORRECTION`, `REWRITE`,
+  `TONE_ADJUST`, `SUMMARIZE`, `EXPLAIN_TEXT`, `SMART_REPLY` and `DRAFT_DOCUMENT` for text in `ar` on `openai-llm` (and
+  the mock LLM). The any-language routing policies and prompt templates of V19 to V21 already cover `ar`; providers stay
+  DISABLED until the operator enables them.
+- **Code:** `MockAiProvider` knows `ar` (translation, script detection, fixed phrases) and the OpenAI adapter names it
+  "Arabic (ar)" in prompts. Ethiopia-specific logic (Ge'ez modes, Ethiopian calendar notes) is untouched.
+- `docs/..._Database_Design_v2_0.sql` still mirrors the V1 baseline byte for byte (CI `contracts/sync.sh --check`), so it
+  carries no note about V23; this section is the record.
+
 ## Out of scope
 - Word predictions, autocorrect and learning for Arabic (no licensed data, N10).
 - Arabic as a **UI** language (no `values-ar`, no RTL app UI).
-- Backend activation of `ar`, `en↔ar` translation routes (migration V23), Arabic emoji search keywords and Word Art
+- Arabic emoji search keywords and Word Art
   greetings (emoji search and Word Art fall back to English), Persian/Urdu letters and an Arabic-Indic-first numeral
   setting.
 

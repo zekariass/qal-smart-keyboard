@@ -189,6 +189,37 @@ class AiVendorRoutingIT {
 		VENDORS.verify(0, postRequestedFor(urlPathEqualTo(GOOGLE)));
 	}
 
+	/** V23: Arabic routes both ways, OpenAI first and Google as the fallback, and the transforms reach OpenAI only. */
+	@Test
+	void arabicTranslationRoutesBothWaysOnBothVendors() {
+		openAiAnswers("صباح الخير");
+		googleAnswers("من Google");
+		RouteResult<TranslateResult> enAr = translate("en", "ar");
+		assertThat(enAr.outcome()).isEqualTo(Outcome.SUCCEEDED);
+		assertThat(enAr.providerCode()).isEqualTo("openai");
+		assertThat(enAr.value().translatedText().value()).isEqualTo("صباح الخير");
+
+		openAiDown();
+		for (String[] pair : new String[][] { { "en", "ar" }, { "ar", "en" } }) {
+			breakers.resetAll();
+			RouteResult<TranslateResult> r = translate(pair[0], pair[1]);
+			assertThat(r.outcome()).as(pair[0] + ">" + pair[1]).isEqualTo(Outcome.SUCCEEDED);
+			assertThat(r.attempts()).extracting(a -> a.providerCode()).containsExactly("openai", "google-translate");
+		}
+		assertThat(translate("ar", "am").outcome()).isEqualTo(Outcome.LANGUAGE_PAIR_UNAVAILABLE);
+
+		VENDORS.resetAll();
+		breakers.resetAll();
+		openAiAnswers("fixed");
+		for (AiFeature f : new AiFeature[] { AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE, AiFeature.TONE_ADJUST,
+				AiFeature.SUMMARIZE, AiFeature.EXPLAIN_TEXT, AiFeature.SMART_REPLY, AiFeature.DRAFT_DOCUMENT }) {
+			RouteResult<TransformResult> t = router.route(RouteRequest.transform(TransformRequest.of(f, "نص", "ar"),
+					null, null));
+			assertThat(t.providerCode()).as(f.name()).isEqualTo("openai");
+		}
+		VENDORS.verify(0, postRequestedFor(urlPathEqualTo(GOOGLE)));
+	}
+
 	@Test
 	void disabledRowsRouteNothingEvenWithAdapters() {
 		disable();

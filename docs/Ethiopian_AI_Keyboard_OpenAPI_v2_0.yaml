@@ -3906,7 +3906,7 @@ components:
     # ------------------------------------------------------------ primitives
     LanguageCode:
       type: string
-      description: BCP 47-compatible language tag (e.g. `am`, `ti`, `om`, `en`, `ti-ER`).
+      description: BCP 47-compatible language tag (e.g. `am`, `ti`, `om`, `en`, `ar`, `ti-ER`).
       pattern: '^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$'
       maxLength: 35
     CountryCode:

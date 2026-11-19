@@ -277,13 +277,33 @@ class LanguagesIT {
 		mvc.perform(get("/api/v1/languages/am/transliteration-profiles")).andExpect(status().isNotFound());
 	}
 
+	/** V23 (ADR 0034): Arabic is a BETA right-to-left language listed right after English, not a launch language. */
+	@Test
+	void arabicIsListedActiveAndRightToLeft() throws Exception {
+		JsonNode langs = body(mvc.perform(get("/api/v1/languages")).andExpect(status().isOk()).andReturn()).get("items");
+		List<String> codes = new ArrayList<>();
+		JsonNode ar = null;
+		for (JsonNode l : langs) {
+			codes.add(l.get("code").asString());
+			if ("ar".equals(l.get("code").asString())) {
+				ar = l;
+			}
+		}
+		assertThat(ar).isNotNull();
+		assertThat(ar.get("writingDirection").asString()).isEqualTo("RTL");
+		assertThat(ar.get("scriptCode").asString()).isEqualTo("Arab");
+		assertThat(ar.get("supportLevel").asString()).isEqualTo("BETA");
+		assertThat(ar.get("isLaunchLanguage").asBoolean()).isFalse();
+		assertThat(codes.indexOf("ar")).isEqualTo(codes.indexOf("en") + 1);
+	}
+
 	@Test
 	void inactiveLanguagesAreNotListed() throws Exception {
-		jdbc.update("UPDATE supported_languages SET is_active = FALSE WHERE language_code = 'ar'");
+		jdbc.update("UPDATE supported_languages SET is_active = FALSE WHERE language_code = 'so'");
 		JsonNode langs = body(mvc.perform(get("/api/v1/languages")).andExpect(status().isOk()).andReturn()).get("items");
 		List<String> codes = new ArrayList<>();
 		langs.forEach(l -> codes.add(l.get("code").asString()));
-		assertThat(codes).contains("am", "ti", "om", "en").doesNotContain("ar");
+		assertThat(codes).contains("am", "ti", "om", "en", "ar").doesNotContain("so");
 		JsonNode ge = null;
 		for (JsonNode l : langs) {
 			if ("gez".equals(l.get("code").asString())) {

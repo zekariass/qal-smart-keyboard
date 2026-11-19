@@ -60,12 +60,12 @@ class AiProviderSeedsIT {
 		assertThat(jdbc.queryForObject("""
 				SELECT count(*) FROM ai_language_capabilities c JOIN ai_models m ON m.id = c.model_id
 				 JOIN ai_providers p ON p.id = m.provider_id
-				 WHERE p.provider_code = 'mock' AND c.feature_code = 'TRANSLATE'""", Integer.class)).isEqualTo(6);
+				 WHERE p.provider_code = 'mock' AND c.feature_code = 'TRANSLATE'""", Integer.class)).isEqualTo(8); // + V23 en<>ar
 		assertThat(jdbc.queryForObject("""
 				SELECT count(*) FROM ai_language_capabilities c JOIN ai_models m ON m.id = c.model_id
 				 JOIN ai_providers p ON p.id = m.provider_id
 				 WHERE p.provider_code = 'mock' AND c.feature_code IN ('GRAMMAR_CORRECTION', 'REWRITE', 'TONE_ADJUST')""",
-				Integer.class)).isEqualTo(12);
+				Integer.class)).isEqualTo(15); // + V23 ar
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_language_capabilities WHERE feature_code = 'DETECT_LANGUAGE'",
 				Integer.class)).isEqualTo(3);
 	}
@@ -78,10 +78,10 @@ class AiProviderSeedsIT {
 				 JOIN ai_providers p ON p.id = m.provider_id
 				 WHERE p.provider_code = ? AND c.feature_code = ? AND c.is_enabled""";
 		for (String provider : List.of("openai", "google-translate")) {
-			assertThat(jdbc.queryForObject(count, Integer.class, provider, "TRANSLATE")).as(provider).isEqualTo(6);
+			assertThat(jdbc.queryForObject(count, Integer.class, provider, "TRANSLATE")).as(provider).isEqualTo(8); // V19 + V23
 		}
 		for (String feature : List.of("GRAMMAR_CORRECTION", "REWRITE", "TONE_ADJUST")) {
-			assertThat(jdbc.queryForObject(count, Integer.class, "openai", feature)).as(feature).isEqualTo(4);
+			assertThat(jdbc.queryForObject(count, Integer.class, "openai", feature)).as(feature).isEqualTo(5); // + V23 ar
 			assertThat(jdbc.queryForObject(count, Integer.class, "google-translate", feature)).as(feature).isZero();
 		}
 		assertThat(jdbc.queryForObject(count, Integer.class, "openai", "DETECT_LANGUAGE")).isZero();
@@ -121,7 +121,7 @@ class AiProviderSeedsIT {
 			assertThat(d.dataPolicy().trainsOnCustomerData()).isFalse();
 			assertThat(d.dataPolicy().zeroDataRetention()).isTrue();
 			assertThat(d.dataPolicy().processingRegions()).containsExactly("local");
-			assertThat(d.capabilities()).hasSize(35); // V10: 19, V20 (ADR 0027): 4 features x 4 languages
+			assertThat(d.capabilities()).hasSize(44); // V10: 19, V20 (ADR 0027): 4 features x 4 languages, V23: ar (2 translations + 7 features)
 		});
 		for (AiFeature feature : AiFeature.values()) {
 			assertThat(registry.resolve(RouteQuery.of(feature, "en", "am"))).isEmpty();
