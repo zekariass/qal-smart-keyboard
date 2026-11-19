@@ -141,14 +141,14 @@ class VoicePanelViewTest {
 
     // ------------------------------------------------------------------ the bar's microphone
 
-    @Test fun theBarShowsTheMicBeforeTheGearOnlyWhenOffered() {
+    @Test fun theBarShowsTheMicAtItsRightEndOnlyWhenOffered() {
         val strip = CandidateStripView(ctx)
         strip.measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         strip.layout(0, 0, strip.measuredWidth, strip.measuredHeight)
         assertFalse(strip.slots().any { it.target == Target.Mic })
         strip.micShown = true
         val targets = strip.slots().map { it.target }
-        assertEquals(listOf(Target.Mic, Target.Gear), targets.takeLast(2))
+        assertEquals(Target.Mic, targets.last()) // ADR 0035: the mic ends the bar (the gear became a shortcut / tile)
         val mic = strip.slots().first { it.target == Target.Mic }
         assertTrue(strip.middleRange().second <= mic.hit.left) // candidates and AI actions end before it
         var taps = 0

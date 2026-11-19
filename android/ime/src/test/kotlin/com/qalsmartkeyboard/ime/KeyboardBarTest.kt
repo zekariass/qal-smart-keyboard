@@ -17,6 +17,8 @@ import com.qalsmartkeyboard.ime.ai.AiToolbarController
 import com.qalsmartkeyboard.ime.ai.AiToolbarView
 import com.qalsmartkeyboard.ime.ai.EditorAiAccess
 import com.qalsmartkeyboard.ime.ai.FakeAiActions
+import com.qalsmartkeyboard.ime.toolbar.Tool
+import com.qalsmartkeyboard.ime.toolbar.ToolContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -27,7 +29,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
-/** The one bar above the keys: its states (idle, composing, AI open, chooser, sensitive field) and its fixed height. */
+/** The one bar above the keys (ADR 0035): its states (idle, composing, AI open, chooser, tool panel, sensitive field) and its fixed height. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
 class KeyboardBarTest {
@@ -84,40 +86,76 @@ class KeyboardBarTest {
     private val barPx get() = (CandidateStripView.HEIGHT_DP * d).toInt()
     private fun cands(vararg s: String) = s.map { Suggestion(it, SuggestionKind.TRANSLITERATION) }
 
-    @Test fun idleShowsPillAiEntryAndGearOnOneBar() {
+    private fun shortcutTools(h: H) = h.targets().filterIsInstance<Target.Shortcut>().map { it.tool }
+
+    @Test fun idleShowsToolsPillAndPinnedShortcutsOnOneBar() {
         val h = H()
         assertEquals(barPx, h.layout())
-        assertEquals(listOf(Target.Pill, Target.Ai, Target.Gear), h.targets())
+        val t = h.targets()
+        assertEquals(Target.Tools, t[0])
+        assertEquals(Target.Pill, t[1])
+        // Translate, AI and Clipboard first, then Settings and Theme while they fit.
+        assertEquals(listOf(Tool.TRANSLATE, Tool.AI_ACTIONS, Tool.CLIPBOARD, Tool.SETTINGS), shortcutTools(h).take(4))
         assertEquals(AiEntry.CLOSED, h.strip.aiEntry)
         assertEquals(View.GONE, h.row().visibility)
         assertEquals("no AI row or panel above the bar when idle", View.GONE, h.ai.visibility)
         assertEquals(0, h.actions.refreshCount) // showing the keyboard never refreshes (D40)
     }
 
-    @Test fun withoutAPillTheAiEntryStartsAtTheLeft() {
+    @Test fun everyIconButtonIsAFullHeight48dpTarget() {
+        val h = H()
+        h.strip.micShown = true
+        h.layout()
+        for (s in h.strip.slots().filter { it.target is Target.Shortcut || it.target == Target.Tools || it.target == Target.Mic }) {
+            assertTrue("${s.target} ${s.hit.width() / d} dp", s.hit.width() >= 48f * d - 0.5f)
+            assertEquals(barPx.toFloat(), s.hit.height(), 1f)
+        }
+        // Shortcuts are evenly spaced, never further apart than 72 dp, and never overlap the mic at the right end.
+        val shortcuts = h.strip.slots().filter { it.target is Target.Shortcut }
+        val widths = shortcuts.map { it.hit.width() }
+        assertTrue(widths.max() - widths.min() < 0.5f)
+        assertTrue(widths.first() <= CandidateStripView.MAX_SHORTCUT_DP * d + 0.5f)
+        val mic = h.strip.slots().last()
+        assertEquals(Target.Mic, mic.target)
+        assertEquals(widthPx.toFloat(), mic.hit.right, 0.5f)
+        assertTrue(shortcuts.last().hit.right <= mic.hit.left + 0.5f)
+    }
+
+    @Test fun narrowScreensShowFewerShortcutsButKeepTranslateAndAi() {
+        val h = H()
+        h.strip.micShown = true
+        val narrow = (320 * d).toInt()
+        h.bar.measure(View.MeasureSpec.makeMeasureSpec(narrow, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        h.bar.layout(0, 0, narrow, h.bar.measuredHeight)
+        assertEquals(listOf(Tool.TRANSLATE, Tool.AI_ACTIONS), shortcutTools(h).take(2))
+        assertTrue(shortcutTools(h).size < 6)
+    }
+
+    @Test fun withoutAPillTheShortcutsFollowTheToolsButton() {
         val h = H()
         h.strip.setModes(emptyList(), LayoutKind.ENGLISH)
         h.layout()
-        assertEquals(listOf(Target.Ai, Target.Gear), h.targets())
-        assertTrue(h.strip.slots().first().shape.left < 12f * d)
+        assertEquals(Target.Tools, h.targets().first())
+        assertEquals(listOf(Tool.TRANSLATE, Tool.AI_ACTIONS, Tool.CLIPBOARD, Tool.SETTINGS, Tool.THEME, Tool.EMOJI), shortcutTools(h))
     }
 
-    @Test fun openingTheAiEntryShowsTheActionsInTheMiddleWithoutSendingText() {
+    @Test fun theAiShortcutShowsTheActionsInTheMiddleWithoutSendingText() {
         val h = H()
-        h.strip.activate(Target.Ai)
+        h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
         assertEquals(barPx, h.layout())
         assertTrue(h.bar.aiOpen)
         assertEquals(AiEntry.OPEN, h.strip.aiEntry)
         assertEquals(View.VISIBLE, h.row().visibility)
+        assertEquals(listOf(Target.Tools, Target.Pill, Target.AiClose), h.targets())
         // ADR 0031: the direction control [ Auto · English ⇄ Amharic ] (the swap is an icon), Translate, Assist, Email, ...
         assertEquals(listOf("Auto · English", "", "Amharic", "Translate", "Assist", "Email", "Grammar", "Rewrite", "Natural"), h.rowTexts())
-        // The row sits between the AI close button and the gear, as tall as the bar.
+        // The row sits right after the close button, to the bar's end, as tall as the bar.
         val (start, end) = h.strip.middleRange(widthPx)
+        val close = h.strip.slots().first { it.target == Target.AiClose }
+        assertEquals(close.hit.right, start, 0.5f)
         assertEquals(start.toInt(), h.row().left)
         assertEquals(end.toInt() - start.toInt(), h.row().width)
         assertEquals(barPx, h.row().height)
-        val gear = h.strip.slots().first { it.target == Target.Gear }
-        assertTrue(h.row().right <= gear.hit.left + 1)
         // Opening refreshes the cached plan state (D40) but reads and sends no text.
         assertEquals(1, h.actions.refreshCount)
         assertTrue(h.actions.submitted.isEmpty())
@@ -130,33 +168,45 @@ class KeyboardBarTest {
         assertEquals("the bar keeps its height", barPx, h.layout())
     }
 
+    @Test fun theTranslateShortcutOpensTodaysTranslateEntryPoint() {
+        val h = H()
+        h.strip.activate(Target.Shortcut(Tool.TRANSLATE))
+        h.layout()
+        assertTrue(h.bar.aiOpen)
+        assertEquals(0, h.row().scrollX) // the direction control and Translate come first
+        assertEquals("Translate", h.rowTexts()[3])
+        assertTrue(h.actions.submitted.isEmpty())
+    }
+
     @Test fun theCloseButtonClosesTheActionsAndAnOpenPicker() {
         val h = H()
-        h.strip.activate(Target.Ai)
+        h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
         h.rowChip("Amharic").performClick()
         assertEquals(AiPicker.DESTINATION, h.controller.picker)
         assertEquals(View.VISIBLE, h.ai.visibility)
-        h.strip.activate(Target.Ai) // now the close button
+        h.strip.activate(Target.AiClose)
         assertFalse(h.bar.aiOpen)
         assertEquals(AiEntry.CLOSED, h.strip.aiEntry)
         assertEquals(AiPicker.NONE, h.controller.picker)
         assertEquals(View.GONE, h.row().visibility)
         assertEquals(View.GONE, h.ai.visibility)
+        h.layout()
+        assertTrue(h.targets().contains(Target.Shortcut(Tool.AI_ACTIONS)))
     }
 
-    @Test fun composingPutsCandidatesInTheMiddleAndClosesTheActions() {
+    @Test fun composingPutsCandidatesInTheMiddleKeepsToolsAndClosesTheActions() {
         val h = H()
-        h.strip.activate(Target.Ai)
+        h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
         h.strip.show(cands("ሰላም", "ሰላማ"), isDraft = true)
         assertEquals(barPx, h.layout())
         assertFalse(h.bar.aiOpen)
-        assertFalse(h.strip.showsAiEntry)
         assertEquals(View.GONE, h.row().visibility)
-        assertEquals(listOf(Target.Pill, Target.DraftTag, Target.Candidate(0), Target.Candidate(1), Target.Gear), h.targets())
-        // The word is done: the AI entry is back, closed.
+        // The tools button stays reachable at the left while composing.
+        assertEquals(listOf(Target.Tools, Target.Pill, Target.DraftTag, Target.Candidate(0), Target.Candidate(1)), h.targets())
+        // The word is done: the shortcuts are back, the AI closed.
         h.strip.show(emptyList(), isDraft = true)
         h.layout()
-        assertEquals(listOf(Target.Pill, Target.Ai, Target.Gear), h.targets())
+        assertEquals(listOf(Tool.TRANSLATE, Tool.AI_ACTIONS, Tool.CLIPBOARD), shortcutTools(h).take(3))
         assertEquals(AiEntry.CLOSED, h.strip.aiEntry)
     }
 
@@ -164,27 +214,47 @@ class KeyboardBarTest {
         val h = H()
         h.strip.activate(Target.Pill)
         assertTrue(h.strip.isModeChooserOpen)
-        assertEquals(listOf(Target.Pill, Target.Mode(LayoutKind.FIDEL), Target.Mode(LayoutKind.PHONETIC), Target.Mode(LayoutKind.ABC), Target.Gear), h.targets())
+        assertEquals(listOf(Target.Tools, Target.Pill, Target.Mode(LayoutKind.FIDEL), Target.Mode(LayoutKind.PHONETIC), Target.Mode(LayoutKind.ABC)), h.targets())
         h.strip.activate(Target.Pill)
-        h.strip.activate(Target.Ai)
+        h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
         assertTrue(h.bar.aiOpen)
         h.strip.activate(Target.Pill) // opening the chooser closes the actions
         assertFalse(h.bar.aiOpen)
         assertTrue(h.strip.isModeChooserOpen)
         assertEquals(View.GONE, h.row().visibility)
+        // The tools panel's Writing mode tile opens the same chooser.
+        h.strip.closeModeChooser()
+        h.strip.openModeChooser()
+        assertTrue(h.strip.isModeChooserOpen)
     }
 
-    @Test fun sensitiveFieldsShowNoAiNoCandidatesOnlyTheGear() {
+    @Test fun anOpenToolPanelLeavesOnlyBackAndTitleAndClosesTheActions() {
         val h = H()
-        h.strip.activate(Target.Ai)
+        h.strip.micShown = true
+        h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
+        h.strip.panelTitle = "Clipboard"
+        assertEquals(barPx, h.layout())
+        assertFalse(h.bar.aiOpen)
+        assertEquals(View.GONE, h.row().visibility)
+        assertEquals(listOf(Target.Tools, Target.Title), h.targets())
+        assertEquals("Clipboard", h.strip.slots()[1].label)
+        h.strip.panelTitle = null
+        h.layout()
+        assertEquals(Target.Mic, h.targets().last())
+    }
+
+    @Test fun sensitiveFieldsShowNoAiNoCandidatesNoClipboardOrEmoji() {
+        val h = H()
+        h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
         val password = InputProfile.from(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, EditorInfo.IME_ACTION_DONE, false, 0)
         h.bar.closeAi()
+        h.bar.fieldContext = { ToolContext(password) }
         h.controller.onFieldStarted(password, "com.example.bank")
         h.strip.setModes(emptyList(), LayoutKind.ABC) // the controller offers no writing modes there
         h.strip.show(emptyList(), isDraft = false)
         assertEquals(barPx, h.layout())
         assertEquals(AiEntry.NONE, h.strip.aiEntry)
-        assertEquals(listOf(Target.Gear), h.targets())
+        assertEquals(listOf(Target.Tools, Target.Shortcut(Tool.SETTINGS), Target.Shortcut(Tool.THEME)), h.targets())
         assertEquals(View.GONE, h.row().visibility)
         assertEquals(View.GONE, h.ai.visibility)
         // Even a stray toggle cannot open AI here.
@@ -193,7 +263,7 @@ class KeyboardBarTest {
         assertTrue(h.actions.submitted.isEmpty())
     }
 
-    @Test fun everySensitiveKindHidesTheAiEntry() {
+    @Test fun everySensitiveKindHidesTheAiShortcuts() {
         val kinds = listOf(
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
@@ -205,19 +275,38 @@ class KeyboardBarTest {
         )
         for (t in kinds) {
             val h = H()
-            h.controller.onFieldStarted(InputProfile.from(t, 0, false, 0), "x")
+            val p = InputProfile.from(t, 0, false, 0)
+            h.bar.fieldContext = { ToolContext(p) }
+            h.controller.onFieldStarted(p, "x")
             h.layout()
             assertEquals("inputType $t", AiEntry.NONE, h.strip.aiEntry)
+            assertTrue("inputType $t", shortcutTools(h).none { it == Tool.TRANSLATE || it == Tool.AI_ACTIONS })
         }
         val h = H()
-        h.controller.onFieldStarted(InputProfile.from(InputType.TYPE_CLASS_TEXT, EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING, false, 0), "x")
+        val incognito = InputProfile.from(InputType.TYPE_CLASS_TEXT, EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING, false, 0)
+        h.bar.fieldContext = { ToolContext(incognito) }
+        h.controller.onFieldStarted(incognito, "x")
+        h.layout()
         assertEquals("incognito", AiEntry.NONE, h.strip.aiEntry)
+        assertFalse("incognito: no clipboard", shortcutTools(h).contains(Tool.CLIPBOARD))
+    }
+
+    @Test fun aSignedOutPlanStateLocksTheAiShortcutsButNotTheOthers() {
+        val h = H()
+        h.actions.availability = AiAvailability(block = AiBlock.SIGNED_OUT)
+        h.ai.render()
+        h.layout()
+        val locked = h.strip.slots().filter { it.target is Target.Shortcut }.associate { (it.target as Target.Shortcut).tool to it.locked }
+        assertEquals(true, locked[Tool.TRANSLATE])
+        assertEquals(true, locked[Tool.AI_ACTIONS])
+        assertEquals(false, locked[Tool.CLIPBOARD])
+        assertTrue(h.bar.toolContext().aiBlocked)
     }
 
     @Test fun signedOutLinkComesFirstIsWholeAndOpensSignIn() {
         val h = H()
         h.actions.availability = AiAvailability(block = AiBlock.SIGNED_OUT)
-        h.strip.activate(Target.Ai)
+        h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
         h.layout()
         val first = (h.row().getChildAt(0) as ViewGroup).getChildAt(0) as TextView
         assertEquals("Sign in to use AI", first.text.toString())
@@ -240,7 +329,7 @@ class KeyboardBarTest {
     @Test fun anActionWhileSignedOutShowsTheSignInPanelAboveTheBar() {
         val h = H()
         h.actions.availability = AiAvailability(block = AiBlock.SIGNED_OUT)
-        h.strip.activate(Target.Ai)
+        h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
         h.rowChip("Translate").performClick()
         assertTrue(h.controller.panel is AiPanel.Failed)
         assertEquals(View.VISIBLE, h.ai.visibility)
@@ -253,8 +342,11 @@ class KeyboardBarTest {
         val heights = ArrayList<Int>()
         heights += h.layout()
         h.strip.show(cands("ሰላም"), false); heights += h.layout()
-        h.strip.show(emptyList(), false); h.strip.activate(Target.Ai); heights += h.layout()
+        h.strip.show(emptyList(), false); h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS)); heights += h.layout()
         h.strip.activate(Target.Pill); heights += h.layout()
+        h.strip.micShown = true; heights += h.layout()
+        h.strip.panelTitle = "Tools"; heights += h.layout()
+        h.strip.panelTitle = null
         h.strip.setModes(emptyList(), LayoutKind.ENGLISH); heights += h.layout()
         h.controller.onFieldStarted(InputProfile.from(InputType.TYPE_CLASS_NUMBER, 0, false, 0), null); heights += h.layout()
         assertEquals(listOf(barPx), heights.distinct())
@@ -262,17 +354,21 @@ class KeyboardBarTest {
 
     @Test fun aNewFieldStartsWithTheActionsClosed() {
         val h = H()
-        h.strip.activate(Target.Ai)
+        h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
         h.bar.closeAi()
         h.controller.onFieldStarted(InputProfile.DEFAULT, "com.other")
         assertFalse(h.bar.aiOpen)
         assertEquals(AiEntry.CLOSED, h.strip.aiEntry)
     }
 
-    @Test fun beforeTheAiIsAttachedThereIsNoEntry() {
+    @Test fun beforeTheAiIsAttachedThereAreNoAiShortcuts() {
         val strip = CandidateStripView(ctx)
         val ai = AiToolbarView(ctx)
         KeyboardBar(ctx, strip, ai)
         assertEquals(AiEntry.NONE, strip.aiEntry)
+        strip.measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        strip.layout(0, 0, strip.measuredWidth, strip.measuredHeight)
+        val tools = strip.slots().mapNotNull { (it.target as? Target.Shortcut)?.tool }
+        assertEquals(listOf(Tool.CLIPBOARD, Tool.SETTINGS, Tool.THEME, Tool.EMOJI), tools)
     }
 }

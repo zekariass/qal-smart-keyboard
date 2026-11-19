@@ -1,0 +1,22 @@
+package com.qalsmartkeyboard.ime.toolbar
+
+import android.content.Context
+import com.qalsmartkeyboard.ime.R
+
+/** The short name of a tool (tile label, shortcut and TalkBack name), in the UI language (ADR 0032). */
+fun toolLabel(c: Context, tool: Tool): String = c.getString(
+    when (tool) {
+        Tool.TRANSLATE -> R.string.ai_translate
+        Tool.AI_ACTIONS -> R.string.top_bar_ai_open
+        Tool.AI_ASSIST -> R.string.tool_ai_assist
+        Tool.EMAIL -> R.string.tool_email
+        Tool.CLIPBOARD -> R.string.tool_clipboard
+        Tool.EMOJI -> R.string.key_emoji_description
+        Tool.VOICE -> R.string.voice_mic
+        Tool.WORD_ART -> R.string.wordart_tab
+        Tool.WRITING_MODE -> R.string.tool_writing_mode
+        Tool.LANGUAGES -> R.string.tool_languages
+        Tool.THEME -> R.string.tool_theme
+        Tool.SETTINGS -> R.string.tool_settings
+    },
+)
