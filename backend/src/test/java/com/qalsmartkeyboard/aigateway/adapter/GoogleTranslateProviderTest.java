@@ -103,6 +103,20 @@ class GoogleTranslateProviderTest {
 		server.verify(postRequestedFor(urlEqualTo(TRANSLATE)).withRequestBody(notContaining("\"source\"")));
 	}
 
+	/** ADR 0040: Google's legacy detection codes are reported as the catalogue's BCP 47 codes. */
+	@Test
+	void legacyDetectedCodesAreMappedToTheCatalogue() {
+		answer(TRANSLATE, ok("""
+				{"data":{"translations":[{"translatedText":"Hello","detectedSourceLanguage":"iw"}]}}"""));
+		assertThat(provider().translate(TranslateRequest.of("שלום", null, "en"), T).detectedSourceLanguage())
+				.isEqualTo("he");
+		assertThat(GoogleTranslateProvider.catalogueCode("jw")).isEqualTo("jv");
+		assertThat(GoogleTranslateProvider.catalogueCode("tl")).isEqualTo("fil");
+		assertThat(GoogleTranslateProvider.catalogueCode("zh")).isEqualTo("zh-CN");
+		assertThat(GoogleTranslateProvider.catalogueCode("zh-TW")).isEqualTo("zh-TW");
+		assertThat(GoogleTranslateProvider.catalogueCode("fr")).isEqualTo("fr");
+	}
+
 	@Test
 	void detectRanksTheCandidatesAndFiltersToTheRequestedOnes() {
 		answer(DETECT, ok("""

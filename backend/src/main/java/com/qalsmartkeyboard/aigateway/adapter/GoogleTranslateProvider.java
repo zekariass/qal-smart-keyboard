@@ -87,8 +87,8 @@ public final class GoogleTranslateProvider implements AiProvider {
 		if (!(first.get("translatedText") instanceof String translated) || translated.isBlank()) {
 			throw new ProviderException.InvalidResponse(CODE, null);
 		}
-		String detected = autoDetect && first.get("detectedSourceLanguage") instanceof String s && !s.isBlank() ? s
-				: null;
+		String detected = autoDetect && first.get("detectedSourceLanguage") instanceof String s && !s.isBlank()
+				? catalogueCode(s) : null;
 		UserText out = UserText.of(translated);
 		return new TranslateResult(out, detected, null, List.of(), metadata(MT_MODEL_CODE, r),
 				ProviderUsage.ofCharacters(request.text().characters(), out.characters()));
@@ -107,8 +107,9 @@ public final class GoogleTranslateProvider implements AiProvider {
 		for (Object o : ranked) {
 			if (o instanceof Map<?, ?> m && m.get("language") instanceof String lang && !lang.isBlank()) {
 				double confidence = m.get("confidence") instanceof Number n ? n.doubleValue() : 1.0;
-				if (request.candidates().isEmpty() || request.candidates().contains(lang)) {
-					languages.add(new DetectedLanguage(lang, null, confidence));
+				String code = catalogueCode(lang);
+				if (request.candidates().isEmpty() || request.candidates().contains(code)) {
+					languages.add(new DetectedLanguage(code, null, confidence));
 				}
 			}
 		}
@@ -117,6 +118,20 @@ public final class GoogleTranslateProvider implements AiProvider {
 		}
 		return new DetectResult(languages, false, false, metadata(LID_MODEL_CODE, r),
 				ProviderUsage.ofCharacters(request.text().characters(), 0));
+	}
+
+	/**
+	 * ADR 0040: Google accepts the BCP 47 codes of the catalogue (he, jv, fil, zh-CN) but may report its legacy ones in
+	 * detection results (iw, jw, tl, zh). They are mapped to the catalogue's code so the client can match them.
+	 */
+	public static String catalogueCode(String googleCode) {
+		return switch (googleCode) {
+			case "iw" -> "he";
+			case "jw" -> "jv";
+			case "tl" -> "fil";
+			case "zh" -> "zh-CN";
+			default -> googleCode;
+		};
 	}
 
 	private JsonHttpTransport.Response post(String path, Map<String, Object> body, Duration timeout) {
