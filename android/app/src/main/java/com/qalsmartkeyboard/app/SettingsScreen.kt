@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.qalsmartkeyboard.data.InputMode
@@ -29,17 +30,30 @@ import com.qalsmartkeyboard.data.LanguageRules
 import com.qalsmartkeyboard.data.NumeralStyle
 import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
+import com.qalsmartkeyboard.ime.theme.ThemeNames
+import com.qalsmartkeyboard.ime.R as ImeR
 import kotlinx.coroutines.launch
 
-private val languageNames = mapOf("am" to "Amharic", "ti" to "Tigrinya", "om" to "Afaan Oromoo", "en" to "English")
-
-private fun modeLabel(m: InputMode) = when (m) {
-    InputMode.DIRECT_SCRIPT_LAYOUT -> "Fidel grid"
-    InputMode.PHONETIC_LATIN_TO_NATIVE -> "Phonetic QWERTY"
-    InputMode.LATIN_PASSTHROUGH -> "Latin"
+/** A typing language's name in the UI language (ADR 0032; the keyboard's resources). */
+@Composable
+internal fun languageName(code: String): String = when (code) {
+    "am" -> stringResource(ImeR.string.language_name_am)
+    "ti" -> stringResource(ImeR.string.language_name_ti)
+    "om" -> stringResource(ImeR.string.language_name_om)
+    "en" -> stringResource(ImeR.string.language_name_en)
+    else -> code
 }
 
-/** Minimal settings screen (A1.5): languages (enable, order, mode), numerals, theme, haptics, key height. */
+@Composable
+private fun modeLabel(m: InputMode) = stringResource(
+    when (m) {
+        InputMode.DIRECT_SCRIPT_LAYOUT -> R.string.onb_mode_fidel
+        InputMode.PHONETIC_LATIN_TO_NATIVE -> R.string.settings_mode_phonetic
+        InputMode.LATIN_PASSTHROUGH -> R.string.settings_mode_latin
+    },
+)
+
+/** Minimal settings screen (A1.5): app language (ADR 0032), languages (enable, order, mode), numerals, theme, haptics, key height. */
 @Composable
 fun SettingsScreen(
     settings: KeyboardSettings,
@@ -56,10 +70,12 @@ fun SettingsScreen(
     onOpenWordArt: () -> Unit = {},
     /** Opens the "Write Email with AI" screen, owned by the host (ADR 0031). */
     onOpenEmail: () -> Unit = {},
+    /** The personal dictionary (A1.8); a slot so JVM tests can render the screen without the native core. */
+    dictionaryContent: @Composable () -> Unit = { PersonalDictionarySection() },
 ) {
     val scope = rememberCoroutineScope()
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Keyboard settings", style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.settings_setup_title), style = MaterialTheme.typography.titleMedium)
@@ -67,9 +83,10 @@ fun SettingsScreen(
                 Button(onClick = onRunSetup) { Text(stringResource(R.string.settings_setup_button)) }
             }
         }
+        AppLanguageCard()
         accountContent()
         syncContent()
-        Text("Languages (top = first on the globe key)", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_languages_title), style = MaterialTheme.typography.titleMedium)
         val onlyOneEnabled = settings.enabledLanguages.size <= 1
         settings.languages.forEachIndexed { i, l ->
             Card(Modifier.fillMaxWidth()) {
@@ -80,9 +97,9 @@ fun SettingsScreen(
                             enabled = !(l.enabled && onlyOneEnabled),
                             onCheckedChange = { on -> scope.launch { repository.setLanguageEnabled(l.languageCode, on) } },
                         )
-                        Text(languageNames[l.languageCode] ?: l.languageCode, Modifier.weight(1f).padding(start = 12.dp))
-                        TextButton(enabled = i > 0, onClick = { scope.launch { repository.moveLanguage(l.languageCode, i - 1) } }) { Text("Up") }
-                        TextButton(enabled = i < settings.languages.lastIndex, onClick = { scope.launch { repository.moveLanguage(l.languageCode, i + 1) } }) { Text("Down") }
+                        Text(languageName(l.languageCode), Modifier.weight(1f).padding(start = 12.dp))
+                        TextButton(enabled = i > 0, onClick = { scope.launch { repository.moveLanguage(l.languageCode, i - 1) } }) { Text(stringResource(R.string.onb_lang_up)) }
+                        TextButton(enabled = i < settings.languages.lastIndex, onClick = { scope.launch { repository.moveLanguage(l.languageCode, i + 1) } }) { Text(stringResource(R.string.onb_lang_down)) }
                     }
                     val modes = LanguageRules.allowedModes(l.languageCode)
                     if (modes.size > 1) {
@@ -97,9 +114,9 @@ fun SettingsScreen(
                         }
                     }
                     if (l.inputMode == InputMode.PHONETIC_LATIN_TO_NATIVE) {
-                        Text("Transliteration profile: newest active (automatic)", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.settings_translit_profile), style = MaterialTheme.typography.bodySmall)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Show candidates", Modifier.weight(1f))
+                            Text(stringResource(R.string.settings_show_candidates), Modifier.weight(1f))
                             Switch(
                                 checked = l.showTransliterationCandidates,
                                 onCheckedChange = { on -> scope.launch { repository.updateLanguage(l.languageCode) { it.copy(showTransliterationCandidates = on) } } },
@@ -110,18 +127,18 @@ fun SettingsScreen(
             }
         }
         HorizontalDivider()
-        Text("Numerals", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_numerals_title), style = MaterialTheme.typography.titleMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             NumeralStyle.entries.forEach { n ->
                 FilterChip(
                     selected = settings.numeralStyle == n,
                     onClick = { scope.launch { repository.update { it.copy(numeralStyle = n) } } },
-                    label = { Text(if (n == NumeralStyle.ETHIOPIC) "Ethiopic offered" else "Western") },
+                    label = { Text(stringResource(if (n == NumeralStyle.ETHIOPIC) R.string.settings_numerals_ethiopic else R.string.settings_numerals_western)) },
                 )
             }
         }
         Text(stringResource(R.string.settings_theme_title), style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(R.string.settings_theme_current, ThemeCatalog.find(settings.theme)?.name ?: stringResource(R.string.themes_system)))
+        Text(stringResource(R.string.settings_theme_current, ThemeCatalog.find(settings.theme)?.let { ThemeNames.name(LocalContext.current, it) } ?: stringResource(R.string.themes_system)))
         Button(onClick = onOpenThemes) { Text(stringResource(R.string.settings_theme_button)) }
         // ADR 0031: the e-mail writer, and the default "translate into" language of the keyboard's direction control.
         Card(Modifier.fillMaxWidth()) {
@@ -145,7 +162,7 @@ fun SettingsScreen(
                         FilterChip(
                             selected = settings.aiPreferredTarget == code,
                             onClick = { scope.launch { repository.update { it.copy(aiPreferredTarget = code) } } },
-                            label = { Text(languageNames[code] ?: code) },
+                            label = { Text(languageName(code)) },
                         )
                     }
                 }
@@ -159,11 +176,11 @@ fun SettingsScreen(
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Haptic feedback", Modifier.weight(1f))
+            Text(stringResource(R.string.settings_haptics), Modifier.weight(1f))
             Switch(checked = settings.hapticsEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(hapticsEnabled = on) } } })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Key press preview", Modifier.weight(1f))
+            Text(stringResource(R.string.settings_key_preview), Modifier.weight(1f))
             Switch(checked = settings.keyPreviewEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(keyPreviewEnabled = on) } } })
         }
         // ADR 0029: the microphone in the keyboard bar. The privacy dashboard explains where the audio goes.
@@ -175,21 +192,21 @@ fun SettingsScreen(
             Switch(checked = settings.voiceTypingEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(voiceTypingEnabled = on) } } })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Update language packs on mobile data", Modifier.weight(1f))
+            Text(stringResource(R.string.settings_pack_mobile_data), Modifier.weight(1f))
             Switch(
                 checked = settings.packUpdatesOnMobileData,
                 onCheckedChange = { on -> scope.launch { repository.update { it.copy(packUpdatesOnMobileData = on) } } },
             )
         }
-        Text("Key height: ${settings.keyHeightPercent}%", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_key_height, settings.keyHeightPercent), style = MaterialTheme.typography.titleMedium)
         Slider(
             value = settings.keyHeightPercent.toFloat(),
             onValueChange = { v -> scope.launch { repository.update { it.copy(keyHeightPercent = v.toInt()) } } },
             valueRange = KeyboardSettings.KEY_HEIGHT_MIN.toFloat()..KeyboardSettings.KEY_HEIGHT_MAX.toFloat(),
         )
         // A privacy decision is not a keyboard preference: "Reset to defaults" never turns crash reports back on.
-        Button(onClick = { scope.launch { repository.update { KeyboardSettings.DEFAULT.copy(crashReports = it.crashReports) } } }) { Text("Reset to defaults") }
+        Button(onClick = { scope.launch { repository.update { KeyboardSettings.DEFAULT.copy(crashReports = it.crashReports) } } }) { Text(stringResource(R.string.settings_reset)) }
         HorizontalDivider()
-        PersonalDictionarySection()
+        dictionaryContent()
     }
 }

@@ -3,6 +3,7 @@ package com.qalsmartkeyboard.app
 import android.app.Application
 import com.qalsmartkeyboard.app.ai.AiGraph
 import com.qalsmartkeyboard.app.crash.CrashReporting
+import com.qalsmartkeyboard.ime.AppLanguage
 import com.qalsmartkeyboard.ime.ai.AiActionsHolder
 import com.qalsmartkeyboard.ime.theme.ThemeAccessHolder
 
@@ -19,6 +20,7 @@ class QalApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashReporting.install(this)
+        AppLanguage.syncToPlatform(this) // ADR 0032: a UI language chosen before an upgrade to Android 13
         val context = applicationContext
         AiActionsHolder.factory = { AiGraph.get(context).actions }
         ThemeAccessHolder.factory = { AiGraph.get(context).themeAccess }
