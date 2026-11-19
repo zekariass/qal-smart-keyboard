@@ -350,6 +350,17 @@ class PreferencesIT {
 				.andExpect(jsonPath("$.languages").isEmpty());
 	}
 
+	/** V23 (ADR 0034): Arabic is a typing language; like every non-Ge'ez language it takes LATIN_PASSTHROUGH only. */
+	@Test
+	void arabicIsAcceptedAsATypingLanguage() throws Exception {
+		User u = user();
+		send("typing-languages", u, doc(0, lang("en", true, true, 10, "LATIN_PASSTHROUGH", null),
+				lang("ar", true, false, 20, "LATIN_PASSTHROUGH", null))).andExpect(status().isOk())
+				.andExpect(jsonPath("$.languages[1].languageCode").value("ar"))
+				.andExpect(jsonPath("$.languages[1].inputMode").value("LATIN_PASSTHROUGH"));
+		bad(u, doc(1, lang("ar", true, true, 10, "DIRECT_SCRIPT_LAYOUT", null)), "VALIDATION_FAILED");
+	}
+
 	@Test
 	void typingLanguagesValidation() throws Exception {
 		profile("am", AM_CODE, "1.0.0", "ACTIVE");

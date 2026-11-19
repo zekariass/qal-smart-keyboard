@@ -751,9 +751,11 @@ class KeyboardImeService : InputMethodService() {
         aiWorkspace?.discard()
         engine?.let { userDictionary.detach(it) }
         userDictionary.flush()
+        // InputMethodService.onDestroy() still calls onFinishInputView(), which resets the composer: the native engine
+        // must outlive it (crash "KeyboardEngine object has already been destroyed", seen 3x on the owner's Samsung).
+        super.onDestroy()
         engine?.close()
         engine = null
-        super.onDestroy()
     }
 
     // The keyboard is small; never take over the screen with the extract UI.

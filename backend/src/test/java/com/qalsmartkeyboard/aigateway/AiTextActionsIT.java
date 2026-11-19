@@ -246,9 +246,10 @@ class AiTextActionsIT {
 				 WHERE p.provider_code = ? AND c.feature_code = ? AND c.is_enabled AND c.quality_tier = 'BETA'
 				   AND c.destination_language_id IS NULL AND c.supports_auto_detection""";
 		for (String provider : List.of("openai", "mock", "wiremock-http")) {
+			// 4 languages of V20 + ar (V23)
 			for (String feature : List.of("SMART_REPLY", "SUMMARIZE", "EXPLAIN_TEXT", "DRAFT_DOCUMENT")) {
 				assertThat(jdbc.queryForObject(count, Integer.class, provider, feature)).as(provider + " " + feature)
-						.isEqualTo(4);
+						.isEqualTo(5);
 			}
 			assertThat(jdbc.queryForObject(count, Integer.class, provider, "SCRIPT_CONVERSION")).isZero();
 		}

@@ -31,11 +31,11 @@ import com.qalsmartkeyboard.aigateway.spi.UserText;
  * fallback and circuit breaking without a network. It has no credentials and logs nothing. The configuration refuses
  * to create it under a production-like profile.
  *
- * <p>Behaviour: translation returns {@code "[mock:<dst>] <text>"} for the languages {@code am ti om en}; any other
+ * <p>Behaviour: translation returns {@code "[mock:<dst>] <text>"} for the languages {@code am ti om en ar}; any other
  * language, or source equal to destination, is an {@code UnsupportedLanguagePair}. Grammar correction collapses
  * whitespace; GRAMMAR_CORRECTION, REWRITE and TONE_ADJUST return {@code "[mock:<task>] <text>"} (with an output language
  * other than the text's: a fixed word in that language, then the text). Language detection reads the script: Ethiopic
- * is Amharic (Tigrinya as the alternative), Latin is English, anything else is undetermined ({@code und}).
+ * is Amharic (Tigrinya as the alternative), Arabic is Arabic, Latin is English, anything else is undetermined ({@code und}).
  * Tokens are estimated as one per four characters.
  *
  * <p>The ADR 0027 features answer in the requested output language with fixed phrases, so the output guardrails pass
@@ -53,7 +53,7 @@ import com.qalsmartkeyboard.aigateway.spi.UserText;
 public final class MockAiProvider implements AiProvider {
 
 	public static final String DEFAULT_CODE = "mock";
-	public static final Set<String> LANGUAGES = Set.of("am", "ti", "om", "en");
+	public static final Set<String> LANGUAGES = Set.of("am", "ti", "om", "en", "ar");
 
 	/** What goes wrong. */
 	public enum FailureMode {
@@ -183,7 +183,11 @@ public final class MockAiProvider implements AiProvider {
 			"om", Map.of(Phrase.MOCK, "[yaalii]", Phrase.SUMMARY, "Cuunfaa:", Phrase.EXPLANATION, "Ibsa:",
 					Phrase.SUBJECT, "Mata duree imeelii yaalii", Phrase.GREETING, "Kabajamoo", Phrase.DATE_LINE,
 					"Guyyaa [guyyaa] wal arguu dandeenya.", Phrase.CLOSING, "Nagaa wajjin,", Phrase.YOUR_NAME,
-					"[maqaa keessan]", Phrase.RECIPIENT, "[maqaa fudhataa]"));
+					"[maqaa keessan]", Phrase.RECIPIENT, "[maqaa fudhataa]"),
+			"ar", Map.of(Phrase.MOCK, "[تجريبي]", Phrase.SUMMARY, "ملخص:", Phrase.EXPLANATION, "شرح:",
+					Phrase.SUBJECT, "موضوع بريد تجريبي", Phrase.GREETING, "عزيزي", Phrase.DATE_LINE,
+					"يمكننا اللقاء في [التاريخ].", Phrase.CLOSING, "مع أطيب التحيات،", Phrase.YOUR_NAME, "[اسمك]",
+					Phrase.RECIPIENT, "[اسم المستلم]"));
 
 	private static final Map<String, List<String>> REPLIES = Map.of(
 			"en", List.of("Thank you for your message.", "Sounds good, I will get back to you soon.", "Thanks, noted.",
@@ -193,7 +197,9 @@ public final class MockAiProvider implements AiProvider {
 			"ti", List.of("ስለ መልእኽትኹም የቐንየልና።", "ሕራይ፣ ቀልጢፈ ክምልሰልኩም እየ።", "ተቐቢለዮ፣ የቐንየለይ።", "ጽቡቕ ሓሳብ እዩ።",
 					"ክንዘራረበሉ ኢና።"),
 			"om", List.of("Ergaa keessaniif galatoomaa.", "Tole, dafee isinii deebisa.", "Fudhadheera, galatoomaa.",
-					"Yaada gaarii dha.", "Itti haasofna."));
+					"Yaada gaarii dha.", "Itti haasofna."),
+			"ar", List.of("شكرا على رسالتك.", "حسنا، سأرد عليك قريبا.", "تم، شكرا لك.", "هذه فكرة جيدة.",
+					"لنتحدث عن ذلك."));
 
 	private static String phrase(String language, Phrase p) {
 		return PHRASES.getOrDefault(language == null ? "en" : language, PHRASES.get("en")).get(p);
@@ -275,8 +281,11 @@ public final class MockAiProvider implements AiProvider {
 	private static List<DetectedLanguage> detect(String text, List<String> candidates) {
 		boolean ethiopic = text.codePoints().anyMatch(cp -> cp >= 0x1200 && cp <= 0x139F);
 		boolean latin = text.codePoints().anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.LATIN);
+		boolean arabic = text.codePoints().anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.ARABIC);
 		List<DetectedLanguage> all = new ArrayList<>();
-		if (ethiopic) {
+		if (arabic && !ethiopic) {
+			all.add(new DetectedLanguage("ar", "Arab", 0.97));
+		} else if (ethiopic) {
 			all.add(new DetectedLanguage("am", "Ethi", 0.97));
 			all.add(new DetectedLanguage("ti", "Ethi", 0.02));
 		} else if (latin) {
