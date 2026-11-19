@@ -178,6 +178,9 @@ fun PrivacyDashboardScreen(
             OutlinedButton(onClick = { onOpen(PrivacyRoute.HISTORY) }) { Text(stringResource(R.string.pv_open_history)) }
             OutlinedButton(onClick = { onOpen(PrivacyRoute.CONSENT_HISTORY) }) { Text(stringResource(R.string.pv_open_consent_history)) }
         }
+        Section(stringResource(R.string.pv_voice_title)) {
+            Text(stringResource(R.string.pv_voice_body))
+        }
         Section(stringResource(R.string.pv_crash_title)) {
             // One toggleable row, so TalkBack reads the label with the state.
             Row(

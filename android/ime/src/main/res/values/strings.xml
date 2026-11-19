@@ -146,4 +146,42 @@
     <string name="wordart_category_names">Names</string>
     <string name="wordart_category_letters">Letter styles</string>
     <string name="wordart_category_selected">%1$s, selected</string>
+
+    <!-- Voice typing (ADR 0029). Wording is honest: support depends on the phone's speech service. -->
+    <string name="voice_mic">Voice typing</string>
+    <string name="voice_mic_stop">Stop voice typing and insert the text</string>
+    <string name="voice_language_chip">Voice typing language: %1$s. Change</string>
+    <string name="voice_back">Back to keyboard</string>
+    <string name="voice_back_label">ABC</string>
+    <string name="voice_stop">Stop and insert the text</string>
+    <string name="voice_start">Start voice typing</string>
+    <string name="voice_retry">Try again</string>
+    <string name="voice_preparing">Starting…</string>
+    <string name="voice_listening">Listening. Speak now.</string>
+    <string name="voice_listening_short">Listening</string>
+    <string name="voice_processing">Processing…</string>
+    <string name="voice_ready">Tap the microphone to speak.</string>
+    <string name="voice_notice">Your phone’s speech service (for example Google) turns your voice into text and may use the internet to do it. Qal doesn’t record or store your voice.</string>
+    <string name="voice_picker_title">Voice typing language</string>
+    <string name="voice_picker_checking">Checking which languages this phone’s speech service supports…</string>
+    <string name="voice_more_languages">More languages</string>
+    <string name="voice_more_back">Back to main languages</string>
+    <string name="voice_support_offline">Works offline</string>
+    <string name="voice_support_online">Needs internet</string>
+    <string name="voice_support_unknown">May not be available. This Android version can’t check before trying.</string>
+    <string name="voice_support_none">Not available on this phone’s speech service</string>
+    <string name="voice_selected">Selected</string>
+    <string name="voice_err_language">%1$s voice typing isn’t available on this phone’s speech service. Try English, or install or update Google’s speech services.</string>
+    <string name="voice_err_language_other">%1$s voice typing isn’t available on this phone’s speech service. Try another language, or install or update Google’s speech services.</string>
+    <string name="voice_err_language_maybe">%1$s voice typing may not be available on this phone’s speech service. Try again, try English, or install or update Google’s speech services.</string>
+    <string name="voice_err_language_download">%1$s voice typing needs a language download or an internet connection on this phone. Connect to the internet, or download the language in your phone’s voice typing settings.</string>
+    <string name="voice_err_network">Voice typing needs an internet connection right now. Check your connection and try again.</string>
+    <string name="voice_err_audio">The microphone isn’t available. Another app may be using it, or microphone access may be turned off in your phone’s settings.</string>
+    <string name="voice_err_no_match">Didn’t catch that. Try again.</string>
+    <string name="voice_err_no_speech">No speech heard. Try again.</string>
+    <string name="voice_err_busy">The speech service is busy. Try again in a moment.</string>
+    <string name="voice_err_server">The speech service had a problem. Try again.</string>
+    <string name="voice_err_client">Voice typing stopped unexpectedly. Try again.</string>
+    <string name="voice_err_permission">Qal needs permission to use the microphone for voice typing.</string>
+    <string name="voice_err_unavailable">No speech service is available on this phone.</string>
 </resources>

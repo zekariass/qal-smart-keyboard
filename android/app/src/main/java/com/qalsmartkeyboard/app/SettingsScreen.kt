@@ -135,6 +135,14 @@ fun SettingsScreen(
             Text("Key press preview", Modifier.weight(1f))
             Switch(checked = settings.keyPreviewEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(keyPreviewEnabled = on) } } })
         }
+        // ADR 0029: the microphone in the keyboard bar. The privacy dashboard explains where the audio goes.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.settings_voice_typing))
+                Text(stringResource(R.string.settings_voice_typing_body), style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = settings.voiceTypingEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(voiceTypingEnabled = on) } } })
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Update language packs on mobile data", Modifier.weight(1f))
             Switch(

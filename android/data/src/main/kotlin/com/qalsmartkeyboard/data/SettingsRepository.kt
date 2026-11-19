@@ -134,6 +134,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val CRASH_REPORTS = booleanPreferencesKey("crash_reports")
         private val RECENT_EMOJI = stringPreferencesKey("recent_emoji")
         private val EMOJI_TONES = stringPreferencesKey("emoji_tones")
+        private val VOICE_ENABLED = booleanPreferencesKey("voice_typing_enabled")
+        private val VOICE_LANGUAGES = stringPreferencesKey("voice_languages")
+        private val VOICE_NOTICE = booleanPreferencesKey("voice_notice_shown")
 
         private const val FIELD = "|"
         private const val LINE = "\n"
@@ -158,6 +161,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[WRITING_MODES] = encodeMap(s.writingModes)
             p[RECENT_EMOJI] = s.recentEmoji.joinToString(LINE)
             p[EMOJI_TONES] = encodeMap(s.emojiTones)
+            p[VOICE_ENABLED] = s.voiceTypingEnabled
+            p[VOICE_LANGUAGES] = encodeMap(s.voiceLanguages)
+            p[VOICE_NOTICE] = s.voiceNoticeShown
         }
 
         /** Lenient decode: anything missing or unrecognised takes its default; the result is sanitised. */
@@ -195,6 +201,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 // Additive keys (schema stays 1): emoji panel recents and remembered skin tones, device-local.
                 recentEmoji = p[RECENT_EMOJI].orEmpty().split(LINE).filter { it.isNotEmpty() },
                 emojiTones = decodeMap(p[EMOJI_TONES]),
+                // Additive keys (schema stays 1): voice typing switch, chosen recognition languages, first-use note.
+                voiceTypingEnabled = p[VOICE_ENABLED] ?: d.voiceTypingEnabled,
+                voiceLanguages = decodeMap(p[VOICE_LANGUAGES]),
+                voiceNoticeShown = p[VOICE_NOTICE] ?: d.voiceNoticeShown,
             ).sanitized()
         }
 
