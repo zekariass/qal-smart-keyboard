@@ -98,18 +98,33 @@ internal class AiRunner(
 
     fun key(): String = newKey()
 
-    /** Starts [request]; [done] runs once on the UI thread unless [cancel] (or another [start]) came first. */
+    /**
+     * Starts [request]; [done] runs once on the UI thread unless [cancel] (or another [start]) came first. An
+     * implementation that throws instead of answering still ends the request ([AiFailure.Other]), so no panel is left
+     * in its loading state.
+     */
     fun start(request: AiRequest, done: (AiOutcome) -> Unit) {
         cancel()
         val id = ++generation
         var finished = false
-        val c = actions.submit(request) { outcome ->
-            post {
-                if (id != generation) return@post
-                finished = true
-                call = null
-                done(outcome)
+        val c = try {
+            actions.submit(request) { outcome ->
+                post {
+                    if (id != generation) return@post
+                    finished = true
+                    call = null
+                    done(outcome)
+                }
             }
+        } catch (e: RuntimeException) {
+            post {
+                if (id == generation && !finished) {
+                    finished = true
+                    call = null
+                    done(AiOutcome.Failure(AiFailure.Other))
+                }
+            }
+            return
         }
         if (id == generation && !finished) call = c else if (id != generation) c.cancel()
     }
