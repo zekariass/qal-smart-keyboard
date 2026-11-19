@@ -403,6 +403,7 @@
     <string name="settings_languages_title">ቋንቋታት</string>
     <string name="settings_mode_phonetic">ፎነቲክ QWERTY</string>
     <string name="settings_mode_latin">ላቲን</string>
+    <string name="settings_layout_arabic">ዓረብኛ</string>
     <string name="settings_translit_profile">ፕሮፋይል ትራንስሊተሬሽን: እቲ ሓድሽ ንጡፍ (ባዕሉ)</string>
     <string name="settings_show_candidates">እማመታት ኣርእዩ</string>
     <string name="settings_numerals_title">ቁጽርታት</string>

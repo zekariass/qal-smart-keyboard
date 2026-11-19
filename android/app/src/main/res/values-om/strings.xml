@@ -403,6 +403,7 @@
     <string name="settings_languages_title">Afaanota</string>
     <string name="settings_mode_phonetic">QWERTY foonetikii</string>
     <string name="settings_mode_latin">Laatinii</string>
+    <string name="settings_layout_arabic">Arabaa</string>
     <string name="settings_translit_profile">Piroofaayilii jijjiira qubee: isa haaraa hojii irra jiru (ofumaan)</string>
     <string name="settings_show_candidates">Yaadota agarsiisi</string>
     <string name="settings_numerals_title">Lakkoofsota</string>

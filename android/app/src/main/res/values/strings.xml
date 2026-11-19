@@ -405,6 +405,7 @@
     <string name="settings_languages_title">Languages</string>
     <string name="settings_mode_phonetic">Phonetic QWERTY</string>
     <string name="settings_mode_latin">Latin</string>
+    <string name="settings_layout_arabic">Arabic</string>
     <string name="settings_translit_profile">Transliteration profile: newest active (automatic)</string>
     <string name="settings_show_candidates">Show suggestions</string>
     <string name="settings_numerals_title">Numerals</string>
