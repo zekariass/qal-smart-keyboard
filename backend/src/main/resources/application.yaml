@@ -38,6 +38,11 @@ qal:
     attestation:
       mock:
         enabled: ${QAL_ATTESTATION_MOCK:false}
+    # Google sign-in (B2.2, ADR 0009): accepted OAuth client ids (the ID token's aud), comma separated: the web client id
+    # the Android app passes as serverClientId, plus the Android/iOS ids. Empty = Google sign-in off (startup WARN).
+    oauth:
+      google:
+        client-ids: ${QAL_GOOGLE_CLIENT_IDS:}
   # Entitlement tokens (B4.4, ADR 0013): Ed25519 key pair as PEM (or the private key as an OKP JWK). Startup fails without it.
   entitlements:
     token:
