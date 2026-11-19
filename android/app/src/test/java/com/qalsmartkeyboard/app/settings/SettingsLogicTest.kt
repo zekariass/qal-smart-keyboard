@@ -1,6 +1,5 @@
 package com.qalsmartkeyboard.app.settings
 
-import com.qalsmartkeyboard.app.themes.STRIP_SIZE
 import com.qalsmartkeyboard.app.themes.stripThemeIds
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 import org.junit.Assert.assertEquals
@@ -36,7 +35,8 @@ class SettingsLogicTest {
         assertEquals(ThemeCatalog.SYSTEM_ID, stripThemeIds("system").first())
         val aurora = stripThemeIds("aurora")
         assertEquals("aurora", aurora.first())
-        assertEquals(STRIP_SIZE, aurora.size)
+        assertEquals(ThemeCatalog.all.size + 1, aurora.size) // every theme plus System, no cap
+        assertTrue(aurora.containsAll(ThemeCatalog.all.map { it.id }))
         assertEquals(aurora.distinct(), aurora)
         assertEquals(ThemeCatalog.SYSTEM_ID, stripThemeIds("neon_future").first()) // unknown id = system
     }

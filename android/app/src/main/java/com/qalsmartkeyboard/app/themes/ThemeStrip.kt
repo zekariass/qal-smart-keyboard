@@ -2,7 +2,10 @@ package com.qalsmartkeyboard.app.themes
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -21,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,28 +34,23 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.qalsmartkeyboard.app.R
 import com.qalsmartkeyboard.ime.theme.PremiumThemeAccess
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 
-/** How many miniatures the settings home shows before "View more". */
-internal const val STRIP_SIZE = 8
-
-/**
- * The themes the settings home shows: the applied one first, then System, the free themes and the premium themes, up
- * to [STRIP_SIZE].
- */
+/** Every theme the settings home shows: the applied one first, then System, the free themes and the premium themes. */
 internal fun stripThemeIds(appliedId: String): List<String> {
     val applied = normalizedApplied(appliedId)
     val rest = (listOf(ThemeCatalog.SYSTEM_ID) + ThemeCatalog.free.map { it.id } + ThemeCatalog.premium.map { it.id }).filter { it != applied }
-    return (listOf(applied) + rest).take(STRIP_SIZE)
+    return listOf(applied) + rest
 }
 
 /**
  * The "Theme" section at the top of the settings home (ADR 0036): a heading with "View more", then a horizontally
- * scrolling row of miniature keyboards drawn from each theme's own tokens. The applied theme comes first and carries
+ * scrolling lazy row (every theme) of miniature keyboards drawn from each theme's own tokens. The applied theme comes first and carries
  * an outline and a check. Tapping a theme calls [onSelect]; the host applies it, or opens the full picker on a locked
  * premium theme.
  */
@@ -75,11 +73,17 @@ fun ThemeStrip(
             )
             TextButton(onClick = onMore) { Text(stringResource(R.string.settings_theme_more)) }
         }
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).selectableGroup().padding(horizontal = 16.dp, vertical = 4.dp),
+        val ids = stripThemeIds(appliedId)
+        val listState = rememberLazyListState()
+        // The applied theme is first; bring the row back to it when the choice changes.
+        LaunchedEffect(appliedId) { listState.scrollToItem(0) }
+        LazyRow(
+            Modifier.fillMaxWidth().selectableGroup().testTag(THEME_STRIP_TAG),
+            state = listState,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            stripThemeIds(appliedId).forEach { id -> ThemeTile(id, appliedId, access, systemDark, onSelect) }
+            items(ids, key = { it }) { id -> ThemeTile(id, appliedId, access, systemDark, onSelect) }
         }
     }
 }
@@ -132,5 +136,8 @@ private fun ThemeTile(id: String, appliedId: String, access: PremiumThemeAccess,
         }
     }
 }
+
+/** Test tag of the lazy row, for scrolling to a tile that is not composed yet. */
+const val THEME_STRIP_TAG = "themeStrip"
 
 private val TILE_WIDTH = 112.dp

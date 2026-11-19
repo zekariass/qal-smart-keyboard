@@ -78,7 +78,9 @@
 
     <!-- Keyboard themes -->
     <string name="themes_title">የቁልፍ ሰሌዳ ገጽታ</string>
-    <string name="themes_section_free">ነፃ ገጽታዎች</string>
+    <string name="themes_section_light">ብሩህ</string>
+    <string name="themes_section_dark">ጨለማ</string>
+    <string name="themes_section_gradient">ቅልመት</string>
     <string name="themes_section_premium">የPremium ገጽታዎች</string>
     <string name="themes_system">ሲስተም</string>
     <string name="themes_system_hint">ክላሲክ ብሩህ ወይም ክላሲክ ጨለማ፣ እንደ ስልክዎ።</string>

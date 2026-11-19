@@ -43,12 +43,27 @@ class ThemesScreenTest {
         )
     }
 
-    @Test fun listShowsFreeAndPremiumSectionsWithEveryTheme() {
+    @Test fun listShowsEveryGroupWithEveryTheme() {
         show()
-        compose.onNodeWithText("Free themes").assertExists()
-        compose.onNodeWithText("Premium themes").assertExists()
+        for (heading in listOf("Light", "Dark", "Gradient", "Premium themes")) compose.onNodeWithText(heading).assertExists()
         compose.onNodeWithText("System").assertExists()
         for (t in ThemeCatalog.all) compose.onNodeWithText(t.name).assertExists()
+    }
+
+    @Test fun groupsPartitionTheCatalogue() {
+        val all = ThemeGroup.entries.flatMap { ThemePickerModel.idsIn(it) }
+        assertEquals(setOf("system") + ThemeCatalog.all.map { it.id }, all.toSet())
+        assertEquals(all.size, all.toSet().size)
+        assertTrue(ThemePickerModel.idsIn(ThemeGroup.PREMIUM).all { ThemeCatalog.find(it)!!.isPremium })
+        assertTrue(ThemePickerModel.idsIn(ThemeGroup.GRADIENT).containsAll(listOf("night_gradient", "sunrise_gradient", "pastel_rainbow")))
+        assertTrue(ThemePickerModel.idsIn(ThemeGroup.DARK).containsAll(listOf("deep_navy", "meskel", "midnight")))
+        assertEquals("system", ThemePickerModel.idsIn(ThemeGroup.LIGHT).first())
+    }
+
+    @Test fun aNewThemeIsFreeAndAppliesFromItsPreview() {
+        show(previewId = "deep_navy", access = PremiumThemeAccess.NOT_ON_PLAN)
+        compose.onNodeWithText("Apply theme").assertIsEnabled().performClick()
+        assertEquals(listOf("deep_navy"), applied)
     }
 
     @Test fun premiumCardsCarryABadgeAndFreeCardsDoNot() {
