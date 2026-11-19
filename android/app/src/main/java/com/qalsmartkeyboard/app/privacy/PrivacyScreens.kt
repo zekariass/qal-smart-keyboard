@@ -113,15 +113,6 @@ private fun SignInHint(account: AccountStatus, onSignIn: () -> Unit) {
     }
 }
 
-/** The settings screen's entry to the privacy area. */
-@Composable
-fun PrivacyEntryCard(onOpen: () -> Unit, modifier: Modifier = Modifier) {
-    Section(stringResource(R.string.pv_entry_title), modifier) {
-        Text(stringResource(R.string.pv_entry_body), style = MaterialTheme.typography.bodySmall)
-        Button(onClick = onOpen) { Text(stringResource(R.string.pv_entry_button)) }
-    }
-}
-
 // ------------------------------------------------------------------ dashboard
 
 /** What stays on the device, what goes to the server and when, the current decisions, and the way to the other screens. */
