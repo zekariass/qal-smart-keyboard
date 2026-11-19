@@ -17,6 +17,12 @@ object AiLanguages {
 
     /** The default destination for text in [source]: English for am/ti/om/ar, Amharic for English (ADR 0031). */
     fun defaultTarget(source: String): String = if (source == "en") "am" else "en"
+
+    /** The language's name in itself ("አማርኛ", "Afaan Oromoo", "العربية"): the translate panel's language list shows both (ADR 0037). */
+    fun selfName(code: String): String = com.qalsmartkeyboard.ime.LanguageCatalog.displayName(code)
+
+    /** Arabic is written right to left (ADR 0034): a translation into it is shown right-aligned. */
+    fun isRtl(code: String?): Boolean = code != null && com.qalsmartkeyboard.ime.LanguageCatalog.isRtl(code)
 }
 
 /**
@@ -48,10 +54,12 @@ interface AiLanguagePrefs {
 }
 
 /**
- * The translation direction control's state (ADR 0031): `[ Auto · Amharic ⇄ English ]  Translate`.
+ * The translation direction (ADR 0031, shown by the translate panel of ADR 0037: `[Detect · Amharic ▾] ⇄ [English ▾]`).
+ * The one source of truth for where a translation goes: the translate panel and AI Assist's Translate both read it.
  *
- * - **Source:** "Auto" by default: the server detects the language, and the keyboard language is shown as the likely
- *   one ([keyboardLanguage]). Picking a language makes it explicit (sent as `sourceLanguage`).
+ * - **Source:** "Detect" (Auto) by default: the server detects the language, and the keyboard language is shown as the
+ *   likely one ([keyboardLanguage]) until a translation reports the detected one. Picking a language makes it explicit
+ *   (sent as `sourceLanguage`).
  * - **Destination**, in order: the destination the user picked in this field; the enabled A2.4 rule of the app; the
  *   destination last picked for this source language (remembered on the device); the preferred destination from
  *   settings; English for am/ti/om and Amharic for English. A candidate in the source language itself is skipped.
@@ -113,9 +121,12 @@ class TranslationDirection(
         prefs.rememberTarget(source, d.id)
     }
 
-    /** ⇄: the destination's language becomes the (explicit) source, the old source the destination. */
-    fun swap() {
-        val oldSource = source
+    /**
+     * ⇄: the destination's language becomes the (explicit) source, the old source the destination. While the source is
+     * Auto, the old source is the language the server [detected] in the last translation (if any), else the likely one.
+     */
+    fun swap(detected: String? = null) {
+        val oldSource = likelySource(detected)
         val newSource = destination.language
         manualSource = newSource
         val d = AiLanguages.plain(oldSource)
@@ -123,6 +134,31 @@ class TranslationDirection(
         prefs.rememberTarget(newSource, d.id)
     }
 
-    /** The source label: "Auto · Amharic" while Auto, else "Amharic". */
-    fun sourceLabel(auto: String): String = if (isAuto) "$auto · ${AiLanguages.name(source)}" else AiLanguages.name(source)
+    /** The source the user sees: the explicit one; while Auto, the [detected] language if known, else the keyboard language. */
+    fun likelySource(detected: String? = null): String =
+        if (isAuto) detected?.takeIf { it in AiLanguages.ALL } ?: source else source
+
+    /** The source label: "Auto · Amharic" (or "Detect · Amharic") while Auto, else "Amharic". */
+    fun sourceLabel(auto: String, detected: String? = null): String {
+        val name = AiLanguages.name(likelySource(detected))
+        return if (isAuto) "$auto · $name" else name
+    }
+
+    /**
+     * The source list (ADR 0037): Auto (null, "Detect language") first, then the current language, then the keyboard
+     * language, then the rest in [AiLanguages.ALL] order. Five languages need no search.
+     */
+    fun sourceChoices(): List<String?> =
+        listOf<String?>(null) + (listOfNotNull(manualSource, keyboardLanguage.takeIf { it in AiLanguages.ALL }) + AiLanguages.ALL).distinct()
+
+    /**
+     * The destination list: the current destination first, then the plain languages (the source language left out),
+     * then the user's destination profiles (ADR 0012); nothing twice.
+     */
+    fun destinationChoices(): List<AiDestination> {
+        val current = destination
+        val plain = AiLanguages.ALL.filter { it != source }.map(AiLanguages::plain)
+        val profiles = destinations().filter { it.isProfile && it.language != source }
+        return (listOf(current) + plain + profiles).distinctBy { it.id }
+    }
 }
