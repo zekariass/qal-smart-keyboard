@@ -67,10 +67,12 @@ class ToolPanelsTest {
         val (p, picked) = toolsPanel(ToolContext(text, aiReady = true, voiceOffered = true, writingModes = true))
         assertEquals("same height as the keys it replaces", keysPx, p.measuredHeight)
         val labels = texts(p)
-        for (l in listOf("Translate", "AI Assist", "Write Email", "Clipboard", "Emoji", "Voice typing", "Word Art", "Writing mode", "Languages", "Theme", "Settings")) {
+        for (l in listOf("Translate", "AI tools", "Clipboard", "Emoji", "Voice typing", "Word Art", "Writing mode", "Languages", "Theme", "Settings")) {
             assertTrue("$l in $labels", l in labels)
         }
-        assertEquals(11, p.shown.size)
+        // ADR 0041: one AI entry (Assist and Write Email are tiles of the AI tools grid).
+        assertEquals(10, p.shown.size)
+        assertEquals("AI tools", p.tileFor(Tool.AI)!!.contentDescription.toString())
         // Every tile is one Button node with its name; a tap reports the tool.
         val tile = p.tileFor(Tool.CLIPBOARD)!!
         assertEquals(button, tile.createAccessibilityNodeInfo().className)
@@ -83,7 +85,7 @@ class ToolPanelsTest {
     @Test fun tilesAreFourPerRowAndAtLeast48dpTall() {
         val (p, _) = toolsPanel(ToolContext(text, aiReady = true, voiceOffered = true, writingModes = true))
         val first = p.tileFor(Tool.TRANSLATE)!!
-        val fifth = p.tileFor(Tool.EMOJI)!!
+        val fifth = p.tileFor(Tool.VOICE)!!
         assertTrue(first.width >= (411 * d / 4 - 8 * d).toInt())
         assertTrue(first.height >= (48 * d).toInt())
         assertTrue("row 2 below row 1", (fifth.parent as View).top > (first.parent as View).top)

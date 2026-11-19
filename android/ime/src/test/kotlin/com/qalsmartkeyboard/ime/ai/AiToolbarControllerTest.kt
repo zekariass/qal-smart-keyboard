@@ -40,7 +40,7 @@ class AiToolbarControllerTest {
 
     @Test fun rewriteTheSentenceThenReplace() {
         val h = H("Hello. How are you")
-        h.c.onTask(AiTaskKind.REWRITE)
+        h.c.run(AiQuickAction.REWRITE)
         assertTrue(h.panel is AiPanel.Working)
         val sent = h.actions.submitted.single().request
         assertEquals("How are you", sent.text)
@@ -63,7 +63,7 @@ class AiToolbarControllerTest {
 
     @Test fun replaceSentenceKeepsTrailingWhitespace() {
         val h = H("One. Two three ")
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         h.actions.answer(0, FakeAiActions.ok("Two three."))
         assertEquals(AiApplied.REPLACED, h.c.replace())
         assertEquals("One. Two three. ", h.ed.text.toString())
@@ -74,7 +74,7 @@ class AiToolbarControllerTest {
         val h = H("Keep this. Fix me please. After")
         h.ed.selStart = 11
         h.ed.selEnd = 24
-        h.c.onTask(AiTaskKind.REWRITE)
+        h.c.run(AiQuickAction.REWRITE)
         assertEquals("Fix me please", h.actions.submitted.single().request.text)
         h.actions.answer(0, FakeAiActions.ok("Please fix me"))
         assertEquals(AiApplied.REPLACED, h.c.replace())
@@ -83,7 +83,7 @@ class AiToolbarControllerTest {
 
     @Test fun insertKeepsTheOriginalAndAddsASpace() {
         val h = H("Good morning")
-        h.c.onTask(AiTaskKind.REWRITE)
+        h.c.run(AiQuickAction.REWRITE)
         h.actions.answer(0, FakeAiActions.ok("እንደምን አደርክ"))
         assertEquals(AiApplied.INSERTED, h.c.insert())
         assertEquals("Good morning እንደምን አደርክ", h.ed.text.toString())
@@ -94,7 +94,7 @@ class AiToolbarControllerTest {
         h.ed.selStart = 4
         h.ed.selEnd = 7
         h.adapter.onSelectionUpdate(4, 7, -1, -1)
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         h.actions.answer(0, FakeAiActions.ok("DEF"))
         h.c.insert()
         assertEquals("abc def DEF ghi", h.ed.text.toString())
@@ -102,7 +102,7 @@ class AiToolbarControllerTest {
 
     @Test fun alternativesCanBePickedAndCopied() {
         val h = H("Send it")
-        h.c.onTask(AiTaskKind.REWRITE)
+        h.c.run(AiQuickAction.REWRITE)
         h.actions.answer(0, FakeAiActions.ok("main", AiAlternative("to a woman", "alt-f")))
         h.c.selectAlternative(0)
         assertEquals("alt-f", h.review().shownText)
@@ -114,25 +114,37 @@ class AiToolbarControllerTest {
 
     @Test fun nothingIsInsertedWithoutTheUser() {
         val h = H("Hello")
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         h.actions.answer(0, FakeAiActions.ok("Hello!"))
         assertEquals("Hello", h.ed.text.toString())
         assertFalse(h.ed.calls.any { it.startsWith("commitText") || it.startsWith("deleteSurrounding") })
         assertTrue(h.ed.actions.isEmpty() && h.ed.keys.isEmpty()) // nothing pressed Send/Enter
     }
 
-    @Test fun toneChipTurnsRewriteIntoToneAdjust() {
+    @Test fun toneTilesAreToneAdjustAndSimplifyIsARewriteMode() {
+        val tones = mapOf(
+            AiQuickAction.PROFESSIONAL to AiTone.PROFESSIONAL, AiQuickAction.FRIENDLY to AiTone.FRIENDLY,
+            AiQuickAction.POLITE to AiTone.POLITE, AiQuickAction.CONCISE to AiTone.CONCISE,
+            AiQuickAction.APOLOGETIC to AiTone.APOLOGETIC, AiQuickAction.HONORIFIC to AiTone.HONORIFIC,
+        )
+        for ((action, tone) in tones) {
+            val h = H("send the report")
+            h.c.run(action)
+            val task = h.actions.submitted.single().request.task
+            assertEquals(AiTask.Rewrite(tone), task)
+            assertEquals(AiTaskKind.TONE, task.kind)
+        }
         val h = H("send the report")
-        h.c.chooseTone(AiTone.POLITE)
-        h.c.onTask(AiTaskKind.REWRITE)
-        assertEquals(AiTask.Rewrite(AiTone.POLITE), h.actions.submitted.single().request.task)
+        h.c.run(AiQuickAction.SIMPLIFY)
+        assertEquals(AiTask.Simplify(), h.actions.submitted.single().request.task)
+        assertEquals("send the report", h.actions.submitted.single().request.text)
     }
 
     @Test fun theOpenCompositionIsPartOfTheTextBeforeTheCursor() {
         val h = H("")
         h.ed.setComposingText("selam")
         h.adapter.onSelectionUpdate(5, 5, 0, 5)
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         assertEquals("selam", h.actions.submitted.single().request.text)
     }
 
@@ -140,15 +152,15 @@ class AiToolbarControllerTest {
 
     @Test fun aSecondTapWhileInFlightIsIgnored() {
         val h = H("Hello")
-        h.c.onTask(AiTaskKind.GRAMMAR)
-        h.c.onTask(AiTaskKind.REWRITE)
+        h.c.run(AiQuickAction.GRAMMAR)
+        h.c.run(AiQuickAction.REWRITE)
         assertEquals(1, h.actions.submitted.size)
         assertTrue(h.c.inFlight)
     }
 
     @Test fun cancelAbortsTheCallAndDropsTheLateAnswer() {
         val h = H("Hello")
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         h.c.cancel()
         assertTrue(h.actions.submitted.single().cancelled)
         assertTrue(h.panel is AiPanel.Closed)
@@ -159,7 +171,7 @@ class AiToolbarControllerTest {
 
     @Test fun retryAfterANetworkErrorReusesTheKeyAndText() {
         val h = H("Hello")
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         h.actions.answer(0, FakeAiActions.fail(AiFailure.Timeout))
         assertEquals(AiFailure.Timeout, h.failed())
         h.ed.commitText(" changed") // the editor moved on; the retry still sends the original
@@ -174,7 +186,7 @@ class AiToolbarControllerTest {
 
     @Test fun retryAfterOtherFailuresAndAnotherResultUseANewKey() {
         val h = H("Hello")
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         h.actions.answer(0, FakeAiActions.fail(AiFailure.GuardrailFailed))
         h.c.retry()
         assertNotEquals(h.actions.submitted[0].request.requestId, h.actions.submitted[1].request.requestId)
@@ -186,7 +198,7 @@ class AiToolbarControllerTest {
     @Test fun busyAndServiceUnavailableRetrySameKey() {
         for (f in listOf(AiFailure.Busy, AiFailure.ServiceUnavailable, AiFailure.Offline)) {
             val h = H("Hello")
-            h.c.onTask(AiTaskKind.GRAMMAR)
+            h.c.run(AiQuickAction.GRAMMAR)
             h.actions.answer(0, FakeAiActions.fail(f))
             h.c.retry()
             assertEquals(h.actions.submitted[0].request.requestId, h.actions.submitted[1].request.requestId)
@@ -196,7 +208,7 @@ class AiToolbarControllerTest {
     @Test fun anAnswerThatArrivesSynchronouslyIsHandled() {
         val a = FakeAiActions().apply { autoAnswer = FakeAiActions.ok("done") }
         val h = H("Hello", a)
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         assertEquals("done", h.review().shownText)
         assertFalse(h.c.inFlight)
     }
@@ -205,7 +217,7 @@ class AiToolbarControllerTest {
 
     @Test fun anAnswerForAnEarlierFieldNeverLandsInTheNextOne() {
         val h = H("Hello")
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         h.c.onFieldStarted(InputProfile.DEFAULT, "other.app")
         assertTrue(h.actions.submitted.single().cancelled)
         h.actions.answer(0, FakeAiActions.ok("late"))
@@ -214,7 +226,7 @@ class AiToolbarControllerTest {
 
     @Test fun hidingTheKeyboardCancelsAndForgets() {
         val h = H("Hello")
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         h.c.onKeyboardHidden()
         assertTrue(h.actions.submitted.single().cancelled)
         assertTrue(h.panel is AiPanel.Closed)
@@ -240,8 +252,8 @@ class AiToolbarControllerTest {
     @Test fun aHiddenToolbarNeverCallsAnything() {
         val h = H("secret")
         h.c.onFieldStarted(InputProfile.from(T.TYPE_CLASS_TEXT or T.TYPE_TEXT_VARIATION_PASSWORD, 0, false, 0), "x")
-        h.c.onTask(AiTaskKind.GRAMMAR)
-        h.c.openPicker(AiPicker.TONE)
+        h.c.run(AiQuickAction.GRAMMAR)
+        h.c.run(AiQuickAction.FRIENDLY)
         assertTrue(h.actions.submitted.isEmpty())
         assertEquals(0, h.actions.refreshCount)
         assertFalse(h.ed.calls.any { it == "getTextBeforeCursor" || it == "getSelectedText" })
@@ -250,19 +262,15 @@ class AiToolbarControllerTest {
     @Test fun nothingReadsTheEditorUntilATap() {
         val h = H("Some text")
         h.c.onFieldStarted(InputProfile.DEFAULT, "x")
-        h.c.openPicker(AiPicker.TONE)
-        h.c.chooseTone(AiTone.FRIENDLY)
+        h.c.onToolbarOpened() // the AI tools grid opened: plan state only
         assertFalse(h.ed.calls.any { it == "getTextBeforeCursor" || it == "getSelectedText" })
         assertTrue(h.actions.submitted.isEmpty())
     }
 
-    @Test fun translateIsNotAToolbarActionAnyMore() {
-        // ADR 0037: the row's Translate chip opens the translate panel; the toolbar itself neither reads nor sends for it.
-        val h = H("Hello there")
-        h.c.onTask(AiTaskKind.TRANSLATE)
-        assertTrue(h.panel is AiPanel.Closed)
-        assertTrue(h.actions.submitted.isEmpty())
-        assertFalse(h.ed.calls.any { it == "getTextBeforeCursor" || it == "getSelectedText" })
+    @Test fun translateIsNotAQuickAction() {
+        // ADR 0037 / 0041: translation is the translate panel's; the quick actions are transforms only.
+        assertTrue(AiQuickAction.entries.none { it.task is AiTask.Translate })
+        assertTrue(AiQuickAction.entries.all { it.task.kind in setOf(AiTaskKind.GRAMMAR, AiTaskKind.REWRITE, AiTaskKind.TONE) })
     }
 
     // ------------------------------------------------------------ graceful states
@@ -276,7 +284,7 @@ class AiToolbarControllerTest {
         for ((block, failure) in cases) {
             val a = FakeAiActions().apply { availability = AiAvailability(block = block) }
             val h = H("Hello", a)
-            h.c.onTask(AiTaskKind.GRAMMAR)
+            h.c.run(AiQuickAction.GRAMMAR)
             assertEquals(failure, h.failed())
             assertTrue(a.submitted.isEmpty())
             assertFalse(h.ed.calls.any { it == "getTextBeforeCursor" }) // nothing even read
@@ -286,7 +294,7 @@ class AiToolbarControllerTest {
     @Test fun goingOnlineAgainLetsRetryThrough() {
         val a = FakeAiActions().apply { availability = AiAvailability(block = AiBlock.OFFLINE) }
         val h = H("Hello", a)
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         a.availability = AiAvailability()
         h.c.retry()
         assertEquals(1, a.submitted.size)
@@ -301,7 +309,7 @@ class AiToolbarControllerTest {
         )
         for (f in failures) {
             val h = H("Hello")
-            h.c.onTask(AiTaskKind.REWRITE)
+            h.c.run(AiQuickAction.REWRITE)
             h.actions.answer(0, FakeAiActions.fail(f))
             assertSame(f, h.failed())
             assertEquals("Hello", h.ed.text.toString())
@@ -321,12 +329,12 @@ class AiToolbarControllerTest {
 
     @Test fun emptyAndOversizedTargetsAreLocalFailures() {
         val h = H("")
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.run(AiQuickAction.GRAMMAR)
         assertEquals(AiFailure.NothingToProcess, h.failed())
         val big = H("x".repeat(AiTextTarget.MAX_CHARS + 1))
         big.ed.selStart = 0
         big.ed.selEnd = AiTextTarget.MAX_CHARS + 1
-        big.c.onTask(AiTaskKind.GRAMMAR)
+        big.c.run(AiQuickAction.GRAMMAR)
         assertEquals(AiFailure.TooLong, big.failed())
         assertTrue(h.actions.submitted.isEmpty() && big.actions.submitted.isEmpty())
     }
@@ -350,37 +358,23 @@ class AiToolbarControllerTest {
 
     @Test fun openingTheToolbarRefreshesOncePerCacheWindow() {
         val h = H("secret words")
-        h.c.openPicker(AiPicker.TONE)
-        h.c.openPicker(AiPicker.TONE)
-        h.c.onTask(AiTaskKind.GRAMMAR)
+        h.c.onToolbarOpened()
+        h.c.onToolbarOpened()
+        h.c.run(AiQuickAction.GRAMMAR)
         h.c.onFieldStarted(InputProfile.DEFAULT, "com.other") // another field: still inside the window
-        h.c.openPicker(AiPicker.TONE)
+        h.c.onToolbarOpened()
         assertEquals(1, h.actions.refreshCount)
         h.now += AiToolbarController.REFRESH_WINDOW_MS
-        h.c.openPicker(AiPicker.TONE)
+        h.c.onToolbarOpened()
         assertEquals(2, h.actions.refreshCount)
     }
 
     @Test fun aLockedActionShowsTheUpgradeLinkAndSendsNothing() {
         val h = H("Hello there")
         h.actions.availability = AiAvailability(entitled = setOf(AiTaskKind.TRANSLATE, AiTaskKind.GRAMMAR, AiTaskKind.REWRITE))
-        h.c.chooseTone(AiTone.POLITE)
-        h.c.onTask(AiTaskKind.REWRITE) // a tone is TONE_ADJUST, not in this plan
+        h.c.run(AiQuickAction.POLITE) // a tone is TONE_ADJUST, not in this plan
         assertEquals(AiFailure.NotEntitled, h.failed())
         assertEquals(AiLink.UPGRADE, h.failed().link)
-        assertTrue(h.actions.submitted.isEmpty())
-    }
-
-    @Test fun closingThePickerChoosesNothingAndSendsNothing() {
-        val h = H("Hello")
-        h.c.openPicker(AiPicker.TONE)
-        val before = h.changes
-        h.c.closePicker()
-        assertEquals(AiPicker.NONE, h.c.picker)
-        assertNull(h.c.tone)
-        assertEquals(before + 1, h.changes)
-        h.c.closePicker() // already closed: no repaint
-        assertEquals(before + 1, h.changes)
         assertTrue(h.actions.submitted.isEmpty())
     }
 }

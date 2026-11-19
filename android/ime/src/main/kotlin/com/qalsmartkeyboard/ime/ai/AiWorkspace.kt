@@ -38,12 +38,19 @@ class AiWorkspace(
 
     val isOpen: Boolean get() = screen != AiScreen.CLOSED
 
-    fun openAssist() {
-        if (screen == AiScreen.ASSIST) return
-        closeOther()
-        screen = AiScreen.ASSIST
-        assistUsed = true
-        assist.open()
+    /**
+     * Opens AI Assist; with [action] (an AI tools tile: Reply, Explain, Summarise, ADR 0041) on that action. Already open
+     * without an action: nothing changes.
+     */
+    fun openAssist(action: AiAssistAction? = null) {
+        if (screen == AiScreen.ASSIST && action == null) return
+        if (screen != AiScreen.ASSIST) {
+            closeOther()
+            screen = AiScreen.ASSIST
+            assistUsed = true
+            assist.open()
+        }
+        if (action != null) assist.selectAction(action)
         onChanged()
     }
 

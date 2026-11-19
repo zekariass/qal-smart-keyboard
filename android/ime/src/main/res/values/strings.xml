@@ -9,10 +9,8 @@
     <string name="top_bar_mode">Writing mode: %1$s</string>
     <string name="top_bar_mode_change">Change writing mode</string>
     <string name="top_bar_mode_option">%1$s writing mode</string>
-    <!-- The one bar above the keys: the AI entry opens the AI actions in the bar's middle. -->
-    <string name="top_bar_ai_label" translatable="false">AI</string>
+    <!-- The one bar above the keys: the "AI" entry (a drawn mark, not text) opens the AI tools grid (ADR 0041); its name. -->
     <string name="top_bar_ai_open">AI tools</string>
-    <string name="top_bar_ai_close">Close AI tools</string>
     <string name="top_bar_candidate_add">Add to your dictionary</string>
     <string name="top_bar_candidate_autocorrect">%1$s, auto-correction</string>
     <string name="top_bar_more_suggestions">More suggestions</string>
@@ -51,15 +49,16 @@
     <string name="user_dictionary_not_added">Could not add this word</string>
     <!-- A2.5: AI toolbar. Nothing is sent until the user taps an action. -->
     <string name="ai_translate">Translate</string>
-    <string name="ai_grammar">Grammar</string>
-    <string name="ai_rewrite">Rewrite</string>
-    <string name="ai_tone_natural">Natural</string>
     <string name="ai_tone_friendly">Friendly</string>
     <string name="ai_tone_polite">Polite</string>
     <string name="ai_tone_professional">Professional</string>
     <string name="ai_tone_concise">Concise</string>
     <string name="ai_tone_apologetic">Apologetic</string>
     <string name="ai_tone_honorific">Honorific</string>
+    <!-- ADR 0041: the AI tools grid. A tone tile's TalkBack name; the compact line above the tiles. -->
+    <string name="ai_tile_tone_description">Rewrite, tone: %1$s</string>
+    <string name="ai_grid_offline">Offline: AI needs a connection</string>
+    <string name="ai_grid_quota">%1$s: %2$s</string>
     <string name="ai_status_offline">Offline</string>
     <string name="ai_status_signed_out">Sign in to use AI</string>
     <string name="ai_status_update">Update needed</string>
@@ -125,9 +124,7 @@
     <string name="translate_into_title">Translate into</string>
     <string name="translate_input_spoken">Text to translate: %1$s</string>
     <string name="translate_direction_spoken">%1$s to %2$s</string>
-    <string name="ai_assist_chip">Assist</string>
     <string name="ai_assist_chip_description">AI Assist: explain, summarise, reply and more on selected or copied text</string>
-    <string name="ai_email_chip">Email</string>
     <string name="ai_assist_title">AI Assist</string>
     <string name="ai_panel_back">Back</string>
     <string name="ai_panel_close">Back to keyboard</string>

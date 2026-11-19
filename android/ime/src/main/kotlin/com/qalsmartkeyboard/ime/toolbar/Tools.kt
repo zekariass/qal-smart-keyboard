@@ -2,17 +2,20 @@ package com.qalsmartkeyboard.ime.toolbar
 
 import com.qalsmartkeyboard.ime.FieldKind
 import com.qalsmartkeyboard.ime.InputProfile
+import com.qalsmartkeyboard.ime.ai.AiTool
+import com.qalsmartkeyboard.ime.ai.AiToolEntry
 
 /**
  * The keyboard's tools (ADR 0035). Each is a tile of the tools panel; the first few that fit are also pinned to the
- * idle bar as shortcuts ([ToolSet.shortcuts]). [AI_ACTIONS] is the bar's "AI" shortcut (the quick actions row of
- * ADR 0007 D45); it has no tile of its own because AI Assist covers its actions (and Translate has its own panel).
+ * idle bar as shortcuts ([ToolSet.shortcuts]). [AI] is the one AI entry (ADR 0041): the "AI" mark opens the AI tools grid
+ * ([ToolPanel.AI]) in place of the keys, where AI Assist, Write Email and the quick actions are tiles.
+ *
+ * A new tool (a keyboard-layout tile, ...) is one enum value, a label ([toolLabel]), a place in [ToolSet] and a branch in
+ * [ToolsController.activate].
  */
 enum class Tool(val icon: ToolIcon) {
     TRANSLATE(ToolIcon.TRANSLATE),
-    AI_ACTIONS(ToolIcon.AI),
-    AI_ASSIST(ToolIcon.AI),
-    EMAIL(ToolIcon.EMAIL),
+    AI(ToolIcon.AI),
     CLIPBOARD(ToolIcon.CLIPBOARD),
     EMOJI(ToolIcon.EMOJI),
     VOICE(ToolIcon.MIC),
@@ -37,10 +40,9 @@ data class ToolContext(
     val aiReady: Boolean = false,
     /** Signed out, update needed or offline: the AI tools open, but show why they cannot run. */
     val aiBlocked: Boolean = false,
-    /** The cached plan excludes translation / the Assist actions / the e-mail writer (unknown never locks). */
+    /** The cached plan excludes translation / every AI tool (unknown never locks). */
     val translateLocked: Boolean = false,
-    val assistLocked: Boolean = false,
-    val emailLocked: Boolean = false,
+    val aiLocked: Boolean = false,
     /** The microphone is offered (setting on, a speech service installed, the field allows it). */
     val voiceOffered: Boolean = false,
     /** am/ti in a text field with at least two writing modes loaded. */
@@ -62,8 +64,7 @@ object ToolSet {
     fun tiles(c: ToolContext): List<ToolEntry> = buildList {
         if (c.aiReady) {
             add(ToolEntry(Tool.TRANSLATE, c.aiBlocked || c.translateLocked))
-            add(ToolEntry(Tool.AI_ASSIST, c.aiBlocked || c.assistLocked))
-            add(ToolEntry(Tool.EMAIL, c.aiBlocked || c.emailLocked))
+            add(ToolEntry(Tool.AI, c.aiBlocked || c.aiLocked))
         }
         if (c.clipboardAllowed) add(ToolEntry(Tool.CLIPBOARD))
         if (c.profile.allowsEmoji && c.emojiReady) add(ToolEntry(Tool.EMOJI))
@@ -82,7 +83,7 @@ object ToolSet {
     fun shortcutCandidates(c: ToolContext): List<ToolEntry> = buildList {
         if (c.aiReady) {
             add(ToolEntry(Tool.TRANSLATE, c.aiBlocked || c.translateLocked))
-            add(ToolEntry(Tool.AI_ACTIONS, c.aiBlocked))
+            add(ToolEntry(Tool.AI, c.aiBlocked || c.aiLocked))
         }
         if (c.clipboardAllowed) add(ToolEntry(Tool.CLIPBOARD))
         add(ToolEntry(Tool.SETTINGS))
@@ -101,9 +102,9 @@ interface ToolHost {
      * open (the active Translate shortcut tapped again) it closes, like Gboard's.
      */
     fun openTranslate()
-    fun openAiActions()
-    fun openAssist()
-    fun openEmail()
+
+    /** A tile of the AI tools grid was chosen (the grid has closed): run it ([AiTool.runOn]). */
+    fun runAiTool(tool: AiTool)
     fun openEmoji()
     fun startVoice()
     fun openWordArt()
@@ -112,20 +113,22 @@ interface ToolHost {
     fun openTheme()
     fun openSettings()
 
-    /** The clipboard panel is about to open: voice, emoji, AI rows and panels close first. */
+    /** A tool panel (tools, clipboard, AI tools) is about to open: voice, emoji, translate and the AI panels close first. */
     fun closeOtherPanels()
 }
 
-/** Which tool panel replaces the key area. */
-enum class ToolPanel { NONE, TOOLS, CLIPBOARD }
+/** Which tool panel replaces the key area: the tools grid, the clipboard, or the AI tools grid (ADR 0041). */
+enum class ToolPanel { NONE, TOOLS, CLIPBOARD, AI }
 
 /**
- * The tools panel and the clipboard panel's open state, free of Views (JVM-tested). Only one is open at a time; any
- * tool chosen from the panel closes it first, so the tool opens in place of the keys or the bar as it does elsewhere.
+ * The tools, clipboard and AI tools panels' open state, free of Views (JVM-tested). Only one is open at a time; any
+ * tool chosen from a grid closes it first, so the tool opens in place of the keys or the bar as it does elsewhere.
  */
 class ToolsController(
     private val host: ToolHost,
     private val context: () -> ToolContext,
+    /** The AI tools grid's tiles for the focused field. */
+    private val aiTiles: () -> List<AiToolEntry> = { emptyList() },
     private val onChanged: () -> Unit = {},
 ) {
     var panel: ToolPanel = ToolPanel.NONE
@@ -135,6 +138,9 @@ class ToolsController(
 
     /** The tiles for the focused field. */
     fun tiles(): List<ToolEntry> = ToolSet.tiles(context())
+
+    /** The AI tools grid's tiles; none where the field does not offer AI (passwords, incognito, ...). */
+    fun aiTools(): List<AiToolEntry> = if (context().aiReady) aiTiles() else emptyList()
 
     /** The bar's tools button: opens the tools panel, or closes whichever panel is open. */
     fun toggleTools() {
@@ -174,19 +180,22 @@ class ToolsController(
      */
     fun activate(tool: Tool) {
         val c = context()
-        val offered = tool == Tool.AI_ACTIONS && c.aiReady || tiles().any { it.tool == tool } ||
-            ToolSet.shortcutCandidates(c).any { it.tool == tool }
+        val offered = tiles().any { it.tool == tool } || ToolSet.shortcutCandidates(c).any { it.tool == tool }
         if (!offered) return
-        if (tool == Tool.CLIPBOARD) {
-            openClipboard()
-            return
+        when (tool) {
+            Tool.CLIPBOARD -> {
+                openClipboard()
+                return
+            }
+            Tool.AI -> {
+                open(ToolPanel.AI)
+                return
+            }
+            else -> Unit
         }
         close()
         when (tool) {
             Tool.TRANSLATE -> host.openTranslate()
-            Tool.AI_ACTIONS -> host.openAiActions()
-            Tool.AI_ASSIST -> host.openAssist()
-            Tool.EMAIL -> host.openEmail()
             Tool.EMOJI -> host.openEmoji()
             Tool.VOICE -> host.startVoice()
             Tool.WORD_ART -> host.openWordArt()
@@ -194,7 +203,19 @@ class ToolsController(
             Tool.LANGUAGES -> host.openLanguages()
             Tool.THEME -> host.openTheme()
             Tool.SETTINGS -> host.openSettings()
-            Tool.CLIPBOARD -> Unit
+            Tool.CLIPBOARD, Tool.AI -> Unit
         }
+    }
+
+    /**
+     * A tile of the AI tools grid was tapped: the grid closes (back to the keys, where a quick action's result panel opens
+     * above the bar) and the tool runs; Assist, Email and Translate open their panels. A stale tap (the grid has closed,
+     * the field no longer offers AI) does nothing.
+     */
+    fun activateAi(tool: AiTool) {
+        if (panel != ToolPanel.AI) return
+        if (aiTools().none { it.tool == tool }) return
+        close()
+        host.runAiTool(tool)
     }
 }

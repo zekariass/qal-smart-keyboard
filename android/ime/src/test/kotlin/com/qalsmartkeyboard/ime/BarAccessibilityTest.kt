@@ -1,10 +1,8 @@
 package com.qalsmartkeyboard.ime
 
 import android.view.View
-import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeProvider
-import android.widget.TextView
 import com.qalsmartkeyboard.ime.CandidateStripView.Target
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
 import com.qalsmartkeyboard.ime.ai.AiToolbarView
@@ -21,9 +19,8 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * TalkBack: the drawn bar (tools button, pill, shortcuts, AI close, DRAFT tag, candidates, chooser options, mic) and the
- * keys are virtual accessibility nodes with a label, a role and working click actions; the AI action chips are real
- * views with the Button role.
+ * TalkBack: the drawn bar (tools button, pill, shortcuts including the "AI" mark, DRAFT tag, candidates, chooser options,
+ * mic) and the keys are virtual accessibility nodes with a label, a role and working click actions.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
@@ -75,7 +72,7 @@ class BarAccessibilityTest {
         assertEquals(h.strip.slots().size, host.childCount)
         // Tools button, pill and the shortcuts that fit at 411 dp without a mic: all six.
         assertEquals(
-            listOf(Target.Tools, Target.Pill) + listOf(Tool.TRANSLATE, Tool.AI_ACTIONS, Tool.CLIPBOARD, Tool.SETTINGS, Tool.THEME, Tool.EMOJI).map { Target.Shortcut(it) },
+            listOf(Target.Tools, Target.Pill) + listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.SETTINGS, Tool.THEME, Tool.EMOJI).map { Target.Shortcut(it) },
             h.strip.slots().map { it.target },
         )
     }
@@ -102,32 +99,21 @@ class BarAccessibilityTest {
         assertFalse(h.strip.isModeChooserOpen)
     }
 
-    @Test fun aiShortcutOpensTheActionsAndTheCloseButtonClosesThem() {
+    @Test fun theAiMarkIsAButtonNamedAiToolsThatOpensTheGrid() {
+        // ADR 0041: the shortcut is drawn as an "AI" mark; TalkBack reads its name, not the letters.
         val h = H()
-        val n = h.node(Target.Shortcut(Tool.AI_ACTIONS))
+        val n = h.node(Target.Shortcut(Tool.AI))
         assertEquals(button, n.className)
         assertEquals("AI tools", n.contentDescription.toString())
         assertTrue(n.hasAction(AccessibilityNodeInfo.ACTION_CLICK))
-        assertTrue(h.click(Target.Shortcut(Tool.AI_ACTIONS)))
-        assertTrue(h.bar.aiOpen)
-        assertEquals(listOf("tool AI_ACTIONS"), h.events)
-        assertEquals("Close AI tools", h.node(Target.AiClose).contentDescription.toString())
+        assertFalse(n.isSelected)
+        assertTrue(h.click(Target.Shortcut(Tool.AI)))
+        assertEquals(listOf("tool AI"), h.events)
         assertTrue(h.actions.submitted.isEmpty())
-        // The action chips are real views with the Button role and their names.
+        // Active while an AI panel or the result panel is open: selected for TalkBack.
+        h.strip.setActiveTools(setOf(Tool.AI))
         h.layout()
-        val chips = h.ai.actionsRow.getChildAt(0) as ViewGroup
-        // ADR 0037: Translate comes first (it opens the translate panel); every chip is a Button with its name.
-        val names = (0 until chips.childCount).map { i ->
-            val v = chips.getChildAt(i) as TextView
-            val info = v.createAccessibilityNodeInfo()
-            assertEquals(button, info.className)
-            assertTrue(v.isClickable && v.hasOnClickListeners())
-            v.contentDescription.toString()
-        }
-        assertEquals("Translate", names.first())
-        assertTrue(names.containsAll(listOf("Email", "Grammar", "Rewrite")))
-        assertTrue(h.click(Target.AiClose))
-        assertFalse(h.bar.aiOpen)
+        assertTrue(h.node(Target.Shortcut(Tool.AI)).isSelected)
     }
 
     @Test fun candidatesAreButtonsWithTheirTextAndAnAddToDictionaryLongClick() {
@@ -179,6 +165,7 @@ class BarAccessibilityTest {
         h.ai.render()
         h.layout()
         assertEquals("Translate, locked", h.node(Target.Shortcut(Tool.TRANSLATE)).contentDescription.toString())
+        assertEquals("AI tools, locked", h.node(Target.Shortcut(Tool.AI)).contentDescription.toString())
         assertEquals("Clipboard", h.node(Target.Shortcut(Tool.CLIPBOARD)).contentDescription.toString())
     }
 

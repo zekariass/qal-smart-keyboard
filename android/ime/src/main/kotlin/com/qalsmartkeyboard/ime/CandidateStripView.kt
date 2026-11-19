@@ -40,13 +40,13 @@ import kotlin.math.min
  *   open ([panelTitle] set) the bar shows only a back arrow and the panel's title;
  * - the **writing-mode pill** (am/ti only): names the active mode (ፊደል / Phonetic / English); a tap opens a three-option
  *   chooser in the middle, a second tap or a choice closes it;
- * - the **middle**: the pinned **shortcuts** when idle ([setShortcuts]: Translate, AI, Clipboard, then Settings, Theme and
- *   Emoji while they fit, evenly spaced, each a 48 dp target); candidates while composing in a phonetic mode; the mode
- *   chooser; or, while the AI actions are open, a close (×) button followed by the actions row ([KeyboardBar] lays it
- *   over [middleRange]);
+ * - the **middle** ([middleRange]): the pinned **shortcuts** when idle ([setShortcuts]: Translate, AI, Clipboard, then
+ *   Settings, Theme and Emoji while they fit, evenly spaced, each a 48 dp target); candidates while composing in a
+ *   phonetic mode; or the mode chooser. The AI shortcut is the "AI" wordmark ([ToolIcon.AI], ADR 0041): it opens the AI
+ *   tools grid in place of the keys, like the tools button opens the tools panel;
  * - the **microphone** ([micShown]; voice typing, ADR 0029) at the right end.
  *
- * Icons are one outline family ([ToolIcons]); an active tool (its panel or row is open, voice typing listens) is drawn
+ * Icons are one outline family ([ToolIcons]); an active tool (its panel is open, voice typing listens) is drawn
  * on an accent circle, a locked one carries a small lock. The bar is shown in every field and always [HEIGHT_DP] tall,
  * so the keyboard keeps one height. Candidates (ADR 0039, Gboard-like) take three equal slots: the centre holds what
  * Space commits (the composition, or the correction Space will apply), bold; left and right the next two; thin
@@ -78,12 +78,6 @@ class CandidateStripView(context: Context) : View(context) {
     /** A pinned shortcut was tapped. */
     var onShortcut: (Tool) -> Unit = {}
 
-    /** The AI actions' close button was tapped (the bar wires it to close the row). */
-    var onAiToggle: () -> Unit = {}
-
-    /** What uses the middle, or its extent, may have changed ([KeyboardBar] re-lays the AI actions). */
-    var onMiddleChanged: () -> Unit = {}
-
     /** Whether a tap gives haptic feedback (the keys' setting; set by the service). */
     var haptics: () -> Boolean = { true }
 
@@ -102,16 +96,6 @@ class CandidateStripView(context: Context) : View(context) {
             field = value
             invalidate()
             nodes.invalidateRoot()
-        }
-
-    /** The AI entry: none (AI not allowed here or not attached), closed, or open (actions in the middle). */
-    enum class AiEntry { NONE, CLOSED, OPEN }
-
-    var aiEntry: AiEntry = AiEntry.NONE
-        set(value) {
-            if (field == value) return
-            field = value
-            changed()
         }
 
     /** While a tool panel replaces the keys: its title (the bar shows a back arrow and the title only). */
@@ -142,21 +126,11 @@ class CandidateStripView(context: Context) : View(context) {
     /** The writing-mode chooser is open in the middle. */
     val isModeChooserOpen: Boolean get() = chooserOpen && modes.isNotEmpty() && panelTitle == null
 
-    /** Neither candidates, the chooser nor a tool panel use the bar: the shortcuts (or the AI actions) can. */
-    private val middleFree: Boolean get() = items.isEmpty() && !isModeChooserOpen && panelTitle == null
-
-    /** The AI shortcut (or, while the actions are open, their close button) can be shown. */
-    val showsAiEntry: Boolean get() = aiEntry != AiEntry.NONE && middleFree
-
-    /** The middle belongs to the AI actions. */
-    val showsAiActions: Boolean get() = showsAiEntry && aiEntry == AiEntry.OPEN
-
     /** What a touch (or an accessibility action) can land on. */
     sealed interface Target {
         data class Candidate(val index: Int) : Target
         data object Tools : Target
         data object Pill : Target
-        data object AiClose : Target
         data object Mic : Target
         data object DraftTag : Target
         data object Title : Target
@@ -275,12 +249,11 @@ class CandidateStripView(context: Context) : View(context) {
         changed()
     }
 
-    /** State changed: drop the geometry, redraw, refresh the accessibility tree, tell the bar. */
+    /** State changed: drop the geometry, redraw, refresh the accessibility tree. */
     private fun changed() {
         geo = null
         invalidate()
         nodes.invalidateRoot()
-        onMiddleChanged()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -292,7 +265,7 @@ class CandidateStripView(context: Context) : View(context) {
         nodes.invalidateRoot()
     }
 
-    /** The middle (px from the left) for a bar [width] px wide: where candidates, the chooser or the AI actions go. */
+    /** The middle (px from the left) for a bar [width] px wide: where the shortcuts, candidates or the chooser go. */
     fun middleRange(width: Int = this.width): Pair<Float, Float> = geometry(width).let { it.middleStart to it.middleEnd }
 
     /** The placed elements for the current width, left to right (the microphone last). */
@@ -331,7 +304,7 @@ class CandidateStripView(context: Context) : View(context) {
         }
         val mic = if (micShown) RectF(w - target, 0f, w.toFloat(), h) else null
         val end = mic?.left ?: (w - 4f * d)
-        var middleStart = x
+        val middleStart = x
         when {
             isModeChooserOpen -> {
                 val gap = 6f * d
@@ -382,12 +355,6 @@ class CandidateStripView(context: Context) : View(context) {
                     out += Slot(Target.More, r, r, label)
                 }
             }
-            aiEntry == AiEntry.OPEN -> {
-                // The AI actions: a close button, then the row ([KeyboardBar] lays it over the rest of the middle).
-                val r = RectF(x, 0f, x + CLOSE_DP * d, h)
-                out += Slot(Target.AiClose, r, r, context.getString(R.string.top_bar_ai_close))
-                middleStart = r.right
-            }
             else -> {
                 // The pinned shortcuts: as many as fit at 48 dp each, evenly spread (at most 72 dp apart), centred.
                 val room = end - x
@@ -421,7 +388,6 @@ class CandidateStripView(context: Context) : View(context) {
                     canvas.drawText(fit(s.label, titlePaint, s.shape.width()), s.shape.left, cy - (titlePaint.descent() + titlePaint.ascent()) / 2, titlePaint)
                 }
                 is Target.Shortcut -> drawIcon(canvas, s, t.tool.icon, active = t.tool in activeTools, down)
-                Target.AiClose -> drawIcon(canvas, s, ToolIcon.CLOSE, active = true, down)
                 Target.Mic -> drawIcon(canvas, s, ToolIcon.MIC, active = micActive, down)
                 Target.Pill -> drawPill(canvas, s, down)
                 Target.DraftTag -> {
@@ -567,7 +533,6 @@ class CandidateStripView(context: Context) : View(context) {
             Target.Tools -> { closeModeChooser(); onTools() }
             Target.Mic -> { closeModeChooser(); onMic() }
             Target.Pill -> { chooserOpen = !chooserOpen; changed() }
-            Target.AiClose -> onAiToggle()
             Target.More -> { expanded = !expanded; changed() }
             is Target.Shortcut -> { closeModeChooser(); onShortcut(t.tool) }
             is Target.Mode -> {
@@ -636,7 +601,6 @@ class CandidateStripView(context: Context) : View(context) {
     /** Stable virtual-view id of a target. */
     internal fun idOf(t: Target): Int = when (t) {
         Target.Tools -> 1
-        Target.AiClose -> 2
         Target.DraftTag -> 3
         Target.Title -> 4
         Target.Mic -> 5
@@ -674,7 +638,7 @@ class CandidateStripView(context: Context) : View(context) {
                     node.contentDescription = context.getString(R.string.top_bar_mode, LanguageCatalog.spokenWritingMode(activeMode))
                     node.addAction(AccessibilityActionCompat(click.id, context.getString(R.string.top_bar_mode_change)))
                 }
-                Target.Tools, Target.AiClose, Target.More -> {
+                Target.Tools, Target.More -> {
                     node.className = Button::class.java.name
                     node.contentDescription = s.label
                     node.addAction(click)
@@ -765,7 +729,6 @@ class CandidateStripView(context: Context) : View(context) {
 
         /** The icon size (dp) of the bar's buttons. */
         const val ICON_DP = 22f
-        private const val CLOSE_DP = 44f
         private const val CIRCLE_DP = 36f
         private const val LOCK_DP = 10f
         private const val PILL_DP = 30f
