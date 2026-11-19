@@ -31,8 +31,8 @@ import kotlin.math.min
  * drawn by a [PopupOverlay] that covers the whole input view, including a transparent headroom above
  * the strip (a PopupWindow would be clipped to the IME window); the surface keeps the pointer and does
  * the hit-testing, so a slide-and-release picks an item. Keys with a popup or a long-press action act on release; other
- * keys act on press. It draws no key-preview popups, so characters typed in password fields are
- * never echoed by us.
+ * keys act on press. A pressed character key shows a preview bubble in the same overlay
+ * ([KeyPreview]); it is off in password fields, so what is typed there is never echoed by us.
  *
  * Accessibility: every key is a virtual view ([KeyNodes], `ExploreByTouchHelper`) with its spoken
  * name and the Button role; an accessibility click types the key like a tap, and keys with a
@@ -147,8 +147,40 @@ class KeyboardSurface(context: Context) : View(context) {
         )
     }
 
-    /** Called when the page, shift state, language/layout or field profile changed. */
+    /** The height this surface takes for the current layout: the emoji panel (which replaces it) takes the same. */
+    fun preferredHeightPx(): Int = ((controller?.layout?.rows?.size ?: 5) * rowHeight + edge * 2).toInt()
+
+    // What the last full layout pass saw; a change confined to the Fidel composition state takes the cheap path.
+    private var seenLayout: KeyboardLayout? = null
+    private var seenShift = ShiftState.OFF
+    private var seenPage = Page.LETTERS
+    private var seenEnter: EnterLabel? = null
+    private var seenSpoken: String? = null
+    private var seenSeries: String? = null
+    private val dirty = Rect()
+
+    /**
+     * Called when the page, shift state, language/layout or field profile changed. When only the pending
+     * Fidel consonant changed (the vowel-order row's family, the selected-consonant highlight) the key
+     * placement and accessibility tree stay and only the affected keys are redrawn and re-announced.
+     */
     fun onLayoutChanged() {
+        val c = controller
+        if (c != null && placed.isNotEmpty() && c.layout === seenLayout && c.shift == seenShift && c.page == seenPage &&
+            c.profile.enterLabel == seenEnter && c.modeDescription == seenSpoken
+        ) {
+            if (c.pendingSeries != seenSeries) refreshFidelKeys(seenSeries, c.pendingSeries)
+            seenSeries = c.pendingSeries
+            return
+        }
+        if (c != null) {
+            seenLayout = c.layout
+            seenShift = c.shift
+            seenPage = c.page
+            seenEnter = c.profile.enterLabel
+            seenSpoken = c.modeDescription
+            seenSeries = c.pendingSeries
+        }
         dismissPopup()
         placed = emptyList()
         keyNodes.invalidateRoot()
@@ -160,6 +192,23 @@ class KeyboardSurface(context: Context) : View(context) {
         }
         requestLayout()
         invalidate()
+    }
+
+    /** Redraws the vowel-order row and the old and new selected consonant keys only, and tells TalkBack their text changed. */
+    private fun refreshFidelKeys(old: String?, new: String?) {
+        var any = false
+        placed.forEachIndexed { i, p ->
+            val k = p.key
+            val affected = k.kind == KeyKind.FIDEL_VOWEL ||
+                (k.kind == KeyKind.FIDEL_CONSONANT && (k.text == old || k.text == new))
+            if (!affected) return@forEachIndexed
+            val r = p.rect
+            if (!any) dirty.set(r.left.toInt(), r.top.toInt(), ceil(r.right).toInt(), ceil(r.bottom).toInt())
+            else dirty.union(r.left.toInt(), r.top.toInt(), ceil(r.right).toInt(), ceil(r.bottom).toInt())
+            any = true
+            keyNodes.invalidateVirtualView(i, AccessibilityEvent.CONTENT_CHANGE_TYPE_CONTENT_DESCRIPTION)
+        }
+        if (any) invalidate(dirty.left, dirty.top, dirty.right + 1, dirty.bottom + (theme.shadowDyDp * d).toInt() + 1)
     }
 
     private fun place() {
@@ -215,9 +264,12 @@ class KeyboardSurface(context: Context) : View(context) {
         for (p in placed) {
             val key = p.key
             if (key.isSpacer) continue
-            val dead = key.kind == KeyKind.FIDEL_VOWEL && !c.composing
+            val face = if (key.kind == KeyKind.FIDEL_VOWEL) c.orderFace(key) else null
+            val dead = face != null && !face.active
+            val selected = c.isSelectedConsonant(key)
             fill.color = when {
                 p in down -> pressedColor
+                selected -> accent
                 key.kind == KeyKind.ENTER -> accent
                 key.kind == KeyKind.CHAR || key.kind == KeyKind.SPACE || key.kind == KeyKind.FIDEL_CONSONANT -> keyColor
                 key.kind == KeyKind.SHIFT && c.shift != ShiftState.OFF -> pressedColor
@@ -242,14 +294,20 @@ class KeyboardSurface(context: Context) : View(context) {
                 drawGlobe(canvas, p.rect.centerX(), p.rect.centerY(), min(p.rect.width(), p.rect.height()) * 0.24f)
                 continue
             }
+            if (key.kind == KeyKind.EMOJI) {
+                drawSmiley(canvas, p.rect.centerX(), p.rect.centerY(), min(p.rect.width(), p.rect.height()) * 0.26f)
+                continue
+            }
             val label = when (key.kind) {
                 KeyKind.ENTER -> enterText(c.profile.enterLabel)
                 KeyKind.SHIFT -> if (c.shift == ShiftState.LOCKED) "⇪" else "⇧"
                 KeyKind.SPACE -> key.label.trim()
                 KeyKind.CHAR -> if (key.isLetter && c.shift != ShiftState.OFF) key.label.uppercase() else key.label
+                KeyKind.FIDEL_VOWEL -> face?.label ?: key.label
                 else -> key.label
             }
             text.color = when {
+                selected -> onAccent
                 key.kind == KeyKind.ENTER -> onAccent
                 key.kind == KeyKind.SPACE || dead -> dimColor
                 key.kind == KeyKind.CHAR || key.kind == KeyKind.FIDEL_CONSONANT -> textColor
@@ -314,15 +372,21 @@ class KeyboardSurface(context: Context) : View(context) {
         canvas.drawLine(cx - half, cy + y, cx + half, cy + y, icon)
     }
 
-    private fun enterText(l: EnterLabel) = when (l) {
-        EnterLabel.RETURN -> "⏎"
-        EnterLabel.GO -> "Go"
-        EnterLabel.SEARCH -> "Search"
-        EnterLabel.SEND -> "Send"
-        EnterLabel.NEXT -> "Next"
-        EnterLabel.PREVIOUS -> "Prev"
-        EnterLabel.DONE -> "Done"
+    /** The emoji key as a drawn smiley in the special-key label colour (no colour emoji, no font dependency). */
+    private fun drawSmiley(canvas: Canvas, cx: Float, cy: Float, r: Float) {
+        icon.color = specialText
+        icon.strokeWidth = 1.6f * d
+        canvas.drawCircle(cx, cy, r, icon)
+        fill.color = specialText
+        canvas.drawCircle(cx - r * 0.38f, cy - r * 0.25f, r * 0.12f, fill)
+        canvas.drawCircle(cx + r * 0.38f, cy - r * 0.25f, r * 0.12f, fill)
+        smile.set(cx - r * 0.55f, cy - r * 0.5f, cx + r * 0.55f, cy + r * 0.6f)
+        canvas.drawArc(smile, 25f, 130f, false, icon)
     }
+
+    private val smile = RectF()
+
+    private fun enterText(l: EnterLabel) = enterLabelText(l)
 
     /** The key under the point; taps in the gaps land on the nearest key within one row height. */
     private fun hit(x: Float, y: Float): Placed? {
@@ -345,6 +409,7 @@ class KeyboardSurface(context: Context) : View(context) {
         if (pressed[lpPointer] != p) return
         lpFired = true
         if (c.prefs.hapticsEnabled) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        hidePreview()
         if (p.key.popup.isNotEmpty()) showPopup(p) else if (p.key.longAction) c.onLongPress(p.key)
     }
 
@@ -388,6 +453,38 @@ class KeyboardSurface(context: Context) : View(context) {
         return if (i in popupItems.indices) i else -1
     }
 
+    // ------------------------------------------------------------------ key press preview
+
+    private var previewPointer = -1
+    private val sl = IntArray(2)
+    private val ol = IntArray(2)
+
+    /**
+     * Shows the preview bubble of [p] (its exact output) in the overlay, above the key, clamped into the
+     * overlay's width; the overlay also covers the headroom above the bar, so the top row's bubble is not
+     * clipped by the IME window. Must run before the key is handled (shift or the Fidel family may change).
+     */
+    private fun showPreview(id: Int, p: Placed, c: KeyboardController) {
+        val o = overlay ?: return
+        if (!c.keyPreviewsActive || o.width == 0) return
+        val face = if (p.key.kind == KeyKind.FIDEL_VOWEL) c.orderFace(p.key) else null
+        val label = KeyPreview.textFor(p.key, c.shift, c.page, face) ?: return
+        getLocationInWindow(sl)
+        o.getLocationInWindow(ol)
+        val dx = (sl[0] - ol[0]).toFloat()
+        val dy = (sl[1] - ol[1]).toFloat()
+        val w = KeyPreview.width(p.rect.width(), PREVIEW_MIN_W_DP * d)
+        val h = PREVIEW_H_DP * d
+        val at = KeyPreview.place(p.rect.left + dx, p.rect.right + dx, p.rect.top + dy, w, h, PREVIEW_GAP_DP * d, o.width.toFloat(), 0f)
+        previewPointer = id
+        o.showPreview(label, at.left, at.top, w, h)
+    }
+
+    private fun hidePreview() {
+        previewPointer = -1
+        overlay?.hidePreview()
+    }
+
     private fun dismissPopup() {
         popupOpen = false
         overlay?.hide()
@@ -406,6 +503,7 @@ class KeyboardSurface(context: Context) : View(context) {
                 val p = hit(e.getX(i), e.getY(i)) ?: return true
                 pressed[id] = p
                 if (c.prefs.hapticsEnabled) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                showPreview(id, p, c)
                 if (p.key.actsOnRelease) {
                     // A new press while a popup is open cancels it.
                     if (popupOpen) dismissPopup()
@@ -441,12 +539,14 @@ class KeyboardSurface(context: Context) : View(context) {
                         // Slid away before the long-press: neither a tap nor a popup.
                         removeCallbacks(longPress)
                         lpKey = null
+                        if (previewPointer == lpPointer) hidePreview() // no key will be typed
                     }
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val id = e.getPointerId(e.actionIndex)
                 val key = pressed.remove(id)
+                if (id == previewPointer) hidePreview()
                 if (id == repeatPointer) stopRepeat()
                 if (id == lpPointer) {
                     removeCallbacks(longPress)
@@ -470,6 +570,7 @@ class KeyboardSurface(context: Context) : View(context) {
             }
             MotionEvent.ACTION_CANCEL -> {
                 pressed.clear()
+                hidePreview()
                 stopRepeat()
                 removeCallbacks(longPress)
                 dismissPopup()
@@ -479,6 +580,11 @@ class KeyboardSurface(context: Context) : View(context) {
             }
         }
         return true
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility != VISIBLE) hidePreview()
     }
 
     private fun stopRepeat() {
@@ -491,6 +597,11 @@ class KeyboardSurface(context: Context) : View(context) {
         /** Size of the DRAFT tag text, and the space between it and the label. */
         const val TAG_TEXT_DP = 8f
         const val TAG_GAP_DP = 3f
+
+        /** Key press preview bubble: smallest width, height, and the gap above the key. */
+        const val PREVIEW_MIN_W_DP = 52f
+        const val PREVIEW_H_DP = 56f
+        const val PREVIEW_GAP_DP = 6f
     }
 
     // ------------------------------------------------------------------ accessibility
@@ -523,6 +634,10 @@ class KeyboardSurface(context: Context) : View(context) {
                 else -> key.spoken
             }
             KeyKind.CHAR -> if (key.isLetter && key.description.isEmpty() && c != null && c.shift != ShiftState.OFF) key.label.uppercase() else key.spoken
+            KeyKind.FIDEL_VOWEL -> c?.orderFace(key)?.let { f ->
+                if (f.active) "${f.label}, vowel order ${f.order}" else "Vowel order ${f.order}, not available"
+            } ?: key.spoken
+            KeyKind.FIDEL_CONSONANT -> if (c?.isSelectedConsonant(key) == true) "${key.spoken}, selected" else key.spoken
             else -> key.spoken
         }.let { if (key.draftBadge) "$it, ${context.getString(R.string.key_draft_description)}" else it }
     }
@@ -583,6 +698,18 @@ class KeyboardSurface(context: Context) : View(context) {
         stopRepeat()
         removeCallbacks(longPress)
         dismissPopup()
+        hidePreview()
         super.onDetachedFromWindow()
     }
+}
+
+/** The Enter key label for an editor action (shared with the emoji panel). */
+internal fun enterLabelText(l: EnterLabel) = when (l) {
+    EnterLabel.RETURN -> "⏎"
+    EnterLabel.GO -> "Go"
+    EnterLabel.SEARCH -> "Search"
+    EnterLabel.SEND -> "Send"
+    EnterLabel.NEXT -> "Next"
+    EnterLabel.PREVIOUS -> "Prev"
+    EnterLabel.DONE -> "Done"
 }

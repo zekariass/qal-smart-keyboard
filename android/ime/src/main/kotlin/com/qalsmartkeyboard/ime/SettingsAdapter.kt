@@ -48,5 +48,6 @@ class SettingsPreferences(
 
     override val ethiopicNumerals: Boolean get() = settings().numeralStyle == NumeralStyle.ETHIOPIC
     override val hapticsEnabled: Boolean get() = settings().hapticsEnabled
+    override val keyPreviewEnabled: Boolean get() = settings().keyPreviewEnabled
     override val keyHeightScale: Float get() = settings().keyHeightScale
 }

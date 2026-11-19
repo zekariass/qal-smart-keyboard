@@ -17,6 +17,33 @@
     <!-- Accessibility: keys. -->
     <string name="key_draft_description">draft, not verified by native speakers</string>
     <string name="key_globe_long_action">Change layout</string>
+    <string name="key_emoji_description">Emoji</string>
+    <!-- Emoji panel (ADR 0028). -->
+    <string name="emoji_back_to_keys">Back to keyboard</string>
+    <string name="emoji_delete">Delete</string>
+    <string name="emoji_space">Space</string>
+    <string name="emoji_search">Search emoji</string>
+    <string name="emoji_search_close">Close search</string>
+    <string name="emoji_search_field">Search query: %1$s</string>
+    <string name="emoji_no_results">No emoji found</string>
+    <string name="emoji_loading">Loading emoji</string>
+    <string name="emoji_recent_empty">Emoji you use will appear here</string>
+    <string name="emoji_category_recent">Recent</string>
+    <string name="emoji_category_smileys">Smileys and emotion</string>
+    <string name="emoji_category_people">People and body</string>
+    <string name="emoji_category_animals">Animals and nature</string>
+    <string name="emoji_category_food">Food and drink</string>
+    <string name="emoji_category_travel">Travel and places</string>
+    <string name="emoji_category_activities">Activities</string>
+    <string name="emoji_category_objects">Objects</string>
+    <string name="emoji_category_symbols">Symbols</string>
+    <string name="emoji_category_flags">Flags</string>
+    <string name="emoji_tone_1">light skin tone</string>
+    <string name="emoji_tone_2">medium-light skin tone</string>
+    <string name="emoji_tone_3">medium skin tone</string>
+    <string name="emoji_tone_4">medium-dark skin tone</string>
+    <string name="emoji_tone_5">dark skin tone</string>
+    <string name="emoji_tone_action">Skin tone: %1$s</string>
     <string name="user_dictionary_added">Added to your dictionary</string>
     <string name="user_dictionary_not_added">Could not add this word</string>
     <!-- A2.5: AI toolbar. Nothing is sent until the user taps an action. -->

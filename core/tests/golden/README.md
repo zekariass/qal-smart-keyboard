@@ -1,6 +1,11 @@
 # Golden vectors
 
-## Phonetic (C1.4): `am-phonetic-0.1.0.json`, `ti-phonetic-0.1.0.json`
+## Phonetic (C1.4): `am-phonetic-0.2.0.json`, `ti-phonetic-0.2.0.json`
+Profile 0.2.0 (coverage audit, `docs/specs/phonetic-coverage-am-ti.md`) retired 0.1.0: its vectors
+were carried over unchanged except for alternatives the new rules add (and `x`, now ሸ in Amharic);
+0.1.0 was never released outside INTERNAL DRAFT packs, so its files were removed (see git history).
+`am-phonetic-coverage.json` / `ti-phonetic-coverage.json` (run by `tests/phonetic_coverage.rs`) list
+every required Fidel form with the key sequences that reach it, as default or strip alternative.
 Run by `tests/phonetic.rs`: the profile `language-data/profiles/<lang>-phonetic-draft.json` is loaded
 through a signed test pack, then `PhoneticLatin` mode is set. The concrete format differs slightly from
 the sketch below (kept for reference):

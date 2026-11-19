@@ -1,5 +1,10 @@
 package com.qalsmartkeyboard.ime
 
+import com.qalsmartkeyboard.ime.emoji.EmojiController
+import com.qalsmartkeyboard.ime.emoji.EmojiExecutor
+import com.qalsmartkeyboard.ime.emoji.EmojiHost
+import com.qalsmartkeyboard.ime.emoji.EmojiLoader
+import com.qalsmartkeyboard.ime.emoji.EmojiStore
 import com.qalsmartkeyboard.ime.userdict.WordLearner
 import com.qalsmartkeyboard.ime.userdict.WordLearningSink
 
@@ -24,9 +29,36 @@ class KeyboardController(
     val prefs: ModePreferences = InMemoryModePreferences(),
     /** Where learned and explicitly added words go (A1.8). */
     private val dictionary: WordLearningSink = WordLearningSink.None,
+    /** Emoji panel (ADR 0028): its local recents store, its lazy data loader (null: no panel) and where it loads. */
+    emojiStore: EmojiStore = EmojiStore.None,
+    emojiLoader: EmojiLoader? = null,
+    emojiExecutor: EmojiExecutor = EmojiExecutor.Inline,
     private val onChanged: () -> Unit,
 ) {
     private val learner = WordLearner(dictionary)
+
+    /**
+     * The emoji panel. While it is searching, the composer's output goes to its query instead of the host field
+     * ([apply]), and nothing typed there is learned.
+     */
+    val emoji: EmojiController = EmojiController(
+        object : EmojiHost {
+            override fun commitComposition() = send(ComposerKey.Commit)
+            override fun resetComposition() {
+                composer.reset()
+                learner.reset()
+                candidates = emptyList()
+                composing = false
+                pendingSeries = null
+            }
+            override fun commitToField(text: String) {
+                sink.apply(ComposerUpdate(commit = text))
+                learner.reset() // an emoji ends the word
+            }
+            override val language: String get() = this@KeyboardController.language
+        },
+        emojiStore, emojiLoader, emojiExecutor,
+    ) { onChanged() }
 
     var profile: InputProfile = InputProfile.DEFAULT
         private set
@@ -40,6 +72,8 @@ class KeyboardController(
         set(value) {
             field = value
             gridCache.clear()
+            orderRows.clear()
+            pendingSeries = null
             cachedLayout = null
             applyMode()
             onChanged()
@@ -86,6 +120,31 @@ class KeyboardController(
     /** A composition (e.g. a pending Fidel consonant) is open: the vowel-order keys are live. */
     var composing: Boolean = false
         private set
+
+    /**
+     * The consonant family (`FidelKey.series_id`) whose default form is the pending composition of the
+     * two-key Fidel layout, or null. It drives the vowel-order row and the selected-consonant highlight.
+     */
+    var pendingSeries: String? = null
+        private set
+
+    private val orderRows = HashMap<String, FidelOrderRow?>()
+
+    private fun orderRow(): FidelOrderRow? {
+        val lang = effectiveMode.language
+        return if (orderRows.containsKey(lang)) orderRows[lang] else (grid(lang)?.let { FidelOrderRow(it) }).also { orderRows[lang] = it }
+    }
+
+    /** The face of the vowel-order [key] in the current state (family forms while a consonant is pending, else neutral). */
+    fun orderFace(key: Key): OrderFace =
+        orderRow()?.face(pendingSeries, key.order) ?: OrderFace(key.order, key.label, active = false)
+
+    /** [key] is the consonant key of the pending family (drawn highlighted, spoken as selected). */
+    fun isSelectedConsonant(key: Key): Boolean = key.kind == KeyKind.FIDEL_CONSONANT && key.text == pendingSeries
+
+    /** Key press previews apply: the setting is on and the field is not a password field (never echo what is typed there). */
+    val keyPreviewsActive: Boolean
+        get() = prefs.keyPreviewEnabled && profile.kind != FieldKind.PASSWORD
 
     /** The strip is shown for phonetic modes only, and never in password fields. */
     val showCandidateStrip: Boolean
@@ -183,6 +242,7 @@ class KeyboardController(
         }
 
     fun startField(newProfile: InputProfile) {
+        emoji.close()
         profile = newProfile
         page = Layouts.startPage(newProfile)
         shift = ShiftState.OFF
@@ -203,6 +263,7 @@ class KeyboardController(
         learner.reset()
         candidates = emptyList()
         composing = false
+        pendingSeries = null
         refreshAutoCapital()
         onChanged()
     }
@@ -212,7 +273,7 @@ class KeyboardController(
         // Phonetic schemes give capitals their own meaning (SERA-style), so only Latin passthrough
         // layouts (ABC, Qubee, English) auto-capitalise.
         val m = effectiveMode
-        val wants = m.kind.latin && !m.phonetic && profile.capsFlags != 0 && sink.wantsAutoCapital(profile.capsFlags)
+        val wants = m.kind.latin && !m.phonetic && profile.capsFlags != 0 && !emoji.searching && sink.wantsAutoCapital(profile.capsFlags)
         shift = if (wants) ShiftState.ONCE else ShiftState.OFF
     }
 
@@ -225,11 +286,15 @@ class KeyboardController(
                 if (shift == ShiftState.ONCE) shift = ShiftState.OFF
                 refreshAutoCapital()
             }
-            KeyKind.FIDEL_CONSONANT -> send(ComposerKey.FidelConsonant(key.text))
-            KeyKind.FIDEL_VOWEL -> send(ComposerKey.FidelVowel(key.order))
+            KeyKind.FIDEL_CONSONANT -> {
+                send(ComposerKey.FidelConsonant(key.text))
+                // The core now shows this family's default form as the composition; an unknown id leaves none open.
+                pendingSeries = if (composing) key.text else null
+            }
+            KeyKind.FIDEL_VOWEL -> if (pendingSeries != null && orderFace(key).active) send(ComposerKey.FidelVowel(key.order))
             KeyKind.SPACE -> { send(ComposerKey.Space); refreshAutoCapital() }
             KeyKind.BACKSPACE -> { send(ComposerKey.Backspace); refreshAutoCapital() }
-            KeyKind.ENTER -> {
+            KeyKind.ENTER -> if (emoji.searching) send(ComposerKey.Commit) else {
                 when (val a = profile.enterAction) {
                     EnterAction.Newline -> send(ComposerKey.Enter)
                     EnterAction.EnterKey -> { send(ComposerKey.Commit); sink.sendEnterKey() }
@@ -242,6 +307,7 @@ class KeyboardController(
                 ShiftState.ONCE -> ShiftState.LOCKED
                 ShiftState.LOCKED -> ShiftState.OFF
             }
+            KeyKind.EMOJI -> if (emoji.searching) emoji.closeSearch() else emoji.open(profile.allowsEmoji)
             KeyKind.GLOBE -> { nextLanguage(); return }
             KeyKind.ABC_TOGGLE -> { toggleAbc(); return }
             KeyKind.TO_SYMBOLS -> page = Page.SYMBOLS
@@ -307,6 +373,7 @@ class KeyboardController(
     }
 
     private fun afterSwitch() {
+        emoji.onLanguageChanged()
         page = Page.LETTERS
         shift = ShiftState.OFF
         applyMode()
@@ -393,6 +460,7 @@ class KeyboardController(
         learner.reset()
         candidates = emptyList()
         composing = false
+        pendingSeries = null
         val m = effectiveMode
         if (!composer.setMode(m)) composer.setMode(TypingMode.abc(m.language))
     }
@@ -400,11 +468,16 @@ class KeyboardController(
     private fun send(key: ComposerKey) = apply(composer.onKey(key))
 
     private fun apply(update: ComposerUpdate) {
-        sink.apply(update)
+        // While the emoji search is open the keys type into its query, not into the host field, and nothing is learned.
+        val searching = emoji.searching
+        (if (searching) emoji.querySink else sink).apply(update)
         val m = effectiveMode
         // A Latin word typed in ABC is not an Amharic or Tigrinya word (SD 7.4: learn per language and script).
-        learner.observe(update, m.language, profile.learnsWords && !(m.isAbc && LanguageCatalog.isEthiopic(m.language)))
+        learner.observe(update, m.language, !searching && profile.learnsWords && !(m.isAbc && LanguageCatalog.isEthiopic(m.language)))
         candidates = update.candidates
         composing = update.composing.isNotEmpty()
+        // Anything that commits or cancels the composition (space, another consonant's commit, backspace, an order key,
+        // a mode switch) ends the family selection; the consonant branch of [onKey] sets it again.
+        if (!composing) pendingSeries = null
     }
 }
