@@ -196,6 +196,44 @@
     <string name="si_err_session_ended">ኣጠቓቕማኹም ተወዲኡ። በጃኹም ደጊምኩም ፈትኑ።</string>
     <string name="si_err_unexpected">ገለ ጌጋ ተፈጢሩ። ደጊምኩም ፈትኑ።</string>
 
+    <!-- E-mail and password sign-in (ADR 0033), DRAFT -->
+    <string name="si_method_phone">ስልኪ</string>
+    <string name="si_method_email">ኢመይል</string>
+    <string name="si_email_label">ኢመይል</string>
+    <string name="si_email_hint">name@example.com</string>
+    <string name="si_password_label">ቃል ምስጢር</string>
+    <string name="si_password_new_label">ሓድሽ ቃል ምስጢር</string>
+    <string name="si_password_show">ኣርኢ</string>
+    <string name="si_password_hide">ሕባእ</string>
+    <string name="si_password_rules">እንተወሓደ %1$d ፊደላት። ሓጺር ሓሳብ ንምዝካር ቀሊል፣ ንምግማት ግን ከቢድ እዩ።</string>
+    <string name="si_email_sign_in">ብኢመይል እተዉ</string>
+    <string name="si_email_create">ኣካውንት ክፈቱ</string>
+    <string name="si_forgot">ቃል ምስጢር ረሲዕኩም?</string>
+    <string name="si_email_new_here">ሓድሽ ዲኹም? ኣካውንት ክፈቱ</string>
+    <string name="si_email_have_account">ኣካውንት ኣለኩም? እተዉ</string>
+    <string name="si_email_code_sent">ናይ %1$d ኣሃዛት ኮድ ናብ %2$s ልኢኽና። ሳንዱቕ መልእኽትን ስፓምን ርኣዩ።</string>
+    <string name="si_change_email">ካልእ ኢመይል ተጠቐሙ</string>
+    <string name="si_reset_title">ቃል ምስጢርኩም ቀይሩ</string>
+    <string name="si_reset_body">ኢመይልኩም ኣእትዉ። ናይ ኣካውንት እንተኾይኑ ቃል ምስጢር ንምቕያር ኮድ ክንሰድድ ኢና።</string>
+    <string name="si_reset_code_sent">%2$s ኣካውንት እንተሃልይዎ ናይ %1$d ኣሃዛት ኮድ ልኢኽና። ምስ ሓድሽ ቃል ምስጢር ኣእትውዎ።</string>
+    <string name="si_reset_button">ቃል ምስጢር ቀይር</string>
+    <string name="si_back_to_sign_in">ናብ ምእታው ተመለሱ</string>
+    <string name="si_reset_sent">ኮድ ተላኢኹ። ንምብጻሕ ሓደ ደቒቕ ክወስድ ይኽእል።</string>
+    <string name="si_reset_done">ቃል ምስጢርኩም ተቐይሩ። ብሓድሽ ቃል ምስጢር እተዉ።</string>
+    <string name="si_err_email_empty">ኢመይልኩም ኣእትዉ።</string>
+    <string name="si_err_email_invalid">ቅኑዕ ኢመይል ኣእትዉ፣ ንኣብነት name@example.com።</string>
+    <string name="si_err_password_empty">ቃል ምስጢርኩም ኣእትዉ።</string>
+    <string name="si_err_password_short">እንተወሓደ %1$d ፊደላት ተጠቐሙ።</string>
+    <string name="si_err_password_long">እንተበዝሐ %1$d ፊደላት ተጠቐሙ።</string>
+    <string name="si_err_password_common">እዚ ቃል ምስጢር ብቐሊሉ ይግመት። ሓጺር ሓሳብ ፈትኑ።</string>
+    <string name="si_err_password_email">ኢመይልኩም ከም ቃል ምስጢር ኣይትጠቐሙ።</string>
+    <string name="si_err_credentials">ኢመይል ወይ ቃል ምስጢር ቅኑዕ ኣይኮነን።</string>
+    <string name="si_err_locked">ብዙሓት ጌጋ ቃላት ምስጢር። ደሓር ፈትኑ ወይ ቃል ምስጢርኩም ቀይሩ።</string>
+    <string name="si_err_locked_in">ብዙሓት ጌጋ ቃላት ምስጢር። ድሕሪ %1$d ደቒቕ ፈትኑ ወይ ቃል ምስጢርኩም ቀይሩ።</string>
+    <string name="si_err_email_taken">በዚ ኢመይል ኣካውንት ኣሎ። እተዉ ወይ ቃል ምስጢር ቀይሩ።</string>
+    <string name="si_err_email_unavailable">ብኢመይል ምእታው ሕጂ የለን። ቁጽሪ ስልኪ ወይ Google ተጠቐሙ።</string>
+    <string name="si_err_reset_code">እቲ ኮድ ቅኑዕ ኣይኮነን ወይ ግዜኡ ሓሊፉ። ሓድሽ ኮድ ሕተቱ።</string>
+
     <string name="upd_title">በጃኹም ነቲ ኣፕ ኣሐድሱ</string>
     <string name="upd_body">እዚ ስሪት Qal Smart Keyboard ምስ ሰርቨር ንምርኻብ ኣዝዩ ኣረጊት እዩ። ምጽሓፍ ይሰርሕ እዩ፤ ንምእታውን ባህርያት ኦንላይን ንምጥቃምን ኣሐድሱ።</string>
     <string name="upd_button">ገጽ ድኳን ክፈቱ</string>
