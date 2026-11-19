@@ -11,6 +11,20 @@ import com.qalsmartkeyboard.ime.userdict.WordLearningSink
 enum class ShiftState { OFF, ONCE, LOCKED }
 
 /**
+ * A text field outside the host editor that the keys type into: a field of an AI panel (ADR 0031), with the same
+ * redirect as the emoji search and Word Art. Nothing typed there reaches the host field or the personal dictionary.
+ */
+interface FieldTyping {
+    val sink: TextSink
+
+    /** Enter adds a line break (multi-line fields) instead of ending the typing. */
+    val newlineOnEnter: Boolean
+
+    /** Typing ends (Enter on a one-line field, the emoji key): the open composition was already committed into [sink]. */
+    fun done()
+}
+
+/**
  * Keyboard state machine: current page, shift, language and layout, candidates and key handling.
  * Every key goes through the [composer] (the Rust core once loaded) and the resulting update through
  * the [TextSink]. Contains no View code and never logs or stores typed text (rule N2).
@@ -63,6 +77,9 @@ class KeyboardController(
         },
         emojiStore, emojiLoader, emojiExecutor,
     ) { onChanged() }
+
+    /** While it answers a [FieldTyping], the keys type into that AI panel field instead of the host (set by the service). */
+    var fieldTyping: () -> FieldTyping? = { null }
 
     var profile: InputProfile = InputProfile.DEFAULT
         private set
@@ -293,7 +310,8 @@ class KeyboardController(
         // Phonetic schemes give capitals their own meaning (SERA-style), so only Latin passthrough
         // layouts (ABC, Qubee, English) auto-capitalise.
         val m = effectiveMode
-        val wants = m.kind.latin && !m.phonetic && profile.capsFlags != 0 && emoji.redirect == null && sink.wantsAutoCapital(profile.capsFlags)
+        val wants = m.kind.latin && !m.phonetic && profile.capsFlags != 0 && emoji.redirect == null && fieldTyping() == null &&
+            sink.wantsAutoCapital(profile.capsFlags)
         shift = if (wants) ShiftState.ONCE else ShiftState.OFF
     }
 
@@ -314,7 +332,10 @@ class KeyboardController(
             KeyKind.FIDEL_VOWEL -> if (pendingSeries != null && orderFace(key).active) send(ComposerKey.FidelVowel(key.order))
             KeyKind.SPACE -> { send(ComposerKey.Space); refreshAutoCapital() }
             KeyKind.BACKSPACE -> { send(ComposerKey.Backspace); refreshAutoCapital() }
-            KeyKind.ENTER -> if (emoji.typingWordArt) { send(ComposerKey.Commit); emoji.endWordArtTyping() } else if (emoji.searching) send(ComposerKey.Commit) else {
+            KeyKind.ENTER -> if (fieldTyping() != null) {
+                val f = fieldTyping()
+                if (f != null && f.newlineOnEnter) send(ComposerKey.Enter) else { send(ComposerKey.Commit); f?.done() }
+            } else if (emoji.typingWordArt) { send(ComposerKey.Commit); emoji.endWordArtTyping() } else if (emoji.searching) send(ComposerKey.Commit) else {
                 when (val a = profile.enterAction) {
                     EnterAction.Newline -> send(ComposerKey.Enter)
                     EnterAction.EnterKey -> { send(ComposerKey.Commit); sink.sendEnterKey() }
@@ -327,7 +348,7 @@ class KeyboardController(
                 ShiftState.ONCE -> ShiftState.LOCKED
                 ShiftState.LOCKED -> ShiftState.OFF
             }
-            KeyKind.EMOJI -> if (emoji.searching) emoji.closeSearch() else if (emoji.typingWordArt) emoji.endWordArtTyping() else emoji.open(profile.allowsEmoji)
+            KeyKind.EMOJI -> if (fieldTyping() != null) { send(ComposerKey.Commit); fieldTyping()?.done() } else if (emoji.searching) emoji.closeSearch() else if (emoji.typingWordArt) emoji.endWordArtTyping() else emoji.open(profile.allowsEmoji)
             KeyKind.GLOBE -> { nextLanguage(); return }
             KeyKind.ABC_TOGGLE -> { toggleAbc(); return }
             KeyKind.TO_SYMBOLS -> page = Page.SYMBOLS
@@ -489,7 +510,8 @@ class KeyboardController(
 
     private fun apply(update: ComposerUpdate) {
         // While the emoji search or the Word Art text field is open the keys type into it, not into the host field, and nothing is learned.
-        val redirect = emoji.redirect
+        // An AI panel field (ADR 0031) takes the keys the same way.
+        val redirect = emoji.redirect ?: fieldTyping()?.sink
         val searching = redirect != null
         (redirect ?: sink).apply(update)
         val m = effectiveMode

@@ -387,6 +387,20 @@
     <string name="settings_wordart_title">Word Art</string>
     <string name="settings_wordart_body">Decorative text for greetings, names and captions. Copy it or share it from here, or use the Aa tab of the emoji panel in the keyboard.</string>
     <string name="settings_wordart_button">Open Word Art</string>
+    <!-- Write Email with AI and the translation destination (ADR 0031) -->
+    <string name="settings_email_title">Write Email with AI</string>
+    <string name="settings_email_body">Describe what you want to say in any language and get a ready e-mail with a subject, or reply to or improve one. Also in the keyboard: AI, then Email.</string>
+    <string name="settings_email_button">Write an e-mail</string>
+    <string name="settings_translate_title">Translate into</string>
+    <string name="settings_translate_body">The language the keyboard translates into by default. You can change it each time with the language buttons next to Translate.</string>
+    <string name="settings_translate_auto">Automatic (English, or Amharic for English text)</string>
+    <string name="email_title">Write Email with AI</string>
+    <string name="email_from_keyboard">Your inputs from the keyboard are filled in. When the e-mail is ready, copy it and paste it in your mail app.</string>
+    <string name="email_preview">Your e-mail</string>
+    <string name="email_copy_body">Copy body</string>
+    <string name="email_copy_all">Copy all</string>
+    <string name="email_share">Share</string>
+    <string name="email_paste_hint">Fill in the highlighted parts before sending. After copying, switch back to your mail app and paste.</string>
     <string name="wordart_app_title">Word Art</string>
     <string name="wordart_app_intro">Type a name or a message, pick a style, then copy or share it. Works with Amharic, Tigrinya, Afaan Oromoo and English.</string>
     <string name="wordart_app_field_label">Your text</string>

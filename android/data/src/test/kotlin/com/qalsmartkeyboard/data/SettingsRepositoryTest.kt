@@ -407,4 +407,38 @@ class SettingsRepositoryTest {
         ).sanitized()
         assertEquals(mapOf("am" to "am-ET", "om" to "cmn-Hans-CN"), s.voiceLanguages)
     }
+
+    // ------------------------------------------------------------------ AI panels (ADR 0031)
+
+    @Test fun aiChoicesDefaultToAutomaticAndEmpty() = runBlocking {
+        val s = open().current()
+        assertEquals(null, s.aiPreferredTarget)
+        assertTrue(s.aiTranslatePairs.isEmpty())
+        assertEquals("", s.emailSenderName)
+    }
+
+    @Test fun aiChoicesPersistAcrossRestart() = runBlocking {
+        open().update { it.copy(aiPreferredTarget = "ti", aiTranslatePairs = mapOf("am" to "lang:en", "en" to "p-1"), emailSenderName = "Abebe Kebede") }
+        closeAll()
+        val repo = open()
+        val s = repo.current()
+        assertEquals("ti", s.aiPreferredTarget)
+        assertEquals(mapOf("am" to "lang:en", "en" to "p-1"), s.aiTranslatePairs)
+        assertEquals("Abebe Kebede", s.emailSenderName)
+        repo.update { it.copy(aiPreferredTarget = null) }
+        closeAll()
+        assertEquals("automatic again", null, open().current().aiPreferredTarget)
+    }
+
+    @Test fun aiChoicesAreSanitised() {
+        val s = KeyboardSettings(
+            aiPreferredTarget = "xx",
+            aiTranslatePairs = mapOf("am" to "lang:en", "xx" to "lang:am", "en" to "bad id|x"),
+            emailSenderName = "  Abebe\nKebede|" + "x".repeat(200),
+        ).sanitized()
+        assertEquals(null, s.aiPreferredTarget)
+        assertEquals(mapOf("am" to "lang:en"), s.aiTranslatePairs)
+        assertTrue(s.emailSenderName.startsWith("Abebe Kebede "))
+        assertEquals(KeyboardSettings.SENDER_NAME_MAX, s.emailSenderName.length)
+    }
 }

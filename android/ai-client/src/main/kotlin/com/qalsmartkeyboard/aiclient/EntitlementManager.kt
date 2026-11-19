@@ -59,8 +59,16 @@ class EntitlementManager(
     @Volatile private var plan: String? = null
     private val quotaByKind = ConcurrentHashMap<AiTaskKind, AiQuotaHint>()
 
+    @Volatile private var entitledKinds: Set<AiTaskKind>? = null
+
     val quota: Map<AiTaskKind, AiQuotaHint> get() = quotaByKind.toMap()
     val planLabel: String? get() = plan
+
+    /**
+     * The AI features the plan includes (`accessEnabled` in the last `/me/entitlements`), or null before the first
+     * answer. Only a hint for the panels' "Premium" marks (ADR 0031); the server decides on every call.
+     */
+    val entitled: Set<AiTaskKind>? get() = entitledKinds
 
     /** The offline gates right now (in-memory, no I/O). [online] decides whether a token in its grace period still counts. */
     fun gates(online: Boolean): OfflineGates = OfflineGates.evaluate(verified, maxOf(clock(), newestSeen), online)
@@ -78,6 +86,7 @@ class EntitlementManager(
     fun clear() {
         verified = null
         quotaByKind.clear()
+        entitledKinds = null
         plan = null
         lastQuotaFetch = 0
         lastTokenAttempt = 0
@@ -157,10 +166,12 @@ class EntitlementManager(
                 val o = Json.parseToJsonElement(r.body?.string() ?: return) as? JsonObject ?: return
                 plan = AiWire.str(o["plan"] as? JsonObject, "displayName") ?: AiWire.str(o["plan"] as? JsonObject, "planCode")
                 val fresh = HashMap<AiTaskKind, AiQuotaHint>()
+                val enabled = HashSet<AiTaskKind>()
                 for (f in (o["features"] as? JsonArray).orEmpty()) {
                     val fo = f as? JsonObject ?: continue
                     val kind = AiTaskKind.entries.firstOrNull { AiWire.featureCode(it) == AiWire.str(fo, "featureCode") } ?: continue
                     if ((fo["accessEnabled"] as? JsonPrimitive)?.contentOrNull != "true") continue
+                    enabled += kind
                     fresh[kind] = AiQuotaHint(
                         remaining = (fo["remaining"] as? JsonPrimitive)?.intOrNull,
                         limit = (fo["includedUnits"] as? JsonPrimitive)?.intOrNull,
@@ -170,6 +181,7 @@ class EntitlementManager(
                 }
                 quotaByKind.clear()
                 quotaByKind.putAll(fresh)
+                entitledKinds = enabled
                 onChanged()
             }
         } catch (_: IOException) {

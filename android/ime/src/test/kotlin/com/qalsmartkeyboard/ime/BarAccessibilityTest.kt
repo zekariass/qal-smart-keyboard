@@ -108,11 +108,21 @@ class BarAccessibilityTest {
         // The action chips are real views with the Button role and their names.
         h.layout()
         val chips = h.ai.actionsRow.getChildAt(0) as ViewGroup
-        val first = chips.getChildAt(0) as TextView
-        val info = first.createAccessibilityNodeInfo()
+        // ADR 0031: the direction control comes first: its source side, the swap and the destination side are buttons.
+        val direction = chips.getChildAt(0) as ViewGroup
+        val names = (0 until direction.childCount).map { i ->
+            val v = direction.getChildAt(i) as TextView
+            val info = v.createAccessibilityNodeInfo()
+            assertEquals(button, info.className)
+            assertTrue(v.isClickable && v.hasOnClickListeners())
+            (v.contentDescription ?: v.text).toString()
+        }
+        assertEquals(listOf("Translate from Auto · English. Change", "Swap languages", "Translate into Amharic. Change"), names)
+        val translate = chips.getChildAt(1) as TextView
+        val info = translate.createAccessibilityNodeInfo()
         assertEquals(button, info.className)
-        assertEquals("Translate", (info.contentDescription ?: info.text).toString())
-        assertTrue(first.isClickable && first.hasOnClickListeners())
+        assertEquals("the action names its result", "Translate to Amharic", translate.contentDescription.toString())
+        assertTrue(translate.isClickable && translate.hasOnClickListeners())
         assertTrue(h.click(Target.Ai))
         assertFalse(h.bar.aiOpen)
     }

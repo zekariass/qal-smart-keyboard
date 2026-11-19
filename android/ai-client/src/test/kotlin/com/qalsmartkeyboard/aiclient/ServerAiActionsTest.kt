@@ -233,7 +233,8 @@ class ServerAiActionsTest {
             problem(403, "ACCOUNT_SUSPENDED") to AiFailure.AccountBlocked,
             problem(503, "PROVIDER_UNAVAILABLE") to AiFailure.ServiceUnavailable,
             json(502, "<html>bad gateway</html>") to AiFailure.ServiceUnavailable,
-            problem(400, "VALIDATION_FAILED") to AiFailure.Other,
+            problem(400, "VALIDATION_FAILED") to AiFailure.Invalid(null),
+            problem(400, "INPUT_TOO_LONG", ""","errors":[{"field":"originalEmail","code":"TOO_LONG","message":"m"}]""") to AiFailure.InputTooLong("originalEmail"),
             problem(426, "APP_VERSION_UNSUPPORTED", ""","minSupportedAppVersion":"2.1.0"""") to AiFailure.UpdateRequired,
         )
         val a = actions()

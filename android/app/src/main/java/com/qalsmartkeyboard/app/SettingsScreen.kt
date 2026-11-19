@@ -1,5 +1,6 @@
 package com.qalsmartkeyboard.app
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,6 +54,8 @@ fun SettingsScreen(
     onOpenThemes: () -> Unit = {},
     /** Opens the Word Art screen, owned by the host. */
     onOpenWordArt: () -> Unit = {},
+    /** Opens the "Write Email with AI" screen, owned by the host (ADR 0031). */
+    onOpenEmail: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -120,6 +123,34 @@ fun SettingsScreen(
         Text(stringResource(R.string.settings_theme_title), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.settings_theme_current, ThemeCatalog.find(settings.theme)?.name ?: stringResource(R.string.themes_system)))
         Button(onClick = onOpenThemes) { Text(stringResource(R.string.settings_theme_button)) }
+        // ADR 0031: the e-mail writer, and the default "translate into" language of the keyboard's direction control.
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.settings_email_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.settings_email_body))
+                Button(onClick = onOpenEmail) { Text(stringResource(R.string.settings_email_button)) }
+            }
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.settings_translate_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.settings_translate_body))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = settings.aiPreferredTarget == null,
+                        onClick = { scope.launch { repository.update { it.copy(aiPreferredTarget = null) } } },
+                        label = { Text(stringResource(R.string.settings_translate_auto)) },
+                    )
+                    LanguageRules.KNOWN.forEach { code ->
+                        FilterChip(
+                            selected = settings.aiPreferredTarget == code,
+                            onClick = { scope.launch { repository.update { it.copy(aiPreferredTarget = code) } } },
+                            label = { Text(languageNames[code] ?: code) },
+                        )
+                    }
+                }
+            }
+        }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.settings_wordart_title), style = MaterialTheme.typography.titleMedium)

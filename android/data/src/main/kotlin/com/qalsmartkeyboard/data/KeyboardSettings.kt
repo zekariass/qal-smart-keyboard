@@ -137,6 +137,15 @@ data class KeyboardSettings(
     val voiceLanguages: Map<String, String> = emptyMap(),
     /** Voice typing: the one-time "your phone's speech service turns voice into text" note was shown. Device-local. */
     val voiceNoticeShown: Boolean = false,
+    /**
+     * AI translation (ADR 0031): the preferred destination language (am, ti, om, en), or null for the automatic default
+     * (English for am/ti/om text, Amharic for English text). Device-local, not synced.
+     */
+    val aiPreferredTarget: String? = null,
+    /** AI translation: the destination last picked per source language (source code to destination id). Device-local. */
+    val aiTranslatePairs: Map<String, String> = emptyMap(),
+    /** Write Email with AI: the name the user signs e-mails with (remembered on this device only, never synced). */
+    val emailSenderName: String = "",
 ) {
     /** Enabled language codes in the user's order. */
     val enabledLanguages: List<String> get() = languages.filter { it.enabled }.map { it.languageCode }
@@ -190,6 +199,9 @@ data class KeyboardSettings(
             recentEmoji = recentEmoji.filter { emojiToken(it) }.distinct().take(EMOJI_RECENT_MAX),
             emojiTones = emojiTones.filter { (k, v) -> emojiToken(k) && emojiToken(v) }.entries.take(EMOJI_TONES_MAX).associate { it.key to it.value },
             voiceLanguages = voiceLanguages.filter { (k, v) -> LanguageRules.isKnown(k) && LANGUAGE_TAG.matches(v) },
+            aiPreferredTarget = aiPreferredTarget?.takeIf { LanguageRules.isKnown(it) },
+            aiTranslatePairs = aiTranslatePairs.filter { (k, v) -> LanguageRules.isKnown(k) && DESTINATION_ID.matches(v) },
+            emailSenderName = emailSenderName.map { if (it == '\n' || it == '\r' || it == '|') ' ' else it }.joinToString("").trim().take(SENDER_NAME_MAX),
         )
     }
 
@@ -206,6 +218,10 @@ data class KeyboardSettings(
 
         private val PROFILE_CODE = Regex("[A-Za-z0-9_]{1,100}")
         private val MODE_TOKEN = Regex("[A-Z_]{1,24}")
+
+        /** A destination id as the AI client makes them: `lang:en` or a destination profile's local id. */
+        private val DESTINATION_ID = Regex("[A-Za-z0-9:_-]{1,80}")
+        const val SENDER_NAME_MAX = 120
 
         /** A BCP-47 language tag as speech services report them (`am-ET`, `en-US`, `cmn-Hans-CN`, `es-419`). */
         private val LANGUAGE_TAG = Regex("[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,4}")

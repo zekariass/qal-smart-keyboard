@@ -181,16 +181,22 @@ class ToolbarFollowUpsTest {
         assertEquals("p1", last.lastFor("com.app${LastDestinationStore.MAX_APPS + 4}"))
     }
 
-    @Test fun choosingADestinationInTheToolbarIsRemembered() {
+    @Test fun choosingADestinationInTheToolbarIsRememberedForTheSourceLanguage() {
+        // ADR 0031: the direction control remembers the pair per source language (device-local settings), in every app;
+        // an enabled app rule still comes first.
         val (_, files) = store()
-        val a = actions(last = LastDestinationStore(files))
-        val toolbar = controller(a)
+        val a = actions(rules = listOf(rule("com.mail", lang = "ti")), last = LastDestinationStore(files))
+        val prefs = com.qalsmartkeyboard.ime.ai.AiLanguagePrefs.InMemory()
+        val toolbar = AiToolbarController(a, NoEditor(), { it() }, {}, keyboardLanguage = { "en" }, prefs = prefs)
         toolbar.onFieldStarted(InputProfile.DEFAULT, "com.chat")
-        toolbar.chooseDestination(a.destinations().first { it.id == "p2" })
+        assertEquals("English text goes into Amharic by default", "lang:am", toolbar.destination.id)
+        toolbar.chooseDestination(a.destinations().first { it.id == "p1" })
         toolbar.onKeyboardHidden()
         toolbar.onFieldStarted(InputProfile.DEFAULT, "com.chat")
-        assertEquals("p2", toolbar.destination.id)
+        assertEquals("p1", toolbar.destination.id)
         toolbar.onFieldStarted(InputProfile.DEFAULT, "com.other")
         assertEquals("p1", toolbar.destination.id)
+        toolbar.onFieldStarted(InputProfile.DEFAULT, "com.mail")
+        assertEquals("lang:ti", toolbar.destination.id)
     }
 }

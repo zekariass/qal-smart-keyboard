@@ -29,6 +29,15 @@ interface EditorOps {
 
     /** `InputConnection.setSelection` (absolute offsets); false when not supported. */
     fun setSelection(start: Int, end: Int): Boolean = false
+
+    /**
+     * The field's whole text (`getExtractedText`, at most [maxChars]), or null when the editor does not report it. Read
+     * only on an explicit tap in an AI panel ("Use text from this field", ADR 0031).
+     */
+    fun getAllText(maxChars: Int): CharSequence? = null
+
+    /** Selects the whole field (`performContextMenuAction(selectAll)`); false when not supported. */
+    fun selectAll(): Boolean = false
 }
 
 /** Editor-side operations the [KeyboardController] needs. */
