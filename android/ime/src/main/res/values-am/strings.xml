@@ -421,6 +421,26 @@
     <string name="theme_name_deep_sea">ጥልቅ ባሕር</string>
     <string name="theme_name_berry_dusk">የእንጆሪ ምሽት</string>
     <string name="theme_name_mint_frost">ናና አመዳይ</string>
+    <string name="theme_name_soft_grey">ለስላሳ ግራጫ</string>
+    <string name="theme_name_cream">ክሬም</string>
+    <string name="theme_name_warm_beige">ሞቅ ያለ ቢዥ</string>
+    <string name="theme_name_sky">ሰማይ</string>
+    <string name="theme_name_peach">ፒች</string>
+    <string name="theme_name_rose">ጽጌረዳ</string>
+    <string name="theme_name_ice_blue">የበረዶ ሰማያዊ</string>
+    <string name="theme_name_sage">ሳጅ</string>
+    <string name="theme_name_coral">ኮራል</string>
+    <string name="theme_name_tibeb">ጥበብ</string>
+    <string name="theme_name_deep_navy">ጥቁር ሰማያዊ</string>
+    <string name="theme_name_slate">ስሌት</string>
+    <string name="theme_name_charcoal">ከሰል</string>
+    <string name="theme_name_teal_night">ቲል ሌሊት</string>
+    <string name="theme_name_plum">ፕለም</string>
+    <string name="theme_name_cocoa">ኮኮዋ</string>
+    <string name="theme_name_meskel">መስቀል</string>
+    <string name="theme_name_night_gradient">የሌሊት ቅልመት</string>
+    <string name="theme_name_sunrise_gradient">የንጋት ቅልመት</string>
+    <string name="theme_name_pastel_rainbow">ፓስቴል ቀስተ ደመና</string>
 
     <!-- Word Art style names -->
     <string name="wordart_style_bold">ደማቅ</string>

@@ -320,6 +320,15 @@ class SettingsRepositoryTest {
         assertEquals(ThemeIds.SYSTEM, open().current().theme)
     }
 
+    @Test fun newGalleryThemeIdsRoundTrip() = runBlocking {
+        for (id in listOf("deep_navy", "night_gradient", "sunrise_gradient", "pastel_rainbow", "tibeb", "meskel", "teal_night")) {
+            open().update { it.copy(theme = id) }
+            closeAll()
+            assertEquals(id, open().current().theme)
+            closeAll()
+        }
+    }
+
     // ---------------------------------------------------------------- F14
 
     private fun catalog(vararg active: ProfileRef) = ProfileCatalog { lang -> active.filter { it.language == lang } }

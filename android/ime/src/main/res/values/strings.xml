@@ -433,6 +433,26 @@
     <string name="theme_name_deep_sea">Deep Sea</string>
     <string name="theme_name_berry_dusk">Berry Dusk</string>
     <string name="theme_name_mint_frost">Mint Frost</string>
+    <string name="theme_name_soft_grey">Soft Grey</string>
+    <string name="theme_name_cream">Cream</string>
+    <string name="theme_name_warm_beige">Warm Beige</string>
+    <string name="theme_name_sky">Sky</string>
+    <string name="theme_name_peach">Peach</string>
+    <string name="theme_name_rose">Rose</string>
+    <string name="theme_name_ice_blue">Ice Blue</string>
+    <string name="theme_name_sage">Sage</string>
+    <string name="theme_name_coral">Coral</string>
+    <string name="theme_name_tibeb">Tibeb</string>
+    <string name="theme_name_deep_navy">Deep Navy</string>
+    <string name="theme_name_slate">Slate</string>
+    <string name="theme_name_charcoal">Charcoal</string>
+    <string name="theme_name_teal_night">Teal Night</string>
+    <string name="theme_name_plum">Plum</string>
+    <string name="theme_name_cocoa">Cocoa</string>
+    <string name="theme_name_meskel">Meskel</string>
+    <string name="theme_name_night_gradient">Night Gradient</string>
+    <string name="theme_name_sunrise_gradient">Sunrise Gradient</string>
+    <string name="theme_name_pastel_rainbow">Pastel Rainbow</string>
 
     <!-- Word Art style names (ADR 0030, ADR 0032): shown on the style rows and cards; ornament glyphs in a name stay as they are. -->
     <string name="wordart_style_bold">Bold</string>
