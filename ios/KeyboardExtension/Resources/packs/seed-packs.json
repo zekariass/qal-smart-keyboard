@@ -187,8 +187,8 @@
    "resourceType": "TRANSLITERATION_RULES",
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
-   "sizeBytes": 3341,
-   "sha256": "f5b45df4a163764379ff2c59ce195c23a8189896853578362a6a831c5c24a608",
+   "sizeBytes": 3386,
+   "sha256": "6cec2f1773838b97cfc28e717b468721db831076162bb6f3a183d87fcee23bcc",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "ti-phonetic-draft-profile"

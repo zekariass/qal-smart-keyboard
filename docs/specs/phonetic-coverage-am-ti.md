@@ -68,9 +68,12 @@ the Tigrinya spelling of initial /a/ (ኣብ, ኣነ, ኣደ, ኣስመራ; the 
 Tigrinya word needed a correction. Amharic is unchanged (`a` አ, alt ኣ). Every other input keeps its output.
 
 **am 0.3.0 / ti 0.4.0** (product owner, 2026-11-19): capitals are their own letters. `N` → ኝ series, `T` → ጥ
-series, `K` → ኽ series, `P` → ጵ series as the default (the plain ን/ት/ክ/ፕ is the alternative). `C`, `S`, `Z` stay folded
+series, `K` → ኽ series, `P` → ጵ series as the default (the plain ን/ት/ክ/ፕ is the alternative); Tigrinya `Q` → ቐ
+series (ቐ ቑ ቒ ቓ ቔ ቕ ቖ for `Qe Qu Qi Qa Qee Q Qo`, labialised `QWe` ቘ, `QWi` ቚ, `QWa` ቛ, `QWee` ቜ, `QW` ቝ).
+Decision recorded: **`K` = ኽ, `Q` = ቐ** (the owner also wrote "K" for ቕ; the common Ge'ez keyboard convention is
+followed). Amharic gets no `Q`: neither its profile nor its Fidel grid has the ቐ series. `C`, `S`, `Z` stay folded
 (SERA reading as alternative) so names typed with a capital keep their letter; for the panel. Lowercase digraphs
-(`ny t' kh x p'`) are unchanged, so the coverage counts are the same. The keyboard never auto-capitalises in
+(`ny t' kh x p' qh`) are unchanged, so the coverage counts are the same. The keyboard never auto-capitalises in
 Phonetic mode; Shift shows each capital's letter as the key's hint. Golden vectors `capital-*` in both corpora.
 
 Out of scope (not required, not mapped): the ninth-order "oa" forms (ሇ, ⶀ...), ፘ ፙ ፚ, the
@@ -108,7 +111,7 @@ noise on the dev box).
 |---|---|---|
 | `x`: ሸ (am convention) or ኸ (ti profile 0.1.0) | am `x` = ሸ (was unmapped); ti keeps `x` = ኸ | No existing am output changes; ti ኸ is frequent and `x` was a deliberate ti choice. Panel to confirm the split. |
 | `c`: ቸ or ክ (English "cat") | `c` = ቸ | SERA and common keyboards; `c` was unmapped. |
-| Capitals: SERA meanings vs names typed with a capital (`Tesfaye`, `Selam`) | 0.2.0: default stayed the folded lowercase. **am 0.3.0 / ti 0.4.0: `N T K P` are their own letters by default**; `C S Z` still folded | Owner's request; no auto-capitalisation in Phonetic, so only a deliberate Shift gives the capital letter. |
+| Capitals: SERA meanings vs names typed with a capital (`Tesfaye`, `Selam`) | 0.2.0: default stayed the folded lowercase. **am 0.3.0 / ti 0.4.0: `N T K P` (ti also `Q`) are their own letters by default**; `C S Z` still folded | Owner's request; no auto-capitalisation in Phonetic, so only a deliberate Shift gives the capital letter. |
 | Lowercase `w` after a consonant: ወ or labialisation | Default stays ወ (`gwa` ግዋ); labialised letter first alternative | `w` is also the consonant ወ and 0.1.0 output must not change; the lexicon promotes known words such as ኳስ, ኋላ. |
 | Homophones ሰ/ሠ, ሀ/ሐ/ኀ, ጸ/ፀ, አ/ዐ | Common letter by default, others as alternatives, plus deterministic backtick sequences | Backtick is rare in text; on the phone it is on the symbols page (slow but certain). |
 | ኋ: labialised ሀ or ኀ | `hWa` gives ኋ (the ኀ-series labiovelar; `h` now maps to it), `hwa` offers it first; ሗ as alternative | ኋ is the standard spelling (ኋላ). |

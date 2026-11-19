@@ -6,7 +6,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Product owner 2026-11-19 (am 0.3.0, ti 0.4.0): in Phonetic mode capitals are their own letters (N ኝ, T ጥ, K ኽ, P ጵ), so the keyboard must never capitalise on its own there (a sentence-initial `n` stays ን), while a
+ * Product owner 2026-11-19 (am 0.3.0, ti 0.4.0): in Phonetic mode capitals are their own letters (N ኝ, T ጥ, K ኽ, P ጵ;
+ * Tigrinya Q ቐ), so the keyboard must never capitalise on its own there (a sentence-initial `n` stays ን), while a
  * manual Shift or caps lock gives the capital's letter and the shifted keys show it. Real core and bundled packs.
  */
 class PhoneticCapitalsTest {
@@ -60,5 +61,19 @@ class PhoneticCapitalsTest {
         s.type("ena")
         assertEquals("ጠና", s.c.candidates.first().text)
         s.type(" ")
+    }
+
+    @Test fun tigrinyaCapitalQIsQhInEveryOrder() {
+        val s = session(TypingMode("ti", LayoutKind.PHONETIC))
+        val shift = s.key(KeyKind.SHIFT)
+        assertEquals("ቕ", CoreComposer.deriveHints(CoreTestEnv.freshEngine()).getValue("ti").upper('q'))
+        for (v in listOf("e", "u", "i", "a", "ee", "", "o")) {
+            s.tap(shift)
+            s.tap(s.letter('q'))
+            s.type("$v ")
+        }
+        assertEquals("ቐ ቑ ቒ ቓ ቔ ቕ ቖ ", s.ed.text.toString())
+        s.type("qhe ")
+        assertEquals("ቐ ቑ ቒ ቓ ቔ ቕ ቖ ቐ ", s.ed.text.toString())
     }
 }

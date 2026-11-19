@@ -66,6 +66,7 @@
   {"in": "S", "series": "S", "alt": ["SZ", "TS"]},
   {"in": "K", "series": "KX", "alt": ["K"]},
   {"in": "N", "series": "NY", "alt": ["N"]},
+  {"in": "Q", "series": "QH", "alt": ["Q"]},
   {"in": "Z", "series": "Z", "alt": ["ZH"]}
  ],
  "vowels": [

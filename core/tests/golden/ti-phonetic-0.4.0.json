@@ -169,6 +169,17 @@
       "committed": ""
     },
     {
+      "name": "capital-q-is-qh-in-every-order",
+      "keystrokes": ["Q", "e", "Space", "Q", "u", "Space", "Q", "i", "Space", "Q", "a", "Space", "Q", "e", "e", "Space", "Q", "Space", "Q", "o", "Space", "Q", "W", "a", "Space", "q", "h", "e"],
+      "steps": [
+        {"after": 2, "composing": "ቐ", "commit": "", "alternatives": ["ቀ"]},
+        {"after": 17, "composing": "ቕ", "commit": "", "alternatives": ["ቅ"]}
+      ],
+      "composing": "ቐ",
+      "alternatives": ["ቀ"],
+      "committed": "ቐ ቑ ቒ ቓ ቔ ቕ ቖ ቛ "
+    },
+    {
       "name": "capitals-are-their-own-letters",
       "keystrokes": ["N", "a", "Space", "T", "e", "Space", "K", "Space", "P", "a", "Space", "n", "a"],
       "composing": "ና",
