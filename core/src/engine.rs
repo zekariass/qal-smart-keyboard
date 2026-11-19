@@ -2,6 +2,7 @@
 
 use crate::composer::{sanitize, DirectFidel, FidelLayout, Layout};
 use crate::error::CoreError;
+use crate::latin::Orthography;
 use crate::lexicon::Lexicon;
 use crate::pack::{
     self, KeyRing, PackInfo, PackLimits, PackPlatform, PackRejectReason, ResourceType, TrustedKey,
@@ -121,6 +122,9 @@ struct State {
     direct: Option<DirectFidel>,
     /// Active phonetic session; `Some` exactly when `mode` is `PhoneticLatin`.
     phonetic: Option<PhoneticSession>,
+    /// Qubee: the strip the host shows for the composed word (index 0 = the word as typed), so
+    /// `select_candidate` resolves exactly what the host shows. Empty while nothing is composed.
+    word_candidates: Vec<Candidate>,
 }
 
 /// A language's user overlay as exported by the host: ("QUD1" dictionary, "QBG1" bigrams).
@@ -155,19 +159,31 @@ impl WordContext {
             self.clear();
         }
         for c in update.commit.chars() {
-            if c.is_alphanumeric() || is_combining_mark(c) {
+            // An apostrophe inside a Latin word (the Afaan Oromoo hudhaa in `har'a`, English
+            // `don't`) belongs to the word; a trailing one (a closing quote) is dropped below.
+            if c.is_alphanumeric()
+                || is_combining_mark(c)
+                || (is_word_apostrophe(c) && !self.current.is_empty())
+            {
                 if self.current.chars().count() < MAX_CONTEXT_CHARS {
                     self.current.push(c);
                 }
             } else if c.is_whitespace() || c == '\u{1361}' {
-                if !self.current.is_empty() {
-                    self.previous = Some(std::mem::take(&mut self.current));
+                let word = self.current.trim_end_matches(is_word_apostrophe);
+                if !word.is_empty() {
+                    self.previous = Some(word.to_string());
                 }
+                self.current.clear();
             } else {
                 self.clear();
             }
         }
     }
+}
+
+/// The apostrophe characters a Latin word may contain (U+0027, U+2019, U+02BC; `crate::latin`).
+fn is_word_apostrophe(c: char) -> bool {
+    matches!(c, '\'' | '\u{2019}' | '\u{02BC}')
 }
 
 fn is_combining_mark(c: char) -> bool {
@@ -184,6 +200,87 @@ fn is_ethiopic(c: char) -> bool {
             | '\u{AB00}'..='\u{AB2F}'
             | '\u{1E7E0}'..='\u{1E7FF}'
     )
+}
+
+/// Longest word Qubee composes; a longer run of letters goes on as plain typed text.
+const MAX_WORD_CHARS: usize = 48;
+
+/// One key in Qubee with word suggestions (Afaan Oromoo, used once the `om` dictionary is
+/// loaded). The word being typed is held as composing text so that the host can replace it with
+/// a suggestion the user picks; everything is still committed exactly as typed (SD 7.1: no
+/// transformation, no auto-capitalisation, nothing applied automatically). Letters compose; an
+/// apostrophe (hudhaa) composes right after a letter (`ba'a`, SD 7.3); any other key ends the
+/// word and commits it together with that key.
+fn qubee_key(s: &mut State, o: &Orthography, event: KeyEvent) -> EditorUpdate {
+    fn finish(s: &mut State, tail: &str) -> EditorUpdate {
+        let mut commit = std::mem::take(&mut s.composing);
+        commit.push_str(tail);
+        EditorUpdate {
+            commit,
+            ..Default::default()
+        }
+    }
+    fn composing(s: &State) -> EditorUpdate {
+        EditorUpdate {
+            composing: s.composing.clone(),
+            ..Default::default()
+        }
+    }
+    match event {
+        KeyEvent::Char { text } => {
+            let mut chars = text.chars();
+            let single = match (chars.next(), chars.next()) {
+                (Some(c), None) => Some(c),
+                _ => None,
+            };
+            let after_letter = s.composing.chars().last().is_some_and(|p| o.is_letter(p));
+            let composes = single.is_some_and(|c| {
+                (o.is_letter(c) || (o.is_apostrophe(c) && after_letter))
+                    && s.composing.chars().count() < MAX_WORD_CHARS
+            });
+            if composes {
+                s.composing.push_str(&text);
+                composing(s)
+            } else {
+                finish(s, &text)
+            }
+        }
+        KeyEvent::Space => finish(s, " "),
+        KeyEvent::Enter => finish(s, "\n"),
+        KeyEvent::Commit => finish(s, ""),
+        KeyEvent::Backspace => {
+            if s.composing.pop().is_some() {
+                composing(s)
+            } else {
+                EditorUpdate {
+                    delete_before: 1,
+                    ..Default::default()
+                }
+            }
+        }
+        // Two-key Fidel events mean nothing here; the composition stays as it is.
+        KeyEvent::FidelConsonant { .. } | KeyEvent::FidelVowel { .. } => composing(s),
+    }
+}
+
+/// Qubee: commits the strip entry `index` in place of the composed word. Out of range changes
+/// nothing (the composition and strip stay).
+fn qubee_select(s: &mut State, index: usize) -> EditorUpdate {
+    let Some(text) = s.word_candidates.get(index).map(|c| c.text.clone()) else {
+        return EditorUpdate {
+            composing: s.composing.clone(),
+            candidates: s.word_candidates.clone(),
+            ..Default::default()
+        };
+    };
+    s.composing.clear();
+    s.word_candidates.clear();
+    let update = EditorUpdate {
+        commit: text,
+        ..Default::default()
+    };
+    s.context.observe(&update);
+    update
 }
 
 /// Dictionary-backed ranking for one language: built from its `DICTIONARY` pack plus, when
@@ -235,6 +332,8 @@ pub struct KeyboardEngine {
     key_ring: KeyRing,
     pack_limits: PackLimits,
     config: EngineConfig,
+    /// The Qubee orthography (`crate::latin`): which characters compose an Afaan Oromoo word.
+    qubee: Option<Orthography>,
 }
 
 /// Typing languages the engine accepts. `ar` (ADR 0034) has its own passthrough mode and no packs.
@@ -258,6 +357,7 @@ impl KeyboardEngine {
                 composing: String::new(),
                 direct: None,
                 phonetic: None,
+                word_candidates: Vec::new(),
             }),
             packs: Mutex::new(HashMap::new()),
             layouts: Mutex::new(HashMap::new()),
@@ -268,6 +368,7 @@ impl KeyboardEngine {
             key_ring,
             pack_limits,
             config,
+            qubee: Orthography::builtin("om"),
         }))
     }
 
@@ -423,6 +524,7 @@ impl KeyboardEngine {
         s.generation = s.generation.wrapping_add(1);
         s.context.clear();
         s.composing.clear();
+        s.word_candidates.clear();
         s.direct = direct;
         s.phonetic = phonetic;
         Ok(())
@@ -487,7 +589,20 @@ impl KeyboardEngine {
             drop(s);
             return self.with_lexicon_candidates(update, request);
         }
-        // Abc, English and Qubee are plain passthrough (SD 7.1): typed text is committed exactly
+        if s.mode == InputMode::Qubee {
+            // A word starts composing only when the language has a dictionary to suggest from
+            // (lock order: state, then models); without one Qubee stays plain passthrough.
+            let suggests = !s.composing.is_empty() || self.lock_models().contains_key(&s.language);
+            if suggests {
+                if let Some(o) = &self.qubee {
+                    let mut update = qubee_key(&mut s, o, event);
+                    let request = Self::word_followup(&mut s, &mut update);
+                    drop(s);
+                    return self.with_word_candidates(update, request);
+                }
+            }
+        }
+        // Abc, English and Qubee without a dictionary are plain passthrough (SD 7.1): typed text is committed exactly
         // as received, never transformed (no auto-capitalisation, no apostrophe rewriting). The
         // Qubee apostrophe (hudhaa) is an ordinary character here; word segmentation around it
         // lives in `crate::latin`. After commit, Backspace deletes one grapheme cluster, so a
@@ -540,11 +655,15 @@ impl KeyboardEngine {
 
     /// Select a candidate by index from the last update's `candidates`: the composing text is
     /// replaced by it and committed (index 0 is the default composition; transliteration
-    /// alternatives and lexicon candidates follow). Other modes offer no candidates yet, and an
-    /// index that is out of range changes nothing.
+    /// alternatives and lexicon candidates follow; in Qubee index 0 is the word as typed, then
+    /// dictionary words). Other modes offer no candidates, and an index that is out of range
+    /// changes nothing.
     pub fn select_candidate(&self, index: u32) -> EditorUpdate {
         let mut s = self.lock();
         s.generation = s.generation.wrapping_add(1);
+        if s.mode == InputMode::Qubee {
+            return qubee_select(&mut s, usize::try_from(index).unwrap_or(usize::MAX));
+        }
         let Some(p) = s.phonetic.as_mut() else {
             return EditorUpdate::default();
         };
@@ -559,6 +678,7 @@ impl KeyboardEngine {
         s.generation = s.generation.wrapping_add(1);
         s.context.clear();
         s.composing.clear();
+        s.word_candidates.clear();
         if let Some(d) = s.direct.as_mut() {
             d.reset();
         }
@@ -852,6 +972,82 @@ impl KeyboardEngine {
         })
     }
 
+    /// After a Qubee update (state lock held): follows committed words for ranking context, puts
+    /// the word as typed at index 0 of the strip and says whether dictionary words should be
+    /// looked up for it.
+    fn word_followup(s: &mut State, update: &mut EditorUpdate) -> Option<CompletionRequest> {
+        s.context.observe(update);
+        s.word_candidates.clear();
+        if update.composing.is_empty() {
+            return None;
+        }
+        s.word_candidates.push(Candidate {
+            text: update.composing.clone(),
+            kind: CandidateKind::Transliteration,
+        });
+        update.candidates = s.word_candidates.clone();
+        Some(CompletionRequest {
+            language: s.language.clone(),
+            previous: s.context.previous.clone(),
+            generation: s.generation,
+            homophones: Vec::new(),
+        })
+    }
+
+    /// Qubee strip: the word as typed (index 0, kind `Transliteration`: the identity "rule"),
+    /// then completions and one-edit corrections from the language's lexicon + user overlay, in
+    /// the ranker's order, up to `max_candidates`. The ranker keeps the typed word's
+    /// capitalisation (`Akk` offers `Akkam`). Nothing is applied automatically (harm guard).
+    /// A word ending in an apostrophe (a closing quote, or a hudhaa still waiting for its vowel)
+    /// is not looked up. Ranking runs outside the state lock; if another call changed the state
+    /// meanwhile the strip stays the typed word alone.
+    fn with_word_candidates(
+        &self,
+        mut update: EditorUpdate,
+        request: Option<CompletionRequest>,
+    ) -> EditorUpdate {
+        let Some(req) = request else {
+            return update;
+        };
+        let max = usize::try_from(self.config.max_candidates).unwrap_or(usize::MAX);
+        let typed = update.composing.clone();
+        if max <= 1 || typed.ends_with(is_word_apostrophe) {
+            return update;
+        }
+        let Some(model) = self.lock_models().get(&req.language).cloned() else {
+            return update;
+        };
+        let key = self
+            .qubee
+            .as_ref()
+            .map_or_else(|| typed.clone(), |o| o.fold_apostrophes(&typed));
+        let want = self.config.max_candidates.saturating_add(1);
+        let mut list = update.candidates.clone();
+        for c in model.ranker.rank(key, req.previous, want) {
+            let kind = match c.kind {
+                RankKind::Exact | RankKind::Variant | RankKind::Completion => {
+                    CandidateKind::Completion
+                }
+                RankKind::Correction => CandidateKind::Correction,
+                RankKind::NextWord | RankKind::Frequent => continue,
+            };
+            if list.len() >= max {
+                break;
+            }
+            if !c.text.is_empty() && !list.iter().any(|x| x.text == c.text) {
+                list.push(Candidate { text: c.text, kind });
+            }
+        }
+        let mut s = self.lock();
+        if s.generation != req.generation || s.composing != typed {
+            return update;
+        }
+        s.word_candidates.clone_from(&list);
+        drop(s);
+        update.candidates = list;
+        update
+    }
+
     /// Merges lexicon candidates into the strip (A1.3 merge policy, ADR 0004 incl. the U6
     /// amendment). Index 0 stays the literal rule output. The transliteration alternatives
     /// follow sorted by dictionary frequency (known words first, most frequent first; unknown
@@ -1106,6 +1302,22 @@ mod tests {
         });
         assert_eq!(c.previous, None);
         assert!(c.current.is_empty());
+    }
+
+    #[test]
+    fn word_context_keeps_the_hudhaa_inside_a_word() {
+        let mut c = WordContext::default();
+        // Afaan Oromoo `har'a` is one word, not `har` + `a`.
+        c.observe(&commit("har'a "));
+        assert_eq!(c.previous.as_deref(), Some("har'a"));
+        c.observe(&commit("baay\u{2019}ee "));
+        assert_eq!(c.previous.as_deref(), Some("baay\u{2019}ee"));
+        // A closing quote is not part of the word; an opening one ends the context.
+        c.observe(&commit("dhugaa' "));
+        assert_eq!(c.previous.as_deref(), Some("dhugaa"));
+        c.observe(&commit("'jedhe"));
+        assert_eq!(c.previous, None);
+        assert_eq!(c.current, "jedhe");
     }
 
     #[test]
