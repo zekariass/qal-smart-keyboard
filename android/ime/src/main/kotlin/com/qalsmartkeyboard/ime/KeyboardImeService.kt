@@ -32,8 +32,17 @@ import com.qalsmartkeyboard.ime.emoji.FileGlyphCache
 import com.qalsmartkeyboard.ime.emoji.SettingsEmojiStore
 import com.qalsmartkeyboard.ime.wordart.WordArtBar
 import com.qalsmartkeyboard.ime.wordart.WordArtPanelView
+import com.qalsmartkeyboard.ime.ai.AiActions
 import com.qalsmartkeyboard.ime.ai.AiActionsHolder
+import com.qalsmartkeyboard.ime.ai.AiApplied
+import com.qalsmartkeyboard.ime.ai.AiEmailHints
+import com.qalsmartkeyboard.ime.ai.AiFieldBar
+import com.qalsmartkeyboard.ime.ai.AiLanguagePrefs
+import com.qalsmartkeyboard.ime.ai.AiLanguages
 import com.qalsmartkeyboard.ime.ai.AiLink
+import com.qalsmartkeyboard.ime.ai.AiPanelView
+import com.qalsmartkeyboard.ime.ai.AiWorkspace
+import com.qalsmartkeyboard.ime.ai.SystemAiClipboard
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
 import com.qalsmartkeyboard.ime.ai.AiToolbarView
 import com.qalsmartkeyboard.ime.ai.EditorAiAccess
@@ -99,6 +108,9 @@ class KeyboardImeService : InputMethodService() {
         override fun performEditorAction(actionId: Int) { ic?.performEditorAction(actionId) }
         override fun getSelectedText(): CharSequence? = ic?.getSelectedText(0)
         override fun setSelection(start: Int, end: Int) = ic?.setSelection(start, end) ?: false
+        override fun getAllText(maxChars: Int): CharSequence? =
+            ic?.getExtractedText(android.view.inputmethod.ExtractedTextRequest().apply { hintMaxChars = maxChars }, 0)?.text
+        override fun selectAll(): Boolean = ic?.performContextMenuAction(android.R.id.selectAll) ?: false
         override fun getCursorCapsMode(reqModes: Int): Int {
             val type = currentInputEditorInfo?.inputType ?: return 0
             return if (type == InputType.TYPE_NULL) 0 else ic?.getCursorCapsMode(reqModes) ?: 0
@@ -137,6 +149,8 @@ class KeyboardImeService : InputMethodService() {
         wordArtBar?.theme = t
         voicePanel?.theme = t
         aiView?.theme = t
+        aiPanelView?.theme = t
+        aiFieldBar?.theme = t
     }
 
     private fun attachThemeAccessInBackground() {
@@ -247,6 +261,7 @@ class KeyboardImeService : InputMethodService() {
             controller.commitComposition()
             controller.emoji.close()
             bar?.closeAi()
+            closeAiPanels()
         }
         override fun textBeforeCursor(): CharSequence? = adapter.editorOps()?.getTextBeforeCursor(VOICE_CONTEXT_CHARS)
         override fun wantsCapital(): Boolean = controller.wantsCapitalAtCursor()
@@ -267,6 +282,30 @@ class KeyboardImeService : InputMethodService() {
     // attached. Until then, or when the app registered none, the keyboard has no toolbar.
     private var aiView: AiToolbarView? = null
     private var aiToolbar: AiToolbarController? = null
+    private var aiActions: AiActions? = null
+
+    // AI panels (ADR 0031): AI Assist and Write Email take the key area. The state and the views are created on the first
+    // open, never on the keyboard's start-up path.
+    private var aiWorkspace: AiWorkspace? = null
+    private var aiPanelView: AiPanelView? = null
+    private var aiFieldBar: AiFieldBar? = null
+    private var aiPanelDirty = false
+    private var aiShownLanguage: String? = null
+    private var column: KeyboardColumn? = null
+
+    /** The direction memory, the preferred destination and the e-mail sender name: device-local settings (ADR 0031). */
+    private val aiPrefs = object : AiLanguagePrefs {
+        override val preferredTarget: String? get() = snapshot.current.aiPreferredTarget
+        override fun lastTarget(source: String): String? = snapshot.current.aiTranslatePairs[source]
+        override fun rememberTarget(source: String, destinationId: String) {
+            if (snapshot.current.aiTranslatePairs[source] == destinationId) return
+            snapshot.launchUpdate { it.copy(aiTranslatePairs = it.aiTranslatePairs + (source to destinationId)) }
+        }
+        override val senderName: String get() = snapshot.current.emailSenderName
+        override fun rememberSenderName(name: String) {
+            snapshot.launchUpdate { it.copy(emailSenderName = name) }
+        }
+    }
 
     private fun attachAiInBackground() {
         Thread({
@@ -279,12 +318,15 @@ class KeyboardImeService : InputMethodService() {
             if (actions != null) {
                 main.post {
                     if (aiToolbar != null) return@post
+                    aiActions = actions
                     val toolbar = AiToolbarController(
                         actions = actions,
                         editor = EditorAiAccess(adapter) { controller.commitComposition() },
                         post = { block -> main.post(block) },
                         copyToClipboard = ::copyResult,
                         onChanged = { aiView?.render() },
+                        keyboardLanguage = { controller.language },
+                        prefs = aiPrefs,
                     )
                     aiToolbar = toolbar
                     aiView?.controller = toolbar
@@ -293,6 +335,89 @@ class KeyboardImeService : InputMethodService() {
                 }
             }
         }, "qal-ai-attach").start()
+    }
+
+    /** The AI panels' state, created on the first open (null until the app registered the AI client). */
+    private fun workspace(): AiWorkspace? {
+        aiWorkspace?.let { return it }
+        val actions = aiActions ?: return null
+        val ws = AiWorkspace(
+            actions = actions,
+            editor = EditorAiAccess(adapter) { controller.commitComposition() },
+            clipboard = SystemAiClipboard(this),
+            prefs = aiPrefs,
+            post = { block -> main.post(block) },
+            keyboardLanguage = { controller.language },
+            translateDefault = { aiToolbar?.destination?.language ?: AiLanguages.defaultTarget(controller.language) },
+            onChanged = {
+                aiPanelDirty = true
+                refreshViews()
+            },
+        )
+        aiWorkspace = ws
+        controller.fieldTyping = { ws.fieldTyping() }
+        return ws
+    }
+
+    /** Creates the panel and the typing strip and puts them in the keyboard column (first open only). */
+    private fun ensureAiPanelViews(ws: AiWorkspace) {
+        if (aiPanelView != null) return
+        val col = column ?: return
+        val keys = surface ?: return
+        val strip = AiFieldBar(this).also {
+            it.workspace = ws
+            it.visibility = View.GONE
+            it.onDone = {
+                controller.commitComposition() // still routed to the field: the open composition is appended to it
+                ws.endTyping()
+            }
+            it.theme = resolvedTheme.theme
+        }
+        col.addView(strip, col.indexOfChild(keys), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        val panel = AiPanelView(this).also {
+            it.workspace = ws
+            it.visibility = View.GONE
+            it.heightProvider = { keys.preferredHeightPx() }
+            it.onLink = ::openCompanion
+            it.onClose = { closeAiPanels() }
+            it.onApplied = ::onAiApplied
+            it.theme = resolvedTheme.theme
+        }
+        col.addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        aiFieldBar = strip
+        aiPanelView = panel
+    }
+
+    /** The Assist or Email chip: the panel takes the key area; voice, emoji and the toolbar's own panel close first. */
+    private fun openAiPanel(email: Boolean) {
+        val ws = workspace() ?: return
+        voice.cancel()
+        controller.emoji.close()
+        aiToolbar?.close()
+        aiToolbar?.onToolbarOpened() // the plan state behind the Premium marks (throttled, sends no text)
+        ensureAiPanelViews(ws)
+        if (email) ws.openEmail() else ws.openAssist()
+        aiPanelDirty = true
+        refreshViews()
+    }
+
+    /** Back to the keyboard: calls are cancelled and the panels' texts dropped. */
+    private fun closeAiPanels() {
+        val ws = aiWorkspace ?: return
+        if (!ws.isOpen) return
+        if (ws.typing) controller.onCompositionAbandoned()
+        ws.close()
+        aiPanelView?.reset()
+        refreshViews()
+    }
+
+    private fun onAiApplied(applied: AiApplied) {
+        when (applied) {
+            AiApplied.FAILED -> return // the panel shows why and stays open
+            AiApplied.INSERTED_ORIGINAL_CHANGED -> Toast.makeText(this, R.string.ai_inserted_instead, Toast.LENGTH_SHORT).show()
+            else -> Unit
+        }
+        closeAiPanels()
     }
 
     /** Copies the shown result on the user's Copy tap; marked sensitive so the clipboard preview hides it (API 33+). */
@@ -424,6 +549,7 @@ class KeyboardImeService : InputMethodService() {
         themeAccessHandle = null
         snapshot.stop()
         aiToolbar?.release()
+        aiWorkspace?.discard()
         engine?.let { userDictionary.detach(it) }
         userDictionary.flush()
         engine?.close()
@@ -453,13 +579,19 @@ class KeyboardImeService : InputMethodService() {
         val ai = AiToolbarView(this).also {
             it.controller = aiToolbar
             it.onLink = ::openCompanion
+            it.onOpenAssist = { openAiPanel(email = false) }
+            it.onOpenEmail = { openAiPanel(email = true) }
             aiView = it
         }
         // One bar above the keys: pill, AI entry (its actions open in the bar's middle), candidates, mic, gear.
         val b = KeyboardBar(this, s, ai).also { bar = it }
         s.onMic = { voice.onMicTapped() }
         val aiToggle = s.onAiToggle
-        s.onAiToggle = { voice.cancel(); aiToggle() } // the AI actions and voice typing never run together
+        s.onAiToggle = {
+            voice.cancel() // the AI actions and voice typing never run together
+            aiToggle()
+            if (bar?.aiOpen != true) closeAiPanels() // closing the AI entry also closes an open AI panel
+        }
         val overlay = PopupOverlay(this).also { overlayView = it }
         val k = KeyboardSurface(this).also {
             it.controller = controller
@@ -496,7 +628,11 @@ class KeyboardImeService : InputMethodService() {
             voicePanel = it
         }
         val space = View(this).also { headroom = it }
-        val column = KeyboardColumn(this, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.apply {
+        // A new input view: the AI panel views (if any) belonged to the old one and are created again on the next open.
+        aiPanelView = null
+        aiFieldBar = null
+        aiWorkspace?.discard()
+        val column = KeyboardColumn(this, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.also { this.column = it }.apply {
             addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
             addView(ai, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -621,6 +757,9 @@ class KeyboardImeService : InputMethodService() {
         controller.startField(profile)
         voice.onFieldStarted(VoiceController.fieldAllowsVoice(profile, info.privateImeOptions), sameField = restarting)
         bar?.closeAi()
+        // A new field: an open AI panel and its texts never carry over (and a running call is cancelled).
+        if (aiWorkspace?.isOpen == true) closeAiPanels()
+        aiView?.emailFirst = profile.allowsAi && AiEmailHints.looksLikeEmailBody(info.packageName, info.inputType, info.hintText)
         aiToolbar?.onFieldStarted(profile, info.packageName)
     }
 
@@ -651,6 +790,19 @@ class KeyboardImeService : InputMethodService() {
      * it dismisses the keyboard.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val ws = aiWorkspace
+        if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && ws != null && ws.isOpen) {
+            // AI panels: typing → panel, result → inputs, inputs → keyboard.
+            if (ws.typing) {
+                controller.commitComposition()
+                ws.endTyping()
+            } else if (!ws.back()) {
+                return super.onKeyDown(keyCode, event)
+            }
+            if (!ws.isOpen) aiPanelView?.reset()
+            refreshViews()
+            return true
+        }
         if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && voice.isOpen) {
             if (voice.pickerOpen) voice.closePicker() else voice.backToKeyboard()
             return true
@@ -667,6 +819,7 @@ class KeyboardImeService : InputMethodService() {
         controller.onCompositionAbandoned()
         bar?.closeAi()
         aiToolbar?.onKeyboardHidden()
+        closeAiPanels()
         super.onFinishInputView(finishingInput)
     }
 
@@ -681,9 +834,15 @@ class KeyboardImeService : InputMethodService() {
     private fun refreshViews() {
         // The one bar (mode pill, AI entry, candidates, settings gear) is always shown so the keyboard
         // keeps one height; candidates and the DRAFT tag only where the strip applies (phonetic, not passwords).
+        // AI panels (ADR 0031): a panel takes the key area at the same height; while one of its fields is typed into, the
+        // keys are back and the field strip takes the bar's place (like Word Art).
+        val ws = aiWorkspace
+        val aiPanelShown = ws?.showsPanel == true && aiPanelView != null
+        val aiTyping = ws?.typing == true && aiFieldBar != null
         strip?.let {
             it.visibility = View.VISIBLE
-            val candidates = controller.showCandidateStrip
+            // While an AI field is typed into the bar is hidden; its candidates would also close the AI row.
+            val candidates = controller.showCandidateStrip && !aiTyping
             it.show(if (candidates) controller.candidates else emptyList(), candidates && controller.candidatesAreDraft)
             it.setModes(controller.writingModeOptions, controller.writingMode)
             it.closeModeChooser()
@@ -701,9 +860,26 @@ class KeyboardImeService : InputMethodService() {
         strip?.micActive = voiceOpen
         voicePanel?.visibility = if (voiceOpen) View.VISIBLE else View.GONE
         if (voiceOpen) voicePanel?.render()
-        surface?.visibility = if (inPanel || inWordArt || voiceOpen) View.GONE else View.VISIBLE
+        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown) View.GONE else View.VISIBLE
         emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
-        bar?.visibility = if (inSearch || inWordArtTyping) View.GONE else View.VISIBLE
+        bar?.visibility = if (inSearch || inWordArtTyping || aiTyping) View.GONE else View.VISIBLE
+        aiFieldBar?.let {
+            it.visibility = if (aiTyping) View.VISIBLE else View.GONE
+            if (aiTyping) it.render()
+        }
+        aiPanelView?.let {
+            val was = it.visibility == View.VISIBLE
+            it.visibility = if (aiPanelShown) View.VISIBLE else View.GONE
+            if (aiPanelShown && (aiPanelDirty || !was)) {
+                aiPanelDirty = false
+                it.render()
+            }
+        }
+        // The Auto source of the direction control follows the keyboard language.
+        if (aiShownLanguage != controller.language) {
+            aiShownLanguage = controller.language
+            aiToolbar?.onKeyboardLanguageChanged()
+        }
         emojiSearch?.visibility = if (inSearch) View.VISIBLE else View.GONE
         wordArtPanel?.visibility = if (inWordArt) View.VISIBLE else View.GONE
         wordArtBar?.visibility = if (inWordArtTyping) View.VISIBLE else View.GONE

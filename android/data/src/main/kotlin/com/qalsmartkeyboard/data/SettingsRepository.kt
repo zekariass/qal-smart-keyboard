@@ -137,6 +137,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val VOICE_ENABLED = booleanPreferencesKey("voice_typing_enabled")
         private val VOICE_LANGUAGES = stringPreferencesKey("voice_languages")
         private val VOICE_NOTICE = booleanPreferencesKey("voice_notice_shown")
+        private val AI_PREFERRED_TARGET = stringPreferencesKey("ai_preferred_target")
+        private val AI_TRANSLATE_PAIRS = stringPreferencesKey("ai_translate_pairs")
+        private val EMAIL_SENDER_NAME = stringPreferencesKey("email_sender_name")
 
         private const val FIELD = "|"
         private const val LINE = "\n"
@@ -164,6 +167,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[VOICE_ENABLED] = s.voiceTypingEnabled
             p[VOICE_LANGUAGES] = encodeMap(s.voiceLanguages)
             p[VOICE_NOTICE] = s.voiceNoticeShown
+            p[AI_PREFERRED_TARGET] = s.aiPreferredTarget.orEmpty()
+            p[AI_TRANSLATE_PAIRS] = encodeMap(s.aiTranslatePairs)
+            p[EMAIL_SENDER_NAME] = s.emailSenderName
         }
 
         /** Lenient decode: anything missing or unrecognised takes its default; the result is sanitised. */
@@ -205,6 +211,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 voiceTypingEnabled = p[VOICE_ENABLED] ?: d.voiceTypingEnabled,
                 voiceLanguages = decodeMap(p[VOICE_LANGUAGES]),
                 voiceNoticeShown = p[VOICE_NOTICE] ?: d.voiceNoticeShown,
+                // Additive keys (schema stays 1, ADR 0031): translation destination, per-source pairs, e-mail sender name.
+                aiPreferredTarget = p[AI_PREFERRED_TARGET]?.takeIf { it.isNotEmpty() },
+                aiTranslatePairs = decodeMap(p[AI_TRANSLATE_PAIRS]),
+                emailSenderName = p[EMAIL_SENDER_NAME].orEmpty(),
             ).sanitized()
         }
 

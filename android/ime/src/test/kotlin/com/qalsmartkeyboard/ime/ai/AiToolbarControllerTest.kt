@@ -14,7 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiToolbarControllerTest {
-    private class H(initial: String = "", val actions: FakeAiActions = FakeAiActions()) {
+    private class H(initial: String = "", val actions: FakeAiActions = FakeAiActions(), prefs: AiLanguagePrefs = AiLanguagePrefs.InMemory()) {
         val ed = FakeEditor(initial)
         val adapter = InputConnectionAdapter { ed }.also { it.startSession(false, initial.length, initial.length) }
         var changes = 0
@@ -29,6 +29,7 @@ class AiToolbarControllerTest {
             newKey = { "key-${++n}" },
             onChanged = { changes++ },
             clock = { now },
+            prefs = prefs,
         ).also { it.onFieldStarted(InputProfile.DEFAULT, "com.example.chat") }
 
         val panel get() = c.panel
@@ -261,11 +262,12 @@ class AiToolbarControllerTest {
     }
 
     @Test fun destinationDefaultsFromTheAppRule() {
-        val a = FakeAiActions().apply { defaultFor = { pkg -> if (pkg == "com.example.chat") AiDestination("p1", "Mum", "am", true) else AiDestination("lang:en", "English", "en") } }
+        // ADR 0031: an enabled app rule comes first; elsewhere the default for the source (English text: Amharic).
+        val a = FakeAiActions().apply { appRule = { pkg -> if (pkg == "com.example.chat") AiDestination("p1", "Mum", "am", true) else null } }
         val h = H("x", a)
         assertEquals("Mum", h.c.destination.label)
         h.c.onFieldStarted(InputProfile.DEFAULT, "com.other")
-        assertEquals("English", h.c.destination.label)
+        assertEquals("Amharic", h.c.destination.label)
     }
 
     // ------------------------------------------------------------ graceful states
@@ -364,14 +366,36 @@ class AiToolbarControllerTest {
         assertEquals(2, h.actions.refreshCount)
     }
 
-    @Test fun choosingADestinationIsRememberedForThatApp() {
-        val h = H("x")
+    @Test fun choosingADestinationIsRememberedForTheSourceLanguage() {
+        // ADR 0031: the pair is remembered per source language (device-local), not per app.
+        val prefs = AiLanguagePrefs.InMemory()
+        val h = H("x", prefs = prefs)
         h.c.openPicker(AiPicker.DESTINATION)
         h.c.chooseDestination(mum)
-        assertEquals(listOf<Pair<String?, AiDestination>>("com.example.chat" to mum), h.actions.remembered)
+        assertEquals(mapOf("en" to "p1"), prefs.pairs)
         h.c.onFieldStarted(InputProfile.DEFAULT, "com.other")
-        h.c.chooseDestination(mum)
-        assertEquals("com.other", h.actions.remembered.last().first)
+        assertEquals("the remembered pair applies in every app", "Mum", h.c.destination.label)
+        assertTrue(h.actions.remembered.isEmpty())
+    }
+
+    @Test fun anExplicitSourceIsSentAndSwapTurnsTheDirectionAround() {
+        val h = H("Hello there")
+        assertTrue(h.c.direction.isAuto)
+        h.c.swapDirection()
+        assertEquals("am", h.c.direction.source)
+        assertEquals("en", h.c.destination.language)
+        h.c.onTask(AiTaskKind.TRANSLATE)
+        assertEquals(AiTask.Translate(AiLanguages.plain("en"), "am"), h.actions.submitted.single().request.task)
+    }
+
+    @Test fun aLockedActionShowsTheUpgradeLinkAndSendsNothing() {
+        val h = H("Hello there")
+        h.actions.availability = AiAvailability(entitled = setOf(AiTaskKind.TRANSLATE, AiTaskKind.GRAMMAR, AiTaskKind.REWRITE))
+        h.c.chooseTone(AiTone.POLITE)
+        h.c.onTask(AiTaskKind.REWRITE) // a tone is TONE_ADJUST, not in this plan
+        assertEquals(AiFailure.NotEntitled, h.failed())
+        assertEquals(AiLink.UPGRADE, h.failed().link)
+        assertTrue(h.actions.submitted.isEmpty())
     }
 
     @Test fun closingThePickerChoosesNothingAndSendsNothing() {

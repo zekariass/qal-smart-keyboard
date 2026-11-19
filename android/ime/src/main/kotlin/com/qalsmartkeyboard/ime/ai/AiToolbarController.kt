@@ -20,7 +20,8 @@ sealed interface AiPanel {
     class Failed(val task: AiTask?, val failure: AiFailure) : AiPanel
 }
 
-enum class AiPicker { NONE, DESTINATION, TONE }
+/** The toolbar's choosers: the direction control's two sides (ADR 0031) and the rewrite tone. */
+enum class AiPicker { NONE, SOURCE, DESTINATION, TONE }
 
 /** What a Replace or Insert did, for the user's feedback. */
 enum class AiApplied { REPLACED, INSERTED, INSERTED_ORIGINAL_CHANGED, FAILED }
@@ -41,6 +42,12 @@ interface AiEditor {
 
     /** Inserts at the cursor (after a selection, if any), with a leading space when the text before is not whitespace. */
     fun insertAtCursor(text: String): Boolean
+
+    /** The whole text of the field (up to [max] characters), read only on an explicit tap ("Use text from this field"); null when unknown. */
+    fun allText(max: Int): String? = null
+
+    /** Replaces the whole field text with [replacement] if it still reads [expected]; false otherwise. */
+    fun replaceAll(expected: String, replacement: String): Boolean = false
 }
 
 /**
@@ -70,6 +77,10 @@ class AiToolbarController(
     private val newKey: () -> String = { UUID.randomUUID().toString() },
     private val onChanged: () -> Unit = {},
     private val clock: () -> Long = System::currentTimeMillis,
+    /** The keyboard language (the Auto source's likely language). */
+    private val keyboardLanguage: () -> String = { "en" },
+    /** The device-local direction memory and the preferred destination (settings). */
+    prefs: AiLanguagePrefs = AiLanguagePrefs.InMemory(),
 ) {
     var visible: Boolean = false
         private set
@@ -77,8 +88,13 @@ class AiToolbarController(
         private set
     var picker: AiPicker = AiPicker.NONE
         private set
-    var destination: AiDestination = actions.defaultDestination(null)
-        private set
+
+    /** The translation direction control (ADR 0031): source (Auto or explicit), ⇄, destination. */
+    val direction = TranslationDirection(prefs) { actions.destinations() }
+
+    /** The translation destination (the direction control's right side). */
+    val destination: AiDestination get() = direction.also { it.keyboardLanguage = keyboardLanguage() }.destination
+
     var tone: AiTone? = null
         private set
 
@@ -96,7 +112,6 @@ class AiToolbarController(
     private var lastKind: AiTaskKind? = null
     private var source: AiSource? = null
     private var listener: AutoCloseable? = null
-    private var currentPackage: String? = null
     private var lastRefreshMs = 0L
     private var refreshed = false
 
@@ -107,11 +122,17 @@ class AiToolbarController(
     /** A field was focused: show the toolbar where AI is allowed, drop everything of the last field. */
     fun onFieldStarted(profile: InputProfile, packageName: String?) {
         discard()
-        currentPackage = packageName
         val was = visible
         visible = profile.allowsAi
-        if (visible) destination = actions.defaultDestination(packageName)
+        if (visible) direction.start(keyboardLanguage(), actions.appRuleDestination(packageName))
         if (was != visible || panel !is AiPanel.Closed) onChanged()
+    }
+
+    /** The keyboard language changed: the Auto source follows it (and the default destination with it). */
+    fun onKeyboardLanguageChanged() {
+        if (!visible) return
+        direction.keyboardLanguage = keyboardLanguage()
+        onChanged()
     }
 
     /**
@@ -158,9 +179,28 @@ class AiToolbarController(
         onChanged()
     }
 
+    /** The destination side of the direction control; remembered for the current source language (device-local). */
     fun chooseDestination(d: AiDestination) {
-        destination = d
-        actions.rememberDestination(currentPackage, d)
+        direction.keyboardLanguage = keyboardLanguage()
+        direction.chooseDestination(d)
+        picker = AiPicker.NONE
+        onChanged()
+    }
+
+    /** The source side: a language, or null for Auto (the server detects it). */
+    fun chooseSource(language: String?) {
+        direction.keyboardLanguage = keyboardLanguage()
+        direction.chooseSource(language)
+        picker = AiPicker.NONE
+        onChanged()
+    }
+
+    /** ⇄ of the direction control. */
+    fun swapDirection() {
+        if (!visible) return
+        onToolbarOpened()
+        direction.keyboardLanguage = keyboardLanguage()
+        direction.swap()
         picker = AiPicker.NONE
         onChanged()
     }
@@ -188,6 +228,13 @@ class AiToolbarController(
             onChanged()
             return
         }
+        val task = taskFor(kind) ?: return
+        if (actions.availability.locks(task.kind)) {
+            // The cached plan state says the plan does not include it: the upgrade link, and nothing is sent.
+            panel = AiPanel.Failed(task, AiFailure.NotEntitled)
+            onChanged()
+            return
+        }
         editor.commitComposition()
         val src = capture()
         when {
@@ -195,15 +242,17 @@ class AiToolbarController(
             src.text.length > AiTextTarget.MAX_CHARS -> fail(null, AiFailure.TooLong)
             else -> {
                 source = src
-                start(AiRequest(newKey(), taskFor(kind), src.text))
+                start(AiRequest(newKey(), task, src.text))
             }
         }
     }
 
-    private fun taskFor(kind: AiTaskKind): AiTask = when (kind) {
-        AiTaskKind.TRANSLATE -> AiTask.Translate(destination)
+    /** The toolbar's quick actions on the sentence or selection; the other kinds live in the Assist and Email panels. */
+    private fun taskFor(kind: AiTaskKind): AiTask? = when (kind) {
+        AiTaskKind.TRANSLATE -> AiTask.Translate(destination, direction.manualSource)
         AiTaskKind.GRAMMAR -> AiTask.Grammar
-        AiTaskKind.REWRITE -> AiTask.Rewrite(tone)
+        AiTaskKind.REWRITE, AiTaskKind.TONE -> AiTask.Rewrite(tone)
+        else -> null
     }
 
     private fun capture(): AiSource? {
@@ -371,6 +420,21 @@ class EditorAiAccess(private val adapter: InputConnectionAdapter, private val co
         val before = e.getTextBeforeCursor(1)
         val space = if (!before.isNullOrEmpty() && !before.last().isWhitespace()) " " else ""
         edit(e) { e.commitText(space + text) }
+        return true
+    }
+
+    override fun allText(max: Int): String? {
+        val e = ed ?: return null
+        e.getAllText(max)?.toString()?.let { return it }
+        // The editor does not report its whole text: what is before the cursor is the best we can read.
+        return e.getTextBeforeCursor(max)?.toString()
+    }
+
+    override fun replaceAll(expected: String, replacement: String): Boolean {
+        val e = ed ?: return false
+        if (e.getAllText(expected.length + 1)?.toString() != expected) return false
+        if (!e.selectAll()) return false
+        edit(e) { e.commitText(replacement) }
         return true
     }
 

@@ -68,14 +68,17 @@ class KeyboardBarTest {
 
         fun targets() = strip.slots().map { it.target }
         fun row() = ai.actionsRow
-        fun rowTexts(): List<String> {
-            val g = row().getChildAt(0) as ViewGroup
-            return (0 until g.childCount).map { (g.getChildAt(it) as TextView).text.toString() }
+        /** Every text view of the row in order (the direction control is a group of three: source, swap, destination). */
+        fun rowViews(): List<TextView> {
+            fun walk(v: View): List<TextView> = when (v) {
+                is TextView -> listOf(v)
+                is ViewGroup -> (0 until v.childCount).flatMap { walk(v.getChildAt(it)) }
+                else -> emptyList()
+            }
+            return walk(row().getChildAt(0))
         }
-        fun rowChip(text: String): TextView {
-            val g = row().getChildAt(0) as ViewGroup
-            return (0 until g.childCount).map { g.getChildAt(it) as TextView }.first { it.text.toString() == text }
-        }
+        fun rowTexts(): List<String> = rowViews().map { it.text.toString() }
+        fun rowChip(text: String): TextView = rowViews().first { it.text.toString() == text }
     }
 
     private val barPx get() = (CandidateStripView.HEIGHT_DP * d).toInt()
@@ -106,7 +109,8 @@ class KeyboardBarTest {
         assertTrue(h.bar.aiOpen)
         assertEquals(AiEntry.OPEN, h.strip.aiEntry)
         assertEquals(View.VISIBLE, h.row().visibility)
-        assertEquals(listOf("Translate", "English", "Grammar", "Rewrite", "Natural"), h.rowTexts())
+        // ADR 0031: the direction control [ Auto · English ⇄ Amharic ] (the swap is an icon), Translate, Assist, Email, ...
+        assertEquals(listOf("Auto · English", "", "Amharic", "Translate", "Assist", "Email", "Grammar", "Rewrite", "Natural"), h.rowTexts())
         // The row sits between the AI close button and the gear, as tall as the bar.
         val (start, end) = h.strip.middleRange(widthPx)
         assertEquals(start.toInt(), h.row().left)
@@ -129,7 +133,7 @@ class KeyboardBarTest {
     @Test fun theCloseButtonClosesTheActionsAndAnOpenPicker() {
         val h = H()
         h.strip.activate(Target.Ai)
-        h.rowChip("English").performClick()
+        h.rowChip("Amharic").performClick()
         assertEquals(AiPicker.DESTINATION, h.controller.picker)
         assertEquals(View.VISIBLE, h.ai.visibility)
         h.strip.activate(Target.Ai) // now the close button

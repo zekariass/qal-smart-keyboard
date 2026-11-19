@@ -40,8 +40,16 @@ class DeepLinksTest {
         assertEquals(DeepLinkAction.SHOW_KEYBOARD_SETTINGS, DeepLinks.route(DeepLinks.parse("SETTINGS"), out, true))
     }
 
+    @Test fun theKeyboardsOpenFullEditorOpensTheEmailWriter() {
+        // ADR 0031: the link carries no text (the inputs travel in memory, AiEmailHandoff).
+        assertEquals(AiLink.EMAIL_WRITER, DeepLinks.parse("EMAIL_WRITER"))
+        for (account in listOf(out, AccountStatus.Guest, AccountStatus.Registered)) {
+            assertEquals(DeepLinkAction.SHOW_EMAIL_WRITER, DeepLinks.route(AiLink.EMAIL_WRITER, account, true))
+        }
+    }
+
     @Test fun firstRunSetupIsNotInterruptedExceptByAnUpdate() {
-        for (l in listOf(AiLink.SIGN_IN, AiLink.AI_SETTINGS, AiLink.UPGRADE, AiLink.SETTINGS)) {
+        for (l in listOf(AiLink.SIGN_IN, AiLink.AI_SETTINGS, AiLink.UPGRADE, AiLink.SETTINGS, AiLink.EMAIL_WRITER)) {
             assertEquals(DeepLinkAction.NONE, DeepLinks.route(l, out, false))
         }
         assertEquals(DeepLinkAction.OPEN_STORE, DeepLinks.route(AiLink.UPDATE_APP, out, false))

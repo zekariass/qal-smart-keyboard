@@ -9,6 +9,7 @@ class FakeAiActions : AiActions {
     var availabilityReads = 0
     var destinationsList = listOf(AiDestination("lang:en", "English", "en"), AiDestination("p1", "Mum", "am", isProfile = true))
     var defaultFor: (String?) -> AiDestination = { destinationsList.first() }
+    var appRule: (String?) -> AiDestination? = { null }
     private val listeners = ArrayList<() -> Unit>()
 
     /** When set, [submit] answers at once (synchronously) with this. */
@@ -20,6 +21,8 @@ class FakeAiActions : AiActions {
     override fun destinations() = destinationsList
 
     override fun defaultDestination(packageName: String?) = defaultFor(packageName)
+
+    override fun appRuleDestination(packageName: String?) = appRule(packageName)
 
     val remembered = ArrayList<Pair<String?, AiDestination>>()
 

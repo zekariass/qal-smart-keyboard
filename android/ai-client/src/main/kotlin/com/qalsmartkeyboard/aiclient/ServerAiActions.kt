@@ -10,6 +10,8 @@ import com.qalsmartkeyboard.ime.ai.AiDestination
 import com.qalsmartkeyboard.ime.ai.AiFailure
 import com.qalsmartkeyboard.ime.ai.AiOutcome
 import com.qalsmartkeyboard.ime.ai.AiRequest
+import com.qalsmartkeyboard.ime.ai.AiTaskKind
+import java.util.concurrent.TimeUnit
 import com.qalsmartkeyboard.sync.AppRule
 import com.qalsmartkeyboard.sync.DestinationProfile
 import com.qalsmartkeyboard.sync.DestinationStore
@@ -38,10 +40,30 @@ fun interface DestinationSource {
 }
 
 /**
- * The server-backed [AiActions] (A2.5): `POST /ai/translate` and `POST /ai/transform` over the
- * app's OkHttp stack (bearer, client headers, refresh authenticator). [aiClient] carries the 8 s
- * hard timeout of the contract for the keyboard. Calls are asynchronous (OkHttp's dispatcher), so
- * [submit] returns at once and cancelling aborts the socket.
+ * Client call timeouts per operation (ADR 0031). The quick keyboard actions keep the contract's 8 s (SD 17.1). The
+ * long-form features have longer server budgets (ADR 0027 §6: SUMMARIZE, EXPLAIN_TEXT and SMART_REPLY 12 s per attempt /
+ * 20 s deadline, DRAFT_DOCUMENT 20 s / 30 s); the client waits for the server's deadline plus [MARGIN_SECONDS] for the
+ * network and the server's own work around the provider call, so a slow answer arrives instead of a client timeout.
+ */
+object AiTimeouts {
+    const val FAST_SECONDS = 8L
+    const val MARGIN_SECONDS = 5L
+    const val LONG_FORM_SECONDS = 20L + MARGIN_SECONDS
+    const val EMAIL_SECONDS = 30L + MARGIN_SECONDS
+
+    fun callTimeoutSeconds(kind: AiTaskKind): Long = when (kind) {
+        AiTaskKind.TRANSLATE, AiTaskKind.GRAMMAR, AiTaskKind.REWRITE, AiTaskKind.TONE -> FAST_SECONDS
+        AiTaskKind.EXPLAIN, AiTaskKind.SUMMARIZE, AiTaskKind.REPLY -> LONG_FORM_SECONDS
+        AiTaskKind.EMAIL -> EMAIL_SECONDS
+    }
+}
+
+/**
+ * The server-backed [AiActions] (A2.5, ADR 0031): `POST /ai/translate`, `/ai/transform`, `/ai/replies` and `/ai/drafts`
+ * over the app's OkHttp stack (bearer, client headers, refresh authenticator). [aiClient] carries the 8 s hard timeout
+ * of the contract for the keyboard's quick actions; long-form requests use a copy with [AiTimeouts]' longer call
+ * timeout (same connection pool and dispatcher). Calls are asynchronous (OkHttp's dispatcher), so [submit] returns at
+ * once and cancelling aborts the socket.
  *
  * Nothing here sends user text except [submit]; [refresh] only reads account metadata. Text,
  * results and tokens are never logged.
@@ -85,7 +107,7 @@ class ServerAiActions(
                 !online -> AiBlock.OFFLINE
                 else -> AiBlock.NONE
             }
-            return AiAvailability(block, entitlements.quota, entitlements.planLabel, entitlements.gates(online).onDeviceModels)
+            return AiAvailability(block, entitlements.quota, entitlements.planLabel, entitlements.gates(online).onDeviceModels, entitlements.entitled)
         }
 
     override fun destinations(): List<AiDestination> {
@@ -117,7 +139,7 @@ class ServerAiActions(
             onOutcome(AiOutcome.Failure(AiFailure.Offline))
             return AiCall { }
         }
-        val call = aiClient.newCall(AiWire.request(baseUrl, request, saveToHistory()))
+        val call = clientFor(request.task.kind).newCall(AiWire.request(baseUrl, request, saveToHistory()))
         // OkHttp also marks a call cancelled when its call timeout fires, so only the user's cancel is silent.
         val userCancelled = java.util.concurrent.atomic.AtomicBoolean(false)
         call.enqueue(object : Callback {
@@ -142,12 +164,36 @@ class ServerAiActions(
         }
     }
 
+    private val longFormClient: OkHttpClient by lazy { withTimeout(AiTimeouts.LONG_FORM_SECONDS) }
+    private val emailClient: OkHttpClient by lazy { withTimeout(AiTimeouts.EMAIL_SECONDS) }
+
+    private fun withTimeout(seconds: Long): OkHttpClient {
+        val b = aiClient.newBuilder().callTimeout(seconds, TimeUnit.SECONDS)
+        // A read timeout shorter than the call timeout would end a slow answer early; never shorten it.
+        if (aiClient.readTimeoutMillis in 1 until seconds * 1000) b.readTimeout(seconds, TimeUnit.SECONDS)
+        return b.build()
+    }
+
+    /** The client whose call timeout fits [kind] ([AiTimeouts]); the quick actions use [aiClient] as configured. */
+    internal fun clientFor(kind: AiTaskKind): OkHttpClient = when (AiTimeouts.callTimeoutSeconds(kind)) {
+        AiTimeouts.EMAIL_SECONDS -> emailClient
+        AiTimeouts.LONG_FORM_SECONDS -> longFormClient
+        else -> aiClient
+    }
+
     private fun read(request: AiRequest, r: Response): AiOutcome {
         val body = r.body?.string()
         if (!r.isSuccessful) return AiOutcome.Failure(AiWire.failure(ApiErrors.fromHttp(r.code, body, r.headers.toMultimap())))
         val result = body?.let { AiWire.result(request.task, it) } ?: return AiOutcome.Failure(AiFailure.Other)
         entitlements.recordUsage(request.task.kind, result.remaining, result.resetsAtMs)
         return AiOutcome.Success(result)
+    }
+
+    override fun appRuleDestination(packageName: String?): AiDestination? {
+        val (profiles, rules) = snapshot
+        val rule = packageName?.let { pkg -> rules.firstOrNull { it.enabled && it.packageName == pkg } } ?: return null
+        rule.profileLocalId?.let { id -> profiles.firstOrNull { it.localId == id }?.let { return toDestination(it) } }
+        return rule.language?.let(::plain)
     }
 
     override fun rememberDestination(packageName: String?, destination: AiDestination) {

@@ -63,6 +63,8 @@ import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.app.themes.ThemesHost
 import com.qalsmartkeyboard.app.wordart.WordArtHost
+import com.qalsmartkeyboard.app.email.EmailWriterModel
+import com.qalsmartkeyboard.app.email.EmailWriterRoute
 import com.qalsmartkeyboard.app.themes.themeStore
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 import com.qalsmartkeyboard.ime.ai.AiLink
@@ -91,6 +93,15 @@ class MainActivity : ComponentActivity() {
 
     private val privacy: PrivacyViewModel by viewModels {
         viewModelFactory { initializer { PrivacyViewModel(PrivacyGraph.get(applicationContext)) } }
+    }
+
+    // Write Email with AI (ADR 0031): the sender name is remembered in the device-local settings.
+    private val email: EmailWriterModel by viewModels {
+        viewModelFactory {
+            initializer {
+                EmailWriterModel(rememberSender = { name -> lifecycleScope.launch { repository.update { it.copy(emailSenderName = name) } } })
+            }
+        }
     }
 
     // The keyboard toolbar's link (ADR 0007 D40), consumed once the screen state is known.
@@ -157,18 +168,26 @@ class MainActivity : ComponentActivity() {
             var themesOpen by rememberSaveable { mutableStateOf(false) }
             // Word Art (ADR 0030).
             var wordArtOpen by rememberSaveable { mutableStateOf(false) }
+            // Write Email with AI (ADR 0031); opened from the keyboard, Back returns to the app the user was writing in.
+            var emailOpen by rememberSaveable { mutableStateOf(false) }
+            var emailFromKeyboard by rememberSaveable { mutableStateOf(false) }
             val link = pendingLink
             LaunchedEffect(link, completed) {
                 if (link == null || completed == null) return@LaunchedEffect // wait until the stored flag is read
                 pendingLink = null
                 when (DeepLinks.route(link, graph.repository.currentStatus(), completed == true)) {
                     DeepLinkAction.NONE -> Unit
-                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; rerun = false }
+                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false }
                     DeepLinkAction.SHOW_PRIVACY -> { showSignIn = false; showPlans = false; rerun = false; privacyRoute = PrivacyRoute.DASHBOARD.name }
                     DeepLinkAction.SHOW_SIGN_IN -> { signIn.reset(); showPlans = false; privacyRoute = null; showSignIn = true }
                     DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true }
                     DeepLinkAction.OPEN_STORE -> openStorePage(this@MainActivity)
                     DeepLinkAction.SHOW_KEYBOARD_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; rerun = false; fromKeyboard = true }
+                    DeepLinkAction.SHOW_EMAIL_WRITER -> {
+                        showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; rerun = false
+                        emailOpen = true
+                        emailFromKeyboard = true
+                    }
                 }
             }
             val googleSource = remember { CredentialManagerGoogleSource(this@MainActivity, BuildConfig.GOOGLE_WEB_CLIENT_ID) }
@@ -233,6 +252,24 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                         )
                         wordArtOpen && !showFlow -> WordArtHost(onBack = { wordArtOpen = false }, modifier = Modifier.padding(innerPadding))
+                        emailOpen && !showFlow -> EmailWriterRoute(
+                            model = email,
+                            senderName = settings.emailSenderName,
+                            onLink = { l ->
+                                when (l) {
+                                    AiLink.UPGRADE -> showPlans = true
+                                    AiLink.SIGN_IN -> { signIn.reset(); showSignIn = true }
+                                    AiLink.UPDATE_APP -> openStorePage(this@MainActivity)
+                                    else -> privacyRoute = PrivacyRoute.DASHBOARD.name
+                                }
+                            },
+                            onBack = {
+                                if (emailFromKeyboard) finishAndRemoveTask()
+                                emailOpen = false
+                                emailFromKeyboard = false
+                            },
+                            modifier = Modifier.padding(innerPadding),
+                        )
                         showFlow -> OnboardingScreen(
                             state = flow,
                             onNext = onboarding::next,
@@ -261,7 +298,7 @@ class MainActivity : ComponentActivity() {
                             SettingsScreen(settings, repository, onRunSetup = {
                                 onboarding.restart()
                                 rerun = true
-                            }, onOpenThemes = { themesOpen = true }, onOpenWordArt = { wordArtOpen = true }, syncContent = {
+                            }, onOpenThemes = { themesOpen = true }, onOpenWordArt = { wordArtOpen = true }, onOpenEmail = { emailOpen = true }, syncContent = {
                                 PrivacyEntryCard(onOpen = { privacyRoute = PrivacyRoute.DASHBOARD.name })
                             }, accountContent = {
                                 AccountSection(

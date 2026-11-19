@@ -1,6 +1,7 @@
 package com.qalsmartkeyboard.app.ai
 
 import android.content.Context
+import com.qalsmartkeyboard.aiclient.AiTimeouts
 import com.qalsmartkeyboard.aiclient.AndroidConnectivity
 import com.qalsmartkeyboard.aiclient.DestinationSource
 import com.qalsmartkeyboard.aiclient.EntitlementManager
@@ -82,8 +83,11 @@ class AiGraph private constructor(context: Context) {
     companion object {
         const val KEY_ALIAS = "qal.ai.v1"
 
-        /** SD 17.1: client hard timeout 8 s for AI calls. */
-        const val AI_TIMEOUT_SECONDS = 8L
+        /**
+         * SD 17.1: client hard timeout 8 s for the quick AI calls. The long-form operations (explain, summarise, replies,
+         * e-mail) get longer ones from `ServerAiActions` ([AiTimeouts], ADR 0031).
+         */
+        const val AI_TIMEOUT_SECONDS = AiTimeouts.FAST_SECONDS
 
         @Volatile private var instance: AiGraph? = null
 

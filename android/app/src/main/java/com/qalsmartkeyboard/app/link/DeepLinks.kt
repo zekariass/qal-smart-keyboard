@@ -30,6 +30,13 @@ enum class DeepLinkAction {
      * Back finishes the screen so the user lands back in the app they were typing in.
      */
     SHOW_KEYBOARD_SETTINGS,
+
+    /**
+     * The "Write Email with AI" screen opened from the keyboard's "Open full editor" (ADR 0031). The keyboard's inputs
+     * come through the in-memory handoff, never the intent; Back finishes the screen so the user lands back in the app
+     * they were writing in (to paste the copied e-mail).
+     */
+    SHOW_EMAIL_WRITER,
 }
 
 /**
@@ -43,6 +50,7 @@ enum class DeepLinkAction {
  * | `UPGRADE` | plans screen |
  * | `UPDATE_APP` | store page (even during first-run setup) |
  * | `SETTINGS` | keyboard settings, opened from the keyboard's gear (with a way back to typing) |
+ * | `EMAIL_WRITER` | the e-mail writer with the keyboard's inputs (ADR 0031) |
  *
  * While first-run setup has not finished, every link except `UPDATE_APP` is ignored: the setup flow
  * has its own account step and is not interrupted. An unknown or missing extra does nothing.
@@ -59,6 +67,7 @@ object DeepLinks {
         link == AiLink.SIGN_IN -> if (account == AccountStatus.Registered) DeepLinkAction.SHOW_SETTINGS else DeepLinkAction.SHOW_SIGN_IN
         link == AiLink.AI_SETTINGS -> DeepLinkAction.SHOW_PRIVACY
         link == AiLink.SETTINGS -> DeepLinkAction.SHOW_KEYBOARD_SETTINGS
+        link == AiLink.EMAIL_WRITER -> DeepLinkAction.SHOW_EMAIL_WRITER
         else -> DeepLinkAction.SHOW_PLANS
     }
 }

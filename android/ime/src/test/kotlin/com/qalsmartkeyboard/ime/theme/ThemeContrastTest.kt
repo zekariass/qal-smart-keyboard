@@ -51,6 +51,21 @@ class ThemeContrastTest {
         assertTrue("contrast failures:\n" + failures.joinToString("\n"), failures.isEmpty())
     }
 
+    /** ADR 0031: the AI panels, the field strip and the direction control draw only with these pairs. */
+    @Test fun theAiPanelsUseContrastCheckedPairs() {
+        for (t in ThemeCatalog.all) {
+            check(t, "panel text / panel", t.stripText, t.stripBg, 4.5)
+            check(t, "panel caution / panel", t.warn, t.stripBg, 4.5)
+            check(t, "panel secondary / panel", t.hintText, t.stripBg, 3.0)
+            check(t, "card text / card", t.keyText, t.key, 4.5)
+            check(t, "card secondary / card", t.hintText, t.key, 3.0)
+            check(t, "selected chip and [placeholder] / pressed", t.keyText, t.pressed, 4.5)
+            check(t, "primary button / accent", t.onAccent, t.accent, 4.5)
+            check(t, "selected outline / card", t.accentText, t.key, 3.0)
+        }
+        assertTrue("contrast failures:\n" + failures.joinToString("\n"), failures.isEmpty())
+    }
+
     @Test fun theStripFollowsTheBackgroundSoThereIsNoSeam() {
         for (t in ThemeCatalog.all) assertEquals(t.id, t.bgTop, t.stripBg)
     }

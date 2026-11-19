@@ -3,6 +3,8 @@ package com.qalsmartkeyboard.aiclient
 import com.qalsmartkeyboard.api.ApiError
 import com.qalsmartkeyboard.api.ProblemCodes
 import com.qalsmartkeyboard.ime.ai.AiAlternative
+import com.qalsmartkeyboard.ime.ai.AiEmailMode
+import com.qalsmartkeyboard.ime.ai.AiEmailSpec
 import com.qalsmartkeyboard.ime.ai.AiFailure
 import com.qalsmartkeyboard.ime.ai.AiRequest
 import com.qalsmartkeyboard.ime.ai.AiResult
@@ -29,13 +31,15 @@ internal object AiWire {
 
     /**
      * The source language is left out so the server detects it (the typing language says nothing
-     * about what the user wrote). `Idempotency-Key` is [AiRequest.requestId]: the same value on a
-     * retry after a network error lets the server replay. User text only goes in the body.
+     * about what the user wrote), unless the user picked one in the direction control. `Idempotency-Key` is
+     * [AiRequest.requestId]: the same value on a retry after a network error lets the server replay. User text only
+     * goes in the body.
      */
     fun request(baseUrl: String, r: AiRequest, saveToHistory: Boolean = false): Request {
         val (path, body) = when (val t = r.task) {
             is AiTask.Translate -> "/ai/translate" to buildJsonObject {
                 put("text", r.text)
+                t.sourceLanguage?.let { put("sourceLanguage", it) }
                 put("destinationLanguage", t.destination.language)
                 put("preserveNames", true)
                 t.destination.style?.let { put("style", it) }
@@ -57,8 +61,34 @@ internal object AiWire {
                 val tone = t.tone
                 put("task", if (tone == null) "REWRITE" else "TONE_ADJUST")
                 put("text", r.text)
+                t.outputLanguage?.let { put("outputLanguage", it) }
                 putJsonObject("options") { if (tone == null) put("mode", "NATURAL") else put("tone", tone.name) }
             }
+            is AiTask.Simplify -> "/ai/transform" to buildJsonObject {
+                put("task", "REWRITE")
+                put("text", r.text)
+                t.outputLanguage?.let { put("outputLanguage", it) }
+                putJsonObject("options") { put("mode", "SIMPLIFY") }
+            }
+            is AiTask.Explain -> "/ai/transform" to buildJsonObject {
+                put("task", "EXPLAIN_TEXT")
+                put("text", r.text)
+                put("outputLanguage", t.outputLanguage)
+            }
+            is AiTask.Summarize -> "/ai/transform" to buildJsonObject {
+                put("task", "SUMMARIZE")
+                put("text", r.text)
+                put("outputLanguage", t.outputLanguage)
+                putJsonObject("options") { put("targetLength", t.length.name) }
+            }
+            is AiTask.Reply -> "/ai/replies" to buildJsonObject {
+                put("contextText", r.text)
+                put("replyLanguage", t.replyLanguage)
+                put("count", t.count)
+                if (t.instructions.isNotBlank()) put("instructions", t.instructions)
+                if (t.variation > 0) put("variation", t.variation)
+            }
+            is AiTask.Email -> "/ai/drafts" to emailBody(t.spec)
         }
         // Sent only when the user turned history on (A2.6); the server still needs the preference, the consent and the plan.
         val sent = if (saveToHistory) JsonObject(body + ("saveToHistory" to JsonPrimitive(true))) else body
@@ -70,6 +100,25 @@ internal object AiWire {
             .build()
     }
 
+    /**
+     * `DraftRequest` (ADR 0027): only the texts the mode uses are sent (`originalEmail` outside REPLY and `draft` outside
+     * IMPROVE are refused by the server); empty optional texts and names are left out.
+     */
+    fun emailBody(s: AiEmailSpec): JsonObject = buildJsonObject {
+        put("documentType", "EMAIL")
+        put("mode", s.mode.name)
+        put("language", s.language)
+        if (s.instructions.isNotBlank()) put("instructions", s.instructions)
+        if (s.mode == AiEmailMode.REPLY) put("originalEmail", s.originalEmail)
+        if (s.mode == AiEmailMode.IMPROVE) put("draft", s.draft)
+        put("tone", s.tone.name)
+        put("length", s.length.name)
+        put("includeSubject", s.includeSubject)
+        if (s.variation > 0) put("variation", s.variation)
+        if (s.recipientName.isNotBlank()) putJsonObject("recipient") { put("name", s.recipientName) }
+        if (s.senderName.isNotBlank()) put("senderName", s.senderName)
+    }
+
     /** Null when the body is not a usable result (the caller reports [AiFailure.Other]). */
     fun result(task: AiTask, body: String): AiResult? {
         val o = try {
@@ -77,27 +126,75 @@ internal object AiWire {
         } catch (e: Exception) {
             null
         } ?: return null
+        when (task) {
+            is AiTask.Reply -> return replies(o)
+            is AiTask.Email -> return draft(o)
+            else -> Unit
+        }
         val text = str(o, if (task is AiTask.Translate) "translatedText" else "resultText")?.takeIf { it.isNotBlank() } ?: return null
         val alternatives = (o["alternatives"] as? JsonArray).orEmpty().mapNotNull {
             val a = it as? JsonObject ?: return@mapNotNull null
             AiAlternative(str(a, "label"), str(a, "text")?.takeIf { t -> t.isNotBlank() } ?: return@mapNotNull null)
         }
-        val notes = (o["notes"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let { n -> str(n, "message") } }
         val usage = o["usage"] as? JsonObject
         return AiResult(
             text = text,
             alternatives = alternatives,
-            notes = notes,
+            notes = notes(o),
             remaining = (usage?.get("remaining") as? JsonPrimitive)?.intOrNull,
             resetsAtMs = str(usage, "resetsAt")?.let(::parseInstantMs),
             replayed = (o["replayed"] as? JsonPrimitive)?.booleanOrNull ?: false,
+            language = str(o, if (task is AiTask.Translate) "destinationLanguage" else "language"),
+            sourceLanguage = if (task is AiTask.Translate) str(o, "detectedSourceLanguage") ?: str(o, "sourceLanguage") else null,
         )
     }
 
+    private fun notes(o: JsonObject): List<String> =
+        (o["notes"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let { n -> str(n, "message") } }
+
+    /** `RepliesResponse`: the suggestions in order; the first one is also [AiResult.text]. Null without any. */
+    private fun replies(o: JsonObject): AiResult? {
+        val suggestions = (o["suggestions"] as? JsonArray).orEmpty()
+            .mapNotNull { (it as? JsonObject)?.let { s -> str(s, "text") }?.takeIf { t -> t.isNotBlank() } }
+        if (suggestions.isEmpty()) return null
+        val usage = o["usage"] as? JsonObject
+        return AiResult(
+            text = suggestions.first(),
+            notes = notes(o),
+            remaining = (usage?.get("remaining") as? JsonPrimitive)?.intOrNull,
+            resetsAtMs = str(usage, "resetsAt")?.let(::parseInstantMs),
+            replayed = (o["replayed"] as? JsonPrimitive)?.booleanOrNull ?: false,
+            language = str(o, "language"),
+            suggestions = suggestions,
+        )
+    }
+
+    /** `DraftResponse`: the body (required), the subject when present, the placeholders to fill in. */
+    private fun draft(o: JsonObject): AiResult? {
+        val body = str(o, "body")?.takeIf { it.isNotBlank() } ?: return null
+        val usage = o["usage"] as? JsonObject
+        return AiResult(
+            text = body,
+            notes = notes(o),
+            remaining = (usage?.get("remaining") as? JsonPrimitive)?.intOrNull,
+            resetsAtMs = str(usage, "resetsAt")?.let(::parseInstantMs),
+            replayed = (o["replayed"] as? JsonPrimitive)?.booleanOrNull ?: false,
+            language = str(o, "language"),
+            subject = str(o, "subject")?.takeIf { it.isNotBlank() },
+            placeholders = (o["placeholders"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.contentOrNull },
+        )
+    }
+
+    /** The contract `FeatureCode` a request is metered as (also the key of `/me/entitlements`). */
     fun featureCode(kind: AiTaskKind) = when (kind) {
         AiTaskKind.TRANSLATE -> "TRANSLATE"
         AiTaskKind.GRAMMAR -> "GRAMMAR_CORRECTION"
         AiTaskKind.REWRITE -> "REWRITE"
+        AiTaskKind.TONE -> "TONE_ADJUST"
+        AiTaskKind.EXPLAIN -> "EXPLAIN_TEXT"
+        AiTaskKind.SUMMARIZE -> "SUMMARIZE"
+        AiTaskKind.REPLY -> "SMART_REPLY"
+        AiTaskKind.EMAIL -> "DRAFT_DOCUMENT"
     }
 
     /** Maps the client's [ApiError] to what the toolbar shows. Switches on `code`, never on a title. */
@@ -123,7 +220,8 @@ internal object AiWire {
         "CONTENT_REJECTED" -> AiFailure.ContentRejected
         "LANGUAGE_NOT_SUPPORTED", "LANGUAGE_PAIR_UNAVAILABLE" -> AiFailure.LanguageUnsupported
         "REQUEST_IN_PROGRESS" -> AiFailure.Busy
-        "INPUT_TOO_LONG" -> AiFailure.TooLong
+        "INPUT_TOO_LONG" -> AiFailure.InputTooLong(e.fieldErrors.firstOrNull()?.field)
+        "VALIDATION_FAILED" -> AiFailure.Invalid(e.fieldErrors.firstOrNull()?.field)
         "UNAUTHENTICATED", "TOKEN_EXPIRED", "GUEST_SESSION_INVALID", "ATTESTATION_REQUIRED", "ATTESTATION_FAILED",
         "GUEST_NOT_ALLOWED", ProblemCodes.REFRESH_TOKEN_REUSED,
         -> AiFailure.SignInRequired
