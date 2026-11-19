@@ -10,10 +10,12 @@ object KeyPreview {
      * the Fidel consonant and order keys) preview; space, enter, shift, backspace, globe and the mode
      * and page keys never do. Shows exactly what the key types (shift upper-cases letters on the letters
      * page, as [KeyboardController.onKey] does); [orderFace] is the current face of a Fidel order key.
+     * A key that types combining marks only (an Arabic harakah) shows its label, the mark on a dotted circle.
      */
     fun textFor(key: Key, shift: ShiftState, page: Page, orderFace: OrderFace?): String? = when (key.kind) {
         KeyKind.CHAR -> when {
             key.isSpacer || key.text.isBlank() -> null
+            key.text.all { Character.getType(it) == Character.NON_SPACING_MARK.toInt() } -> key.label
             shift != ShiftState.OFF && page == Page.LETTERS -> key.text.uppercase()
             else -> key.text
         }

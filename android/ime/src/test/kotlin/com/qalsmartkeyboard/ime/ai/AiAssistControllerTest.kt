@@ -119,7 +119,7 @@ class AiAssistControllerTest {
         val h = H(selection = "text")
         h.c.open()
         h.c.selectAction(AiAssistAction.REWRITE)
-        assertEquals(listOf(null, "am", "ti", "om", "en"), h.c.outputChoices())
+        assertEquals(listOf(null, "am", "ti", "om", "en", "ar"), h.c.outputChoices())
         h.c.chooseOutput("ti")
         h.c.run()
         assertEquals(AiTask.Rewrite(null, "ti"), h.sent().task)

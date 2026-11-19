@@ -444,10 +444,11 @@ class KeyboardController(
         switchLanguage(all[(all.indexOf(language) + 1) % all.size])
     }
 
-    /** Globe long-press: cycles the current language's layouts (SD 7.1), ending on ABC. */
+    /** Globe long-press: cycles the current language's layouts (SD 7.1), ending on ABC (not in Arabic, ADR 0034). */
     fun cycleLayout() {
         if (!profile.allowsTransliteration) return
-        val kinds = LanguageCatalog.nativeKinds(language).filter { composer.supports(TypingMode(language, it)) } + LayoutKind.ABC
+        val abc = if (LanguageCatalog.hasAbcLayout(language)) listOf(LayoutKind.ABC) else emptyList()
+        val kinds = LanguageCatalog.nativeKinds(language).filter { composer.supports(TypingMode(language, it)) } + abc
         if (kinds.size < 2) return
         finishComposition()
         setKind(kinds[(kinds.indexOf(mode.kind) + 1) % kinds.size])
@@ -473,6 +474,7 @@ class KeyboardController(
      */
     fun toggleAbc() {
         if (!profile.allowsTransliteration) return
+        if (!mode.isAbc && !LanguageCatalog.hasAbcLayout(language)) return // Arabic has no ABC layout (ADR 0034)
         if (mode.isAbc) {
             val back = nativeToReturnTo() ?: return
             finishComposition()
@@ -520,8 +522,10 @@ class KeyboardController(
         val searching = redirect != null
         (redirect ?: sink).apply(update)
         val m = effectiveMode
-        // A Latin word typed in ABC is not an Amharic or Tigrinya word (SD 7.4: learn per language and script).
-        learner.observe(update, m.language, !searching && profile.learnsWords && !(m.isAbc && LanguageCatalog.isEthiopic(m.language)))
+        // A Latin word typed in ABC is not an Amharic or Tigrinya word (SD 7.4: learn per language and script). Languages
+        // without a core dictionary (Arabic, ADR 0034) learn nothing: no word would ever be suggested back.
+        val learns = profile.learnsWords && LanguageCatalog.learnsWords(m.language) && !(m.isAbc && LanguageCatalog.isEthiopic(m.language))
+        learner.observe(update, m.language, !searching && learns)
         candidates = update.candidates
         composing = update.composing.isNotEmpty()
         // Anything that commits or cancels the composition (space, another consonant's commit, backspace, an order key,

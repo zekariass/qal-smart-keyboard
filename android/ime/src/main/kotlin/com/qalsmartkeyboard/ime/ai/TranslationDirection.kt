@@ -2,9 +2,12 @@ package com.qalsmartkeyboard.ime.ai
 
 import com.qalsmartkeyboard.ime.LanguageCatalog
 
-/** The languages the AI panels offer as source and output (the keyboard's launch languages, ADR 0031). */
+/**
+ * The languages the AI panels offer as source and output: the keyboard's typing languages (ADR 0031), Arabic included
+ * (ADR 0034). The server decides which pairs it can translate; an unsupported pair is reported as such, never faked.
+ */
 object AiLanguages {
-    val ALL: List<String> = listOf("am", "ti", "om", "en")
+    val ALL: List<String> = listOf("am", "ti", "om", "en", "ar")
 
     /** The language's name in the UI language ("Amharic", "አማርኛ" in Amharic, ADR 0032), as the AI panels show it. */
     fun name(code: String): String = LanguageCatalog.spokenName(code)
@@ -12,7 +15,7 @@ object AiLanguages {
     /** A plain-language destination (no profile). */
     fun plain(code: String) = AiDestination("lang:$code", name(code), code)
 
-    /** The default destination for text in [source]: English for am/ti/om, Amharic for English (ADR 0031). */
+    /** The default destination for text in [source]: English for am/ti/om/ar, Amharic for English (ADR 0031). */
     fun defaultTarget(source: String): String = if (source == "en") "am" else "en"
 }
 

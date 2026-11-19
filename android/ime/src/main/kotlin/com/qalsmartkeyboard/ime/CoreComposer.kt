@@ -20,6 +20,7 @@ class CoreComposer(
     /** Phonetic key hints per language, derived off the main thread by [deriveHints] before the engine is handed over. */
     private val hints: Map<String, PhoneticHints> = emptyMap(),
 ) : Composer {
+    /** Languages that can have layout or profile packs (Arabic, ADR 0034, needs none). */
     private val languages = listOf("am", "ti", "om", "en")
     private val draft = HashMap<TypingMode, Boolean>()
     private val grids = HashMap<String, FidelGrid>()
@@ -48,6 +49,7 @@ class CoreComposer(
         LayoutKind.PHONETIC -> mode.language in phoneticOk
         LayoutKind.QUBEE -> mode.language == "om"
         LayoutKind.ENGLISH -> mode.language == "en"
+        LayoutKind.ARABIC -> mode.language == "ar"
     }
 
     override fun fidelGrid(language: String): FidelGrid? = grids[language]
@@ -84,6 +86,7 @@ class CoreComposer(
                     LayoutKind.PHONETIC -> InputMode.PHONETIC_LATIN
                     LayoutKind.QUBEE -> InputMode.QUBEE
                     LayoutKind.ENGLISH -> InputMode.ENGLISH
+                    LayoutKind.ARABIC -> InputMode.ARABIC
                 },
             )
             true

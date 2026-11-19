@@ -14,6 +14,9 @@ enum class LayoutKind(val phonetic: Boolean, val latin: Boolean) {
     /** Latin passthrough (core `English`): en. */
     ENGLISH(phonetic = false, latin = true),
 
+    /** The Arabic letter layout, passthrough in logical order (core `Arabic`, ADR 0034): ar. No shift, no candidates. */
+    ARABIC(phonetic = false, latin = false),
+
     /**
      * Latin passthrough in any language (core `Abc`). For am/ti this is the **English** writing mode
      * (remembered like Fidel and Phonetic); for om it is the temporary ABC toggle.
@@ -31,15 +34,32 @@ data class TypingMode(val language: String, val kind: LayoutKind) {
     }
 }
 
-/** Static facts about the four launch languages (SD 7.1). UI words come from [KeyboardLabels] (the app language, ADR 0032). */
+/**
+ * Static facts about the typing languages: the four launch languages (SD 7.1) and Arabic (ADR 0034). UI words come from
+ * [KeyboardLabels] (the app language, ADR 0032).
+ */
 object LanguageCatalog {
     /** Native (non-ABC) layouts per language, in long-press-globe cycle order; the first is the first-run default (ADR 0007: phonetic QWERTY). */
     fun nativeKinds(language: String): List<LayoutKind> = when (language) {
         "am", "ti" -> listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL)
         "om" -> listOf(LayoutKind.QUBEE)
         "en" -> listOf(LayoutKind.ENGLISH)
+        "ar" -> listOf(LayoutKind.ARABIC)
         else -> emptyList()
     }
+
+    /** Languages written right to left (ADR 0034): text is committed in logical order and the editor lays it out. */
+    fun isRtl(language: String) = language == "ar"
+
+    /**
+     * Whether the language has the Latin ABC layout as a writing choice in text fields (the one-tap ABC key and the
+     * last stop of the globe long-press cycle). Arabic has none, like Gboard: Latin text is one globe tap away in
+     * English, and a Latin "Arabic" layout would only mislabel the text (ADR 0034).
+     */
+    fun hasAbcLayout(language: String) = language != "ar"
+
+    /** Languages whose words the personal dictionary learns: those with a core dictionary (A1.8). Arabic has none (N10). */
+    fun learnsWords(language: String) = language in com.qalsmartkeyboard.ime.userdict.UserDictionary.LANGUAGES
 
     /** Languages written in Ge'ez script: Ethiopic punctuation and numerals apply (SD 7.2). */
     fun isEthiopic(language: String) = language == "am" || language == "ti"
@@ -74,6 +94,7 @@ object LanguageCatalog {
         "ti" -> "ትግ"
         "om" -> "OM"
         "en" -> "EN"
+        "ar" -> "ع"
         else -> language.uppercase()
     }
 
@@ -83,6 +104,7 @@ object LanguageCatalog {
         "ti" -> "ትግርኛ"
         "om" -> "Afaan Oromoo"
         "en" -> "English"
+        "ar" -> "العربية"
         else -> language
     }
 
@@ -94,6 +116,7 @@ object LanguageCatalog {
         LayoutKind.PHONETIC -> KeyboardLabels.current.modePhonetic
         LayoutKind.QUBEE -> "Qubee"
         LayoutKind.ENGLISH -> "QWERTY"
+        LayoutKind.ARABIC -> "العربية"
         LayoutKind.ABC -> "ABC"
     }
 
@@ -102,13 +125,14 @@ object LanguageCatalog {
         LayoutKind.PHONETIC -> KeyboardLabels.current.spokenPhoneticKeys
         LayoutKind.QUBEE -> "Qubee"
         LayoutKind.ENGLISH -> "QWERTY"
+        LayoutKind.ARABIC -> KeyboardLabels.current.spokenArabicKeys
         LayoutKind.ABC -> KeyboardLabels.current.spokenAbcLatin
     }
 
     /**
      * The mode indicator (SD 7.1, e.g. `አማ · Phonetic`): language tag, then the layout or writing
      * mode. am/ti name their English writing mode; elsewhere ABC names where the one-tap ABC toggle
-     * goes back to (`OM · ABC→Qu`).
+     * goes back to (`OM · ABC→Qu`). Arabic shows `ع · العربية` (drawn right to left as one Arabic run).
      */
     fun indicator(mode: TypingMode, backTo: LayoutKind?): String {
         val tag = shortLabel(mode.language)
@@ -124,6 +148,7 @@ object LanguageCatalog {
     fun nativeGlyph(language: String) = when (language) {
         "am", "ti" -> "አ"
         "om" -> "Qu"
+        "ar" -> "ع"
         else -> "EN"
     }
 }
