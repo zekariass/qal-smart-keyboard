@@ -89,7 +89,8 @@ class AiWorkspace(
     /** True while a panel is shown in place of the keys (open and not typing). */
     val showsPanel: Boolean get() = isOpen && !typing
 
-    private val multiline: Boolean
+    /** The field being typed into takes line breaks (Enter adds one); one-line fields: names, the subject. */
+    val typingMultiline: Boolean
         get() = when (screen) {
             AiScreen.ASSIST -> true
             AiScreen.EMAIL -> email.typing?.multiline ?: true
@@ -107,7 +108,7 @@ class AiWorkspace(
 
     private val typingAdapter = object : FieldTyping {
         override val sink: TextSink get() = typingField?.sink ?: NoSink
-        override val newlineOnEnter: Boolean get() = multiline
+        override val newlineOnEnter: Boolean get() = typingMultiline
         override fun done() = endTyping()
     }
 

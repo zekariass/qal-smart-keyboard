@@ -111,19 +111,22 @@ class TranslatePanelViewTest {
 
     @Test fun theBoxShowsTheHintThenTheTextWithAClearButton() {
         val h = H("Hello there. How are you").open()
-        assertEquals("Type to translate", h.view.inputTextView.text.toString())
+        assertEquals("Type to translate", h.view.inputEditor.hint.toString())
+        assertEquals("", h.view.inputEditor.buffer!!.text)
         assertEquals(View.GONE, h.view.clearButtonView.visibility)
         assertEquals("the last sentence is offered while empty", View.VISIBLE, h.view.sentenceChipView.visibility)
         assertFalse(h.view.translateButtonView.isEnabled)
         h.type("Selam")
-        assertEquals("Selam▏", h.view.inputTextView.text.toString())
+        assertEquals("Selam", h.view.inputEditor.buffer!!.text)
+        assertEquals("the caret follows the typing", 5, h.view.inputEditor.buffer!!.cursor)
+        assertEquals("Text to translate: Selam", h.view.inputEditor.contentDescription.toString())
         assertEquals(View.VISIBLE, h.view.clearButtonView.visibility)
         assertEquals(View.GONE, h.view.sentenceChipView.visibility)
         assertTrue(h.view.translateButtonView.isEnabled)
         assertEquals("Translate to Amharic", h.view.translateButtonView.contentDescription.toString())
         h.view.clearButtonView.performClick()
         assertEquals("", h.c.input.text)
-        assertEquals("Type to translate", h.view.inputTextView.text.toString())
+        assertEquals("", h.view.inputEditor.buffer!!.text)
     }
 
     @Test fun useLastSentenceFillsTheBoxAndLabelsIt() {

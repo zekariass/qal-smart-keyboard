@@ -12,6 +12,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -69,6 +70,7 @@ import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.app.themes.ThemesHost
 import com.qalsmartkeyboard.app.themes.rememberPremiumThemeAccess
 import com.qalsmartkeyboard.app.wordart.WordArtHost
+import com.qalsmartkeyboard.app.voice.rememberDictation
 import com.qalsmartkeyboard.app.email.EmailWriterModel
 import com.qalsmartkeyboard.app.email.EmailWriterRoute
 import com.qalsmartkeyboard.app.themes.themeStore
@@ -333,7 +335,14 @@ class MainActivity : ComponentActivity() {
                         )
                         wordArtOpen && !showFlow -> {
                             BackHandler { wordArtOpen = false }
-                            WordArtHost(onBack = { wordArtOpen = false }, modifier = Modifier.padding(innerPadding))
+                            // ADR 0038: the screen keeps clear of the keyboard (imePadding inside; the bars' insets are
+                            // consumed here so they are not added twice) and dictates through the platform recogniser.
+                            val dictation = rememberDictation(settings) { change -> lifecycleScope.launch { repository.update(change) } }
+                            WordArtHost(
+                                onBack = { wordArtOpen = false },
+                                modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
+                                dictation = dictation,
+                            )
                         }
                         emailOpen && !showFlow -> {
                             val closeEmail = {
@@ -342,6 +351,7 @@ class MainActivity : ComponentActivity() {
                                 emailFromKeyboard = false
                             }
                             BackHandler(onBack = closeEmail)
+                            val dictation = rememberDictation(settings) { change -> lifecycleScope.launch { repository.update(change) } }
                             EmailWriterRoute(
                                 model = email,
                                 senderName = settings.emailSenderName,
@@ -354,7 +364,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onBack = closeEmail,
-                                modifier = Modifier.padding(innerPadding),
+                                modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
+                                dictation = dictation,
                             )
                         }
                         showFlow -> OnboardingScreen(
