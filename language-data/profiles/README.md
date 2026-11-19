@@ -4,7 +4,7 @@
 (`qal-transliteration-profile` v1, parsed and validated by `core/src/translit/profile.rs`). Status is
 **DRAFT** until the native-speaker panel (gate G0) approves them; they must never be shown to users as
 verified (rule N9; hosts read the status through `KeyboardEngine::translit_profile`). The L1.1 pack build
-tool wraps them into signed packs. Golden corpora: `core/tests/golden/{am,ti}-phonetic-0.2.0.json`; coverage matrices (every required
+tool wraps them into signed packs. Golden corpora: `core/tests/golden/am-phonetic-0.2.0.json`, `core/tests/golden/ti-phonetic-0.3.0.json`; coverage matrices (every required
 Fidel form and the sequences that reach it, checked end to end by `core/tests/phonetic_coverage.rs`):
 `core/tests/golden/{am,ti}-phonetic-coverage.json`, explained in `docs/specs/phonetic-coverage-am-ti.md`.
 Syllable forms come from the generated Fidel table (`../generated/fidel-table-v1.json`); profiles only
@@ -24,12 +24,13 @@ name series ids and order numbers.
 - Doubled consonants collapse (`messeret` gives መሰረት, Fidel does not mark gemination); `_` separates
   letters that would otherwise combine (`s_h` gives ስህ, `s_s` gives ስስ).
 - A vowel typed without a consonant uses the glottal series: `a` አ, `e` እ, `u` ኡ, `i` ኢ, `ee` ኤ, `I` እ, `o` ኦ.
+  Tigrinya (0.3.0) writes initial /a/ with its own letter: `a` gives ኣ (ኣብ, ኣነ), with አ as the first alternative.
 - Case is folded (a sentence-initial capital is safe), except the explicit `I` and the labial marker `W`.
   Capitals with a SERA meaning keep the folded default and offer it as an alternative (0.2.0): `T` ጥ,
   `C` ጭ, `P` ጵ, `S` ሥ/ጽ, `K` ኽ, `N` ኝ, `Z` ዥ.
 - Alternatives (one substitution at a time, left to right, capped by `max_candidates`): homophone series
   (ሰ/ሠ, ሀ/ሐ/ኀ, ጸ/ፀ; Tigrinya ቀ/ቐ), and for a standalone vowel the other glottal orders and the
-  pharyngeal series in the same and the other orders (`a`: ኣ ዐ ዓ; `e`: አ ዕ ዐ ኧ). A bare consonant
+  pharyngeal series in the same and the other orders (`a`: ኣ ዐ ዓ, Tigrinya አ ዓ ዐ; `e`: አ ዕ ዐ ኧ). A bare consonant
   followed by a lowercase-`w` syllable also offers the labialised letter (counts as one substitution).
 - Punctuation by doubling: `..` ። `,,` ፣ `;;` ፤ `::` ፥ `??` ፧. A single `.` `,` `;` `:` `?` stays ASCII (it is
   held as composing text until the next key decides).
@@ -39,12 +40,12 @@ name series ids and order numbers.
 - Digits and other non-letter keys end the word and are committed as typed.
 
 ## Open questions for the G0 panel
-1. `e` as 1st order (ሰ) but a standalone `e` as እ (6th); `a` standalone as አ (not ኣ).
+1. `e` as 1st order (ሰ) but a standalone `e` as እ (6th); `a` standalone as አ in Amharic, ኣ in Tigrinya (0.3.0).
 2. `ie` as 5th order conflicts with a genuine i + e sequence (use `_`).
 3. Ejective apostrophes (`t'`) vs capital letters (SERA style `T`); 0.2.0 offers the capital readings
    only as alternatives so that names typed with a capital keep their default.
 4. Which homophone (ሰ/ሠ, ሀ/ሐ/ኀ, ጸ/ፀ) is the default, and `ts` giving ጸ with ፀ as alternative.
 5. Tigrinya: `x` for ኸ (Amharic `x` is ሸ), `qh` for ቐ, whether ቀ should offer ቐ and vice versa.
 6. Doubling for punctuation (`..` ።), the `_` separator and the `W` labial marker.
-7. Missing: a deterministic key for ኧ and ኣ (alternatives only), ጐ-like forms for non-labiovelar series, gemination marking, Ethiopic numerals as
+7. Missing: a deterministic key for ኧ, Amharic ኣ and Tigrinya አ (alternatives only), ጐ-like forms for non-labiovelar series, gemination marking, Ethiopic numerals as
    alternatives for typed digits (C1.9 provides the conversion).

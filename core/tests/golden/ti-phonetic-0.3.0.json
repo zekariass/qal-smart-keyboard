@@ -1,9 +1,9 @@
 {
   "profile": "ti-phonetic",
-  "profile_version": "0.2.0",
+  "profile_version": "0.3.0",
   "status": "DRAFT",
   "profile_source": "language-data/profiles/ti-phonetic-draft.json",
-  "notation": "same as am-phonetic-0.2.0.json (see tests/golden/README.md)",
+  "notation": "same as am-phonetic-0.2.0.json (see tests/golden/README.md); 0.3.0: a word-initial `a` gives ኣ (Tigrinya spelling), አ is its first alternative",
   "vectors": [
     {
       "name": "tigray",
@@ -87,7 +87,7 @@
       "keystrokes": ["h", "a", ",", ",", "a", ".", "."],
       "composing": "",
       "alternatives": [],
-      "committed": "ሃ፣አ።"
+      "committed": "ሃ፣ኣ።"
     },
     {
       "name": "backspace-recomputes-digraph-and-series",
@@ -155,6 +155,28 @@
       "keystrokes": ["K", "e"],
       "composing": "ከ",
       "alternatives": ["ኸ"],
+      "committed": ""
+    },
+    {
+      "name": "word-initial-a-is-a-not-ae",
+      "keystrokes": ["a", "b", "Space"],
+      "steps": [{ "after": 2, "composing": "ኣብ", "commit": "", "alternatives": ["አብ", "ዓብ", "ዐብ"] }],
+      "composing": "",
+      "alternatives": [],
+      "committed": "ኣብ "
+    },
+    {
+      "name": "a-after-the-separator",
+      "keystrokes": ["n", "_", "a", "s", "h", "t", "o"],
+      "composing": "ንኣሽቶ",
+      "alternatives": ["ንአሽቶ", "ንዓሽቶ", "ንዐሽቶ"],
+      "committed": ""
+    },
+    {
+      "name": "word-initial-e-stays-sixth-order",
+      "keystrokes": ["e", "z", "i"],
+      "composing": "እዚ",
+      "alternatives": ["አዚ", "ዕዚ", "ዐዚ", "ኧዚ"],
       "committed": ""
     }
   ]
