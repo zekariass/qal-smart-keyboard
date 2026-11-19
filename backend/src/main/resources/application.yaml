@@ -33,6 +33,12 @@ qal:
         key-id: ${QAL_JWT_KEY_ID:qal-1}
         private-key: ${QAL_JWT_PRIVATE_KEY:}
         public-key: ${QAL_JWT_PUBLIC_KEY:}
+    # E-mail + password sign-in (ADR 0033). verification-required=true needs an e-mail provider (startup fails without
+    # one). No real e-mail vendor adapter exists yet, so production runs either with QAL_EMAIL_VERIFICATION_REQUIRED=false
+    # (unverified sign-up; loud WARN, password reset answers 503) or with QAL_EMAIL_ENABLED=false.
+    email:
+      enabled: ${QAL_EMAIL_ENABLED:true}
+      verification-required: ${QAL_EMAIL_VERIFICATION_REQUIRED:true}
     # Attestation (B2.3, ADR 0008): no real Play Integrity / App Attest adapter exists yet, so without the mock switch no
     # guest session is ever created. QAL_ATTESTATION_MOCK=true is for development only (refused under prod/production/staging).
     attestation:
@@ -60,6 +66,10 @@ qal:
         base-url: ${QAL_SMS_ETHIOPIA_BASE_URL:https://smsethiopia.com/}
         connect-timeout: ${QAL_SMS_ETHIOPIA_CONNECT_TIMEOUT:2s}
         read-timeout: ${QAL_SMS_ETHIOPIA_READ_TIMEOUT:5s}
+    # E-mail provider (ADR 0033): 'none' (default: nothing can be sent), or 'log' / 'capture' (development only, refused
+    # under prod/production/staging). The vendor is an open decision (ADR 0033).
+    email:
+      provider: ${QAL_EMAIL_PROVIDER:none}
   # Language packs (B3.1). Download URLs are pre-signed S3 (MinIO locally, infra/compose: bucket qal-language-packs).
   # Without credentials stored s3:// locations cannot be served (500); the prod/production/staging profiles refuse to start.
   languages:

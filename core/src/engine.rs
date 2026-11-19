@@ -1,6 +1,6 @@
 //! The FFI-facing engine object and its data types.
 
-use crate::composer::{DirectFidel, FidelLayout, Layout};
+use crate::composer::{sanitize, DirectFidel, FidelLayout, Layout};
 use crate::error::CoreError;
 use crate::lexicon::Lexicon;
 use crate::pack::{
@@ -32,6 +32,11 @@ pub enum InputMode {
     PhoneticLatin,
     Qubee,
     English,
+    /// Arabic script keys (ADR 0034): a direct layout, so typed text is committed as it is, but
+    /// normalised to NFC and checked like a Fidel popup choice (no control characters). No
+    /// transliteration, no composition, no candidates (no Arabic dictionary is licensed, N10).
+    /// Only for `ar`. Added last so the FFI ordinals of the other modes do not change.
+    Arabic,
 }
 
 /// A key event from the host keyboard.
@@ -232,7 +237,8 @@ pub struct KeyboardEngine {
     config: EngineConfig,
 }
 
-const SUPPORTED_LANGUAGES: [&str; 4] = ["am", "ti", "om", "en"];
+/// Typing languages the engine accepts. `ar` (ADR 0034) has its own passthrough mode and no packs.
+const SUPPORTED_LANGUAGES: [&str; 5] = ["am", "ti", "om", "en", "ar"];
 
 #[uniffi::export]
 impl KeyboardEngine {
@@ -486,15 +492,23 @@ impl KeyboardEngine {
         // Qubee apostrophe (hudhaa) is an ordinary character here; word segmentation around it
         // lives in `crate::latin`. After commit, Backspace deletes one grapheme cluster, so a
         // digraph such as `dh` takes two presses (the host's cursor view).
+        // Arabic (ADR 0034) is passthrough too, but its text is sanitised and NFC like every
+        // script-native mode: a host that sends alef + combining hamza gets the precomposed
+        // letter, and control characters are never committed. Text is in logical order; the
+        // editor's bidi algorithm shows it right to left.
         debug_assert!(matches!(
             s.mode,
-            InputMode::Abc | InputMode::English | InputMode::Qubee
+            InputMode::Abc | InputMode::English | InputMode::Qubee | InputMode::Arabic
         ));
         match event {
             // Two-key Fidel events only mean something in DirectFidel.
             KeyEvent::FidelConsonant { .. } | KeyEvent::FidelVowel { .. } => {
                 EditorUpdate::default()
             }
+            KeyEvent::Char { text } if s.mode == InputMode::Arabic => EditorUpdate {
+                commit: sanitize(&text).unwrap_or_default(),
+                ..Default::default()
+            },
             KeyEvent::Char { text } => EditorUpdate {
                 commit: text,
                 ..Default::default()
@@ -651,18 +665,20 @@ fn mode_fits_language(mode: InputMode, language_code: &str) -> bool {
         InputMode::DirectFidel | InputMode::PhoneticLatin => matches!(language_code, "am" | "ti"),
         InputMode::Qubee => language_code == "om",
         InputMode::English => language_code == "en",
+        InputMode::Arabic => language_code == "ar",
     }
 }
 
 /// Modes implemented in this build. DirectFidel (C1.3) and PhoneticLatin (C1.4) additionally
-/// need a loaded layout / profile, checked in `set_input_mode`. Qubee and English (C1.5) are
-/// passthrough and need no data.
+/// need a loaded layout / profile, checked in `set_input_mode`. Qubee and English (C1.5) and
+/// Arabic (ADR 0034) are passthrough and need no data.
 fn mode_available(mode: InputMode) -> bool {
     matches!(
         mode,
         InputMode::Abc
             | InputMode::English
             | InputMode::Qubee
+            | InputMode::Arabic
             | InputMode::DirectFidel
             | InputMode::PhoneticLatin
     )
@@ -1014,6 +1030,9 @@ mod tests {
             ("am", InputMode::Qubee),
             ("om", InputMode::English),
             ("ti", InputMode::English),
+            ("en", InputMode::Arabic),
+            ("ar", InputMode::English),
+            ("ar", InputMode::Qubee),
         ] {
             assert!(
                 matches!(
@@ -1024,6 +1043,21 @@ mod tests {
             );
         }
         e.set_input_mode("am".into(), InputMode::Abc).unwrap();
+        e.set_input_mode("ar".into(), InputMode::Arabic).unwrap();
+    }
+
+    #[test]
+    fn arabic_mode_commits_nfc() {
+        let e = engine();
+        e.set_input_mode("ar".into(), InputMode::Arabic).unwrap();
+        assert_eq!(
+            e.on_key(KeyEvent::Char {
+                text: "\u{0627}\u{0654}".into()
+            })
+            .commit,
+            "\u{0623}"
+        );
+        assert_eq!(e.on_key(KeyEvent::Backspace).delete_before, 1);
     }
 
     #[test]

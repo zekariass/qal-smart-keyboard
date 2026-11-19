@@ -70,7 +70,7 @@ internal class AuthApiRefresher(private val api: AuthApi) : Refresher {
  *
  * The same refresh runs on 401 `UNAUTHENTICATED` with `WWW-Authenticate: Bearer error="invalid_token"` (RFC 6750: the
  * bearer itself was refused, e.g. it was signed with a key the server no longer has after a key rotation or a
- * development server restart, ADR 0034): the refresh token may still be good. A 401 `UNAUTHENTICATED` without
+ * development server restart, ADR 0035): the refresh token may still be good. A 401 `UNAUTHENTICATED` without
  * `invalid_token` (an endpoint refusing something else, e.g. a Google ID token) is not about the session and is left
  * alone.
  *

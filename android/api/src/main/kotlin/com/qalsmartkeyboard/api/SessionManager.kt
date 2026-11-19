@@ -21,7 +21,7 @@ enum class SignedOutReason {
 
     /**
      * The server refused the access token itself (`UNAUTHENTICATED` with `WWW-Authenticate: Bearer error="invalid_token"`:
-     * a signing key it no longer has, or a closed account) and a refresh did not produce one it accepts (ADR 0034).
+     * a signing key it no longer has, or a closed account) and a refresh did not produce one it accepts (ADR 0035).
      */
     ACCESS_TOKEN_REJECTED,
 
@@ -38,7 +38,7 @@ sealed interface SessionState {
  * Single owner of the session: the [TokenStore] plus an observable [state] the UI watches to
  * show the signed-out state. [lock] serialises token refreshes (ADR 0007 D8).
  *
- * The companion app and the keyboard live in one process and share this one instance (ADR 0034). [state] is a
+ * The companion app and the keyboard live in one process and share this one instance (ADR 0035). [state] is a
  * [StateFlow] for coroutine code; [addListener] is the plain-callback form for the keyboard side, and unlike [state] it
  * also fires when one signed-in session replaces another (an account switch, a guest linked to an account, a token
  * rotation), which a [StateFlow] conflates away.

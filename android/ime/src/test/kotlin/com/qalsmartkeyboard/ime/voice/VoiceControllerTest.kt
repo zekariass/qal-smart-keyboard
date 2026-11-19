@@ -269,6 +269,27 @@ class VoiceControllerTest {
         assertNull(h.prefs.chosen("am"))
     }
 
+    @Test fun thePickerListsArabicOnlyWhenASpeechServiceTakesItOrItIsTyped() {
+        // ADR 0034: not declared and not the keyboard language -> not listed (the four launch languages always are).
+        val h = H(lang = "am")
+        h.c.onMicTapped()
+        h.c.openPicker()
+        assertEquals(listOf("am-ET", "ti-ET", "om-ET", "en-US"), h.c.languageOptions().map { it.tag })
+        // Declared: listed with its support, under the device-independent default tag.
+        val h2 = H(lang = "am", languages = mapOf("default" to online("am-ET", "en-US", "ar-SA", "ar-EG")))
+        h2.c.onMicTapped()
+        h2.c.openPicker()
+        val arabic = h2.c.languageOptions().last()
+        assertEquals("ar-SA", arabic.tag)
+        assertEquals(SupportLevel.ONLINE, arabic.support)
+        assertTrue(arabic.label.startsWith("Arabic"))
+        // Typing Arabic: listed even when the service cannot take it, so the user sees why voice fails.
+        val h3 = H(lang = "ar")
+        h3.c.onMicTapped()
+        h3.c.openPicker()
+        assertEquals(SupportLevel.UNSUPPORTED, h3.c.languageOptions().single { it.tag == "ar-SA" }.support)
+    }
+
     @Test fun thePickerListsTheFourLanguagesWithTheirSupportAndMoreLanguages() {
         val h = H(lang = "am")
         h.c.onMicTapped()

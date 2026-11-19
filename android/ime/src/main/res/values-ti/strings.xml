@@ -344,12 +344,14 @@
     <string name="language_name_ti">ትግርኛ</string>
     <string name="language_name_om">ኦሮምኛ</string>
     <string name="language_name_en">እንግሊዝኛ</string>
+    <string name="language_name_ar">ዓረብኛ</string>
     <string name="kb_mode_phonetic">ፎነቲክ</string>
     <string name="kb_mode_english">እንግሊዝኛ</string>
     <string name="kb_spoken_fidel">ፊደል</string>
     <string name="kb_spoken_fidel_grid">ሰሌዳ ፊደል</string>
     <string name="kb_spoken_phonetic_keys">ፎነቲክ ላቲን መጠወቕታት</string>
     <string name="kb_spoken_abc_latin">ABC ላቲን</string>
+    <string name="kb_spoken_arabic_keys">ፊደላት ዓረብኛ</string>
     <string name="kb_mode_description">%1$s፣ %2$s</string>
     <string name="kb_keyboard_description">ኪቦርድ፣ %1$s</string>
     <string name="kb_key_delete">ምድምሳስ</string>
@@ -361,6 +363,11 @@
     <string name="kb_key_ethiopic_full_stop">ኣርባዕተ ነጥቢ ግእዝ</string>
     <string name="kb_key_comma">ኮማ</string>
     <string name="kb_key_ethiopic_comma">ነጠላ ሰረዝ ግእዝ</string>
+    <string name="kb_key_arabic_numeral">ቁጽሪ ዓረብኛ %1$s</string>
+    <string name="kb_key_arabic_punctuation">ምልክት ስርዓተ-ነጥቢ ዓረብኛ %1$s</string>
+    <string name="kb_key_arabic_comma">ኮማ ዓረብኛ</string>
+    <string name="kb_key_arabic_mark">ምልክት ዓረብኛ %1$s</string>
+    <string name="kb_key_arabic_marks">ምልክታት ዓረብኛ</string>
     <string name="kb_key_switch_to_language_keys">ናብ መጠወቕታት %1$s ቀይሩ</string>
     <string name="kb_key_switch_to_english_mode">ናብ ኣገባብ ጽሕፈት እንግሊዝኛ ቀይሩ</string>
     <string name="kb_key_switch_to_abc">ናብ ABC ላቲን መጠወቕታት ቀይሩ</string>

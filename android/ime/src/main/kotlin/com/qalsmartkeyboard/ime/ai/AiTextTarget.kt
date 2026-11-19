@@ -6,7 +6,7 @@ package com.qalsmartkeyboard.ime.ai
  * 1. **The selection**, if the host has a non-empty one.
  * 2. Otherwise **the sentence before the cursor** (the open composition is committed first, so it
  *    is part of the text before the cursor): from just after the previous sentence terminator
- *    (`. ! ? … ። ፧ ፨` or a line break) to the cursor. If the cursor sits right after a terminator
+ *    (`. ! ? … ። ፧ ፨ ؟` or a line break) to the cursor. If the cursor sits right after a terminator
  *    ("How are you?|"), that finished sentence is the target. Whitespace after the sentence is
  *    kept as it is. Text after the cursor is never read.
  *
@@ -29,7 +29,7 @@ object AiTextTarget {
     /** How much text before the cursor is read to find the sentence start. */
     const val LOOKBACK = 2000
 
-    private val TERMINATORS = setOf('.', '!', '?', '…', '።', '፧', '፨', '\n', '\r')
+    private val TERMINATORS = setOf('.', '!', '?', '…', '።', '፧', '፨', '؟', '\n', '\r') // U+061F ؟ Arabic question mark (ADR 0034)
 
     /** The sentence at the end of [before], or null if there is none. */
     fun sentenceBeforeCursor(before: String): AiSource.Sentence? {

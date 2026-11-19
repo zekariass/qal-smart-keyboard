@@ -320,7 +320,7 @@ data class AiAvailability(
     val entitled: Set<AiTaskKind>? = null,
     /**
      * Changes whenever the signed-in account changes (sign-in, sign-out, another account), in the app or the keyboard
-     * (ADR 0034). What the panels learned about the previous account (e.g. a "not on your plan" answer) is dropped when
+     * (ADR 0035). What the panels learned about the previous account (e.g. a "not on your plan" answer) is dropped when
      * it moves on.
      */
     val accountGeneration: Long = 0,

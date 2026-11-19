@@ -206,3 +206,24 @@ Deviations from the glossary:
 - Buttons that say "my" in English (Export my data, Delete my account) stay in the first person.
 - Oromo's name in Amharic and Tigrinya lists is ኦሮምኛ; prose in the app uses the self-name (Afaan Oromoo / አፋን ኦሮሞ). Pick one form.
 - Theme and Word Art style names are loose, descriptive translations. The panel may prefer to keep some in English.
+- Arabic as a typing language (ADR 0034, DRAFT like the rest): language_name_ar = ዓረብኛ (am), ዓረብኛ (ti), Afaan Arabaa (om),
+  following each language's pattern for language names (-ኛ in am and ti, *Afaan X* in om); lang_ar adds the self-name
+  العربية in brackets. Tigrinya ዓረብ (the people) was considered and not used: the other ti language names all end in -ኛ.
+  Key descriptions (kb_key_arabic_*) reuse the terms of their Ethiopic counterparts (ቁጥር/ቁጽሪ, ሥርዓተ ነጥብ, ኮማ,
+  lakkoofsa, mallattoo tuqaa, qoodduu); the names of the harakat (Fatha, Shadda, ...) are technical names and are not
+  translated, like Qubee and QWERTY.
+
+
+### Settings redesign (ADR 0036)
+
+New short labels for the settings home and pages. Unsure drafts:
+
+| key | am | ti | om | why |
+|---|---|---|---|---|
+| settings_advanced | የላቀ | ዝማዕበለ | Olaanaa | "Advanced" as a settings group; may read as "superior" rather than "more options". |
+| settings_about_version / settings_about_core | የመተግበሪያ ስሪት / ዋና ሞተር | ስሪት ኣፕ / ቀንዲ ሞተር | Veershinii appii / Motora bu\'uuraa | "Version" and "engine" have no settled UI terms; om *Veershinii* is a loan. |
+| settings_layout_title | አቀማመጥ | ኣቀማምጣ | Qindaa\'ina furtuuwwanii | "Layout" of the keys; om spelled out as "arrangement of keys". |
+| settings_theme_more | ተጨማሪ ይመልከቱ | ተወሳኺ ርኣዩ | Dabalata ilaalaa | "View more" next to the theme strip; a shorter form may fit better. |
+| settings_group_tools | AI እና መሣሪያዎች | AIን መሳርሒታትን | AI fi meeshaalee | "Tools" as a group name (meeshaalee = instruments). |
+| settings_setup_prompt_button | ያዋቅሩ | ኣዳልዉ | Qopheessaa | "Set up" as a short button; must not read as "settings". |
+| pd_word_count (plural) | %1$d ቃል / ቃላት | %1$d ቃል / ቃላት | jecha / jechoota %1$d | Plural forms one/other; check the singular after a number. |

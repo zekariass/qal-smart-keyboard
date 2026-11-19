@@ -345,6 +345,7 @@
     <string name="language_name_ti">Tigrinya</string>
     <string name="language_name_om">Afaan Oromoo</string>
     <string name="language_name_en">English</string>
+    <string name="language_name_ar">Arabic</string>
     <!-- Writing-mode selector of the bar (am/ti): Fidel is always ፊደል. Short: three fit in the bar. -->
     <string name="kb_mode_phonetic">Phonetic</string>
     <string name="kb_mode_english">English</string>
@@ -353,6 +354,7 @@
     <string name="kb_spoken_fidel_grid">Fidel grid</string>
     <string name="kb_spoken_phonetic_keys">phonetic Latin keys</string>
     <string name="kb_spoken_abc_latin">ABC Latin</string>
+    <string name="kb_spoken_arabic_keys">Arabic letters</string>
     <!-- %1$s language, %2$s writing mode, e.g. "Amharic, Phonetic". -->
     <string name="kb_mode_description">%1$s, %2$s</string>
     <string name="kb_keyboard_description">Keyboard, %1$s</string>
@@ -366,6 +368,13 @@
     <string name="kb_key_ethiopic_full_stop">Ethiopic full stop</string>
     <string name="kb_key_comma">Comma</string>
     <string name="kb_key_ethiopic_comma">Ethiopic comma</string>
+    <!-- Arabic keys (ADR 0034). %1$s of kb_key_arabic_mark is the mark's technical name (Fatha, Shadda, Tatweel, ...),
+         kept untranslated like Qubee and QWERTY. -->
+    <string name="kb_key_arabic_numeral">Arabic-Indic numeral %1$s</string>
+    <string name="kb_key_arabic_punctuation">Arabic punctuation %1$s</string>
+    <string name="kb_key_arabic_comma">Arabic comma</string>
+    <string name="kb_key_arabic_mark">Arabic mark %1$s</string>
+    <string name="kb_key_arabic_marks">Arabic marks</string>
     <string name="kb_key_switch_to_language_keys">Switch to %1$s keys</string>
     <string name="kb_key_switch_to_english_mode">Switch to English writing mode</string>
     <string name="kb_key_switch_to_abc">Switch to ABC Latin keys</string>

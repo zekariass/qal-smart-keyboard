@@ -21,5 +21,16 @@ class SignInViewModel(val repository: AuthRepository) : ViewModel() {
     fun resend() { viewModelScope.launch { model.resend() } }
     fun google(source: GoogleIdTokenSource) { viewModelScope.launch { model.signInWithGoogle(source) } }
     fun guest() { viewModelScope.launch { model.continueAsGuest() } }
+    fun setMethod(method: SignInMethod) = model.setMethod(method)
+    fun setEmail(text: String) = model.setEmail(text)
+    fun setPassword(text: String) = model.setPassword(text)
+    fun setNewPassword(text: String) = model.setNewPassword(text)
+    fun setResetCode(text: String) = model.setResetCode(text)
+    fun togglePasswordVisible() = model.togglePasswordVisible()
+    fun setEmailMode(mode: EmailMode) = model.setEmailMode(mode)
+    fun forgotPassword() = model.forgotPassword()
+    fun submitEmail() { viewModelScope.launch { model.submitEmail() } }
+    fun submitForgot() { viewModelScope.launch { model.submitForgot() } }
+    fun submitReset() { viewModelScope.launch { model.submitReset() } }
     fun signOut() { viewModelScope.launch { repository.signOut() } }
 }

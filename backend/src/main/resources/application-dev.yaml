@@ -9,6 +9,11 @@ qal:
   identity:
     otp:
       allow-ephemeral-secret-key: true
+    # ADR 0033: unverified e-mail sign-up for quick tests (not refused under prod, only WARNed there; set
+    # QAL_EMAIL_VERIFICATION_REQUIRED=true to try the code flow;
+    # codes then show at GET /dev/email/last?to=...).
+    email:
+      verification-required: ${QAL_EMAIL_VERIFICATION_REQUIRED:false}
     tokens:
       signing-key:
         allow-ephemeral: true
@@ -22,6 +27,10 @@ qal:
   notifications:
     sms:
       provider: capture            # ADR 0007 D28: in-memory capture, GET /dev/sms/last?phone=%2B251...
+      capture:
+        endpoint-enabled: true
+    email:
+      provider: capture            # ADR 0033: in-memory capture, GET /dev/email/last?to=user%40example.com
       capture:
         endpoint-enabled: true
   ai:

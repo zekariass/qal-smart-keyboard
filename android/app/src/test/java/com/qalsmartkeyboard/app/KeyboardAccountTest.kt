@@ -1,6 +1,5 @@
 package com.qalsmartkeyboard.app
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -37,9 +36,9 @@ import java.io.File
 import java.nio.file.Files
 
 /**
- * ADR 0034: the settings the keyboard's gear opens put the account first: "Sign in" when signed out, "Signed in as ..."
- * and "Sign out" when signed in; the bar's "Sign in to use AI" lands on the sign-in pane over those settings, and
- * "Back to typing" returns to the app (Robolectric).
+ * ADR 0035: the settings the keyboard's gear opens put the account first: "Sign in" (straight to the sign-in screen)
+ * when signed out, "Signed in as ..." leading to "Sign out" when signed in; the bar's "Sign in to use AI" lands on the
+ * sign-in pane over those settings (Robolectric).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h3000dp")
@@ -92,33 +91,48 @@ class KeyboardAccountTest {
         compose.onNodeWithText("Sign in").assertExists()
     }
 
-    @Test fun fromTheKeyboardTheAccountComesFirst() {
+    private var signIns = 0
+
+    private fun home(fromKeyboard: Boolean, account: AccountStatus = AccountStatus.SignedOut(null), label: String? = null) =
         compose.setContent {
-            Column {
-                KeyboardReturnBar(onDone = {})
-                SettingsScreen(
-                    KeyboardSettings.DEFAULT, repository, accountFirst = true, dictionaryContent = {},
-                    accountContent = { AccountSection(AccountStatus.SignedOut(null), onSignIn = {}, onSignOut = {}) },
-                )
-            }
+            SettingsScreen(
+                KeyboardSettings.DEFAULT, repository,
+                account = account,
+                accountLabel = label,
+                onSignIn = { signIns++ },
+                fromKeyboard = fromKeyboard,
+                dictionaryContent = {}, // no native core on the JVM
+                accountContent = { AccountSection(account, onSignIn = { signIns++ }, onSignOut = {}, label = label) },
+                appVersion = "1.0",
+            )
         }
+
+    @Test fun fromTheKeyboardSignedOutTheFirstRowSignsIn() {
+        home(fromKeyboard = true)
+        val signIn = compose.onNodeWithText("Sign in").getUnclippedBoundsInRoot().top
+        val themes = compose.onNodeWithText("View more").getUnclippedBoundsInRoot().top
+        assertTrue("the account row is above the themes", signIn < themes)
+        compose.onNodeWithText("Not signed in").assertExists()
+        compose.onNodeWithText("Sign in").performClick() // straight to the sign-in screen
+        assertEquals(1, signIns)
+        compose.onNodeWithText("Account").assertDoesNotExist() // not listed twice
+    }
+
+    @Test fun fromTheKeyboardSignedInTheFirstRowSaysWhoAndOpensSignOut() {
+        home(fromKeyboard = true, account = AccountStatus.Registered, label = "z•••@example.com")
         val account = compose.onNodeWithText("Account").getUnclippedBoundsInRoot().top
-        val setup = compose.onNodeWithText("Keyboard setup").getUnclippedBoundsInRoot().top
-        val back = compose.onNodeWithText("Back to typing").getUnclippedBoundsInRoot().top
-        assertTrue("the account card is above the setup card", account < setup)
-        assertTrue("\"Back to typing\" stays on top", back < account)
+        val themes = compose.onNodeWithText("View more").getUnclippedBoundsInRoot().top
+        assertTrue(account < themes)
+        compose.onNodeWithText("Signed in as z•••@example.com").performClick()
+        compose.onNodeWithText("Sign out").assertExists() // the account page
+        assertEquals(0, signIns)
     }
 
     @Test fun otherwiseTheAccountStaysInItsUsualPlace() {
-        compose.setContent {
-            SettingsScreen(
-                KeyboardSettings.DEFAULT, repository, dictionaryContent = {},
-                accountContent = { AccountSection(AccountStatus.SignedOut(null), onSignIn = {}, onSignOut = {}) },
-            )
-        }
+        home(fromKeyboard = false)
         val account = compose.onNodeWithText("Account").getUnclippedBoundsInRoot().top
-        val setup = compose.onNodeWithText("Keyboard setup").getUnclippedBoundsInRoot().top
-        assertTrue(setup < account)
+        val themes = compose.onNodeWithText("View more").getUnclippedBoundsInRoot().top
+        assertTrue(themes < account)
     }
 
     @Test fun theBarsSignInLinkOpensTheSignInPaneOverTheKeyboardSettings() {

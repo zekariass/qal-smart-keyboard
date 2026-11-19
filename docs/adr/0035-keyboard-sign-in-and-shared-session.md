@@ -1,4 +1,4 @@
-# ADR 0034 — Keyboard sign-in and one shared session
+# ADR 0035 — Keyboard sign-in and one shared session
 
 **Status:** Accepted · **Date:** 2026-11-19 · **Builds on:** ADR 0006 (session tokens), ADR 0007 (D8 refresh rotation,
 D40 toolbar and plan state), ADR 0009 (Google sign-in), ADR 0010 (guest merge, B2.6), ADR 0013 (entitlement token),
@@ -44,6 +44,10 @@ The app and the keyboard run in one process (no `android:process` in either mani
   (`session.signedIn`), which is the local sign-out of the previous account; nothing is revoked on the server for it (its
   refresh token expires on its own; signing in as someone else from the account card goes through "Sign out" first, which
   does revoke).
+- The e-mail calls of ADR 0033 follow the same policy: `email/register` (hand-written because of its 201/202 bodies; it
+  uses the main client only to link a guest, else `ApiClients.anonymousClient`), `email/login` and `email/verify` carry
+  the guest bearer only to link; `email/verify/resend`, `password/forgot` and `password/reset` link nothing and never
+  carry a bearer (the server ignores one there anyway).
 - `/auth/attestation-nonces` and `/auth/guest` (guest creation) also go out without a bearer.
 - If the guest bearer is refused and the session ends (`ApiError.SignedOut`: `GUEST_SESSION_INVALID`, a refresh refused
   after an `invalid_token`, or reuse detection), the dead guest session is cleared (tokens, kind, label) and the **same**
@@ -87,14 +91,16 @@ that a sign-in just merged) never ends the new session; the request is retried o
   rotation never fetches.
 
 ### 4. Signing in from the keyboard
-- The keyboard's gear (`AiLink.SETTINGS`) opens the settings with "Back to typing" (as before) and the **account card
-  first**, right under the title: signed out → "Sign in" (the full sign-in pane: phone and Google; the e-mail option
-  arrives with the e-mail sign-in work); guest → "Sign in"; signed in → "Signed in as …" with the masked phone number
-  (`phoneNumberMasked`) or a masked e-mail (`z•••@example.com`), and "Sign out". The label is stored encrypted next to the
-  tokens (`AccountLabelStore`, `noBackupFilesDir/auth`) and cleared on sign-out.
+- The keyboard's gear (`AiLink.SETTINGS`) opens the settings home (ADR 0036 layout) with its "Back to typing" arrow and
+  the **account row first**, above the theme strip (and not repeated in the "Account and privacy" group): signed out or
+  guest → a "Sign in" row ("Not signed in" / "Guest") that opens the full sign-in screen (phone, Google and e-mail,
+  ADR 0033) in the same task; signed in → "Account — Signed in as …" with the masked phone number (`phoneNumberMasked`)
+  or a masked e-mail (`z•••@example.com`), leading to the account page with "Sign out". The label is stored encrypted
+  next to the tokens (`AccountLabelStore`, `noBackupFilesDir/auth`) for phone, Google and e-mail sign-ins, and cleared on
+  sign-out. Opened from inside the app, the home keeps the account row in its usual group, with the same summary.
 - The bar's "Sign in to use AI" (`AiLink.SIGN_IN`) opens the sign-in pane **over those keyboard settings**: "Done" (or Back)
-  leaves the pane for the settings, which keep "Back to typing"; that finishes the task (`finishAndRemoveTask`), so the user
-  lands back in the app they were typing in. When an account is already signed in, `SIGN_IN` opens the keyboard settings
+  leaves the pane for the settings home, which keeps "Back to typing"; that finishes the task (`finishAndRemoveTask`), so
+  the user lands back in the app they were typing in. When an account is already signed in, `SIGN_IN` opens the keyboard settings
   directly (they say who).
 - Everything stays in the one `MainActivity` task; Google sign-in therefore uses the activity's context
   (`CredentialManagerGoogleSource(this@MainActivity, …)`), the only place it is created. The keyboard service never starts a
@@ -122,6 +128,8 @@ that a sign-in just merged) never ends the new session; the request is retried o
 - Tests: `:api` `ApiClientTest` (refused tokens refresh/sign out without looping, a replaced token never ends the new
   session, listeners see account switches, `anonymousAuth` sends no bearer), `:app` `SignInModelTest` (bearer policy: no
   session / guest / registered / kind-less / stale guest refreshed and linked / dead guest cleared and retried once / no loop
-  / refused Google token keeps a live guest; the account label), `KeyboardAccountTest` and `DeepLinksTest` (account first
-  from the gear, "Signed in as", the `SIGN_IN` path), `:ai-client` `SharedSessionTest` (availability, plan state, token and
+  / refused Google token keeps a live guest; the account label), `EmailSignInModelTest` (the same for the e-mail calls:
+  dead guest cleared and retried once for login and the hand-written register, no loop, resend never linked, a
+  registered token never sent on any e-mail call, the masked e-mail label), `KeyboardAccountTest` and `DeepLinksTest`
+  (account row first from the gear, "Signed in as", the `SIGN_IN` path), `:ai-client` `SharedSessionTest` (availability, plan state, token and
   themes follow sign-in, rotation, account switch and sign-out; nothing fetched at start-up), `:ime` panel locks per account.

@@ -72,7 +72,7 @@ object AiTimeouts {
  * Nothing here sends user text except [submit]; [refresh] only reads account metadata. Text,
  * results and tokens are never logged.
  *
- * **Shared session (ADR 0034):** the keyboard and the companion app use one session. Every session change reaches the
+ * **Shared session (ADR 0035):** the keyboard and the companion app use one session. Every session change reaches the
  * availability listeners (the toolbar, the panels, the premium themes) without a restart. When the account itself
  * changes (sign-in, sign-out, another account) the previous account's plan state and entitlement token are dropped
  * and, when someone is signed in, fetched again for the new account in the background (a user action, never the
@@ -276,7 +276,10 @@ class ServerAiActions(
     private fun plain(language: String) = AiDestination("lang:$language", LanguageCatalog.displayName(language), language)
 
     companion object {
-        /** Destinations listed besides the user's profiles: the languages the keyboard types. */
-        val PLAIN_LANGUAGES = listOf("en", "am", "ti", "om")
+        /**
+         * Destinations listed besides the user's profiles: the languages the keyboard types, Arabic included (ADR 0034).
+         * A pair the server cannot translate yet fails as LanguageUnsupported, so nothing is faked.
+         */
+        val PLAIN_LANGUAGES = listOf("en", "am", "ti", "om", "ar")
     }
 }

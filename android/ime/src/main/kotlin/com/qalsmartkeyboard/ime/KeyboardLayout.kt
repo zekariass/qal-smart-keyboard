@@ -92,12 +92,74 @@ data class LayoutContext(
     /** The Fidel grid layout: `.` and `,` tap the Ethiopic full stop and comma (ADR 0007). */
     val fidelPunctuation: Boolean get() = mode.kind == LayoutKind.FIDEL && grid != null
 
+    /** The Arabic letter layout is in force (ADR 0034): Arabic punctuation, Arabic-Indic digits and the marks. */
+    val arabic: Boolean get() = mode.kind == LayoutKind.ARABIC
+
     companion object {
         val DEFAULT = LayoutContext(TypingMode.abc("en"))
     }
 }
 
-/** Layouts: ASCII QWERTY (A1.2), Qubee, phonetic and the Fidel grid from core data (A1.4). */
+/**
+ * The Arabic keyboard's data (ADR 0034): the standard Arabic arrangement (Windows Arabic 101 / Android), long-press
+ * alternatives, the marks (harakat and tatweel), Arabic punctuation and digits. Rows are listed in visual order, left to
+ * right, as the keys are drawn; the text they type is in logical order.
+ */
+object ArabicKeys {
+    const val COMMA = "،" // ،
+    const val SEMICOLON = "؛" // ؛
+    const val QUESTION = "؟" // ؟
+    const val PERCENT = "٪" // ٪
+    const val TATWEEL = "\u0640" // ـ
+
+    /** Lam-alef: one key, two letters (ل + ا); the font draws the ligature. */
+    const val LAM_ALEF = "لا"
+
+    /** Drawn under a combining mark on a key or popup so it never floats on nothing. */
+    private const val DOTTED_CIRCLE = "\u25CC"
+
+    val ROWS: List<List<String>> = listOf(
+        listOf("ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج"),
+        listOf("ش", "س", "ي", "ب", "ل", "ا", "ت", "ن", "م", "ك", "ط"),
+        listOf("ذ", "ء", "ؤ", "ر", LAM_ALEF, "ى", "ة", "و", "ز", "ظ", "د"),
+    )
+
+    /** Long-press alternatives: the hamza forms, alef wasla, and the letters' other code points. */
+    val ALTERNATIVES: Map<String, List<String>> = mapOf(
+        "ا" to listOf("أ", "إ", "آ", "ٱ", "ء"),
+        "ي" to listOf("ئ", "ى"),
+        "و" to listOf("ؤ"),
+        "ه" to listOf("ة"),
+    )
+
+    /** A mark and its technical name (spoken by TalkBack inside a translated phrase; the name itself is not translated, like Qubee). */
+    class Mark(val text: String, val name: String) {
+        /** What a key or popup shows: a combining mark on a dotted circle, the tatweel as it is. */
+        val label: String get() = if (text == TATWEEL) text else DOTTED_CIRCLE + text
+    }
+
+    /** The harakat, the superscript (dagger) alef and the tatweel, in the marks key's popup order. */
+    val MARKS: List<Mark> = listOf(
+        Mark("\u064E", "Fatha"),
+        Mark("\u064F", "Damma"),
+        Mark("\u0650", "Kasra"),
+        Mark("\u0652", "Sukun"),
+        Mark("\u0651", "Shadda"),
+        Mark("\u064B", "Fathatan"),
+        Mark("\u064C", "Dammatan"),
+        Mark("\u064D", "Kasratan"),
+        Mark("\u0670", "Superscript alef"),
+        Mark(TATWEEL, "Tatweel"),
+    )
+
+    /** ASCII digit -> Arabic-Indic digit (U+0660..U+0669). */
+    fun indicDigit(d: Char): String = (0x0660 + (d - '0')).toChar().toString()
+
+    /** ASCII symbols the Arabic symbols pages replace with their Arabic form (the ASCII one stays on long-press). */
+    val SYMBOLS: Map<Char, String> = mapOf(',' to COMMA, ';' to SEMICOLON, '?' to QUESTION, '%' to PERCENT)
+}
+
+/** Layouts: ASCII QWERTY (A1.2), Qubee, phonetic, the Fidel grid from core data (A1.4) and Arabic (ADR 0034). */
 object Layouts {
     /** Key descriptions in the UI language (ADR 0032); read when a layout is built. */
     private val L: KeyboardLabels get() = KeyboardLabels.current
@@ -135,6 +197,15 @@ object Layouts {
     }
 
     private fun digitRow(ctx: LayoutContext): List<Key> = "1234567890".map { d ->
+        if (ctx.arabic) {
+            // Western digits type by default (what most Arabic-script phones send); the Arabic-Indic digit is on long-press.
+            val indic = ArabicKeys.indicDigit(d)
+            return@map Key(
+                KeyKind.CHAR, d.toString(), d.toString(),
+                popup = listOf(PopupItem(indic, description = L.keyArabicNumeral.format(indic))),
+                hint = indic,
+            )
+        }
         val alts = if (ctx.ethiopicNumerals && ctx.ethiopic) ctx.grid?.digits?.get(d.toString()).orEmpty() else emptyList()
         Key(
             KeyKind.CHAR, d.toString(), d.toString(),
@@ -142,6 +213,35 @@ object Layouts {
             hint = alts.firstOrNull().orEmpty(),
         )
     }
+
+    /** One Arabic mark as a popup choice. */
+    private fun markItem(m: ArabicKeys.Mark) = PopupItem(m.label, m.text, description = L.keyArabicMark.format(m.name))
+
+    /** One Arabic mark as a key (the Arabic symbols page). */
+    private fun markKey(m: ArabicKeys.Mark) = Key(KeyKind.CHAR, m.label, m.text, description = L.keyArabicMark.format(m.name))
+
+    /**
+     * The marks key of the Arabic layout, in the slot the other languages use for the ABC key: tap types a fatha (what
+     * the key shows), long-press offers every harakah, the superscript alef and the tatweel.
+     */
+    private fun arabicMarksKey(): Key {
+        val first = ArabicKeys.MARKS.first()
+        return Key(
+            KeyKind.CHAR, first.label, first.text,
+            popup = ArabicKeys.MARKS.map(::markItem), popupColumns = 5,
+            description = L.keyArabicMarks,
+        )
+    }
+
+    /** A symbols-page key: on the Arabic layout `,` `;` `?` `%` type their Arabic form, the ASCII one is on long-press. */
+    private fun symbolKey(c: Char, ctx: LayoutContext): Key {
+        val ar = if (ctx.arabic) ArabicKeys.SYMBOLS[c] else null
+        if (ar == null) return ch(c.toString())
+        val description = if (ar == ArabicKeys.COMMA) L.keyArabicComma else L.keyArabicPunctuation.format(ar)
+        return Key(KeyKind.CHAR, ar, ar, popup = listOf(PopupItem(c.toString())), hint = c.toString(), description = description)
+    }
+
+    private fun symbolKeys(s: String, ctx: LayoutContext) = s.map { symbolKey(it, ctx) }
 
     private fun spaceKey(w: Float, ctx: LayoutContext) = Key(
         KeyKind.SPACE, ctx.indicator, " ", w,
@@ -155,6 +255,16 @@ object Layouts {
             .map { PopupItem(it, description = L.keyEthiopicPunctuation.format(it)) }
 
     private fun periodKey(ctx: LayoutContext): Key {
+        if (ctx.arabic) {
+            // Tap = full stop (Arabic uses "."); long-press: the Arabic question mark first (the hint), then ! ؛ :
+            val p = listOf(
+                PopupItem(ArabicKeys.QUESTION, description = L.keyArabicPunctuation.format(ArabicKeys.QUESTION)),
+                PopupItem("!"),
+                PopupItem(ArabicKeys.SEMICOLON, description = L.keyArabicPunctuation.format(ArabicKeys.SEMICOLON)),
+                PopupItem(":"),
+            )
+            return Key(KeyKind.CHAR, ".", ".", 0.75f, popup = p, popupColumns = 4, hint = ArabicKeys.QUESTION, description = L.keyPeriod)
+        }
         val m = marks(ctx)
         if (ctx.fidelPunctuation) {
             // Fidel grid only (ADR 0007): tap = ። ; ASCII "." leads the popup, then the other marks.
@@ -169,6 +279,17 @@ object Layouts {
     }
 
     private fun commaKey(ctx: LayoutContext): Key {
+        if (ctx.arabic) {
+            // Tap = Arabic comma; long-press: the Arabic semicolon (the hint), then the ASCII comma.
+            return Key(
+                KeyKind.CHAR, ArabicKeys.COMMA, ArabicKeys.COMMA, 0.75f,
+                popup = listOf(
+                    PopupItem(ArabicKeys.SEMICOLON, description = L.keyArabicPunctuation.format(ArabicKeys.SEMICOLON)),
+                    PopupItem(",", description = L.keyComma),
+                ),
+                popupColumns = 2, hint = ArabicKeys.SEMICOLON, description = L.keyArabicComma,
+            )
+        }
         val m = marks(ctx, setOf("፣", "፤"))
         if (ctx.fidelPunctuation) {
             val others = m.filter { it.label != ETHIOPIC_COMMA }
@@ -188,6 +309,7 @@ object Layouts {
     private fun toggleKey(ctx: LayoutContext): Key? {
         val lang = ctx.mode.language
         if (lang == "en") return null // ABC and English are both plain Latin passthrough
+        if (!LanguageCatalog.hasAbcLayout(lang)) return null // Arabic: no Latin layout of its own (ADR 0034)
         val ethiopic = LanguageCatalog.isEthiopic(lang)
         return if (ctx.mode.isAbc) {
             Key(KeyKind.ABC_TOGGLE, LanguageCatalog.nativeGlyph(lang), description = L.keySwitchToLanguageKeys.format(LanguageCatalog.spokenName(lang)))
@@ -204,7 +326,7 @@ object Layouts {
             FieldKind.TEXT -> listOfNotNull(
                 toSym,
                 Key(KeyKind.GLOBE, "🌐", weight = 1f, longAction = true, description = L.keySwitchLanguage),
-                toggleKey(ctx),
+                if (ctx.arabic) arabicMarksKey() else toggleKey(ctx),
                 commaKey(ctx),
                 emojiKey(profile, 0.9f),
                 spaceKey(if (profile.allowsEmoji) 2.75f else 3f, ctx),
@@ -216,6 +338,7 @@ object Layouts {
         if (ctx.mode.kind == LayoutKind.FIDEL && ctx.grid != null && profile.kind == FieldKind.TEXT) {
             return fidel(ctx.grid, bottom)
         }
+        if (ctx.arabic && profile.kind == FieldKind.TEXT) return arabic(ctx, bottom)
         val shiftRow = if (ctx.mode.kind == LayoutKind.QUBEE) {
             // The apostrophe (hudhaa) is part of Oromo words, so it lives on the primary layer (SD 7.3).
             listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.25f, description = L.keyShift)) + chars("zxcvbnm") +
@@ -259,8 +382,21 @@ object Layouts {
         return KeyboardLayout(Page.LETTERS, rows, rowHeightDp = 42f)
     }
 
-    private fun bottomSymbols(profile: InputProfile) = listOfNotNull(
-        Key(KeyKind.TO_LETTERS, "ABC", weight = 1.5f, description = L.keyLetters), ch(","), emojiKey(profile, 1f),
+    /**
+     * The Arabic letter layout (ADR 0034): the digit row, the three standard rows (the last ending in Delete), then the
+     * bottom row. No shift key (Arabic has no case); the marks key sits in the bottom row's ABC slot.
+     */
+    private fun arabic(ctx: LayoutContext, bottom: List<Key>): KeyboardLayout {
+        val rows = ArabicKeys.ROWS.map { row ->
+            row.map { c -> Key(KeyKind.CHAR, c, c, popup = ArabicKeys.ALTERNATIVES[c].orEmpty().map { PopupItem(it) }) }
+        }
+        return KeyboardLayout(Page.LETTERS, listOf(digitRow(ctx), rows[0], rows[1], rows[2] + backspace(1f), bottom))
+    }
+
+    private fun bottomSymbols(profile: InputProfile, ctx: LayoutContext) = listOfNotNull(
+        // Back to the letters: the language's own glyph on the Arabic layout (its letters are not "ABC").
+        Key(KeyKind.TO_LETTERS, if (ctx.arabic) LanguageCatalog.nativeGlyph(ctx.mode.language) else "ABC", weight = 1.5f, description = L.keyLetters),
+        symbolKey(',', ctx), emojiKey(profile, 1f),
         plainSpace(if (profile.allowsEmoji) 3.5f else 4f), ch("."), enter(),
     )
 
@@ -271,10 +407,11 @@ object Layouts {
             if (marks.isNotEmpty()) {
                 add(marks.map { Key(KeyKind.CHAR, it, it, description = L.keyEthiopicPunctuation.format(it)) })
             }
-            add(chars("@#$%&-+()/"))
-            add(chars("*\"':;!?~`|"))
-            add(listOf(Key(KeyKind.TO_SYMBOLS_2, "=\\<", weight = 1.5f, description = L.keyMoreSymbols)) + chars(",._") + listOf(backspace()))
-            add(bottomSymbols(profile))
+            if (ctx.arabic) add(ArabicKeys.MARKS.map(::markKey))
+            add(symbolKeys("@#$%&-+()/", ctx))
+            add(symbolKeys("*\"':;!?~`|", ctx))
+            add(listOf(Key(KeyKind.TO_SYMBOLS_2, "=\\<", weight = 1.5f, description = L.keyMoreSymbols)) + symbolKeys(",._", ctx) + listOf(backspace()))
+            add(bottomSymbols(profile, ctx))
         }
         return KeyboardLayout(Page.SYMBOLS, rows, if (rows.size > 5) 44f else 50f)
     }
@@ -285,8 +422,8 @@ object Layouts {
             digitRow(ctx),
             chars("~`|^{}[]<>"),
             chars("=\\£€¥°©®™•"),
-            listOf(Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.5f, description = L.keyNumbersSymbols)) + chars(",._;:") + listOf(backspace()),
-            bottomSymbols(profile),
+            listOf(Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.5f, description = L.keyNumbersSymbols)) + symbolKeys(",._;:", ctx) + listOf(backspace()),
+            bottomSymbols(profile, ctx),
         ),
     )
 

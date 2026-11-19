@@ -12,7 +12,7 @@ import okio.ByteString.Companion.decodeBase64
  * its own token's payload to know who it is; it does not trust it for anything else (the server
  * verifies every call). A token that does not parse gives null, which fails the entitlement token
  * checks closed. [addListener] is the session's own listener: the companion app and the keyboard share one session
- * (ADR 0034), so a sign-in or sign-out in either reaches the other at once.
+ * (ADR 0035), so a sign-in or sign-out in either reaches the other at once.
  */
 class SessionAccessInfo(private val session: SessionManager) : SessionInfo {
     override fun signedIn() = session.tokens() != null

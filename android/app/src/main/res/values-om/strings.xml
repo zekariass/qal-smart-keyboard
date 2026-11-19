@@ -54,6 +54,7 @@
     <string name="lang_ti">Afaan Tigiraay (ትግርኛ)</string>
     <string name="lang_om">Afaan Oromoo</string>
     <string name="lang_en">Afaan Ingiliffaa</string>
+    <string name="lang_ar">Afaan Arabaa (العربية)</string>
     <string name="lang_am_short">Amaaraa</string>
     <string name="lang_ti_short">Tigiraay</string>
 
@@ -74,17 +75,12 @@
 
     <!-- Settings entry point -->
     <string name="settings_setup_title">Qophii kiiboordii</string>
-    <string name="settings_setup_body">Kiiboordii banaa fi filadhaa, afaanota filadhaa, yaalaas ilaalaa.</string>
-    <string name="settings_setup_button">Qophii irra deebi\'aa gaggeessaa</string>
     <string name="settings_back_to_typing">Gara barreessuutti deebi\'aa</string>
-    <string name="settings_opened_from_keyboard">Jijjiiramni kiiboordii irratti battalumatti hojii irra oola.</string>
 
     <!-- Keyboard themes -->
     <string name="themes_title">Bifa kiiboordii</string>
-    <string name="themes_intro">Kiiboordiin akkamitti akka mul\'atu filadhaa. Fakkii guddaa ilaaluuf bifa tokko tuqaa; hanga Hojii irra oolchaa tuqxanitti homtuu hin jijjiiramu.</string>
     <string name="themes_section_free">Bifoota bilisaa</string>
     <string name="themes_section_premium">Bifoota Premium</string>
-    <string name="themes_premium_note">Bifoonni Premium Premium wajjin dhufu. Hunda isaanii dursanii ilaaluu dandeessu.</string>
     <string name="themes_system">Sirna</string>
     <string name="themes_system_hint">Classic Light ykn Classic Dark, akka bilbila keessanii.</string>
     <string name="themes_applied">Hojii irra oole</string>
@@ -96,7 +92,6 @@
     <string name="themes_preview_note">Kun dursa-ilaalcha qofa. Hanga isa kana hojii irra oolchitanitti kiiboordiin keessan bifa isaa ammaa qabatee tura.</string>
     <string name="themes_apply">Bifa hojii irra oolchaa</string>
     <string name="themes_unlock">Premium tiin banaa</string>
-    <string name="themes_back_to_list">Gara bifoota hundaatti deebi\'aa</string>
     <string name="themes_locked_title">%1$s bifa Premium ti</string>
     <string name="themes_locked_body">Kiiboordiin keessan yeroof %1$s agarsiisa. %2$s</string>
     <string name="themes_reason_allowed">Bifoonni Premium ni argamu.</string>
@@ -104,19 +99,15 @@
     <string name="themes_reason_not_on_plan">Paakeejiin keessan bifoota Premium hin dabalatu.</string>
     <string name="themes_reason_needs_check">Paakeejii keessan mirkaneessuu akka dandeenyuuf al tokko interneetii wajjin walqunnamaa.</string>
     <string name="settings_theme_title">Bifa</string>
-    <string name="settings_theme_current">Ammaa: %1$s</string>
-    <string name="settings_theme_button">Bifa filadhaa</string>
 
     <!-- Personal dictionary -->
     <string name="pd_title">Galmee jechootaa dhuunfaa</string>
-    <string name="pd_body">Jechoota isin dabaltan ykn kiiboordiin yeroo barreessitan baratu. Meeshaa kana irratti iccitiidhaan (encrypted) turu, gonkumaa hin ol fe\'aman. Iddoo jecha iccitii fi iddoo barachuu dhuunfaa hin barbaanne keessatti homtuu hin baratamu.</string>
+    <string name="pd_body">Jechoota isin dabaltan ykn kiiboordiin baratu, bilbila kana irratti iccitiidhaan kuufaman. Iddoo jecha iccitii keessatti homtuu hin baratamu.</string>
     <string name="pd_empty">Ammaaf jechi hin jiru.</string>
     <string name="pd_loading">Fe\'aa jira…</string>
-    <string name="pd_language_count">%1$s: jechoota %2$d</string>
     <string name="pd_show">Jechoota agarsiisaa</string>
     <string name="pd_hide">Jechoota dhoksaa</string>
     <string name="pd_show_more">Dabalata agarsiisaa</string>
-    <string name="pd_delete">Haqaa</string>
     <string name="pd_delete_description">%1$s galmee jechootaa keessaa haqaa</string>
     <string name="pd_clear_all">Hunda haqaa</string>
     <string name="pd_clear_title">Galmee jechootaa dhuunfaa keessan haqxuu?</string>
@@ -197,6 +188,44 @@
     <string name="si_err_session_ended">Yeroon tajaajila keessanii xumurameera. Maaloo irra deebi\'aa yaalaa.</string>
     <string name="si_err_unexpected">Rakkoon uumameera. Irra deebi\'aa yaalaa.</string>
 
+    <!-- E-mail and password sign-in (ADR 0033), DRAFT -->
+    <string name="si_method_phone">Bilbila</string>
+    <string name="si_method_email">Imeelii</string>
+    <string name="si_email_label">Imeelii</string>
+    <string name="si_email_hint">name@example.com</string>
+    <string name="si_password_label">Jecha icciitii</string>
+    <string name="si_password_new_label">Jecha icciitii haaraa</string>
+    <string name="si_password_show">Agarsiisi</string>
+    <string name="si_password_hide">Dhoksi</string>
+    <string name="si_password_rules">Yoo xiqqaate qubee %1$d. Hima gabaabaa yaadachuuf salphaa, tilmaamuuf garuu ulfaataa dha.</string>
+    <string name="si_email_sign_in">Imeeliidhaan seenaa</string>
+    <string name="si_email_create">Akkaawuntii uumaa</string>
+    <string name="si_forgot">Jecha icciitii irraanfattanii?</string>
+    <string name="si_email_new_here">Haaraa dha? Akkaawuntii uumaa</string>
+    <string name="si_email_have_account">Akkaawuntii qabduu? Seenaa</string>
+    <string name="si_email_code_sent">Koodii dijitii %1$d qabu gara %2$s ergineerra. Saanduqa ergaa fi spaamii ilaalaa.</string>
+    <string name="si_change_email">Imeelii biraa fayyadamaa</string>
+    <string name="si_reset_title">Jecha icciitii keessan haaromsaa</string>
+    <string name="si_reset_body">Imeelii keessan galchaa. Kan akkaawuntii tokkoo yoo ta\'e, jecha icciitii jijjiiruuf koodii ni ergina.</string>
+    <string name="si_reset_code_sent">%2$s akkaawuntii yoo qabaate, koodii dijitii %1$d qabu ergineerra. Jecha icciitii haaraa waliin galchaa.</string>
+    <string name="si_reset_button">Jecha icciitii jijjiiri</string>
+    <string name="si_back_to_sign_in">Gara seensaatti deebi\'aa</string>
+    <string name="si_reset_sent">Koodiin ergameera. Ga\'uuf daqiiqaa tokko fudhachuu danda\'a.</string>
+    <string name="si_reset_done">Jechi icciitii keessan jijjiirameera. Jecha icciitii haaraan seenaa.</string>
+    <string name="si_err_email_empty">Imeelii keessan galchaa.</string>
+    <string name="si_err_email_invalid">Imeelii sirrii galchaa, fakkeenyaaf name@example.com.</string>
+    <string name="si_err_password_empty">Jecha icciitii keessan galchaa.</string>
+    <string name="si_err_password_short">Yoo xiqqaate qubee %1$d fayyadamaa.</string>
+    <string name="si_err_password_long">Yoo baay\'ate qubee %1$d fayyadamaa.</string>
+    <string name="si_err_password_common">Jechi icciitii kun salphaatti tilmaamama. Hima gabaabaa yaalaa.</string>
+    <string name="si_err_password_email">Imeelii keessan akka jecha icciitii hin fayyadaminaa.</string>
+    <string name="si_err_credentials">Imeeliin ykn jechi icciitii sirrii miti.</string>
+    <string name="si_err_locked">Jechi icciitii dogoggoraa baay\'ateera. Booda yaalaa ykn jecha icciitii keessan haaromsaa.</string>
+    <string name="si_err_locked_in">Jechi icciitii dogoggoraa baay\'ateera. Daqiiqaa %1$d booda yaalaa ykn jecha icciitii keessan haaromsaa.</string>
+    <string name="si_err_email_taken">Imeelii kanaan akkaawuntiin jira. Seenaa ykn jecha icciitii haaromsaa.</string>
+    <string name="si_err_email_unavailable">Imeeliidhaan seenuun amma hin jiru. Lakkoofsa bilbilaa ykn Google fayyadamaa.</string>
+    <string name="si_err_reset_code">Koodiin sirrii miti ykn yeroon isaa darbeera. Koodii haaraa gaafadhaa.</string>
+
     <string name="upd_title">Maaloo appii haaromsaa</string>
     <string name="upd_body">Fooyya\'iinsi Qal Smart Keyboard kun sarvarii wajjin haasa\'uuf baay\'ee dulloomeera. Barreessuun ammallee hojjeta; seenuu fi amaloota toora irraa fayyadamuuf haaromsaa.</string>
     <string name="upd_button">Fuula kuusaa banaa</string>
@@ -206,8 +235,6 @@
 
     <!-- Privacy dashboard, consents, AI history, data export, account deletion -->
     <string name="pv_entry_title">Dhuunfaa</string>
-    <string name="pv_entry_body">Maaltu bilbila keessan irra akka hafuu fi maaltu akka ergamu ilaalaa, eeyyama keessan, seenaa AI kuufame, baasuu daataa fi haquu akkaawuntii too\'adhaa.</string>
-    <string name="pv_entry_button">Dhuunfaa banaa</string>
     <string name="pv_title">Dhuunfaa</string>
     <string name="pv_loading">Maaloo eegaa…</string>
     <string name="pv_ok">Tole</string>
@@ -223,7 +250,7 @@
     <string name="pv_voice_title">Sagaleedhaan barreessuu</string>
     <string name="pv_voice_body">Yeroo maayikiroofoonii kiiboordii tuqxan, tajaajilli dubbii bilbila keessanii (fakkeenyaaf Google) sagalee keessan gara barreeffamaatti jijjiira. Tajaajilli sun sagalee gara sarvarii isaatti, haala dhuunfaa mataa isaa jalatti, erguu danda\'a. Qal sagalee keessan hin waraabu, hin kuusu, hin ergus; barreeffamni akkuma waan isin barreessitanii ilaalama: bilbila keessan irra hafa, gonkumaa galmee jechootaa keessanitti hin baratamu. Qindaa\'ina kiiboordii keessatti sagaleedhaan barreessuu cufuu dandeessu.</string>
     <string name="settings_voice_typing">Sagaleedhaan barreessuu</string>
-    <string name="settings_voice_typing_body">Sarara kiiboordii keessatti maayikiroofoonii agarsiisa. Tajaajilli dubbii bilbila keessanii dubbii gara barreeffamaatti jijjiira; afaanonni hojjetan tajaajila sana irratti hundaa\'u.</string>
+    <string name="settings_voice_typing_body">Tajaajilli dubbii bilbila keessanii sagalee keessan gara barreeffamaatti jijjiira, sagalee sanas gara sarvarii mataa isaatti erguu danda\'a. Qal sagalee keessan hin waraabu, hin kuusus.</string>
     <string name="voice_perm_title">Maayikiroofoonii sagaleedhaan barreessuuf</string>
     <string name="voice_perm_why">Sagalee keessaniin barreessuuf, Qal Keyboard maayikiroofoonii fayyadamuuf hayyama barbaada. Erga isin kiiboordii irratti maayikiroofoonii tuqxanii booda qofa, yeroo kiiboordiin banamee jirus qofa dhaggeeffata.</string>
     <string name="voice_perm_privacy">Tajaajilli dubbii bilbila keessanii (fakkeenyaaf Google) sagalee keessan gara barreeffamaatti jijjiira, kanaafis interneetii fayyadamuu danda\'a. Qal sagalee keessan hin waraabu, hin kuusus.</string>
@@ -384,15 +411,11 @@
 
     <!-- Word Art -->
     <string name="settings_wordart_title">Aartii Jechaa</string>
-    <string name="settings_wordart_body">Barreeffama miidhagaa nagaa gaafachuu, maqaa fi ibsa suuraatiif. Asii garagalchaa ykn qooddadhaa, ykn kiiboordii keessatti tab Aa paanaala emojii fayyadamaa.</string>
-    <string name="settings_wordart_button">Aartii Jechaa banaa</string>
     <!-- Write Email with AI and the translation destination -->
     <string name="settings_email_title">AI dhaan imeelii barreessaa</string>
-    <string name="settings_email_body">Waan jechuu barbaaddan afaan kamiinuu ibsaatii imeelii mata-duree qabu qophaa\'e argadhaa, ykn imeelii tokkoof deebisaa ykn fooyyessaa. Kiiboordii keessattis: AI, achiis Imeelii.</string>
-    <string name="settings_email_button">Imeelii barreessaa</string>
     <string name="settings_translate_title">Gara afaan kanaatti hiiki</string>
-    <string name="settings_translate_body">Afaan kiiboordiin durtii irraa itti hiiku. Yeroo hunda qabduuwwan afaanii Hiikkaa cinaa jiraniin jijjiiruu dandeessu.</string>
-    <string name="settings_translate_auto">Ofumaan (Ingiliffa, ykn barreeffama Ingiliffaatiif Afaan Amaaraa)</string>
+    <string name="settings_translate_body">Afaan kiiboordiin durtii irraa itti hiiku.</string>
+    <string name="settings_translate_auto">Ofumaan</string>
     <string name="email_title">AI dhaan imeelii barreessaa</string>
     <string name="email_from_keyboard">Galteen keessan kiiboordii irraa guutameera. Yeroo imeeliin qophaa\'u, garagalchaatii appii imeelii keessanii keessatti maxxansaa.</string>
     <string name="email_preview">Imeelii keessan</string>
@@ -416,10 +439,10 @@
     <string name="wordart_app_lang_en">Afaan Ingiliffaa</string>
 
     <!-- Settings screen -->
-    <string name="settings_title">Qindaa\'ina kiiboordii</string>
-    <string name="settings_languages_title">Afaanota (kan olii = jalqabaa furtuu addunyaa irratti)</string>
+    <string name="settings_languages_title">Afaanota</string>
     <string name="settings_mode_phonetic">QWERTY foonetikii</string>
     <string name="settings_mode_latin">Laatinii</string>
+    <string name="settings_layout_arabic">Arabaa</string>
     <string name="settings_translit_profile">Piroofaayilii jijjiira qubee: isa haaraa hojii irra jiru (ofumaan)</string>
     <string name="settings_show_candidates">Yaadota agarsiisi</string>
     <string name="settings_numerals_title">Lakkoofsota</string>
@@ -432,6 +455,46 @@
     <string name="settings_reset">Gara durtiitti deebisi</string>
     <!-- App language -->
     <string name="settings_app_language_title">Afaan appii</string>
-    <string name="settings_app_language_body">Afaan appii kanaa fi qabduuwwanii fi baafata kiiboordii. Afaanota ittiin barreessitan hin jijjiiru.</string>
+    <string name="settings_app_language_body">Afaanota ittiin barreessitan hin jijjiiru.</string>
     <string name="settings_app_language_system">Kan sirnaa</string>
+
+    <!-- Settings redesign (ADR 0036): home groups, pages, languages, theme strip. -->
+    <string name="settings_theme_more">Dabalata ilaalaa</string>
+    <string name="settings_theme_selected">Filatameera</string>
+    <string name="settings_setup_prompt">Qophii kiiboordii xumuraa</string>
+    <string name="settings_setup_prompt_button">Qopheessaa</string>
+    <string name="settings_group_keyboard">Kiiboordii</string>
+    <string name="settings_group_tools">AI fi meeshaalee</string>
+    <string name="settings_group_account">Akkaawuntii fi dhuunfaa</string>
+    <string name="settings_group_app">Appii</string>
+    <string name="settings_preferences">Filannoowwan</string>
+    <string name="settings_prefs_keys">Furtuuwwan</string>
+    <string name="settings_dictionary">Galmee jechootaa</string>
+    <string name="settings_advanced">Olaanaa</string>
+    <string name="settings_about">Waa\'ee appii</string>
+    <string name="settings_about_version">Veershinii appii</string>
+    <string name="settings_about_core">Motora bu\'uuraa</string>
+    <string name="settings_about_privacy_notice">Beeksisa dhuunfaa</string>
+    <string name="settings_account_signed_in">Seentanii jirtu</string>
+    <string name="settings_account_guest">Keessummaa</string>
+    <string name="settings_account_signed_out">Hin seenne</string>
+    <string name="settings_languages_order">Furtuun addunyaa tartiiba kanaan isaan gidduu jijjiira.</string>
+    <string name="settings_languages_manage">Afaanota dabalaa ykn haqaa</string>
+    <string name="settings_languages_all">Afaanota hunda</string>
+    <string name="settings_languages_search">Afaanota barbaadaa</string>
+    <string name="settings_languages_search_clear">Barbaacha haqaa</string>
+    <string name="settings_languages_no_match">Afaan hin argamne</string>
+    <string name="settings_languages_last">Yoo xiqqaate afaan tokko banaa ta\'ee hafa</string>
+    <string name="settings_layout_title">Qindaa\'ina furtuuwwanii</string>
+    <string name="settings_phonetic_title">Barreessuu foonetikii</string>
+    <string name="settings_mode_latin_hint">Qubee Laatinii qofa (QWERTY).</string>
+    <string name="settings_voice_typing_switch">Sagaleedhaan barreessuutti fayyadamaa</string>
+    <string name="settings_translate_auto_hint">Ingiliffa, ykn barreeffama Ingiliffaatiif Afaan Amaaraa</string>
+    <string name="settings_reset_title">Qindaa\'ina kiiboordii gara durtiitti deebisuu?</string>
+    <string name="settings_reset_message">Afaanonni, qindaa\'inni furtuuwwanii, bifni fi filannoowwan gara durtii isaaniitti deebi\'u.</string>
+    <string name="settings_reset_confirm">Deebisaa</string>
+    <plurals name="pd_word_count">
+        <item quantity="one">jecha %1$d</item>
+        <item quantity="other">jechoota %1$d</item>
+    </plurals>
 </resources>

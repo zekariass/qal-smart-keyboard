@@ -239,6 +239,26 @@ paths:
       tags: [Auth]
       operationId: registerWithEmail
       summary: Register with email and password
+      description: |
+        Creates an account that signs in with an e-mail address and a password (ADR 0033). The password is
+        10 to 128 characters (Unicode code points), without composition rules; a common password, one
+        built from a common word plus digits or symbols, a keyboard or alphabet run, or the address itself
+        is refused with 400 `VALIDATION_FAILED` on `password` (`PASSWORD_TOO_SHORT`, `PASSWORD_TOO_LONG`,
+        `PASSWORD_TOO_COMMON`, `PASSWORD_MATCHES_EMAIL`); a malformed address with `INVALID_EMAIL` on `email`.
+        The address is compared case-insensitively.
+
+        The server decides whether the mailbox must be proven first (`qal.identity.email.verification-required`):
+        - **Not required:** 201 with a session. The account exists at once and its address is unverified
+          (`user.emailVerified` false).
+        - **Required:** 202 with an `EmailVerificationChallenge`; a 6-digit code was e-mailed and **no account
+          exists yet**. `POST /auth/email/verify` with the challenge id and the code creates it and signs in.
+
+        An address that belongs to an account is 409 `EMAIL_ALREADY_REGISTERED` (sign in or reset the
+        password; the per-IP limit curbs probing). Exception while verification is required: an account
+        whose address was never verified does not block the sign-up; proving the mailbox with the code
+        takes that account over (its password is replaced, its sessions end). Guest upgrade as for phone
+        sign-in: with verification off the guest is upgraded in place here; with verification on, send the
+        guest bearer with the verify call.
       security:
         - {}
         - bearerAuth: []
@@ -249,18 +269,33 @@ paths:
             schema: { $ref: '#/components/schemas/EmailRegisterRequest' }
       responses:
         '201':
-          description: Account created; email verification pending.
+          description: Account created and signed in; the address is not verified (verification not required).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuthSession' }
+        '202':
+          description: Verification required; a code was e-mailed (or the e-mail failed and can be resent). No account exists yet.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmailVerificationChallenge' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/auth/email/login:
     post:
       tags: [Auth]
       operationId: loginWithEmail
       summary: Sign in with email and password
+      description: |
+        A wrong address or password is 401 `INVALID_CREDENTIALS` (the same answer whether the address has
+        an account or not). After 10 wrong passwords in a row the password is locked for 15 minutes: 429
+        `ACCOUNT_LOCKED` with `Retry-After` (reset the password to unlock at once). When the server requires
+        verified addresses and this one is not verified, the answer is 403 `EMAIL_NOT_VERIFIED` and a code
+        was e-mailed: the Problem carries `challengeId`, `expiresAt`, `resendAvailableAt` and `codeLength`;
+        continue with `POST /auth/email/verify`. A suspended account gets 403 `ACCOUNT_SUSPENDED`. A guest
+        bearer is merged into the account as for phone sign-in.
       security:
         - {}
         - bearerAuth: []
@@ -275,14 +310,79 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuthSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/auth/email/verify:
+    post:
+      tags: [Auth]
+      operationId: verifyEmailCode
+      summary: Prove the mailbox with the e-mailed code and sign in
+      description: |
+        Completes a sign-up that required verification (creates the account, `isNewUser` true) or the
+        verification of an existing account (after 403 `EMAIL_NOT_VERIFIED`), and signs in. The challenge id
+        binds the code to the client that started the flow. Errors as for phone codes: 401 `OTP_INVALID`
+        (with `attemptsRemaining` for a wrong code), 401 `OTP_EXPIRED`, 429 `OTP_TOO_MANY_ATTEMPTS` after 5
+        wrong codes (resend to get a new one). 409 `EMAIL_ALREADY_REGISTERED` if a verified account got the
+        address meanwhile. Guest upgrade or merge as for phone sign-in (401 `GUEST_SESSION_INVALID` for a
+        guest bearer that can no longer link; nothing is consumed).
+      security:
+        - {}
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailVerifyRequest' }
+      responses:
+        '200':
+          description: Verified and signed in.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/auth/email/verify/resend:
+    post:
+      tags: [Auth]
+      operationId: resendEmailCode
+      summary: E-mail a new code for a verification challenge
+      description: |
+        Replaces the challenge's code (the old one stops working, attempts start again) and e-mails it.
+        429 `RATE_LIMITED` with `Retry-After` before `resendAvailableAt` or when the address got too many
+        e-mails; 401 `OTP_INVALID` when the challenge is unknown, used or too old (start again).
+      security:
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailResendRequest' }
+      responses:
+        '202':
+          description: A new code was e-mailed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmailVerificationChallenge' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/auth/password/forgot:
     post:
       tags: [Auth]
       operationId: forgotPassword
       summary: Start password recovery
-      description: Always returns 202 to avoid account enumeration.
+      description: |
+        Always returns 202 to avoid account enumeration: a 6-digit reset code is e-mailed only if a live
+        account with a password has the address. 503 `EMAIL_NOT_CONFIGURED` when the server cannot send
+        e-mail (independent of the address).
       security:
         - {}
       requestBody:
@@ -292,13 +392,19 @@ paths:
             schema: { $ref: '#/components/schemas/PasswordForgotRequest' }
       responses:
         '202': { description: Recovery email sent if the account exists. }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/auth/password/reset:
     post:
       tags: [Auth]
       operationId: resetPassword
       summary: Complete password recovery
-      description: Consumes the single-use reset token and revokes all existing sessions.
+      description: |
+        Consumes the single-use reset code (`token`, with the `email` it was sent to), sets the new password,
+        clears a lock, marks the address verified and revokes all existing sessions. Every failure of the
+        code (unknown address, wrong, expired, used, too many attempts) is the same 400 `RESET_CODE_INVALID`;
+        a weak new password is 400 `VALIDATION_FAILED` on `newPassword` (the code is not used up).
       security:
         - {}
       requestBody:
@@ -309,6 +415,8 @@ paths:
       responses:
         '204': { description: Password changed. }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/auth/refresh:
     post:
       tags: [Auth]
@@ -3637,7 +3745,7 @@ components:
 
   responses:
     BadRequest:
-      description: Malformed or invalid request (`VALIDATION_FAILED`, `INPUT_TOO_LONG`, `LANGUAGE_NOT_SUPPORTED`, ...).
+      description: Malformed or invalid request (`VALIDATION_FAILED`, `INPUT_TOO_LONG`, `LANGUAGE_NOT_SUPPORTED`, `RESET_CODE_INVALID`, ...).
       headers:
         X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
       content:
@@ -3654,14 +3762,14 @@ components:
                 code: REQUIRED
                 message: destinationLanguage is required.
     Unauthorized:
-      description: Missing/invalid/expired credentials (`UNAUTHENTICATED`, `GUEST_SESSION_INVALID`, `TOKEN_EXPIRED`, `REFRESH_TOKEN_REUSED`, `OTP_INVALID`, `API_KEY_INVALID`).
+      description: Missing/invalid/expired credentials (`UNAUTHENTICATED`, `GUEST_SESSION_INVALID`, `TOKEN_EXPIRED`, `REFRESH_TOKEN_REUSED`, `OTP_INVALID`, `INVALID_CREDENTIALS`, `API_KEY_INVALID`).
       headers:
         X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Forbidden:
-      description: Authenticated but not allowed (`FEATURE_NOT_ENTITLED`, `CONSENT_REQUIRED`, `GUEST_NOT_ALLOWED`, `ATTESTATION_REQUIRED`, `BILLING_POLICY_DENIED`, `API_SCOPE_MISSING`, `ACCOUNT_SUSPENDED`, ...).
+      description: Authenticated but not allowed (`FEATURE_NOT_ENTITLED`, `CONSENT_REQUIRED`, `GUEST_NOT_ALLOWED`, `ATTESTATION_REQUIRED`, `BILLING_POLICY_DENIED`, `API_SCOPE_MISSING`, `ACCOUNT_SUSPENDED`, `EMAIL_NOT_VERIFIED`, ...).
       headers:
         X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
       content:
@@ -3686,7 +3794,7 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
       description: |
-        State conflict (`IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS`, `REVISION_CONFLICT`, `ORDER_NOT_PAYABLE`, `STORE_PURCHASE_ALREADY_LINKED`, ...).
+        State conflict (`IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS`, `REVISION_CONFLICT`, `ORDER_NOT_PAYABLE`, `STORE_PURCHASE_ALREADY_LINKED`, `EMAIL_ALREADY_REGISTERED`, ...).
         A `REVISION_CONFLICT` Problem carries the extension member `currentRevision` (integer):
         re-read the document, merge, and retry with that revision.
       headers:
@@ -3735,7 +3843,7 @@ components:
       description: |
         `RATE_LIMITED` (short-term abuse/rate limit; honour `Retry-After`) or `QUOTA_EXCEEDED`
         (plan allowance and credits exhausted; body is a `QuotaExceededProblem` with reset time and
-        upgrade/credit options).
+        upgrade/credit options), or `ACCOUNT_LOCKED` (too many wrong passwords; honour `Retry-After`).
       headers:
         X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
         Retry-After: { $ref: '#/components/headers/Retry-After' }
@@ -3763,7 +3871,7 @@ components:
               - type: CREDIT_PACK
                 productCode: CREDITS_500
     ServiceUnavailable:
-      description: Provider or capability temporarily unavailable (`PROVIDER_UNAVAILABLE`, `PROVIDER_TIMEOUT`, `LANGUAGE_PAIR_UNAVAILABLE`, `ZERO_RETENTION_UNAVAILABLE`). No usage is charged.
+      description: Provider or capability temporarily unavailable (`PROVIDER_UNAVAILABLE`, `PROVIDER_TIMEOUT`, `LANGUAGE_PAIR_UNAVAILABLE`, `ZERO_RETENTION_UNAVAILABLE`, `EMAIL_NOT_CONFIGURED`). No usage is charged.
       headers:
         X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
         Retry-After: { $ref: '#/components/headers/Retry-After' }
@@ -3953,7 +4061,8 @@ components:
         `REVISION_CONFLICT` (the revision the client should re-read), `featureCode`, `resetAt`,
         `creditBalance` and `upgradeOptions` on 429 `QUOTA_EXCEEDED`, `attemptsRemaining` (integer)
         on 401 `OTP_INVALID` for a wrong code of a known challenge, `reason` on 413/422 `PACK_REJECTED`
-        (admin pack publishing).
+        (admin pack publishing), `challengeId`, `expiresAt`, `resendAvailableAt` and `codeLength` on 403
+        `EMAIL_NOT_VERIFIED` (the verification challenge whose code was e-mailed).
         `GUEST_SESSION_INVALID` (401, `WWW-Authenticate: Bearer error="invalid_token"`) means the
         guest bearer token's account was merged, upgraded, ended or suspended: discard the guest
         session (do not refresh it) and sign in or create a new guest session.
@@ -3970,6 +4079,7 @@ components:
             Stable machine-readable code. Clients switch on `code`, never on `title`.
             VALIDATION_FAILED, INPUT_TOO_LONG, UNAUTHENTICATED, GUEST_SESSION_INVALID, TOKEN_EXPIRED, REFRESH_TOKEN_REUSED,
             OTP_INVALID, OTP_EXPIRED, OTP_TOO_MANY_ATTEMPTS, PHONE_REGION_NOT_SUPPORTED, PHONE_CARRIER_NOT_SUPPORTED, EMAIL_ALREADY_REGISTERED,
+            INVALID_CREDENTIALS, ACCOUNT_LOCKED, EMAIL_NOT_VERIFIED, EMAIL_NOT_CONFIGURED, RESET_CODE_INVALID,
             ATTESTATION_REQUIRED, ATTESTATION_FAILED, ACCOUNT_SUSPENDED, DELETION_PENDING,
             GUEST_NOT_ALLOWED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, NOT_ACCEPTABLE,
             UNSUPPORTED_MEDIA_TYPE, REVISION_CONFLICT, IDEMPOTENCY_KEY_REUSED,
@@ -4121,6 +4231,26 @@ components:
         email: { type: string, format: email, maxLength: 320 }
         password: { type: string, maxLength: 128, writeOnly: true }
         device: { $ref: '#/components/schemas/DeviceRegistration' }
+    EmailVerificationChallenge:
+      type: object
+      required: [challengeId, expiresAt, codeLength]
+      properties:
+        challengeId: { type: string, format: uuid }
+        expiresAt: { type: string, format: date-time }
+        resendAvailableAt: { type: string, format: date-time }
+        codeLength: { type: integer, minimum: 4, maximum: 8 }
+    EmailVerifyRequest:
+      type: object
+      required: [challengeId, code]
+      properties:
+        challengeId: { type: string, format: uuid }
+        code: { type: string, pattern: '^[0-9]{4,8}$', writeOnly: true }
+        device: { $ref: '#/components/schemas/DeviceRegistration' }
+    EmailResendRequest:
+      type: object
+      required: [challengeId]
+      properties:
+        challengeId: { type: string, format: uuid }
     PasswordForgotRequest:
       type: object
       required: [email]
@@ -4128,9 +4258,10 @@ components:
         email: { type: string, format: email, maxLength: 320 }
     PasswordResetRequest:
       type: object
-      required: [token, newPassword]
+      required: [email, token, newPassword]
       properties:
-        token: { type: string, maxLength: 256, writeOnly: true }
+        email: { type: string, format: email, maxLength: 320, description: The address the code was sent to. }
+        token: { type: string, maxLength: 256, writeOnly: true, description: The 6-digit code from the reset e-mail. }
         newPassword: { type: string, minLength: 10, maxLength: 128, writeOnly: true }
     RefreshRequest:
       type: object

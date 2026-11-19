@@ -214,7 +214,7 @@ class AiEmailControllerTest {
     }
 
     @Test fun aServerRefusalLocksUntilTheAccountChanges() {
-        // ADR 0034: the lock learned from a refusal belongs to the account that got it.
+        // ADR 0035: the lock learned from a refusal belongs to the account that got it.
         val h = H()
         h.c.open()
         h.c.instructions.set("x")

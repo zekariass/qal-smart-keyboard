@@ -560,7 +560,7 @@ class SignInModelTest {
         model.submitPhone() // the guest bearer expired; the refresh is rejected as reuse: the session ends
         assertNull(session.tokens())
         assertEquals(AccountStatus.SignedOut(SignedOutReason.REFRESH_TOKEN_REUSED), status())
-        // ... and the code is still sent, once more and without a bearer (ADR 0034).
+        // ... and the code is still sent, once more and without a bearer (ADR 0035).
         val starts = requests.filter { it.path == "/api/v1/auth/otp/start" }
         assertEquals(listOf("Bearer guest-acc", null), starts.map { it.getHeader("Authorization") })
         assertEquals(SignInStep.CODE, st().step)
@@ -569,7 +569,7 @@ class SignInModelTest {
         assertTrue(dir.listFiles()!!.none { it.name.startsWith("tokens") })
     }
 
-    // --- ADR 0034: the bearer policy of sign-in calls -----------------------------------------
+    // --- ADR 0035: the bearer policy of sign-in calls -----------------------------------------
 
     private val google = FakeGoogle { GoogleResult.Token("T", null) }
 

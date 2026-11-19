@@ -14,7 +14,7 @@ enum class DeepLinkAction {
     SHOW_PRIVACY,
 
     /**
-     * The sign-in pane opened from the keyboard (its "Sign in to use AI" link, ADR 0034). It sits over the keyboard
+     * The sign-in pane opened from the keyboard (its "Sign in to use AI" link, ADR 0035). It sits over the keyboard
      * settings: finishing or leaving it shows those settings with "Back to typing", which returns to the app the user
      * was typing in.
      */

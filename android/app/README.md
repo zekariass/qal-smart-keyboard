@@ -64,17 +64,18 @@ because `TokenStore` belongs to `:api` and `:data` must stay network-free (`NoNe
 - *Guest.* `POST /auth/attestation-nonces` -> `AttestationProvider.attest(nonce)` -> `POST /auth/guest`. The server answers every
   failure with 403 `GUEST_NOT_ALLOWED` and never says why, so there is one message. If the provider cannot attest, no
   `/auth/guest` call is made. See "Attestation providers".
-- *Guest linking (B2.6) and the bearer policy (ADR 0034).* Sign-in calls (`otp/start`, `otp/verify`, `oauth/GOOGLE`) carry a
+- *Guest linking (B2.6) and the bearer policy (ADR 0035).* Sign-in calls (`otp/start`, `otp/verify`, `oauth/GOOGLE`) carry a
   bearer only while the stored session is a guest's, so the server links it; any other stored session (registered, or of
   unknown kind) is never sent and is replaced locally by the new sign-in. `mergedGuestUserId` == `user.id` is shown as "your
   guest data was kept: this guest session is now your account", a different id as "...added to your existing account". If the
   guest bearer is refused and the session ends (`GUEST_SESSION_INVALID`, or a token the server cannot verify whose refresh
   failed), the dead guest session is cleared and the same call is retried exactly once without a bearer. "Continue as guest"
   is hidden while a guest session exists.
-- *Keyboard sign-in (ADR 0034).* The settings the keyboard's gear opens show the account card first ("Sign in", or "Signed in
-  as" + masked phone/e-mail and "Sign out"); the bar's "Sign in to use AI" opens the sign-in pane over those settings, and
-  "Back to typing" returns to the app the user was typing in. The keyboard follows the shared session at once (sign-in and
-  sign-out in either place).
+- *Keyboard sign-in (ADR 0035).* The settings home the keyboard's gear opens shows the account row first: "Sign in"
+  (straight to the sign-in screen) or "Account — Signed in as" + masked phone/e-mail (the account page has "Sign out");
+  the bar's "Sign in to use AI" opens the sign-in pane over those settings, and "Back to typing" returns to the app the
+  user was typing in. The keyboard follows the shared session at once (sign-in and sign-out in either place). The e-mail
+  calls (ADR 0033) follow the same bearer policy.
 - *Sign-out and ended sessions.* "Sign out" calls `/auth/logout` (best effort) and always wipes the tokens locally.
   `SessionManager.state` drives the UI: after `REFRESH_TOKEN_REUSED` and the like the account card says the session ended and
   offers "Sign in". 426 (seen by any call, through the transport's `CallLogger`) shows the update-required screen

@@ -96,8 +96,8 @@ class OnboardingSaverTest {
         val s = OnboardingSaver.restore(handle)!!
         assertEquals(OnboardingStep.PRIVACY, s.step)
         assertEquals("om", s.draft.order.first())
-        assertEquals(setOf("am", "ti", "om", "en"), s.draft.order.toSet())
-        assertEquals(setOf("am", "ti", "om", "en"), s.draft.enabled) // nothing valid enabled: the default
+        assertEquals(setOf("am", "ti", "om", "en", "ar"), s.draft.order.toSet())
+        assertEquals(setOf("am", "ti", "om", "en"), s.draft.enabled) // nothing valid enabled: the default (Arabic is opt-in)
         assertEquals(InputMode.LATIN_PASSTHROUGH, s.draft.modes["om"]) // Oromo cannot be phonetic: default kept
     }
 }

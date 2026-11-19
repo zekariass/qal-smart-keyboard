@@ -9,13 +9,20 @@ import java.util.Locale
  * Pure and JVM-testable.
  *
  * Preference order per keyboard language: am `am-ET`; ti `ti-ET` then `ti-ER`; om `om-ET`; en the device locale's
- * English (e.g. `en-GB`) when the device is set to English, then `en-US`. A tag the user chose for the keyboard
- * language comes before all of these. None of the Ethiopian tags is assumed to work: support is asked of the
+ * English (e.g. `en-GB`) when the device is set to English, then `en-US`; ar (ADR 0034) the device's Arabic region
+ * (e.g. `ar-EG`) when the device is set to Arabic, then `ar-SA` (Modern Standard Arabic on most speech services). A tag
+ * the user chose for the keyboard language comes before all of these. None of the Ethiopian tags is assumed to work: support is asked of the
  * recogniser at run time ([VoiceSupport]).
  */
 object VoiceLanguages {
     /** The keyboard languages, in the picker's order. */
-    val KEYBOARD_LANGUAGES: List<String> = listOf("am", "ti", "om", "en")
+    val KEYBOARD_LANGUAGES: List<String> = listOf("am", "ti", "om", "en", "ar")
+
+    /**
+     * Keyboard languages the picker lists only when a speech service can take them, or while they are typed (Arabic,
+     * ADR 0034): the four launch languages are always listed, with their support.
+     */
+    val LISTED_WHEN_AVAILABLE: Set<String> = setOf("ar")
 
     /** The default tags of [keyboardLanguage], most preferred first. */
     fun defaults(keyboardLanguage: String, deviceLocale: Locale): List<String> = when (keyboardLanguage) {
@@ -25,6 +32,10 @@ object VoiceLanguages {
         "en" -> {
             val region = deviceLocale.country
             if (deviceLocale.language == "en" && region.isNotEmpty()) listOf("en-$region", "en-US").distinct() else listOf("en-US")
+        }
+        "ar" -> {
+            val region = deviceLocale.country
+            if (deviceLocale.language == "ar" && region.isNotEmpty()) listOf("ar-$region", "ar-SA").distinct() else listOf("ar-SA")
         }
         else -> listOf(normalize(keyboardLanguage))
     }
@@ -79,7 +90,7 @@ object VoiceLanguages {
     /** The UI language (ADR 0032): the platform names other languages and regions in it. */
     private fun uiLocale(): Locale = KeyboardLabels.current.locale
 
-    /** The name shown for [tag]: our names for am/ti/om/en, the platform's name otherwise (in the UI language); region in brackets. */
+    /** The name shown for [tag]: our names for the keyboard languages, the platform's name otherwise (in the UI language); region in brackets. */
     fun displayName(tag: String): String {
         val t = normalize(tag)
         val locale = Locale.forLanguageTag(t)

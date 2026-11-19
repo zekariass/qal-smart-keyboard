@@ -284,7 +284,7 @@ class KeyboardImeService : InputMethodService() {
     private var aiToolbar: AiToolbarController? = null
     private var aiActions: AiActions? = null
 
-    /** Re-renders an open AI panel when the account or the plan state changes (ADR 0034: sign-in in the app). */
+    /** Re-renders an open AI panel when the account or the plan state changes (ADR 0035: sign-in in the app). */
     private var aiPanelsHandle: AutoCloseable? = null
 
     // AI panels (ADR 0031): AI Assist and Write Email take the key area. The state and the views are created on the first

@@ -24,7 +24,7 @@ class DeepLinksTest {
     @Test fun routesEachLinkToItsScreen() {
         assertEquals(DeepLinkAction.SHOW_SIGN_IN, DeepLinks.route(AiLink.SIGN_IN, out, true))
         assertEquals(DeepLinkAction.SHOW_SIGN_IN, DeepLinks.route(AiLink.SIGN_IN, AccountStatus.Guest, true))
-        // ADR 0034: already signed in with an account: the keyboard settings, which show who (with "Back to typing").
+        // ADR 0035: already signed in with an account: the keyboard settings, which show who (with "Back to typing").
         assertEquals(DeepLinkAction.SHOW_KEYBOARD_SETTINGS, DeepLinks.route(AiLink.SIGN_IN, AccountStatus.Registered, true))
         assertEquals(DeepLinkAction.SHOW_PRIVACY, DeepLinks.route(AiLink.AI_SETTINGS, out, true))
         assertEquals(DeepLinkAction.SHOW_PRIVACY, DeepLinks.route(AiLink.AI_SETTINGS, AccountStatus.Guest, true))

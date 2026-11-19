@@ -441,7 +441,7 @@ class ApiClientTest {
         assertTrue("was $e", e is ApiError.Unexpected)
     }
 
-    // ------------------------------------------------------------------ ADR 0034: refused tokens, listeners, sign-in without the session
+    // ------------------------------------------------------------------ ADR 0035: refused tokens, listeners, sign-in without the session
 
     /** The security chain's refusal of the bearer itself (signature, key id, closed account): RFC 6750 `invalid_token`. */
     private fun invalidToken() = problem(401, "UNAUTHENTICATED").setHeader("WWW-Authenticate", "Bearer error=\"invalid_token\"")

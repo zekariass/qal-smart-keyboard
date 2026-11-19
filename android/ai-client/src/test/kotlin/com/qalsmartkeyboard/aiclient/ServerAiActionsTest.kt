@@ -284,7 +284,7 @@ class ServerAiActionsTest {
         val d = actions().destinations()
         assertEquals(listOf("Boss", "Mum"), d.take(2).map { it.label }) // by sort order
         assertTrue(d.take(2).all { it.isProfile })
-        assertEquals(listOf("en", "am", "ti", "om"), d.drop(2).map { it.language })
+        assertEquals(listOf("en", "am", "ti", "om", "ar"), d.drop(2).map { it.language })
         assertTrue(d.drop(2).none { it.isProfile })
         val mum = d.first { it.label == "Mum" }
         assertEquals("11111111-1111-4111-8111-111111111111", mum.serverProfileId)

@@ -48,6 +48,7 @@ class WritingModeTest {
             LayoutKind.PHONETIC -> LanguageCatalog.isEthiopic(mode.language)
             LayoutKind.QUBEE -> mode.language == "om"
             LayoutKind.ENGLISH -> mode.language == "en"
+            LayoutKind.ARABIC -> mode.language == "ar"
         }
         override fun isDraft(mode: TypingMode) = false
         override fun fidelGrid(language: String): FidelGrid? = null

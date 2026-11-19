@@ -54,6 +54,7 @@
     <string name="lang_ti">ትግርኛ</string>
     <string name="lang_om">ኦሮምኛ (Afaan Oromoo)</string>
     <string name="lang_en">እንግሊዝኛ (English)</string>
+    <string name="lang_ar">ዓረብኛ (العربية)</string>
     <string name="lang_am_short">ኣምሓርኛ</string>
     <string name="lang_ti_short">ትግርኛ</string>
 
@@ -74,17 +75,12 @@
 
     <!-- Settings entry point -->
     <string name="settings_setup_title">ምድላው ኪቦርድ</string>
-    <string name="settings_setup_body">ኪቦርድ ኣበርኹን ምረጹን፣ ቋንቋታት ምረጹ፣ ፈትንዎ ድማ።</string>
-    <string name="settings_setup_button">ምድላው ደጊምኩም ኣካይዱ</string>
     <string name="settings_back_to_typing">ናብ ምጽሓፍ ተመለሱ</string>
-    <string name="settings_opened_from_keyboard">ለውጥታት ብቕጽበት ኣብ ኪቦርድ ይፍጸሙ።</string>
 
     <!-- Keyboard themes -->
     <string name="themes_title">ገጽታ ኪቦርድ</string>
-    <string name="themes_intro">ኪቦርድ ከመይ ከም ዝመስል ምረጹ። ዝዓበየ ቅድመ-ርእይቶ ንምርኣይ ገጽታ ጠውቑ፤ «ተግብሩ» ክሳብ እትጠውቑ ዝቕየር የለን።</string>
     <string name="themes_section_free">ናጻ ገጽታታት</string>
     <string name="themes_section_premium">ገጽታታት Premium</string>
-    <string name="themes_premium_note">ገጽታታት Premium ምስ Premium ይመጹ። ንኹሎም ቅድመ-ርእይቶ ክትርእዩ ትኽእሉ ኢኹም።</string>
     <string name="themes_system">ስርዓት</string>
     <string name="themes_system_hint">ክላሲክ ብሩህ ወይ ክላሲክ ጸሊም፣ ከም ስልክኹም።</string>
     <string name="themes_applied">ተግቢሩ</string>
@@ -96,7 +92,6 @@
     <string name="themes_preview_note">እዚ ቅድመ-ርእይቶ ጥራይ እዩ። ነዚ ክሳብ እተግብሩ ኪቦርድኩም ናይ ሕጂ ገጽታኡ ይሕዝ።</string>
     <string name="themes_apply">ገጽታ ተግብሩ</string>
     <string name="themes_unlock">ብPremium ክፈቱ</string>
-    <string name="themes_back_to_list">ናብ ኩሎም ገጽታታት ተመለሱ</string>
     <string name="themes_locked_title">%1$s ገጽታ Premium እዩ</string>
     <string name="themes_locked_body">ኪቦርድኩም ንሕጂ %1$s የርኢ ኣሎ። %2$s</string>
     <string name="themes_reason_allowed">ገጽታታት Premium ይርከቡ።</string>
@@ -104,19 +99,15 @@
     <string name="themes_reason_not_on_plan">ጥቕሊኹም ገጽታታት Premium ኣየጠቓልልን።</string>
     <string name="themes_reason_needs_check">ጥቕሊኹም ክንፍትሽ ሓንሳእ ምስ ኢንተርነት ተራኸቡ።</string>
     <string name="settings_theme_title">ገጽታ</string>
-    <string name="settings_theme_current">ናይ ሕጂ: %1$s</string>
-    <string name="settings_theme_button">ገጽታ ምረጹ</string>
 
     <!-- Personal dictionary -->
     <string name="pd_title">ናይ ውልቀ መዝገበ ቃላት</string>
-    <string name="pd_body">ዝወሰኽኩምዎም ወይ ኪቦርድ ክትጽሕፉ ከለኹም ዝተማህሮም ቃላት። ኣብዚ መሳርሒ ተመስጢሮም ይጸንሑ፣ ፈጺሞም ኣይሰቀሉን። ኣብ ቦታታት ፓስዎርድ ወይ ቦታ ውልቃዊ ትምህርቲ ከይግበር ምስ ዝሓትት ዝኾነ ኣይተማህርን።</string>
+    <string name="pd_body">ዝወሰኽኩምዎም ወይ ኪቦርድ ዝተማህሮም ቃላት፣ ኣብዚ ስልኪ ተመስጢሮም ይዕቀቡ። ኣብ ቦታታት ፓስዎርድ ዝኾነ ኣይተማህርን።</string>
     <string name="pd_empty">ገና ቃላት የለን።</string>
     <string name="pd_loading">ይጽዕን ኣሎ…</string>
-    <string name="pd_language_count">%1$s: %2$d ቃላት</string>
     <string name="pd_show">ቃላት ኣርእዩ</string>
     <string name="pd_hide">ቃላት ሕብኡ</string>
     <string name="pd_show_more">ተወሳኺ ኣርእዩ</string>
-    <string name="pd_delete">ደምስሱ</string>
     <string name="pd_delete_description">%1$s ካብ መዝገበ ቃላት ደምስሱ</string>
     <string name="pd_clear_all">ኩሉ ኣጽርዩ</string>
     <string name="pd_clear_title">ናይ ውልቀ መዝገበ ቃላትኩም ይጽረ?</string>
@@ -197,6 +188,44 @@
     <string name="si_err_session_ended">ኣጠቓቕማኹም ተወዲኡ። በጃኹም ደጊምኩም ፈትኑ።</string>
     <string name="si_err_unexpected">ገለ ጌጋ ተፈጢሩ። ደጊምኩም ፈትኑ።</string>
 
+    <!-- E-mail and password sign-in (ADR 0033), DRAFT -->
+    <string name="si_method_phone">ስልኪ</string>
+    <string name="si_method_email">ኢመይል</string>
+    <string name="si_email_label">ኢመይል</string>
+    <string name="si_email_hint">name@example.com</string>
+    <string name="si_password_label">ቃል ምስጢር</string>
+    <string name="si_password_new_label">ሓድሽ ቃል ምስጢር</string>
+    <string name="si_password_show">ኣርኢ</string>
+    <string name="si_password_hide">ሕባእ</string>
+    <string name="si_password_rules">እንተወሓደ %1$d ፊደላት። ሓጺር ሓሳብ ንምዝካር ቀሊል፣ ንምግማት ግን ከቢድ እዩ።</string>
+    <string name="si_email_sign_in">ብኢመይል እተዉ</string>
+    <string name="si_email_create">ኣካውንት ክፈቱ</string>
+    <string name="si_forgot">ቃል ምስጢር ረሲዕኩም?</string>
+    <string name="si_email_new_here">ሓድሽ ዲኹም? ኣካውንት ክፈቱ</string>
+    <string name="si_email_have_account">ኣካውንት ኣለኩም? እተዉ</string>
+    <string name="si_email_code_sent">ናይ %1$d ኣሃዛት ኮድ ናብ %2$s ልኢኽና። ሳንዱቕ መልእኽትን ስፓምን ርኣዩ።</string>
+    <string name="si_change_email">ካልእ ኢመይል ተጠቐሙ</string>
+    <string name="si_reset_title">ቃል ምስጢርኩም ቀይሩ</string>
+    <string name="si_reset_body">ኢመይልኩም ኣእትዉ። ናይ ኣካውንት እንተኾይኑ ቃል ምስጢር ንምቕያር ኮድ ክንሰድድ ኢና።</string>
+    <string name="si_reset_code_sent">%2$s ኣካውንት እንተሃልይዎ ናይ %1$d ኣሃዛት ኮድ ልኢኽና። ምስ ሓድሽ ቃል ምስጢር ኣእትውዎ።</string>
+    <string name="si_reset_button">ቃል ምስጢር ቀይር</string>
+    <string name="si_back_to_sign_in">ናብ ምእታው ተመለሱ</string>
+    <string name="si_reset_sent">ኮድ ተላኢኹ። ንምብጻሕ ሓደ ደቒቕ ክወስድ ይኽእል።</string>
+    <string name="si_reset_done">ቃል ምስጢርኩም ተቐይሩ። ብሓድሽ ቃል ምስጢር እተዉ።</string>
+    <string name="si_err_email_empty">ኢመይልኩም ኣእትዉ።</string>
+    <string name="si_err_email_invalid">ቅኑዕ ኢመይል ኣእትዉ፣ ንኣብነት name@example.com።</string>
+    <string name="si_err_password_empty">ቃል ምስጢርኩም ኣእትዉ።</string>
+    <string name="si_err_password_short">እንተወሓደ %1$d ፊደላት ተጠቐሙ።</string>
+    <string name="si_err_password_long">እንተበዝሐ %1$d ፊደላት ተጠቐሙ።</string>
+    <string name="si_err_password_common">እዚ ቃል ምስጢር ብቐሊሉ ይግመት። ሓጺር ሓሳብ ፈትኑ።</string>
+    <string name="si_err_password_email">ኢመይልኩም ከም ቃል ምስጢር ኣይትጠቐሙ።</string>
+    <string name="si_err_credentials">ኢመይል ወይ ቃል ምስጢር ቅኑዕ ኣይኮነን።</string>
+    <string name="si_err_locked">ብዙሓት ጌጋ ቃላት ምስጢር። ደሓር ፈትኑ ወይ ቃል ምስጢርኩም ቀይሩ።</string>
+    <string name="si_err_locked_in">ብዙሓት ጌጋ ቃላት ምስጢር። ድሕሪ %1$d ደቒቕ ፈትኑ ወይ ቃል ምስጢርኩም ቀይሩ።</string>
+    <string name="si_err_email_taken">በዚ ኢመይል ኣካውንት ኣሎ። እተዉ ወይ ቃል ምስጢር ቀይሩ።</string>
+    <string name="si_err_email_unavailable">ብኢመይል ምእታው ሕጂ የለን። ቁጽሪ ስልኪ ወይ Google ተጠቐሙ።</string>
+    <string name="si_err_reset_code">እቲ ኮድ ቅኑዕ ኣይኮነን ወይ ግዜኡ ሓሊፉ። ሓድሽ ኮድ ሕተቱ።</string>
+
     <string name="upd_title">በጃኹም ነቲ ኣፕ ኣሐድሱ</string>
     <string name="upd_body">እዚ ስሪት Qal Smart Keyboard ምስ ሰርቨር ንምርኻብ ኣዝዩ ኣረጊት እዩ። ምጽሓፍ ይሰርሕ እዩ፤ ንምእታውን ባህርያት ኦንላይን ንምጥቃምን ኣሐድሱ።</string>
     <string name="upd_button">ገጽ ድኳን ክፈቱ</string>
@@ -206,8 +235,6 @@
 
     <!-- Privacy dashboard -->
     <string name="pv_entry_title">ብሕታውነት</string>
-    <string name="pv_entry_body">ኣብ ስልክኹም ዝጸንሕን ዝስደድን ርኣዩ፣ ፍቓዳትኩም፣ ዝተዓቀበ ታሪኽ AI፣ ምውጻእ ሓበሬታን ምድምሳስ ኣካውንትን ኣመሓድሩ።</string>
-    <string name="pv_entry_button">ብሕታውነት ክፈቱ</string>
     <string name="pv_title">ብሕታውነት</string>
     <string name="pv_loading">በጃኹም ተጸበዩ…</string>
     <string name="pv_ok">ሕራይ</string>
@@ -223,7 +250,7 @@
     <string name="pv_voice_title">ብድምጺ ምጽሓፍ</string>
     <string name="pv_voice_body">ማይክሮፎን ኪቦርድ ምስ ጠወቕኩም፣ ኣገልግሎት ዘረባ ስልክኹም (ንኣብነት Google) ድምጽኹም ናብ ጽሑፍ ይቕይሮ። እዚ ኣገልግሎት ነቲ ድምጺ ብናይ ገዛእ ርእሱ ውዕላት ብሕታውነት ናብ ሰርቨራቱ ክሰዶ ይኽእል። Qal ድምጽኹም ኣይቀድሕን፣ ኣይዕቅብን፣ ኣይሰድን፤ እቲ ጽሑፍ ድማ ከም ዝጸሓፍኩምዎ ይሕዝ: ኣብ ስልክኹም ይጸንሕ፣ ናብ መዝገበ ቃላትኩም ፈጺሙ ኣይእቶን። ኣብ ቅጥዕታት ኪቦርድ ብድምጺ ምጽሓፍ ከተጥፍእዎ ትኽእሉ ኢኹም።</string>
     <string name="settings_voice_typing">ብድምጺ ምጽሓፍ</string>
-    <string name="settings_voice_typing_body">ኣብ ባር ኪቦርድ ማይክሮፎን የርኢ። ኣገልግሎት ዘረባ ስልክኹም ዘረባ ናብ ጽሑፍ ይቕይሮ፤ ኣየኖት ቋንቋታት ከም ዝሰርሑ ኣብቲ ኣገልግሎት ይምርኮስ።</string>
+    <string name="settings_voice_typing_body">ኣገልግሎት ዘረባ ስልክኹም ድምጽኹም ናብ ጽሑፍ ይቕይሮ፤ እቲ ድምጺ ናብ ናቱ ሰርቨራት ክሰድዶ ይኽእል። Qal ድምጽኹም ኣይቀድሕን ኣይዕቅብን።</string>
     <string name="voice_perm_title">ማይክሮፎን ንብድምጺ ምጽሓፍ</string>
     <string name="voice_perm_why">ብድምጽኹም ንምጽሓፍ፣ Qal Keyboard ማይክሮፎን ንምጥቃም ፍቓድ የድልዮ። ማይክሮፎን ኣብ ኪቦርድ ምስ ጠወቕኩምን ኪቦርድ ክፉት ከሎን ጥራይ ይሰምዕ።</string>
     <string name="voice_perm_privacy">ኣገልግሎት ዘረባ ስልክኹም (ንኣብነት Google) ድምጽኹም ናብ ጽሑፍ ይቕይሮ፣ ነዚ ድማ ኢንተርነት ክጥቀም ይኽእል። Qal ድምጽኹም ኣይቀድሕን ኣይዕቅብን።</string>
@@ -384,15 +411,11 @@
 
     <!-- Word Art -->
     <string name="settings_wordart_title">ስነ-ጥበብ ቃላት</string>
-    <string name="settings_wordart_body">ንሰላምታታት፣ ኣስማትን መግለጺታትን ዘስርሕ ጽሑፍ። ካብዚ ቅድሕዎ ወይ ኣካፍልዎ፣ ወይ ኣብ ኪቦርድ ናይ ፓነል ኢሞጂ ታብ Aa ተጠቐሙ።</string>
-    <string name="settings_wordart_button">ስነ-ጥበብ ቃላት ክፈቱ</string>
     <!-- Write Email with AI and the translation destination -->
     <string name="settings_email_title">ብAI ኢመይል ጽሓፉ</string>
-    <string name="settings_email_body">ክትብልዎ እትደልዩ ብዝኾነ ቋንቋ ግለጹ እሞ ምስ ኣርእስቲ ዝተዳለወ ኢመይል ርኸቡ፣ ወይ ንሓደ ኢመይል መልሱ ወይ ኣመሓይሹ። ኣብ ኪቦርድ እውን: AI፣ ድሕሪኡ ኢመይል።</string>
-    <string name="settings_email_button">ኢመይል ጽሓፉ</string>
     <string name="settings_translate_title">ናብ ዝትርጐም</string>
-    <string name="settings_translate_body">ኪቦርድ ብመሰረቱ ዝትርጉመሉ ቋንቋ። ኣብ ነፍሲ ወከፍ ግዜ ብመልጎማት ቋንቋ ኣብ ጥቓ ትርጉም ክትቅይርዎ ትኽእሉ ኢኹም።</string>
-    <string name="settings_translate_auto">ባዕሉ (እንግሊዝኛ፣ ወይ ንጽሑፍ እንግሊዝኛ ኣምሓርኛ)</string>
+    <string name="settings_translate_body">ኪቦርድ ብመሰረቱ ዝትርጉመሉ ቋንቋ።</string>
+    <string name="settings_translate_auto">ባዕሉ</string>
     <string name="email_title">ብAI ኢመይል ጽሓፉ</string>
     <string name="email_from_keyboard">ካብ ኪቦርድ ዘእተኹምዎ ተመሊኡ ኣሎ። ኢመይል ምስ ተዳለወ፣ ቅድሕዎ እሞ ኣብ ኣፕ ኢመይልኩም ለጥፍዎ።</string>
     <string name="email_preview">ኢመይልኩም</string>
@@ -416,10 +439,10 @@
     <string name="wordart_app_lang_en">እንግሊዝኛ</string>
 
     <!-- Settings screen -->
-    <string name="settings_title">ቅጥዕታት ኪቦርድ</string>
-    <string name="settings_languages_title">ቋንቋታት (ላዕለዋይ = ቀዳማይ ኣብ መጠወቒ ሉል)</string>
+    <string name="settings_languages_title">ቋንቋታት</string>
     <string name="settings_mode_phonetic">ፎነቲክ QWERTY</string>
     <string name="settings_mode_latin">ላቲን</string>
+    <string name="settings_layout_arabic">ዓረብኛ</string>
     <string name="settings_translit_profile">ፕሮፋይል ትራንስሊተሬሽን: እቲ ሓድሽ ንጡፍ (ባዕሉ)</string>
     <string name="settings_show_candidates">እማመታት ኣርእዩ</string>
     <string name="settings_numerals_title">ቁጽርታት</string>
@@ -432,6 +455,46 @@
     <string name="settings_reset">ናብ መበገሲ ቅጥዕታት ምለሱ</string>
     <!-- App language -->
     <string name="settings_app_language_title">ቋንቋ ኣፕ</string>
-    <string name="settings_app_language_body">ቋንቋ ናይዚ ኣፕን ናይ መልጎማትን ምናሌታትን ኪቦርድን። እትጽሕፉሎም ቋንቋታት ኣይቅይርን።</string>
+    <string name="settings_app_language_body">እትጽሕፉሎም ቋንቋታት ኣይቅይርን።</string>
     <string name="settings_app_language_system">ናይ ስልኪ ዝተዳለወ</string>
+
+    <!-- Settings redesign (ADR 0036): home groups, pages, languages, theme strip. -->
+    <string name="settings_theme_more">ተወሳኺ ርኣዩ</string>
+    <string name="settings_theme_selected">ተመሪጹ</string>
+    <string name="settings_setup_prompt">ምድላው ኪቦርድ ወድኡ</string>
+    <string name="settings_setup_prompt_button">ኣዳልዉ</string>
+    <string name="settings_group_keyboard">ኪቦርድ</string>
+    <string name="settings_group_tools">AIን መሳርሒታትን</string>
+    <string name="settings_group_account">ኣካውንትን ብሕታውነትን</string>
+    <string name="settings_group_app">ኣፕ</string>
+    <string name="settings_preferences">ምርጫታት</string>
+    <string name="settings_prefs_keys">መጠወቕታት</string>
+    <string name="settings_dictionary">መዝገበ ቃላት</string>
+    <string name="settings_advanced">ዝማዕበለ</string>
+    <string name="settings_about">ብዛዕባ ኣፕ</string>
+    <string name="settings_about_version">ስሪት ኣፕ</string>
+    <string name="settings_about_core">ቀንዲ ሞተር</string>
+    <string name="settings_about_privacy_notice">መግለጺ ብሕታውነት</string>
+    <string name="settings_account_signed_in">ኣቲኹም ኣለኹም</string>
+    <string name="settings_account_guest">ጋሻ</string>
+    <string name="settings_account_signed_out">ኣይኣቶኹምን</string>
+    <string name="settings_languages_order">መጠወቒ ሉል ብዚ ስርዓት ይቕይሮም።</string>
+    <string name="settings_languages_manage">ቋንቋታት ወስኹ ወይ ኣልግሱ</string>
+    <string name="settings_languages_all">ኩሎም ቋንቋታት</string>
+    <string name="settings_languages_search">ቋንቋታት ድለዩ</string>
+    <string name="settings_languages_search_clear">ምድላይ ኣጽርዩ</string>
+    <string name="settings_languages_no_match">ዝተረኽበ ቋንቋ የለን</string>
+    <string name="settings_languages_last">እንተወሓደ ሓደ ቋንቋ ክፉት ይጸንሕ</string>
+    <string name="settings_layout_title">ኣቀማምጣ</string>
+    <string name="settings_phonetic_title">ፎነቲክ ምጽሓፍ</string>
+    <string name="settings_mode_latin_hint">ንቡር ፊደላት ላቲን (QWERTY)።</string>
+    <string name="settings_voice_typing_switch">ብድምጺ ምጽሓፍ ተጠቐሙ</string>
+    <string name="settings_translate_auto_hint">እንግሊዝኛ፣ ወይ ንጽሑፍ እንግሊዝኛ ኣምሓርኛ</string>
+    <string name="settings_reset_title">ቅጥዕታት ኪቦርድ ናብ መበገሲ ይምለሱ?</string>
+    <string name="settings_reset_message">ቋንቋታት፣ ኣቀማምጣታት፣ ገጽታን ምርጫታትን ናብ መበገሲኦም ይምለሱ።</string>
+    <string name="settings_reset_confirm">ምለሱ</string>
+    <plurals name="pd_word_count">
+        <item quantity="one">%1$d ቃል</item>
+        <item quantity="other">%1$d ቃላት</item>
+    </plurals>
 </resources>

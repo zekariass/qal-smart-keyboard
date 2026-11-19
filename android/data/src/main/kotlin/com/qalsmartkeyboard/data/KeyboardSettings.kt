@@ -41,17 +41,28 @@ object ThemeIds {
 /** Language-pack release channel (A2.3); names match the contract's `ReleaseChannel`. STABLE unless a tester opts in. */
 enum class PackChannel { STABLE, BETA, INTERNAL }
 
-/** Static facts about the launch languages (SD 7.1) that validation needs. */
+/** Static facts about the typing languages (SD 7.1, ADR 0034) that validation needs. */
 object LanguageRules {
-    /** Launch languages in their default order. */
-    val KNOWN: List<String> = listOf("am", "ti", "om", "en")
+    /** Typing languages in their default order: the four launch languages, then Arabic (ADR 0034). */
+    val KNOWN: List<String> = listOf("am", "ti", "om", "en", "ar")
+
+    /**
+     * Languages a user turns on themselves (ADR 0034): off on first run, and appended switched off to an existing
+     * user's list (by [KeyboardSettings.sanitized]). The launch languages start on.
+     */
+    val OPT_IN: Set<String> = setOf("ar")
 
     fun isKnown(code: String) = code in KNOWN
 
-    /** Allowed modes; the first is the default (am/ti: phonetic QWERTY, Fidel one globe long-press away; ADR 0007). */
+    /**
+     * Allowed modes; the first is the default (am/ti: phonetic QWERTY, Fidel one globe long-press away; ADR 0007).
+     * Arabic has one mode, its letter layout. The contract stores it as LATIN_PASSTHROUGH, the name it gives every
+     * mode that commits keys as they are (the backend allows only that for a non-Ge'ez language); the keyboard's
+     * Arabic layout is chosen by the language, not by this value.
+     */
     fun allowedModes(code: String): List<InputMode> = when (code) {
         "am", "ti" -> listOf(InputMode.PHONETIC_LATIN_TO_NATIVE, InputMode.DIRECT_SCRIPT_LAYOUT, InputMode.LATIN_PASSTHROUGH)
-        "om", "en" -> listOf(InputMode.LATIN_PASSTHROUGH)
+        "om", "en", "ar" -> listOf(InputMode.LATIN_PASSTHROUGH)
         else -> emptyList()
     }
 
@@ -138,7 +149,7 @@ data class KeyboardSettings(
     /** Voice typing: the one-time "your phone's speech service turns voice into text" note was shown. Device-local. */
     val voiceNoticeShown: Boolean = false,
     /**
-     * AI translation (ADR 0031): the preferred destination language (am, ti, om, en), or null for the automatic default
+     * AI translation (ADR 0031): the preferred destination language (am, ti, om, en, ar), or null for the automatic default
      * (English for am/ti/om text, Amharic for English text). Device-local, not synced.
      */
     val aiPreferredTarget: String? = null,
@@ -226,8 +237,9 @@ data class KeyboardSettings(
         /** A BCP-47 language tag as speech services report them (`am-ET`, `en-US`, `cmn-Hans-CN`, `es-419`). */
         private val LANGUAGE_TAG = Regex("[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,4}")
 
-        /** First run: am, ti, om, en all enabled in this order (A1.4's default). */
-        fun defaultLanguages(): List<TypingLanguageSetting> = LanguageRules.KNOWN.map { TypingLanguageSetting(it) }
+        /** First run: am, ti, om, en enabled in this order (A1.4's default), then Arabic switched off (opt-in, ADR 0034). */
+        fun defaultLanguages(): List<TypingLanguageSetting> =
+            LanguageRules.KNOWN.map { TypingLanguageSetting(it, enabled = it !in LanguageRules.OPT_IN) }
 
         val DEFAULT: KeyboardSettings = KeyboardSettings()
     }

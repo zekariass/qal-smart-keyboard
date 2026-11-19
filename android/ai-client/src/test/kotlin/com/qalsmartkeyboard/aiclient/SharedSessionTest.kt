@@ -19,7 +19,7 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * ADR 0034: the keyboard and the companion app share one session. A sign-in, sign-out or account switch in either
+ * ADR 0035: the keyboard and the companion app share one session. A sign-in, sign-out or account switch in either
  * reaches the keyboard's AI availability, plan state, entitlement token and premium themes at once (no restart, no
  * polling), and only a real account change fetches anything.
  */

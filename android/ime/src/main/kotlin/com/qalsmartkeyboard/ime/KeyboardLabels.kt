@@ -18,6 +18,7 @@ data class KeyboardLabels(
     val languageTi: String,
     val languageOm: String,
     val languageEn: String,
+    val languageAr: String,
     /** The writing-mode selector's names (am/ti): Fidel stays ፊደል in every UI language. */
     val modePhonetic: String,
     val modeEnglish: String,
@@ -25,6 +26,7 @@ data class KeyboardLabels(
     val spokenFidelGrid: String,
     val spokenPhoneticKeys: String,
     val spokenAbcLatin: String,
+    val spokenArabicKeys: String,
     /** "%1$s, %2$s": language, writing mode. */
     val modeDescription: String,
     val keyDelete: String,
@@ -38,6 +40,12 @@ data class KeyboardLabels(
     val keyEthiopicFullStop: String,
     val keyComma: String,
     val keyEthiopicComma: String,
+    /** Arabic keys (ADR 0034): "Arabic-Indic numeral %1$s", "Arabic punctuation %1$s", "Arabic mark %1$s" (a technical name). */
+    val keyArabicNumeral: String,
+    val keyArabicPunctuation: String,
+    val keyArabicComma: String,
+    val keyArabicMark: String,
+    val keyArabicMarks: String,
     val keySwitchToLanguageKeys: String,
     val keySwitchToEnglishMode: String,
     val keySwitchToAbc: String,
@@ -57,6 +65,7 @@ data class KeyboardLabels(
         "ti" -> languageTi
         "om" -> languageOm
         "en" -> languageEn
+        "ar" -> languageAr
         else -> code
     }
 
@@ -67,12 +76,14 @@ data class KeyboardLabels(
             languageTi = "Tigrinya",
             languageOm = "Afaan Oromoo",
             languageEn = "English",
+            languageAr = "Arabic",
             modePhonetic = "Phonetic",
             modeEnglish = "English",
             spokenFidel = "Fidel",
             spokenFidelGrid = "Fidel grid",
             spokenPhoneticKeys = "phonetic Latin keys",
             spokenAbcLatin = "ABC Latin",
+            spokenArabicKeys = "Arabic letters",
             modeDescription = "%1\$s, %2\$s",
             keyDelete = "Delete",
             keyEmoji = "Emoji",
@@ -84,6 +95,11 @@ data class KeyboardLabels(
             keyEthiopicFullStop = "Ethiopic full stop",
             keyComma = "Comma",
             keyEthiopicComma = "Ethiopic comma",
+            keyArabicNumeral = "Arabic-Indic numeral %1\$s",
+            keyArabicPunctuation = "Arabic punctuation %1\$s",
+            keyArabicComma = "Arabic comma",
+            keyArabicMark = "Arabic mark %1\$s",
+            keyArabicMarks = "Arabic marks",
             keySwitchToLanguageKeys = "Switch to %1\$s keys",
             keySwitchToEnglishMode = "Switch to English writing mode",
             keySwitchToAbc = "Switch to ABC Latin keys",
@@ -109,12 +125,14 @@ data class KeyboardLabels(
             languageTi = c.getString(R.string.language_name_ti),
             languageOm = c.getString(R.string.language_name_om),
             languageEn = c.getString(R.string.language_name_en),
+            languageAr = c.getString(R.string.language_name_ar),
             modePhonetic = c.getString(R.string.kb_mode_phonetic),
             modeEnglish = c.getString(R.string.kb_mode_english),
             spokenFidel = c.getString(R.string.kb_spoken_fidel),
             spokenFidelGrid = c.getString(R.string.kb_spoken_fidel_grid),
             spokenPhoneticKeys = c.getString(R.string.kb_spoken_phonetic_keys),
             spokenAbcLatin = c.getString(R.string.kb_spoken_abc_latin),
+            spokenArabicKeys = c.getString(R.string.kb_spoken_arabic_keys),
             modeDescription = c.getString(R.string.kb_mode_description),
             keyDelete = c.getString(R.string.kb_key_delete),
             keyEmoji = c.getString(R.string.key_emoji_description),
@@ -126,6 +144,11 @@ data class KeyboardLabels(
             keyEthiopicFullStop = c.getString(R.string.kb_key_ethiopic_full_stop),
             keyComma = c.getString(R.string.kb_key_comma),
             keyEthiopicComma = c.getString(R.string.kb_key_ethiopic_comma),
+            keyArabicNumeral = c.getString(R.string.kb_key_arabic_numeral),
+            keyArabicPunctuation = c.getString(R.string.kb_key_arabic_punctuation),
+            keyArabicComma = c.getString(R.string.kb_key_arabic_comma),
+            keyArabicMark = c.getString(R.string.kb_key_arabic_mark),
+            keyArabicMarks = c.getString(R.string.kb_key_arabic_marks),
             keySwitchToLanguageKeys = c.getString(R.string.kb_key_switch_to_language_keys),
             keySwitchToEnglishMode = c.getString(R.string.kb_key_switch_to_english_mode),
             keySwitchToAbc = c.getString(R.string.kb_key_switch_to_abc),
