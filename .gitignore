@@ -51,3 +51,6 @@ android/.kotlin/
 # JVM crash logs (IDE language server, Gradle/Maven forks)
 hs_err_pid*.log
 replay_pid*.log
+
+# Local dev secrets for infra/scripts/run-backend-dev.sh (never commit)
+infra/scripts/.dev-secrets.env
