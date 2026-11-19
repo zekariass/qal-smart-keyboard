@@ -33,6 +33,8 @@ class KeyboardController(
     emojiStore: EmojiStore = EmojiStore.None,
     emojiLoader: EmojiLoader? = null,
     emojiExecutor: EmojiExecutor = EmojiExecutor.Inline,
+    /** Puts text on the clipboard for Word Art's Copy (the service owns the ClipboardManager); false: not possible. */
+    private val clipboard: (String) -> Boolean = { false },
     private val onChanged: () -> Unit,
 ) {
     private val learner = WordLearner(dictionary)
@@ -56,6 +58,8 @@ class KeyboardController(
                 learner.reset() // an emoji ends the word
             }
             override val language: String get() = this@KeyboardController.language
+            override fun selectedText(): String? = sink.selectedText()
+            override fun copyToClipboard(text: String): Boolean = clipboard(text)
         },
         emojiStore, emojiLoader, emojiExecutor,
     ) { onChanged() }
@@ -273,7 +277,7 @@ class KeyboardController(
         // Phonetic schemes give capitals their own meaning (SERA-style), so only Latin passthrough
         // layouts (ABC, Qubee, English) auto-capitalise.
         val m = effectiveMode
-        val wants = m.kind.latin && !m.phonetic && profile.capsFlags != 0 && !emoji.searching && sink.wantsAutoCapital(profile.capsFlags)
+        val wants = m.kind.latin && !m.phonetic && profile.capsFlags != 0 && emoji.redirect == null && sink.wantsAutoCapital(profile.capsFlags)
         shift = if (wants) ShiftState.ONCE else ShiftState.OFF
     }
 
@@ -294,7 +298,7 @@ class KeyboardController(
             KeyKind.FIDEL_VOWEL -> if (pendingSeries != null && orderFace(key).active) send(ComposerKey.FidelVowel(key.order))
             KeyKind.SPACE -> { send(ComposerKey.Space); refreshAutoCapital() }
             KeyKind.BACKSPACE -> { send(ComposerKey.Backspace); refreshAutoCapital() }
-            KeyKind.ENTER -> if (emoji.searching) send(ComposerKey.Commit) else {
+            KeyKind.ENTER -> if (emoji.typingWordArt) { send(ComposerKey.Commit); emoji.endWordArtTyping() } else if (emoji.searching) send(ComposerKey.Commit) else {
                 when (val a = profile.enterAction) {
                     EnterAction.Newline -> send(ComposerKey.Enter)
                     EnterAction.EnterKey -> { send(ComposerKey.Commit); sink.sendEnterKey() }
@@ -307,7 +311,7 @@ class KeyboardController(
                 ShiftState.ONCE -> ShiftState.LOCKED
                 ShiftState.LOCKED -> ShiftState.OFF
             }
-            KeyKind.EMOJI -> if (emoji.searching) emoji.closeSearch() else emoji.open(profile.allowsEmoji)
+            KeyKind.EMOJI -> if (emoji.searching) emoji.closeSearch() else if (emoji.typingWordArt) emoji.endWordArtTyping() else emoji.open(profile.allowsEmoji)
             KeyKind.GLOBE -> { nextLanguage(); return }
             KeyKind.ABC_TOGGLE -> { toggleAbc(); return }
             KeyKind.TO_SYMBOLS -> page = Page.SYMBOLS
@@ -468,9 +472,10 @@ class KeyboardController(
     private fun send(key: ComposerKey) = apply(composer.onKey(key))
 
     private fun apply(update: ComposerUpdate) {
-        // While the emoji search is open the keys type into its query, not into the host field, and nothing is learned.
-        val searching = emoji.searching
-        (if (searching) emoji.querySink else sink).apply(update)
+        // While the emoji search or the Word Art text field is open the keys type into it, not into the host field, and nothing is learned.
+        val redirect = emoji.redirect
+        val searching = redirect != null
+        (redirect ?: sink).apply(update)
         val m = effectiveMode
         // A Latin word typed in ABC is not an Amharic or Tigrinya word (SD 7.4: learn per language and script).
         learner.observe(update, m.language, !searching && profile.learnsWords && !(m.isAbc && LanguageCatalog.isEthiopic(m.language)))

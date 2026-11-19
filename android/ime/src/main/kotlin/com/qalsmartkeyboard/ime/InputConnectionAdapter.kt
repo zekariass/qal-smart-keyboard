@@ -40,6 +40,9 @@ interface TextSink {
 
     /** True when the host wants the next typed letter capitalised (cursor caps mode). */
     fun wantsAutoCapital(capsFlags: Int): Boolean
+
+    /** The text selected in the host field (Word Art starts from it), or null when none or unknown. */
+    fun selectedText(): String? = null
 }
 
 /** How composing text reaches the editor in the current editor session. */
@@ -149,6 +152,8 @@ class InputConnectionAdapter(private val editor: () -> EditorOps?) : TextSink {
 
     override fun wantsAutoCapital(capsFlags: Int): Boolean =
         (editor()?.getCursorCapsMode(capsFlags) ?: 0) != 0
+
+    override fun selectedText(): String? = editor()?.getSelectedText()?.toString()?.takeIf { it.isNotEmpty() }
 
     /** The editor, for edits the user asked for explicitly (the AI toolbar's Replace/Insert). */
     fun editorOps(): EditorOps? = editor()

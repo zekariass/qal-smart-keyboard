@@ -2,6 +2,8 @@ package com.qalsmartkeyboard.ime.emoji
 
 import com.qalsmartkeyboard.ime.ComposerUpdate
 import com.qalsmartkeyboard.ime.TextSink
+import com.qalsmartkeyboard.ime.wordart.WordArtController
+import com.qalsmartkeyboard.ime.wordart.WordArtHost
 import java.text.BreakIterator
 
 enum class EmojiMode {
@@ -13,6 +15,12 @@ enum class EmojiMode {
 
     /** The keys are back, typing into the search query; results fill the strip above the keys. */
     SEARCH,
+
+    /** The Word Art panel (ADR 0030, a tab of this panel) replaces the key area: text field, categories, style previews. */
+    WORD_ART,
+
+    /** The keys are back, typing into Word Art's text field; the bar shows the field. */
+    WORD_ART_TYPING,
 }
 
 /** Runs [work] off the main thread and delivers its result on the main thread ([Inline] runs both at once, for tests). */
@@ -37,6 +45,12 @@ interface EmojiHost {
 
     /** The keyboard language, for localised search. */
     val language: String
+
+    /** The text selected in the host field (Word Art starts from it), or null. */
+    fun selectedText(): String? = null
+
+    /** Puts [text] on the clipboard; false when that is not possible. */
+    fun copyToClipboard(text: String): Boolean = false
 }
 
 /**
@@ -58,6 +72,26 @@ class EmojiController(
         private set
 
     val searching: Boolean get() = mode == EmojiMode.SEARCH
+
+    /** The keys type into Word Art's text field, not the host field (see `KeyboardController.apply`). */
+    val typingWordArt: Boolean get() = mode == EmojiMode.WORD_ART_TYPING
+
+    /** Where the composer's output goes instead of the host field, or null when it is the host field. */
+    val redirect: TextSink? get() = when (mode) {
+        EmojiMode.SEARCH -> querySink
+        EmojiMode.WORD_ART_TYPING -> wordArt.sink
+        else -> null
+    }
+
+    /** Word Art (ADR 0030): its text, category and previews; only used while the mode is [EmojiMode.WORD_ART] or typing. */
+    val wordArt: WordArtController = WordArtController(
+        object : WordArtHost {
+            override fun commitToField(text: String) = host.commitToField(text)
+            override fun selectedText(): String? = host.selectedText()
+            override fun copyToClipboard(text: String): Boolean = host.copyToClipboard(text)
+            override val language: String get() = host.language
+        },
+    ) { onChanged() }
 
     var catalog: EmojiCatalog? = null
         private set
@@ -107,6 +141,8 @@ class EmojiController(
     fun close() {
         if (mode == EmojiMode.CLOSED) return
         if (mode == EmojiMode.SEARCH) leaveSearch()
+        if (mode == EmojiMode.WORD_ART_TYPING) host.resetComposition()
+        if (mode == EmojiMode.WORD_ART || mode == EmojiMode.WORD_ART_TYPING) wordArt.end()
         mode = EmojiMode.CLOSED
         onChanged()
     }
@@ -117,6 +153,8 @@ class EmojiController(
             EmojiMode.CLOSED -> return false
             EmojiMode.SEARCH -> closeSearch()
             EmojiMode.PANEL -> close()
+            EmojiMode.WORD_ART_TYPING -> endWordArtTyping()
+            EmojiMode.WORD_ART -> closeWordArt()
         }
         return true
     }
@@ -170,6 +208,40 @@ class EmojiController(
         if (mode != EmojiMode.SEARCH) return
         leaveSearch()
         mode = EmojiMode.PANEL
+        onChanged()
+    }
+
+    // ------------------------------------------------------------------ word art
+
+    /** The Word Art tab: from the panel to the Word Art screen, starting from the host field's selected text. */
+    fun openWordArt() {
+        if (mode != EmojiMode.PANEL) return
+        host.commitComposition()
+        wordArt.begin()
+        mode = EmojiMode.WORD_ART
+        onChanged()
+    }
+
+    /** Back from Word Art to the emoji panel. */
+    fun closeWordArt() {
+        if (mode != EmojiMode.WORD_ART) return
+        wordArt.end()
+        mode = EmojiMode.PANEL
+        onChanged()
+    }
+
+    /** The text field was tapped: the keys come back and type into it. */
+    fun startWordArtTyping() {
+        if (mode != EmojiMode.WORD_ART) return
+        mode = EmojiMode.WORD_ART_TYPING
+        onChanged()
+    }
+
+    /** Done typing: the composition in progress becomes part of the text and the Word Art screen is back. */
+    fun endWordArtTyping() {
+        if (mode != EmojiMode.WORD_ART_TYPING) return
+        host.commitComposition() // still routed to the Word Art text: the open composition is appended to it
+        mode = EmojiMode.WORD_ART
         onChanged()
     }
 

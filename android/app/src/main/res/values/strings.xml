@@ -369,4 +369,23 @@
     <string name="pv_err_save_failed">The file could not be saved there. Choose another place.</string>
     <string name="pv_err_word">Type the word shown to confirm.</string>
     <string name="pv_err_retention">Choose between 1 and 365 days.</string>
+
+    <!-- Word Art (ADR 0030) -->
+    <string name="settings_wordart_title">Word Art</string>
+    <string name="settings_wordart_body">Decorative text for greetings, names and captions. Copy it or share it from here, or use the Aa tab of the emoji panel in the keyboard.</string>
+    <string name="settings_wordart_button">Open Word Art</string>
+    <string name="wordart_app_title">Word Art</string>
+    <string name="wordart_app_intro">Type a name or a message, pick a style, then copy or share it. Works with Amharic, Tigrinya, Afaan Oromoo and English.</string>
+    <string name="wordart_app_field_label">Your text</string>
+    <string name="wordart_app_draft_note">Greeting wording in Amharic, Tigrinya and Afaan Oromoo is a draft until reviewed by native speakers.</string>
+    <string name="wordart_app_sample_note">Showing a sample name. Type your own text above.</string>
+    <string name="wordart_app_copied">Copied</string>
+    <string name="wordart_app_share">Share</string>
+    <string name="wordart_app_share_title">Share Word Art</string>
+    <string name="wordart_app_copy_desc">Copy %1$s</string>
+    <string name="wordart_app_share_desc">Share %1$s</string>
+    <string name="wordart_app_lang_am">Amharic</string>
+    <string name="wordart_app_lang_ti">Tigrinya</string>
+    <string name="wordart_app_lang_om">Afaan Oromoo</string>
+    <string name="wordart_app_lang_en">English</string>
 </resources>

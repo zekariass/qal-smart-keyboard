@@ -30,6 +30,8 @@ import com.qalsmartkeyboard.ime.emoji.EmojiPanelView
 import com.qalsmartkeyboard.ime.emoji.EmojiSearchBar
 import com.qalsmartkeyboard.ime.emoji.FileGlyphCache
 import com.qalsmartkeyboard.ime.emoji.SettingsEmojiStore
+import com.qalsmartkeyboard.ime.wordart.WordArtBar
+import com.qalsmartkeyboard.ime.wordart.WordArtPanelView
 import com.qalsmartkeyboard.ime.ai.AiActionsHolder
 import com.qalsmartkeyboard.ime.ai.AiLink
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
@@ -63,6 +65,8 @@ class KeyboardImeService : InputMethodService() {
     private var bar: KeyboardBar? = null
     private var emojiPanel: EmojiPanelView? = null
     private var emojiSearch: EmojiSearchBar? = null
+    private var wordArtPanel: WordArtPanelView? = null
+    private var wordArtBar: WordArtBar? = null
     private var seenEmojiMode = EmojiMode.CLOSED
     private var engine: KeyboardEngine? = null
     private var runtime: PackRuntime? = null
@@ -122,6 +126,8 @@ class KeyboardImeService : InputMethodService() {
         overlayView?.theme = t
         emojiPanel?.theme = t
         emojiSearch?.theme = t
+        wordArtPanel?.theme = t
+        wordArtBar?.theme = t
         aiView?.theme = t
     }
 
@@ -164,7 +170,20 @@ class KeyboardImeService : InputMethodService() {
         KeyboardController(
             adapter, settingsPrefs, settingsPrefs, userDictionary,
             SettingsEmojiStore({ snapshot.current }, { change -> snapshot.launchUpdate(change) }), emojiLoader, emojiExecutor,
+            clipboard = ::copyToClipboard,
         ) { refreshViews() }
+    }
+
+    /**
+     * Word Art's Copy (ADR 0030): a plain-text clip. It is deliberately not marked sensitive (the user will paste it into
+     * other apps); on Android 13+ the system shows its own "Copied" confirmation, and the panel shows a short one too.
+     */
+    private fun copyToClipboard(text: String): Boolean = try {
+        val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("Word Art", text))
+        true
+    } catch (e: RuntimeException) {
+        false
     }
 
     // Emoji panel (ADR 0028): nothing here touches the disk or the font until the panel is first opened. The loader parses
@@ -397,14 +416,27 @@ class KeyboardImeService : InputMethodService() {
             it.visibility = View.GONE
             emojiSearch = it
         }
+        val wordArt = WordArtPanelView(this).also {
+            it.controller = controller
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            wordArtPanel = it
+        }
+        val wordArtStrip = WordArtBar(this).also {
+            it.controller = controller
+            it.visibility = View.GONE
+            wordArtBar = it
+        }
         val space = View(this).also { headroom = it }
         val column = KeyboardColumn(this, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.apply {
             addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
             addView(ai, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(search, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(wordArtStrip, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(wordArt, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val root = OverlayStack(this).apply {
             addView(column)
@@ -580,16 +612,23 @@ class KeyboardImeService : InputMethodService() {
         val mode = controller.emoji.mode
         val inPanel = mode == EmojiMode.PANEL
         val inSearch = mode == EmojiMode.SEARCH
-        surface?.visibility = if (inPanel) View.GONE else View.VISIBLE
+        // Word Art (ADR 0030): its panel takes the key area too; while its text field is typed into the keys are back with its strip.
+        val inWordArt = mode == EmojiMode.WORD_ART
+        val inWordArtTyping = mode == EmojiMode.WORD_ART_TYPING
+        surface?.visibility = if (inPanel || inWordArt) View.GONE else View.VISIBLE
         emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
-        bar?.visibility = if (inSearch) View.GONE else View.VISIBLE
+        bar?.visibility = if (inSearch || inWordArtTyping) View.GONE else View.VISIBLE
         emojiSearch?.visibility = if (inSearch) View.VISIBLE else View.GONE
+        wordArtPanel?.visibility = if (inWordArt) View.VISIBLE else View.GONE
+        wordArtBar?.visibility = if (inWordArtTyping) View.VISIBLE else View.GONE
         if (mode != seenEmojiMode) {
             if (inPanel) emojiPanel?.onOpened()
             seenEmojiMode = mode
         }
         if (inPanel) emojiPanel?.refresh()
         if (inSearch) emojiSearch?.render()
+        if (inWordArt) wordArtPanel?.refresh()
+        if (inWordArtTyping) wordArtBar?.render()
         surface?.onLayoutChanged()
     }
 
