@@ -67,6 +67,12 @@ object LanguageRules {
     }
 
     fun defaultMode(code: String): InputMode = allowedModes(code).firstOrNull() ?: InputMode.LATIN_PASSTHROUGH
+
+    /**
+     * Languages whose single Latin layout suggests dictionary words while typing: Afaan Oromoo (Qubee). Their suggestion
+     * strip is switched by the same per-language [TypingLanguageSetting.showTransliterationCandidates] as phonetic am/ti.
+     */
+    fun hasWordSuggestions(code: String) = code == "om"
 }
 
 /**

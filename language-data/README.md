@@ -50,6 +50,9 @@ See docs/Ethiopian_AI_Keyboard_Implementation_Plan_v2_0.md for the steps that po
   bigrams and language-ID seeds are tiny, hand-written by the engineering team (`LicenseRef-Qal-Original`),
   derived from `eval/langid/train_*.txt`, with placeholder frequencies. Amharic, Tigrinya and Oromo content
   needs native-speaker review (human gate G0) and a real licensed corpus before any release.
+- Layouts and phonetic profiles are packed as their JSON text with LF line ends, whatever the checkout uses
+  (a Windows checkout with `core.autocrlf` has CRLF files), and `--check` fails when a shipped layout or profile
+  pack differs from its current source (a rule change without a pack rebuild).
 - The shipped packs are signed with a dev key (public key recorded in the index); a fresh checkout has a
   different dev key, so rebuilding changes the pack bytes. Release packs are signed by the backend (B3.2).
 - OM and EN have no layout pack yet: only `am`/`ti` KEYBOARD_LAYOUT artifacts exist (the `orthography/`

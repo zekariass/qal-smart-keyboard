@@ -341,7 +341,7 @@
     <!-- UI language: language names, keys (ADR 0032) -->
     <string name="language_name_am">አማርኛ</string>
     <string name="language_name_ti">ትግርኛ</string>
-    <string name="language_name_om">ኦሮምኛ</string>
+    <string name="language_name_om">አፋን ኦሮሞ</string>
     <string name="language_name_en">እንግሊዝኛ</string>
     <string name="language_name_ar">ዓረብኛ</string>
     <string name="kb_mode_phonetic">ፎነቲክ</string>

@@ -197,6 +197,17 @@ class SettingsRepositoryTest {
         assertNull(r.current().language("ar")!!.transliterationProfileCode)
     }
 
+    @Test fun afaanOromooHasItsOwnConfiguration() {
+        // Qubee, a single Latin layout: never phonetic or a Fidel grid, never an Amharic profile; it suggests words.
+        assertEquals(listOf(InputMode.LATIN_PASSTHROUGH), LanguageRules.allowedModes("om"))
+        assertEquals(InputMode.LATIN_PASSTHROUGH, LanguageRules.defaultMode("om"))
+        assertTrue(LanguageRules.hasWordSuggestions("om"))
+        for (code in listOf("am", "ti", "en", "ar")) assertFalse(code, LanguageRules.hasWordSuggestions(code))
+        // Tigrinya has its own entry with the same writing modes as Amharic (phonetic first, Fidel, Latin).
+        assertEquals(LanguageRules.allowedModes("am"), LanguageRules.allowedModes("ti"))
+        assertTrue("om" !in LanguageRules.OPT_IN && "ti" !in LanguageRules.OPT_IN)
+    }
+
     @Test fun existingUsersGetArabicAppendedSwitchedOff() = runBlocking {
         // Settings saved by a version that knew four languages: Oromo first, Tigrinya off.
         val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "old.preferences_pb")

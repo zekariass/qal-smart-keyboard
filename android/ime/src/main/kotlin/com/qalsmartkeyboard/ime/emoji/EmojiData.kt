@@ -46,12 +46,12 @@ class EmojiCell(val text: String, val entry: EmojiEntry)
 
 /** Localised names and keywords of one language, indexed by [EmojiEntry.index]. */
 class EmojiAnnotations(val names: List<String>, val keywords: List<List<String>>) {
-    /** Lower-cased search terms per entry index: the name first, then the keywords. */
+    /** Search terms per entry index ([EmojiSearch.fold]ed): the name first, then the keywords. */
     val terms: List<List<String>> = names.indices.map { i ->
         buildList {
             val n = names[i]
-            if (n.isNotEmpty()) add(n.lowercase())
-            for (k in keywords[i]) if (k.isNotEmpty()) add(k.lowercase())
+            if (n.isNotEmpty()) add(EmojiSearch.fold(n))
+            for (k in keywords[i]) if (k.isNotEmpty()) add(EmojiSearch.fold(k))
         }
     }
 }
@@ -142,7 +142,7 @@ class EmojiLoader(
         val missing = cache.load() ?: raw.filter { !supported(it.text) }.mapTo(HashSet()) { it.text }.also { cache.save(it) }
         val kept = raw.filter { it.text !in missing }
         val entries = kept.map { EmojiEntry(it.text, it.name, it.category, it.variants, it.keywords, it.index) }
-        val terms = kept.map { r -> (listOf(r.name) + r.keywords).filter { it.isNotEmpty() }.map { it.lowercase() } }
+        val terms = kept.map { r -> (listOf(r.name) + r.keywords).filter { it.isNotEmpty() }.map(EmojiSearch::fold) }
         return EmojiCatalog(entries, terms)
     }
 

@@ -445,6 +445,8 @@
     <string name="settings_layout_arabic">Arabaa</string>
     <string name="settings_translit_profile">Piroofaayilii jijjiira qubee: isa haaraa hojii irra jiru (ofumaan)</string>
     <string name="settings_show_candidates">Yaadota agarsiisi</string>
+    <string name="settings_suggestions_title">Yaadota</string>
+    <string name="settings_word_suggestions_note">Jechoota galmee jechootaa Afaan Oromoo (wixinee) irraa, jecha barreessaa jirtaniif. Barreeffamni keessan kan jijjiiramu yaada tokko yoo tuqxan qofa.</string>
     <string name="settings_numerals_title">Lakkoofsota</string>
     <string name="settings_numerals_ethiopic">Gi\'iiziin ni dhiyaata</string>
     <string name="settings_numerals_western">Dhihaa</string>

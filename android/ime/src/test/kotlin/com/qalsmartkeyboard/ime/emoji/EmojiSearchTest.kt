@@ -61,6 +61,15 @@ class EmojiSearchTest {
         assertTrue(names("kolfa", "om").isNotEmpty())
     }
 
+    @Test fun oromoHudhaaTypedWithTheApostropheKeyMatchesTheCldrSpelling() {
+        // CLDR writes the hudhaa as U+2019 (beela’uu, mi’aawaa); the Qubee key types U+0027.
+        val typed = EmojiSearch.search(catalog, "beela'uu", "om")
+        assertTrue(typed.isNotEmpty())
+        assertEquals(EmojiSearch.search(catalog, "beela’uu", "om"), typed)
+        assertTrue(EmojiSearch.search(catalog, "mi'aawaa nyaata", "om").isNotEmpty())
+        assertTrue(EmojiSearch.search(catalog, "booʼuu", "om").isNotEmpty())
+    }
+
     @Test fun languageWithoutLoadedAnnotationsFallsBackToEnglish() {
         val bare = EmojiLoader(EmojiDataTest.assets).load()
         assertTrue("grinning face" in EmojiSearch.search(bare, "grin", "ti").map { it.name })

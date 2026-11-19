@@ -16,3 +16,8 @@ Assumptions for native-speaker review:
 3. Backspace after commit removes one grapheme cluster (the host's view), so `dh` takes two presses;
    digraph-aware backspace is not required by the SD.
 4. The engine never auto-capitalises or rewrites typed text in Qubee, English or ABC.
+5. Word suggestions (language audit 2026-11-19, `docs/specs/language-audit-om-ti.md`): once the `om` DICTIONARY
+   pack is loaded, Qubee holds the word being typed as composing text (letters, and the hudhaa right after a letter)
+   and offers dictionary words for it (`core/src/engine.rs`, `qubee_key`). Text is still committed exactly as typed;
+   only a suggestion the user taps replaces the word. Apostrophe variants are folded for the lookup only. Without a
+   dictionary Qubee stays plain passthrough. English and ABC never compose.

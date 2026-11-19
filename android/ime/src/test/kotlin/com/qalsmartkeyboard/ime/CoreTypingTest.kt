@@ -102,4 +102,49 @@ class CoreTypingTest {
         s.type("selam ")
         assertEquals("ሰላም ", s.ed.text.toString())
     }
+
+    @Test fun tigrinyaWritesWordInitialAWithItsOwnLetter() {
+        // Tigrinya spells initial /a/ ኣ (ኣብ, ኣነ), unlike Amharic's አ; the ti strip and dictionary are Tigrinya's.
+        val s = Session()
+        s.mode(TypingMode("ti", LayoutKind.PHONETIC))
+        s.type("ab")
+        assertEquals("ኣብ", s.ed.composing)
+        assertTrue(s.c.candidates.any { it.text == "አብ" })
+        s.type(" ane ")
+        assertEquals("ኣብ ኣነ ", s.ed.text.toString())
+        val am = Session()
+        am.mode(AM_PH)
+        am.type("ab ")
+        assertEquals("አብ ", am.ed.text.toString())
+    }
+
+    @Test fun afaanOromooGetsSuggestionsFromItsOwnDictionary() {
+        val s = Session()
+        s.mode(TypingMode("om", LayoutKind.QUBEE))
+        s.type("akk")
+        assertEquals("akk", s.ed.composing)
+        assertTrue(s.c.showCandidateStrip && s.c.candidatesAreDraft) // seed om dictionary: DRAFT (N9)
+        assertEquals("akk", s.c.candidates.first().text)
+        assertTrue(s.c.candidates.all { c -> c.text.all { it.code < 0x1200 } }) // never Ge'ez or Amharic words
+        s.c.selectCandidate(s.c.candidates.indexOfFirst { it.text == "akkam" })
+        s.ed.deliver(s.adapter)
+        s.type(" ")
+        assertEquals("akkam ", s.ed.text.toString())
+        // Typed text is never changed: space commits the word exactly as typed.
+        s.type("nag ")
+        assertEquals("akkam nag ", s.ed.text.toString())
+    }
+
+    @Test fun afaanOromooHudhaaStaysInsideTheWord() {
+        val s = Session()
+        s.mode(TypingMode("om", LayoutKind.QUBEE))
+        s.type("baay'")
+        assertEquals("baay'", s.ed.composing)
+        s.type("e")
+        assertTrue(s.c.candidates.map { it.text }.toString(), s.c.candidates.any { it.text == "baay'ee" })
+        s.c.selectCandidate(s.c.candidates.indexOfFirst { it.text == "baay'ee" })
+        s.ed.deliver(s.adapter)
+        s.type(" har'a ")
+        assertEquals("baay'ee har'a ", s.ed.text.toString())
+    }
 }

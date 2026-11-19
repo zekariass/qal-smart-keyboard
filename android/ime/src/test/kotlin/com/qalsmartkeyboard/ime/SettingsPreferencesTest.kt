@@ -125,6 +125,17 @@ class SettingsPreferencesTest {
         assertFalse(tall.showCandidateStrip)
     }
 
+    @Test fun afaanOromooSuggestionsFollowTheirOwnSwitch() {
+        val off = KeyboardSettings.DEFAULT.copy(
+            languages = KeyboardSettings.DEFAULT.languages.map { if (it.languageCode == "om") it.copy(showTransliterationCandidates = false) else it },
+        )
+        val om = TypingMode("om", LayoutKind.QUBEE)
+        val shown = CoreTestEnv.Session().also { it.mode(om) }.c
+        val hidden = CoreTestEnv.Session(languages = prefs(off), prefs = prefs(off)).also { it.mode(om) }.c
+        assertTrue(shown.showCandidateStrip)
+        assertFalse(hidden.showCandidateStrip)
+    }
+
     // ---------------------------------------------------------------- ADR 0007: Fidel punctuation
 
     @Test fun fidelGridTapsEthiopicPunctuationAndPutsAsciiFirstInThePopup() {
