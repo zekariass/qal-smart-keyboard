@@ -7,9 +7,7 @@ import com.qalsmartkeyboard.ime.R
 fun toolLabel(c: Context, tool: Tool): String = c.getString(
     when (tool) {
         Tool.TRANSLATE -> R.string.ai_translate
-        Tool.AI_ACTIONS -> R.string.top_bar_ai_open
-        Tool.AI_ASSIST -> R.string.tool_ai_assist
-        Tool.EMAIL -> R.string.tool_email
+        Tool.AI -> R.string.top_bar_ai_open
         Tool.CLIPBOARD -> R.string.tool_clipboard
         Tool.EMOJI -> R.string.key_emoji_description
         Tool.VOICE -> R.string.voice_mic

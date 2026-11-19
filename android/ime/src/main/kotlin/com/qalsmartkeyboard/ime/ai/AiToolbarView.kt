@@ -1,7 +1,6 @@
 package com.qalsmartkeyboard.ime.ai
 
 import android.content.Context
-import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.view.Gravity
@@ -12,7 +11,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Button
-import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
@@ -20,20 +18,12 @@ import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.qalsmartkeyboard.ime.R
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
-import com.qalsmartkeyboard.ime.toolbar.ToolIcon
-import com.qalsmartkeyboard.ime.toolbar.ToolIconDrawable
-import com.qalsmartkeyboard.ime.toolbar.ToolIcons
 
 /**
- * The AI toolbar (A2.5, SD 6-7, 11) in two parts:
- *
- * - [actionsRow]: Translate (opens the translate panel, ADR 0037), Assist, Email, Grammar and Rewrite (+ tone chip)
- *   and the plan state (quota hint, or a "Sign in to use AI" / "Update needed" link, or "Offline"). It is not a
- *   row of its own: [com.qalsmartkeyboard.ime.KeyboardBar] shows it in the middle of the one bar
- *   above the keys when the user opens the AI entry. It scrolls sideways; no chip is ever truncated.
- * - this view: the panel above that bar, shown only while there is something in it: the picker, the
- *   working indicator, an error with its link, or the review panel (original and result,
- *   alternatives, Replace / Insert / Copy / Retry / Cancel). The idle keyboard shows no panel.
+ * The quick actions' panel above the bar (A2.5, SD 6-7, 11; ADR 0041): shown only while there is something in it: the
+ * working indicator, an error with its link, or the review panel (original and result, alternatives, Replace / Insert /
+ * Copy / Retry / Cancel). The idle keyboard shows no panel. The actions themselves are tiles of the AI tools grid
+ * ([AiToolsPanelView]); the narrow AI row that used to sit in the bar's middle is retired (ADR 0041).
  *
  * Plain Views like the rest of the keyboard (ADR 0003); each chip has the Button role for
  * accessibility. It renders [AiToolbarController] state only when that changes (taps, results),
@@ -45,20 +35,8 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     /** Open the companion app at [AiLink] (sign-in, AI settings, upgrade, update). */
     var onLink: (AiLink) -> Unit = {}
 
-    /** The "Translate" chip: opens the translate panel above the bar (ADR 0037), the same as the Translate shortcut. */
-    var onOpenTranslate: () -> Unit = {}
-
-    /** The "Assist" chip: opens the AI Assist panel in place of the keys (ADR 0031). */
-    var onOpenAssist: () -> Unit = {}
-
-    /** The "Email" chip: opens the Write Email panel in place of the keys. */
-    var onOpenEmail: () -> Unit = {}
-
-    /** The field looks like an e-mail body (a mail app's compose field): the Email chip comes first and stands out. */
-    var emailFirst: Boolean = false
-
     private val d = resources.displayMetrics.density
-    /** The colours to draw with. Set by the service when the chosen theme changes; the rows are rebuilt with them. */
+    /** The colours to draw with. Set by the service when the chosen theme changes; the panel is rebuilt with them. */
     var theme: KeyboardTheme = ThemeCatalog.classic(
         (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) != android.content.res.Configuration.UI_MODE_NIGHT_YES,
     )
@@ -69,28 +47,16 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
             render()
         }
 
-    private val dark get() = !theme.isLight
     private val bg get() = theme.stripBg
     private val chipBg get() = theme.key
     private val chipOn get() = theme.pressed
     private val fg get() = theme.keyText
     private val muted get() = theme.hintText
-    private val warn get() = theme.warn
     private val chipStroke get() = if (theme.hasBorder) theme.border else theme.special
 
-    private val toolbar = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
     private val panelBox = LinearLayout(context).apply { orientation = VERTICAL }
 
-    /** The AI actions, laid out by the bar in its middle (transparent: the bar's background shows). */
-    val actionsRow: HorizontalScrollView = HorizontalScrollView(context).apply {
-        isHorizontalScrollBarEnabled = false
-        // Chips cut by the row's edge fade out, so they read as "scroll for more", not as truncated.
-        isHorizontalFadingEdgeEnabled = true
-        setFadingEdgeLength((24f * d).toInt())
-        addView(toolbar, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.MATCH_PARENT))
-    }
-
-    /** Called after every [render] (the bar re-reads [AiToolbarController.visible]). */
+    /** Called after every [render] (the bar re-reads [AiToolbarController.visible] and the plan state). */
     var onRendered: () -> Unit = {}
 
     init {
@@ -100,112 +66,27 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
         visibility = GONE
     }
 
-    /** Re-reads the controller and rebuilds the actions and the panel. Call on the main thread when the controller reports a change. */
+    /** Re-reads the controller and rebuilds the panel. Call on the main thread when the controller reports a change. */
     fun render() {
         val c = controller
         if (c == null || !c.visible) {
-            toolbar.removeAllViews()
             panelBox.removeAllViews()
             visibility = GONE
             onRendered()
             return
         }
-        renderToolbar(c)
         renderPanel(c)
         visibility = if (panelBox.childCount > 0) VISIBLE else GONE
         onRendered()
     }
 
-    private fun renderToolbar(c: AiToolbarController) {
-        toolbar.removeAllViews()
-        val busy = c.inFlight
-        val state = status(c.availability)
-        // A block (signed out, update, offline) explains why the actions will not run: show it first.
-        val blocked = c.availability.block != AiBlock.NONE
-        if (blocked && state != null) toolbar.addView(state)
-        val email = chip(context.getString(R.string.ai_email_chip), on = emailFirst, icon = ToolIcon.EMAIL) { onOpenEmail() }
-        if (emailFirst) toolbar.addView(email)
-        // Translate opens translate mode (ADR 0037): the languages, the box and the result live in its panel.
-        toolbar.addView(chip(context.getString(R.string.ai_translate), icon = ToolIcon.TRANSLATE) { onOpenTranslate() })
-        toolbar.addView(chip(context.getString(R.string.ai_assist_chip), icon = ToolIcon.AI, description = context.getString(R.string.ai_assist_chip_description)) { onOpenAssist() })
-        if (!emailFirst) toolbar.addView(email)
-        toolbar.addView(chip(context.getString(R.string.ai_grammar), enabled = !busy, icon = ToolIcon.GRAMMAR) { c.onTask(AiTaskKind.GRAMMAR) })
-        toolbar.addView(chip(context.getString(R.string.ai_rewrite), enabled = !busy, icon = ToolIcon.REWRITE) { c.onTask(AiTaskKind.REWRITE) })
-        toolbar.addView(chip(toneLabel(c.tone), on = c.picker == AiPicker.TONE, small = true) { c.openPicker(AiPicker.TONE) })
-        if (!blocked && state != null) toolbar.addView(state)
-    }
-
-    /** The plan state: a link (sign in, update) where the user can fix it, else plain text; null when there is nothing to say. */
-    private fun status(a: AiAvailability): TextView? {
-        val text: String
-        val color: Int
-        var link: AiLink? = null
-        when (a.block) {
-            AiBlock.OFFLINE -> { text = context.getString(R.string.ai_status_offline); color = warn }
-            AiBlock.SIGNED_OUT -> { text = context.getString(R.string.ai_status_signed_out); color = warn; link = AiLink.SIGN_IN }
-            AiBlock.UPDATE_REQUIRED -> { text = context.getString(R.string.ai_status_update); color = warn; link = AiLink.UPDATE_APP }
-            AiBlock.NONE -> { text = quotaText(a.quota[AiTaskKind.TRANSLATE]); color = muted }
-        }
-        if (text.isEmpty()) return null
-        val target = link
-        return TextView(context).apply {
-            this.text = text
-            setTextColor(color)
-            textSize = 13f
-            isSingleLine = true
-            gravity = Gravity.CENTER_VERTICAL
-            minHeight = (32f * d).toInt()
-            setPadding((8f * d).toInt(), 0, (10f * d).toInt(), 0)
-            contentDescription = text
-            if (target != null) {
-                paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
-                isClickable = true
-                setOnClickListener { onLink(target) }
-                asButton(this)
-            }
-            layoutParams = LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-
-    private fun quotaText(q: AiQuotaHint?): String {
-        val left = q?.remaining ?: return ""
-        val limit = q.limit
-        val period = when (q.period) {
-            AiPeriod.DAILY -> R.string.ai_period_daily
-            AiPeriod.WEEKLY -> R.string.ai_period_weekly
-            AiPeriod.MONTHLY -> R.string.ai_period_monthly
-            AiPeriod.YEARLY -> R.string.ai_period_yearly
-            AiPeriod.NONE -> null
-        }?.let { context.getString(it) }
-        val base = if (limit != null) context.getString(R.string.ai_quota_of, left, limit) else context.getString(R.string.ai_quota_left, left)
-        return if (period != null) "$base $period" else base
-    }
-
     private fun renderPanel(c: AiToolbarController) {
         panelBox.removeAllViews()
-        when (c.picker) {
-            AiPicker.TONE -> {
-                val items = listOf<Pair<String, () -> Unit>>(toneLabel(null) to { c.chooseTone(null) }) +
-                    AiTone.entries.map { t -> toneLabel(t) to { c.chooseTone(t) } }
-                panelBox.addView(pickerRow(items))
-                return
-            }
-            AiPicker.NONE -> Unit
-        }
         when (val p = c.panel) {
             AiPanel.Closed -> Unit
             is AiPanel.Working -> panelBox.addView(workingPanel(c))
             is AiPanel.Review -> panelBox.addView(reviewPanel(c, p))
             is AiPanel.Failed -> panelBox.addView(failedPanel(c, p))
-        }
-    }
-
-    private fun pickerRow(items: List<Pair<String, () -> Unit>>): View {
-        val row = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        items.forEach { (label, act) -> row.addView(chip(label) { act() }) }
-        return HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(row)
         }
     }
 
@@ -279,18 +160,6 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
 
     private fun linkLabel(l: AiLink): String = AiMessages.link(context, l)
 
-    private fun toneLabel(t: AiTone?): String = context.getString(
-        when (t) {
-            null -> R.string.ai_tone_natural
-            AiTone.FRIENDLY -> R.string.ai_tone_friendly
-            AiTone.POLITE -> R.string.ai_tone_polite
-            AiTone.PROFESSIONAL -> R.string.ai_tone_professional
-            AiTone.CONCISE -> R.string.ai_tone_concise
-            AiTone.APOLOGETIC -> R.string.ai_tone_apologetic
-            AiTone.HONORIFIC -> R.string.ai_tone_honorific
-        },
-    )
-
     // ---------------------------------------------------------------- view helpers
 
     private fun column() = LinearLayout(context).apply {
@@ -318,51 +187,28 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     }
 
     private fun chip(res: Int, on: Boolean = false, enabled: Boolean = true, small: Boolean = false, click: () -> Unit) =
-        chip(context.getString(res), on, enabled, small, click = click)
+        chip(context.getString(res), on, enabled, small, click)
 
-    /**
-     * [primary]: the accent fill. [icon]: a leading icon of the keyboard's icon family
-     * ([ToolIcons], ADR 0035). Tonal chips on the key fill; an outline only in themes that draw key borders.
-     */
-    private fun chip(
-        text: String,
-        on: Boolean = false,
-        enabled: Boolean = true,
-        small: Boolean = false,
-        primary: Boolean = false,
-        icon: ToolIcon? = null,
-        description: String? = null,
-        click: () -> Unit,
-    ): TextView =
+    /** Tonal chips on the key fill; an outline only in themes that draw key borders (and on the chosen one). */
+    private fun chip(text: String, on: Boolean = false, enabled: Boolean = true, small: Boolean = false, click: () -> Unit): TextView =
         TextView(context).apply {
             this.text = text
             textSize = if (small) 13f else 14f
-            val color = when {
-                !enabled -> muted
-                primary -> theme.onAccent
-                else -> fg
-            }
-            setTextColor(color)
-            if (primary) setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(if (enabled) fg else muted)
             gravity = Gravity.CENTER
             // One line, never ellipsized: every chip row scrolls sideways instead.
             isSingleLine = true
             minHeight = (CHIP_DP * d).toInt()
-            setPadding(((if (icon != null) 10f else 14f) * d).toInt(), 0, (14f * d).toInt(), 0)
-            if (icon != null) {
-                val px = (18f * d).toInt()
-                setCompoundDrawables(ToolIconDrawable(icon, color, px).also { it.setBounds(0, 0, px, px) }, null, null, null)
-                compoundDrawablePadding = (6f * d).toInt()
-            }
+            setPadding((14f * d).toInt(), 0, (14f * d).toInt(), 0)
             background = GradientDrawable().apply {
                 cornerRadius = CHIP_DP / 2 * d
-                setColor(if (primary && enabled) theme.accent else if (on) chipOn else chipBg)
-                if (!(primary && enabled) && (theme.hasBorder || on)) setStroke((1f * d).toInt(), if (on) theme.accentText else chipStroke)
+                setColor(if (on) chipOn else chipBg)
+                if (theme.hasBorder || on) setStroke((1f * d).toInt(), if (on) theme.accentText else chipStroke)
             }
             isEnabled = enabled
             isClickable = enabled
             isSelected = on
-            contentDescription = description ?: text
+            contentDescription = text
             setOnClickListener { click() }
             asButton(this)
             layoutParams = LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -391,7 +237,7 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     }
 
     companion object {
-        /** Chip height (dp) in the 44 dp bar. */
+        /** Chip height (dp). */
         const val CHIP_DP = 34f
     }
 }

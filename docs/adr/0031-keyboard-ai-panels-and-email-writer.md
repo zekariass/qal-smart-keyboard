@@ -5,6 +5,10 @@ D47 crash reports, D50 AI actions), ADR 0012 (destination profiles, app rules), 
 actions and e-mail backend this integrates with), ADR 0028 (emoji panel), ADR 0029 (voice), ADR 0030 (Word Art) ·
 **Contract:** `/ai/translate`, `/ai/transform`, `/ai/replies`, `/ai/drafts` (no change)
 
+> **Amended by ADR 0041:** the panels are opened from the AI tools grid (AI Assist, Write Email, and Reply / Explain /
+> Summarise opening Assist on that action) instead of the AI row's chips, which are retired; the grid's tiles follow the
+> same plan locks (cached state, a locked tile still opens and says why).
+
 ## Context
 The keyboard's AI row (D45) had a Translate chip and a separate destination chip that users did not connect, and no way
 to run the eight actions of ADR 0027 on text copied from another app or to write an e-mail. The backend for all of it is

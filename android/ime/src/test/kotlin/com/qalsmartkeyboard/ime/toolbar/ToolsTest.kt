@@ -3,12 +3,16 @@ package com.qalsmartkeyboard.ime.toolbar
 import android.text.InputType as T
 import android.view.inputmethod.EditorInfo as E
 import com.qalsmartkeyboard.ime.InputProfile
+import com.qalsmartkeyboard.ime.ai.AiAvailability
+import com.qalsmartkeyboard.ime.ai.AiTool
+import com.qalsmartkeyboard.ime.ai.AiToolEntry
+import com.qalsmartkeyboard.ime.ai.AiToolSet
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** ADR 0035: which tools each field offers (tiles and bar shortcuts) and what choosing one does. */
+/** ADR 0035 / 0041: which tools each field offers (tiles and bar shortcuts) and what choosing one does. */
 class ToolsTest {
     private fun profile(type: Int, options: Int = 0) = InputProfile.from(type, options, false, 0)
     private val text = profile(T.TYPE_CLASS_TEXT)
@@ -21,7 +25,7 @@ class ToolsTest {
     @Test fun aTextFieldOffersEveryToolInTileOrder() {
         assertEquals(
             listOf(
-                Tool.TRANSLATE, Tool.AI_ASSIST, Tool.EMAIL, Tool.CLIPBOARD, Tool.EMOJI, Tool.VOICE, Tool.WORD_ART,
+                Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.EMOJI, Tool.VOICE, Tool.WORD_ART,
                 Tool.WRITING_MODE, Tool.LANGUAGES, Tool.THEME, Tool.SETTINGS,
             ),
             tools(full),
@@ -75,20 +79,20 @@ class ToolsTest {
         val c = full.copy(aiBlocked = true)
         val tiles = ToolSet.tiles(c).associate { it.tool to it.locked }
         assertEquals(true, tiles[Tool.TRANSLATE])
-        assertEquals(true, tiles[Tool.AI_ASSIST])
-        assertEquals(true, tiles[Tool.EMAIL])
+        assertEquals(true, tiles[Tool.AI])
         assertEquals(false, tiles[Tool.CLIPBOARD])
-        val plan = ToolSet.tiles(full.copy(emailLocked = true)).associate { it.tool to it.locked }
-        assertEquals(true, plan[Tool.EMAIL])
+        val plan = ToolSet.tiles(full.copy(aiLocked = true)).associate { it.tool to it.locked }
+        assertEquals(true, plan[Tool.AI])
         assertEquals(false, plan[Tool.TRANSLATE])
+        assertEquals(true, ToolSet.shortcutCandidates(full.copy(aiLocked = true)).first { it.tool == Tool.AI }.locked)
     }
 
     @Test fun shortcutsComeInPriorityOrderAndOnlyAsManyAsFit() {
         assertEquals(
-            listOf(Tool.TRANSLATE, Tool.AI_ACTIONS, Tool.CLIPBOARD, Tool.SETTINGS, Tool.THEME, Tool.EMOJI),
+            listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.SETTINGS, Tool.THEME, Tool.EMOJI),
             ToolSet.shortcutCandidates(full).map { it.tool },
         )
-        assertEquals(listOf(Tool.TRANSLATE, Tool.AI_ACTIONS, Tool.CLIPBOARD), ToolSet.shortcuts(full, 3).map { it.tool })
+        assertEquals(listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD), ToolSet.shortcuts(full, 3).map { it.tool })
         assertTrue(ToolSet.shortcuts(full, 0).isEmpty())
         assertTrue(ToolSet.shortcuts(full, -2).isEmpty())
         // Voice is never a shortcut: the microphone has its own place.
@@ -100,9 +104,7 @@ class ToolsTest {
     private class Host : ToolHost {
         val calls = ArrayList<String>()
         override fun openTranslate() { calls += "translate" }
-        override fun openAiActions() { calls += "ai" }
-        override fun openAssist() { calls += "assist" }
-        override fun openEmail() { calls += "email" }
+        override fun runAiTool(tool: AiTool) { calls += "ai $tool" }
         override fun openEmoji() { calls += "emoji" }
         override fun startVoice() { calls += "voice" }
         override fun openWordArt() { calls += "wordart" }
@@ -113,10 +115,10 @@ class ToolsTest {
         override fun closeOtherPanels() { calls += "closeOthers" }
     }
 
-    private class Rig(var context: ToolContext) {
+    private class Rig(var context: ToolContext, var ai: List<AiToolEntry> = AiToolSet.tiles(AiAvailability())) {
         val host = Host()
         var changes = 0
-        val c = ToolsController(host, { context }) { changes++ }
+        val c = ToolsController(host, { context }, { ai }) { changes++ }
     }
 
     @Test fun theToolsButtonOpensAndClosesThePanel() {
@@ -139,9 +141,9 @@ class ToolsTest {
 
     @Test fun eachTileClosesThePanelAndOpensItsTool() {
         val expected = mapOf(
-            Tool.TRANSLATE to "translate", Tool.AI_ASSIST to "assist", Tool.EMAIL to "email", Tool.EMOJI to "emoji",
+            Tool.TRANSLATE to "translate", Tool.EMOJI to "emoji",
             Tool.VOICE to "voice", Tool.WORD_ART to "wordart", Tool.WRITING_MODE to "modes", Tool.LANGUAGES to "languages",
-            Tool.THEME to "theme", Tool.SETTINGS to "settings", Tool.AI_ACTIONS to "ai",
+            Tool.THEME to "theme", Tool.SETTINGS to "settings",
         )
         for ((tool, call) in expected) {
             val r = Rig(full)
@@ -166,10 +168,11 @@ class ToolsTest {
 
     @Test fun aToolTheFieldDoesNotOfferDoesNothing() {
         val r = Rig(ToolContext(profile(T.TYPE_CLASS_TEXT or T.TYPE_TEXT_VARIATION_PASSWORD)))
-        for (t in listOf(Tool.TRANSLATE, Tool.AI_ACTIONS, Tool.AI_ASSIST, Tool.EMAIL, Tool.CLIPBOARD, Tool.EMOJI, Tool.WORD_ART, Tool.VOICE, Tool.WRITING_MODE)) {
+        for (t in listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.EMOJI, Tool.WORD_ART, Tool.VOICE, Tool.WRITING_MODE)) {
             r.c.activate(t)
         }
         r.c.openClipboard()
+        assertTrue("no AI tools where AI is not offered", r.c.aiTools().isEmpty())
         assertTrue(r.host.calls.toString(), r.host.calls.isEmpty())
         assertEquals(ToolPanel.NONE, r.c.panel)
         r.c.activate(Tool.SETTINGS)
@@ -177,9 +180,48 @@ class ToolsTest {
     }
 
     @Test fun lockedToolsStillOpenSoTheyCanSayWhy() {
-        val r = Rig(full.copy(aiBlocked = true))
+        val r = Rig(full.copy(aiBlocked = true, aiLocked = true))
         r.c.activate(Tool.TRANSLATE)
-        r.c.activate(Tool.AI_ASSIST)
-        assertEquals(listOf("translate", "assist"), r.host.calls)
+        r.c.activate(Tool.AI)
+        assertEquals(listOf("translate", "closeOthers"), r.host.calls)
+        assertEquals(ToolPanel.AI, r.c.panel)
+    }
+
+    // ---------------------------------------------------------------- the AI tools grid (ADR 0041)
+
+    @Test fun theAiEntryOpensTheAiToolsGridFromTheBarOrTheToolsPanel() {
+        val r = Rig(full)
+        r.c.activate(Tool.AI) // the bar's shortcut
+        assertEquals(ToolPanel.AI, r.c.panel)
+        assertEquals(listOf("closeOthers"), r.host.calls) // voice, emoji, translate and the AI panels close first
+        assertTrue(r.c.back()) // the system Back: back to the keys
+        assertEquals(ToolPanel.NONE, r.c.panel)
+        r.c.toggleTools()
+        r.c.activate(Tool.AI) // the tools panel's tile switches to the AI grid
+        assertEquals(ToolPanel.AI, r.c.panel)
+        r.c.toggleTools() // the bar's back arrow
+        assertEquals(ToolPanel.NONE, r.c.panel)
+    }
+
+    @Test fun anAiTileClosesTheGridAndRunsItsTool() {
+        for (tool in AiTool.entries) {
+            val r = Rig(full)
+            r.c.activate(Tool.AI)
+            r.c.activateAi(tool)
+            assertEquals("$tool", ToolPanel.NONE, r.c.panel)
+            assertEquals("$tool", "ai $tool", r.host.calls.last())
+        }
+    }
+
+    @Test fun aStaleAiTileTapDoesNothing() {
+        val r = Rig(full)
+        r.c.activateAi(AiTool.GRAMMAR) // the grid is not open
+        r.c.activate(Tool.AI)
+        r.ai = r.ai.filter { it.tool != AiTool.EMAIL }
+        r.c.activateAi(AiTool.EMAIL) // not offered any more
+        assertEquals(ToolPanel.AI, r.c.panel)
+        r.context = ToolContext(profile(T.TYPE_CLASS_TEXT or T.TYPE_TEXT_VARIATION_PASSWORD)) // the field changed
+        r.c.activateAi(AiTool.GRAMMAR)
+        assertEquals(listOf("closeOthers"), r.host.calls)
     }
 }
