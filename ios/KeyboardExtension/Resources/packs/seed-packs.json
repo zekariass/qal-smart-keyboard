@@ -56,8 +56,8 @@
    "resourceType": "TRANSLITERATION_RULES",
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
-   "sizeBytes": 3344,
-   "sha256": "0b689fd886d6fa4141bb4a49b971ec6aa42f568c138bf8a30ee784508ffe4a6b",
+   "sizeBytes": 3252,
+   "sha256": "4647e3aee26346331881b550a9e302bc0f982fffb7b648725ffcbf8233a08ff7",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "am-phonetic-draft-profile"
@@ -187,8 +187,8 @@
    "resourceType": "TRANSLITERATION_RULES",
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
-   "sizeBytes": 3434,
-   "sha256": "aee18c2564b710458bc7d139c6051789fa9a1209df0d20fec886cb791eb37b8a",
+   "sizeBytes": 3341,
+   "sha256": "17936a9b43d39578f11933e8e7f9d29dd594b657c9df0c53f561d9814b6a7a6a",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "ti-phonetic-draft-profile"

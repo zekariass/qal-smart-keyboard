@@ -81,5 +81,49 @@ class ShippedAssets(unittest.TestCase):
                 bp.check_license(code, lic, name)
 
 
+class RulePacks(unittest.TestCase):
+    """Shipped layouts and phonetic profiles are the current sources (am and ti each their own)."""
+
+    def rule_rows(self):
+        return [(n, lang, rt, art) for n, lang, rt, art, _ in sp.pack_table() if rt in sp.TEXT_ARTIFACTS]
+
+    def test_shipped_rule_packs_carry_their_current_sources(self):
+        rows = self.rule_rows()
+        self.assertEqual({(lang, rt) for _, lang, rt, _ in rows},
+                         {(l, rt) for l in ("am", "ti") for rt in ("KEYBOARD_LAYOUT", "TRANSLITERATION_RULES")})
+        for t in sp.targets():
+            for name, lang, rt, art in rows:
+                shipped = sp.pack_artifact((t / (name + ".pack")).read_bytes())
+                self.assertEqual(shipped, sp.normalized_text(art), name)
+                doc = json.loads(shipped.decode("utf-8"))
+                self.assertEqual(doc["language"], lang, name)  # Tigrinya never ships Amharic rules
+                self.assertEqual(doc["status"], "DRAFT", name)
+
+    def test_a_stale_rule_pack_fails_the_check(self):
+        tmp = sp.BUILD / "stale-check"
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.copytree(sp.ANDROID_DIR, tmp)
+        # The ti profile pack replaced by the am one: same container format, wrong rules.
+        shutil.copyfile(tmp / "am-phonetic-rules.pack", tmp / "ti-phonetic-rules.pack")
+        saved = sp.targets
+        sp.targets = lambda: [tmp]
+        try:
+            with self.assertRaisesRegex(bp.BuildError, "ti-phonetic-rules.pack .* is stale"):
+                sp.check()
+        finally:
+            sp.targets = saved
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_line_endings_do_not_change_the_shipped_bytes(self):
+        tmp = sp.BUILD / "eol-check"
+        tmp.mkdir(parents=True, exist_ok=True)
+        lf, crlf = tmp / "lf.json", tmp / "crlf.json"
+        lf.write_bytes(b'{\n "a": 1\n}\n')
+        crlf.write_bytes(b'{\r\n "a": 1\r\n}\r\n')
+        self.assertEqual(sp.normalized_text(crlf), sp.normalized_text(lf))
+        self.assertEqual(sp.normalized_text(lf), lf.read_bytes())
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()
