@@ -486,6 +486,31 @@ class AiPipelineIT {
 	}
 
 	@Test
+	void aTransformVariationReachesTheProviderAndIsRangeChecked() {
+		UUID user = user("ACTIVE");
+		mock.setBehavior(Behavior.failing(FailureMode.UNAVAILABLE)); // the scripted provider answers and records
+		AiCommand.Transform again = new AiCommand.Transform(Caller.of(user, key()), AiFeature.GRAMMAR_CORRECTION,
+				UserText.of("Are you coming tomorrow?"), "en", null, null, null, null, null, false, null, 3);
+		pipeline.execute(again);
+		assertThat(fallback.lastTransform.get().variation()).isEqualTo(3);
+		pipeline.execute(AiCommand.Transform.of(Caller.of(user, key()), AiFeature.GRAMMAR_CORRECTION,
+				"Are you coming tomorrow?", "en"));
+		assertThat(fallback.lastTransform.get().variation()).isZero();
+		// the same key under another variation is another body
+		String reused = key();
+		pipeline.execute(new AiCommand.Transform(Caller.of(user, reused), AiFeature.GRAMMAR_CORRECTION,
+				UserText.of("Are you coming tomorrow?"), "en", null, null, null, null, null, false, null, 1));
+		assertThatThrownBy(() -> pipeline.execute(new AiCommand.Transform(Caller.of(user, reused),
+				AiFeature.GRAMMAR_CORRECTION, UserText.of("Are you coming tomorrow?"), "en", null, null, null, null,
+				null, false, null, 2))).isInstanceOfSatisfying(ApiException.class,
+						e -> assertThat(e.code()).isEqualTo(ApiErrorCode.IDEMPOTENCY_KEY_REUSED));
+		AiCommand.Transform tooHigh = new AiCommand.Transform(Caller.of(user, key()), AiFeature.GRAMMAR_CORRECTION,
+				UserText.of("Are you coming tomorrow?"), "en", null, null, null, null, null, false, null, 21);
+		assertThatThrownBy(() -> pipeline.execute(tooHigh)).isInstanceOfSatisfying(ApiException.class,
+				e -> assertThat(e.code()).isEqualTo(ApiErrorCode.VALIDATION_FAILED));
+	}
+
+	@Test
 	void aGuardrailFailureIsRecoveredByTheRetryOnTheSameProvider() {
 		UUID user = user("ACTIVE");
 		jdbc.update("INSERT INTO ai_routing_policies (feature_code, model_id, priority, traffic_weight, is_enabled, "

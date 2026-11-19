@@ -4992,6 +4992,12 @@ components:
               description: SCRIPT_CONVERSION input convention.
         addressee: { $ref: '#/components/schemas/Addressee' }
         glossaryId: { type: string, format: uuid }
+        variation:
+          type: integer
+          minimum: 0
+          maximum: 20
+          default: 0
+          description: 0 = first answer; a higher number asks for a different version of the same request (regenerate, with a new `Idempotency-Key`; the same key with another `variation` is 409).
         applyStyleProfile: { type: boolean, default: false, description: Requires PERSONAL_STYLE. }
         saveToHistory: { type: boolean, default: false }
     TextEdit:

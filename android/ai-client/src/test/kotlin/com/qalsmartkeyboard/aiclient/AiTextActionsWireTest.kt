@@ -107,6 +107,17 @@ class AiTextActionsWireTest {
 
         val (_, grammar) = sent()
         assertFalse("grammar keeps the text's language", "outputLanguage" in grammar)
+        for (b in listOf(explain, summary, simplify, professional, rewrite, grammar)) assertFalse("variation 0 is the default", "variation" in b)
+    }
+
+    @Test fun regeneratedTransformTasksSendTheirVariation() {
+        val a = actions()
+        repeat(4) { server.enqueue(json(transformed)) }
+        run(a, AiTask.Rewrite(null, null, variation = 2))
+        run(a, AiTask.Rewrite(AiTone.PROFESSIONAL, "en", variation = 3))
+        run(a, AiTask.Simplify(null, variation = 1))
+        run(a, AiTask.Summarize("en", AiLength.SHORT, variation = 4))
+        assertEquals(listOf("2", "3", "1", "4"), List(4) { sent().second.s("variation") })
     }
 
     @Test fun transformResultsReportTheirLanguage() {
@@ -206,9 +217,12 @@ class AiTextActionsWireTest {
 
     @Test fun clientTimeoutsFollowTheServerBudgets() {
         val a = actions()
-        assertEquals(8, AiTimeouts.callTimeoutSeconds(AiTaskKind.TRANSLATE))
-        for (k in listOf(AiTaskKind.TRANSLATE, AiTaskKind.GRAMMAR, AiTaskKind.REWRITE, AiTaskKind.TONE)) {
-            assertEquals(k.name, rig.clients.okHttpClient.callTimeoutMillis, a.clientFor(k).callTimeoutMillis)
+        assertEquals(15, AiTimeouts.callTimeoutSeconds(AiTaskKind.TRANSLATE))
+        assertEquals(15_000, a.clientFor(AiTaskKind.TRANSLATE).callTimeoutMillis)
+        assertTrue("longer than the server's 12 s deadline", a.clientFor(AiTaskKind.TRANSLATE).callTimeoutMillis > 12_000)
+        for (k in listOf(AiTaskKind.GRAMMAR, AiTaskKind.REWRITE, AiTaskKind.TONE)) {
+            assertEquals(k.name, 12_000, a.clientFor(k).callTimeoutMillis)
+            assertTrue("longer than the server's 10 s deadline", a.clientFor(k).callTimeoutMillis > 10_000)
         }
         for (k in listOf(AiTaskKind.EXPLAIN, AiTaskKind.SUMMARIZE, AiTaskKind.REPLY)) {
             assertEquals(k.name, 25_000, a.clientFor(k).callTimeoutMillis)

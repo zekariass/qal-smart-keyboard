@@ -63,23 +63,27 @@ internal object AiWire {
                 put("text", r.text)
                 t.outputLanguage?.let { put("outputLanguage", it) }
                 putJsonObject("options") { if (tone == null) put("mode", "NATURAL") else put("tone", tone.name) }
+                if (t.variation > 0) put("variation", t.variation)
             }
             is AiTask.Simplify -> "/ai/transform" to buildJsonObject {
                 put("task", "REWRITE")
                 put("text", r.text)
                 t.outputLanguage?.let { put("outputLanguage", it) }
                 putJsonObject("options") { put("mode", "SIMPLIFY") }
+                if (t.variation > 0) put("variation", t.variation)
             }
             is AiTask.Explain -> "/ai/transform" to buildJsonObject {
                 put("task", "EXPLAIN_TEXT")
                 put("text", r.text)
                 put("outputLanguage", t.outputLanguage)
+                if (t.variation > 0) put("variation", t.variation)
             }
             is AiTask.Summarize -> "/ai/transform" to buildJsonObject {
                 put("task", "SUMMARIZE")
                 put("text", r.text)
                 put("outputLanguage", t.outputLanguage)
                 putJsonObject("options") { put("targetLength", t.length.name) }
+                if (t.variation > 0) put("variation", t.variation)
             }
             is AiTask.Reply -> "/ai/replies" to buildJsonObject {
                 put("contextText", r.text)

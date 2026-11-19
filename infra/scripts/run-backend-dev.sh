@@ -8,6 +8,9 @@
 #   local KMS with a KEK kept in infra/scripts/.dev-state/kek (or QAL_LOCAL_KMS_KEK from the environment),
 #   ephemeral JWT / entitlement-token keys and OTP secret (die with the JVM), mock attestation, AI mock,
 #   SMS "capture" provider + GET /dev/sms/last (loopback only, no auth).
+# Optional secrets: infra/scripts/.dev-secrets.env (git-ignored; copy .dev-secrets.env.example): KEY=VALUE lines, '#'
+#   comments, CR stripped, blank values skipped; each is exported unless already set in the environment. Only the
+#   variable NAMES are printed, never values.
 # Database: compose Postgres at localhost:5434 (override with DB_URL, DB_USER, DB_PASSWORD).
 # Stop the backend with Ctrl-C; stop Postgres with: docker compose -f infra/compose/docker-compose.yml down
 set -euo pipefail
@@ -25,6 +28,32 @@ for var in SPRING_PROFILES_ACTIVE SPRING_PROFILES_INCLUDE; do
   fi
 done
 export SPRING_PROFILES_ACTIVE="dev"
+
+# --- optional dev secrets (AI provider keys, Sentry DSN, ...) -----------------------------------------------------
+# Reached only after the production-like profile check above, so it is never loaded for prod/staging.
+secrets_file="$root/infra/scripts/.dev-secrets.env"
+if [[ -f "$secrets_file" ]]; then
+  loaded=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+    [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+    name="${BASH_REMATCH[2]}"
+    val="${BASH_REMATCH[3]}"
+    if [[ ${#val} -ge 2 && ( ( "${val:0:1}" == '"' && "${val: -1}" == '"' ) || ( "${val:0:1}" == "'" && "${val: -1}" == "'" ) ) ]]; then
+      val="${val:1:${#val}-2}"
+    fi
+    [[ -z "$val" ]] && continue                 # blank placeholders stay unset
+    [[ -n "${!name+x}" ]] && continue           # the environment wins
+    export "$name=$val"
+    loaded+=("$name")
+  done < "$secrets_file"
+  if ((${#loaded[@]})); then
+    echo "Loaded from infra/scripts/.dev-secrets.env: ${loaded[*]}"
+  else
+    echo "infra/scripts/.dev-secrets.env present, nothing new to load."
+  fi
+fi
 
 # --- KEK for the local KMS ---------------------------------------------------------------------------------------
 if [[ -z "${QAL_LOCAL_KMS_KEK:-}" ]]; then

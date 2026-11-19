@@ -64,7 +64,10 @@ import com.qalsmartkeyboard.testsupport.contract.ContractValidated;
 		"qal.ai.routing.cost-cache-ttl=0s", "qal.ai.routing.attempt-timeout=1s", "qal.ai.routing.deadline=3s",
 		"qal.ai.pipeline.deadline=3s", "qal.ai.pipeline.catalog-cache-ttl=0s",
 		"qal.ai.pipeline.feature-timeouts.DRAFT_DOCUMENT.attempt-timeout=3s",
-		"qal.ai.pipeline.feature-timeouts.DRAFT_DOCUMENT.deadline=5s" })
+		"qal.ai.pipeline.feature-timeouts.DRAFT_DOCUMENT.deadline=5s",
+		// REWRITE's built-in 6 s / 10 s would make the timeout test slow: keep the 1 s / 3 s test budget
+		"qal.ai.pipeline.feature-timeouts.REWRITE.attempt-timeout=1s",
+		"qal.ai.pipeline.feature-timeouts.REWRITE.deadline=3s" })
 @AutoConfigureMockMvc
 @ContractValidated
 @Testcontainers

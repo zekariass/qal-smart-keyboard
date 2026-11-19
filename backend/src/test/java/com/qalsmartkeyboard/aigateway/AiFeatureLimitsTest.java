@@ -34,8 +34,13 @@ class AiFeatureLimitsTest {
 			assertThat(s.deadlineFor(f)).as(f.name()).isEqualTo(Duration.ofSeconds(20));
 			assertThat(s.attemptTimeoutFor(f)).as(f.name()).isEqualTo(Duration.ofSeconds(12));
 		}
-		for (AiFeature f : new AiFeature[] { AiFeature.TRANSLATE, AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE,
-				AiFeature.TONE_ADJUST, AiFeature.DETECT_LANGUAGE }) {
+		assertThat(s.deadlineFor(AiFeature.TRANSLATE)).isEqualTo(Duration.ofSeconds(12));
+		assertThat(s.attemptTimeoutFor(AiFeature.TRANSLATE)).isEqualTo(Duration.ofSeconds(8));
+		for (AiFeature f : new AiFeature[] { AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE, AiFeature.TONE_ADJUST }) {
+			assertThat(s.deadlineFor(f)).as(f.name()).isEqualTo(Duration.ofSeconds(10));
+			assertThat(s.attemptTimeoutFor(f)).as(f.name()).isEqualTo(Duration.ofSeconds(6));
+		}
+		for (AiFeature f : new AiFeature[] { AiFeature.DETECT_LANGUAGE, AiFeature.SCRIPT_CONVERSION }) {
 			assertThat(s.deadlineFor(f)).as(f.name()).isEqualTo(Duration.ofSeconds(8));
 			assertThat(s.attemptTimeoutFor(f)).as(f.name()).isNull(); // the router's 4 s
 		}
@@ -59,7 +64,7 @@ class AiFeatureLimitsTest {
 		assertThatThrownBy(() -> pipeline(Map.of("SUMMARIZE",
 				new AiGatewayProperties.FeatureTimeouts(Duration.ofSeconds(30), Duration.ofSeconds(10))))
 				.resolvedFeatureTimeouts()).isInstanceOf(IllegalArgumentException.class);
-		assertThatThrownBy(() -> pipeline(Map.of("REWRITE",
+		assertThatThrownBy(() -> pipeline(Map.of("SCRIPT_CONVERSION",
 				new AiGatewayProperties.FeatureTimeouts(Duration.ofSeconds(3), null))).resolvedFeatureTimeouts())
 				.isInstanceOf(IllegalArgumentException.class); // no default to complete it
 	}

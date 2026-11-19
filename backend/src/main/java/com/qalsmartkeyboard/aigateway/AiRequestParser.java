@@ -83,7 +83,7 @@ final class AiRequestParser {
 				options == null ? null : string(options, "options.tone", "tone"),
 				options == null ? null : string(options, "options.targetLength", "targetLength"),
 				addressee(n.get("addressee"), "addressee"), uuid(n, "glossaryId"),
-				Boolean.TRUE.equals(bool(n, "saveToHistory")), output);
+				Boolean.TRUE.equals(bool(n, "saveToHistory")), output, integer(n, "variation"));
 	}
 
 	/** Contract {@code RepliesRequest}. */

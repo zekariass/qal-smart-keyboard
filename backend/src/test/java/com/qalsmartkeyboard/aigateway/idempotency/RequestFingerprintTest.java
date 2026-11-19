@@ -87,6 +87,21 @@ class RequestFingerprintTest {
 		assertThat(digests).hasSize(variants.size());
 	}
 
+	@Test
+	void aTransformVariationChangesTheDigestButNullAndZeroAreTheSameFirstAnswer() {
+		AiCommand none = new AiCommand.Transform(Caller.of(USER, "k"), AiFeature.REWRITE, UserText.of("Selam"), "am",
+				null, null, null, null, null, false, null, null);
+		AiCommand zero = new AiCommand.Transform(Caller.of(USER, "k"), AiFeature.REWRITE, UserText.of("Selam"), "am",
+				null, null, null, null, null, false, null, 0);
+		AiCommand one = new AiCommand.Transform(Caller.of(USER, "k"), AiFeature.REWRITE, UserText.of("Selam"), "am",
+				null, null, null, null, null, false, null, 1);
+		AiCommand two = new AiCommand.Transform(Caller.of(USER, "k"), AiFeature.REWRITE, UserText.of("Selam"), "am",
+				null, null, null, null, null, false, null, 2);
+		assertThat(hex(none)).isEqualTo(hex(zero)).isEqualTo(hex(AiCommand.Transform.of(Caller.of(USER, "k"),
+				AiFeature.REWRITE, "Selam", "am")));
+		assertThat(Set.of(hex(none), hex(one), hex(two))).hasSize(3);
+	}
+
 	/** ADR 0027: a transform without an output language keeps its B5.4 digest (keys in flight stay valid). */
 	@Test
 	void aTransformWithoutOutputLanguageKeepsTheB54Encoding() throws Exception {
