@@ -128,6 +128,7 @@
     <string name="acct_signed_out">አልገቡም። መተየብ ያለ መለያ ይሠራል።</string>
     <string name="acct_session_ended">ክፍለ ጊዜዎ ስላበቃ ወጥተዋል። ለመቀጠል እንደገና ይግቡ።</string>
     <string name="acct_signed_in">ገብተዋል።</string>
+    <string name="acct_signed_in_as">በ%1$s ገብተዋል</string>
     <string name="acct_guest">የእንግዳ ክፍለ ጊዜ እየተጠቀሙ ነው። እንዲቆይ ይግቡ።</string>
     <string name="acct_sign_in">ይግቡ</string>
     <string name="acct_sign_out">ይውጡ</string>
@@ -185,6 +186,44 @@
     <string name="si_err_guest_unavailable">የእንግዳ ክፍለ ጊዜዎች በዚህ ስልክ ወይም ስሪት ላይ አይገኙም።</string>
     <string name="si_err_session_ended">ክፍለ ጊዜዎ አብቅቷል። እባክዎ እንደገና ይሞክሩ።</string>
     <string name="si_err_unexpected">የሆነ ችግር ተፈጥሯል። እንደገና ይሞክሩ።</string>
+
+    <!-- E-mail and password sign-in (ADR 0033), DRAFT -->
+    <string name="si_method_phone">ስልክ</string>
+    <string name="si_method_email">ኢሜይል</string>
+    <string name="si_email_label">ኢሜይል</string>
+    <string name="si_email_hint">name@example.com</string>
+    <string name="si_password_label">የይለፍ ቃል</string>
+    <string name="si_password_new_label">አዲስ የይለፍ ቃል</string>
+    <string name="si_password_show">አሳይ</string>
+    <string name="si_password_hide">ደብቅ</string>
+    <string name="si_password_rules">ቢያንስ %1$d ቁምፊዎች። አጭር ዓረፍተ ነገር ለማስታወስ ቀላል፣ ለመገመት ግን ከባድ ነው።</string>
+    <string name="si_email_sign_in">በኢሜይል ይግቡ</string>
+    <string name="si_email_create">መለያ ይክፈቱ</string>
+    <string name="si_forgot">የይለፍ ቃል ረሱ?</string>
+    <string name="si_email_new_here">አዲስ ነዎት? መለያ ይክፈቱ</string>
+    <string name="si_email_have_account">መለያ አለዎት? ይግቡ</string>
+    <string name="si_email_code_sent">ባለ %1$d አሃዝ ኮድ ወደ %2$s ልከናል። የገቢ መልዕክት ሳጥንዎን እና አይፈለጌ መልዕክትን ይፈትሹ።</string>
+    <string name="si_change_email">ሌላ ኢሜይል ይጠቀሙ</string>
+    <string name="si_reset_title">የይለፍ ቃልዎን ይቀይሩ</string>
+    <string name="si_reset_body">ኢሜይልዎን ያስገቡ። የአንድ መለያ ከሆነ የይለፍ ቃሉን ለመቀየር ኮድ እንልካለን።</string>
+    <string name="si_reset_code_sent">%2$s መለያ ካለው ባለ %1$d አሃዝ ኮድ ልከናል። ከአዲሱ የይለፍ ቃል ጋር ያስገቡት።</string>
+    <string name="si_reset_button">የይለፍ ቃል ቀይር</string>
+    <string name="si_back_to_sign_in">ወደ መግቢያ ይመለሱ</string>
+    <string name="si_reset_sent">ኮዱ ተልኳል። ለመድረስ አንድ ደቂቃ ሊወስድ ይችላል።</string>
+    <string name="si_reset_done">የይለፍ ቃልዎ ተቀይሯል። በአዲሱ የይለፍ ቃል ይግቡ።</string>
+    <string name="si_err_email_empty">ኢሜይልዎን ያስገቡ።</string>
+    <string name="si_err_email_invalid">ትክክለኛ ኢሜይል ያስገቡ፣ ለምሳሌ name@example.com።</string>
+    <string name="si_err_password_empty">የይለፍ ቃልዎን ያስገቡ።</string>
+    <string name="si_err_password_short">ቢያንስ %1$d ቁምፊዎች ይጠቀሙ።</string>
+    <string name="si_err_password_long">ቢበዛ %1$d ቁምፊዎች ይጠቀሙ።</string>
+    <string name="si_err_password_common">ይህ የይለፍ ቃል በቀላሉ ይገመታል። አጭር ዓረፍተ ነገር ይሞክሩ።</string>
+    <string name="si_err_password_email">ኢሜይልዎን እንደ የይለፍ ቃል አይጠቀሙ።</string>
+    <string name="si_err_credentials">ኢሜይሉ ወይም የይለፍ ቃሉ ትክክል አይደለም።</string>
+    <string name="si_err_locked">በጣም ብዙ የተሳሳቱ የይለፍ ቃሎች። ቆይተው ይሞክሩ ወይም የይለፍ ቃልዎን ይቀይሩ።</string>
+    <string name="si_err_locked_in">በጣም ብዙ የተሳሳቱ የይለፍ ቃሎች። በ%1$d ደቂቃ ውስጥ ይሞክሩ ወይም የይለፍ ቃልዎን ይቀይሩ።</string>
+    <string name="si_err_email_taken">በዚህ ኢሜይል መለያ አለ። ይግቡ ወይም የይለፍ ቃሉን ይቀይሩ።</string>
+    <string name="si_err_email_unavailable">በኢሜይል መግባት አሁን አይገኝም። ስልክ ቁጥር ወይም Google ይጠቀሙ።</string>
+    <string name="si_err_reset_code">ኮዱ ትክክል አይደለም ወይም ጊዜው አልፎበታል። አዲስ ኮድ ይጠይቁ።</string>
 
     <string name="upd_title">እባክዎ መተግበሪያውን ያዘምኑ</string>
     <string name="upd_body">ይህ የQal Smart Keyboard ስሪት ከአገልጋዩ ጋር ለመገናኘት በጣም ያረጀ ነው። መተየብ አሁንም ይሠራል፤ ለመግባትና የመስመር ላይ ባህሪያትን ለመጠቀም ያዘምኑ።</string>

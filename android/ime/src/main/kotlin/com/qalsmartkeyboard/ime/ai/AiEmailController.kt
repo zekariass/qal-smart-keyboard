@@ -80,11 +80,17 @@ class AiEmailController(
     private var fieldDraft: String? = null
     private var lastRequest: AiRequest? = null
     private var sessionLocked = false
+
+    /** The account [sessionLocked] was learned for ([AiAvailability.accountGeneration]); another account forgets it. */
+    private var lockGeneration = 0L
     private var regenerating = false
 
     val availability: AiAvailability get() = actions.availability
     val busy: Boolean get() = runner.busy
-    val isLocked: Boolean get() = availability.locks(AiTaskKind.EMAIL) || sessionLocked
+    val isLocked: Boolean get() {
+        val now = availability
+        return now.locks(AiTaskKind.EMAIL) || (sessionLocked && lockGeneration == now.accountGeneration)
+    }
 
     /** Opens the panel (from the AI row); [prefill] is a spec to start from (e.g. coming back from the full editor). */
     fun open(prefill: AiEmailSpec? = null) {
@@ -288,7 +294,10 @@ class AiEmailController(
                     step = AiEmailStep.Preview
                 }
                 is AiOutcome.Failure -> {
-                    if (outcome.failure == AiFailure.NotEntitled) sessionLocked = true
+                    if (outcome.failure == AiFailure.NotEntitled) {
+                        sessionLocked = true
+                        lockGeneration = availability.accountGeneration
+                    }
                     step = AiEmailStep.Failed(outcome.failure)
                 }
             }

@@ -107,4 +107,82 @@ class SignInPaneTest {
         compose.onNodeWithText("Your guest data was kept: it was added to your existing account.").assertExists()
         compose.onNodeWithText("Welcome back.").assertExists()
     }
+
+    // --- e-mail (ADR 0033) ------------------------------------------------------------------
+
+    @Test fun phoneAndEmailAreTwoOptionsNextToGoogle() {
+        var picked: SignInMethod? = null
+        show(SignInState(), SignInActions(onMethod = { picked = it }))
+        compose.onNodeWithText("Phone").assertExists()
+        compose.onNodeWithText("Email").performClick()
+        assertEquals(SignInMethod.EMAIL, picked)
+        compose.onNodeWithText("Continue with Google").assertExists()
+    }
+
+    @Test fun emailSignInFormHasPasswordToggleAndForgotLink() {
+        var submit = 0
+        var forgot = 0
+        var toggles = 0
+        var mode: EmailMode? = null
+        show(
+            SignInState(method = SignInMethod.EMAIL, email = "selam@example.com", password = "secret words here"),
+            SignInActions(onEmailSubmit = { submit++ }, onForgot = { forgot++ }, onTogglePassword = { toggles++ }, onEmailMode = { mode = it }),
+        )
+        compose.onNodeWithText("Send code").assertDoesNotExist() // the phone form is hidden
+        // shown masked (the raw value stays in the field's input semantics only)
+        compose.onNode(
+            androidx.compose.ui.test.SemanticsMatcher.expectValue(
+                androidx.compose.ui.semantics.SemanticsProperties.EditableText,
+                androidx.compose.ui.text.AnnotatedString("•".repeat("secret words here".length)),
+            ),
+        ).assertExists()
+        compose.onNodeWithText("Show").performClick()
+        compose.onNodeWithText("Sign in with email").performClick()
+        compose.onNodeWithText("Forgot password?").performScrollTo().performClick()
+        compose.onNodeWithText("New here? Create an account").performScrollTo().performClick()
+        assertEquals(1, toggles)
+        assertEquals(1, submit)
+        assertEquals(1, forgot)
+        assertEquals(EmailMode.CREATE, mode)
+        compose.onNodeWithText("I confirm that I am old enough to create an account where I live.").assertDoesNotExist()
+    }
+
+    @Test fun createModeAsksForTheAgeConfirmationAndShowsTheRules() {
+        show(SignInState(method = SignInMethod.EMAIL, emailMode = EmailMode.CREATE, password = "visible words", passwordVisible = true))
+        compose.onNodeWithText("Create account").assertExists()
+        compose.onNodeWithText("visible words").assertExists()
+        compose.onNodeWithText("Hide").assertExists()
+        compose.onNodeWithText("I confirm that I am old enough to create an account where I live.").assertExists()
+        compose.onNodeWithText("At least 10 characters. A short sentence is easy to remember and hard to guess.").assertExists()
+        compose.onNodeWithText("Forgot password?").assertDoesNotExist()
+    }
+
+    @Test fun emailCodeStepNamesTheAddressAndNeedsNoAgeCheckbox() {
+        show(SignInState(step = SignInStep.EMAIL_CODE, method = SignInMethod.EMAIL, email = "selam@example.com", challenge = challenge))
+        compose.onNodeWithText("We sent a 6-digit code to selam@example.com. Check your inbox and spam folder.").assertExists()
+        compose.onNodeWithText("Use another email").assertExists()
+        compose.onNodeWithText("I confirm that I am old enough to create an account where I live.").assertDoesNotExist()
+    }
+
+    @Test fun resetStepsAndMessages() {
+        var submit = 0
+        show(
+            SignInState(
+                step = SignInStep.RESET_CODE, method = SignInMethod.EMAIL, email = "selam@example.com", code = "123456",
+                newPassword = "tej and tibs at noon", notice = SignInNotice.RESET_CODE_SENT, message = SignInMessage.ResetCodeInvalid,
+                resendAtMs = System.currentTimeMillis() + 50_000,
+            ),
+            SignInActions(onResetSubmit = { submit++ }),
+        )
+        compose.onNodeWithText("Code sent. It can take a minute to arrive.").assertExists()
+        compose.onNodeWithText("That code is not right or has expired. Ask for a new code.").assertExists()
+        compose.onNodeWithText("Send a new code").assertIsNotEnabled()
+        compose.onNodeWithText("Change password").performClick()
+        assertEquals(1, submit)
+    }
+
+    @Test fun lockedAccountSaysWhenToTryAgain() {
+        show(SignInState(method = SignInMethod.EMAIL, message = SignInMessage.AccountLocked(840)))
+        compose.onNodeWithText("Too many wrong passwords. Try again in 14 min or reset your password.").assertExists()
+    }
 }

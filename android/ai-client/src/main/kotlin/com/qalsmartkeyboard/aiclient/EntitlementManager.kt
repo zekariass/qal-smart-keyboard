@@ -25,6 +25,12 @@ interface SessionInfo {
 
     /** This device's id (`did` of the access token), or null when the session is not bound to one. */
     fun deviceId(): String?
+
+    /**
+     * [listener] runs (on any thread, possibly while the session is being changed) after every sign-in, sign-out,
+     * account switch or token rotation. It must return at once. Close the handle to remove it.
+     */
+    fun addListener(listener: () -> Unit): AutoCloseable = AutoCloseable { }
 }
 
 /**

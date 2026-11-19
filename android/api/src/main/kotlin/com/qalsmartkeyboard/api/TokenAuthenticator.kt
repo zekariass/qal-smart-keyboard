@@ -68,8 +68,15 @@ internal class AuthApiRefresher(private val api: AuthApi) : Refresher {
  *  3. otherwise call refresh with the stored refresh token, store the new pair atomically
  *     (only the newest refresh token is kept) and retry the request once.
  *
- * `REFRESH_TOKEN_REUSED` or `GUEST_SESSION_INVALID` on a request, and a 401/403 from the refresh
- * call itself, clear the session and fail the call with [ApiError.SignedOut]. A refresh that
+ * The same refresh runs on 401 `UNAUTHENTICATED` with `WWW-Authenticate: Bearer error="invalid_token"` (RFC 6750: the
+ * bearer itself was refused, e.g. it was signed with a key the server no longer has after a key rotation or a
+ * development server restart, ADR 0035): the refresh token may still be good. A 401 `UNAUTHENTICATED` without
+ * `invalid_token` (an endpoint refusing something else, e.g. a Google ID token) is not about the session and is left
+ * alone.
+ *
+ * `REFRESH_TOKEN_REUSED` or `GUEST_SESSION_INVALID` on a request, a 401/403 from the refresh
+ * call itself, and an `invalid_token` refusal of the current token on the retry, clear the session and fail the call
+ * with [ApiError.SignedOut]: the UI then shows "signed out" instead of a session no call can use. A refresh that
  * cannot complete for transient reasons (offline, 5xx, 429, 426) leaves the session intact and
  * fails the call with the matching typed error. A request is retried at most once.
  */
@@ -83,7 +90,6 @@ class TokenAuthenticator internal constructor(
     override fun authenticate(route: Route?, response: Response): Request? {
         val sent = response.request.header("Authorization") ?: return null
         if (!sent.startsWith("Bearer ")) return null
-        if (alreadyRetried(response)) return null
 
         val body = try {
             response.peekBody(MAX_PROBLEM_BYTES).string()
@@ -91,21 +97,40 @@ class TokenAuthenticator internal constructor(
             null
         }
         val details = ProblemParser.parse(body, response.code, response.header("X-Correlation-Id"))
+        val sentToken = sent.removePrefix("Bearer ")
+        val invalidToken = details.code == ProblemCodes.UNAUTHENTICATED &&
+            response.headers("WWW-Authenticate").any { it.contains("invalid_token") }
 
-        when (details.code) {
-            ProblemCodes.TOKEN_EXPIRED -> Unit
-            ProblemCodes.REFRESH_TOKEN_REUSED -> throw end(SignedOutReason.REFRESH_TOKEN_REUSED, details)
-            ProblemCodes.GUEST_SESSION_INVALID -> throw end(SignedOutReason.GUEST_SESSION_INVALID, details)
-            else -> return null
+        val ending = when (details.code) {
+            ProblemCodes.REFRESH_TOKEN_REUSED -> SignedOutReason.REFRESH_TOKEN_REUSED
+            ProblemCodes.GUEST_SESSION_INVALID -> SignedOutReason.GUEST_SESSION_INVALID
+            ProblemCodes.TOKEN_EXPIRED -> null
+            else -> if (invalidToken) null else return null
+        }
+        val retried = alreadyRetried(response)
+
+        if (ending != null || retried) {
+            synchronized(session.lock) {
+                val current = session.tokens()
+                if (current != null && current.accessToken != sentToken) {
+                    // The refusal is about a token this session no longer holds (a sign-in or a refresh replaced it while
+                    // the request was in flight): never end the new session for it.
+                    return if (retried) null else withBearer(response.request, current.accessToken)
+                }
+                if (ending != null) {
+                    if (current == null) throw SessionEndedException(signedOutReason() ?: ending, details) // already ended
+                    throw end(ending, details)
+                }
+                // The retry carried the newest token and the server still refuses the token itself: nothing can use
+                // this session any more.
+                if (invalidToken && current != null) throw end(SignedOutReason.ACCESS_TOKEN_REJECTED, details)
+                return null
+            }
         }
 
-        val sentToken = sent.removePrefix("Bearer ")
         synchronized(session.lock) {
             val current = session.tokens()
-                ?: throw SessionEndedException(
-                    (session.state.value as? SessionState.SignedOut)?.reason ?: SignedOutReason.SIGNED_OUT,
-                    details,
-                )
+                ?: throw SessionEndedException(signedOutReason() ?: SignedOutReason.SIGNED_OUT, details)
             if (current.accessToken != sentToken) {
                 return withBearer(response.request, current.accessToken)
             }
@@ -126,6 +151,8 @@ class TokenAuthenticator internal constructor(
             }
         }
     }
+
+    private fun signedOutReason(): SignedOutReason? = (session.state.value as? SessionState.SignedOut)?.reason
 
     private fun end(reason: SignedOutReason, details: ProblemDetails): SessionEndedException {
         synchronized(session.lock) { session.signedOut(reason) }

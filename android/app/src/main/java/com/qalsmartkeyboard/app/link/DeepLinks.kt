@@ -10,13 +10,14 @@ enum class DeepLinkAction {
     /** Nothing to do (no link, or first-run setup is still running). */
     NONE,
 
-    /** The settings screen. */
-    SHOW_SETTINGS,
-
     /** The privacy dashboard (A2.6): consents, history, export, deletion. Where `AI_SETTINGS` leads. */
     SHOW_PRIVACY,
 
-    /** The sign-in pane. */
+    /**
+     * The sign-in pane opened from the keyboard (its "Sign in to use AI" link, ADR 0035). It sits over the keyboard
+     * settings: finishing or leaving it shows those settings with "Back to typing", which returns to the app the user
+     * was typing in.
+     */
     SHOW_SIGN_IN,
 
     /** The plans screen (a placeholder until billing screens exist). */
@@ -51,7 +52,7 @@ enum class DeepLinkAction {
  *
  * | link | action |
  * |---|---|
- * | `SIGN_IN` | sign-in pane; settings when already signed in with an account |
+ * | `SIGN_IN` | sign-in pane over the keyboard settings; the keyboard settings when already signed in with an account |
  * | `AI_SETTINGS` | privacy dashboard (consents, AI history, export, deletion; A2.6) |
  * | `UPGRADE` | plans screen |
  * | `UPDATE_APP` | store page (even during first-run setup) |
@@ -72,7 +73,7 @@ object DeepLinks {
         link == null -> DeepLinkAction.NONE
         link == AiLink.UPDATE_APP -> DeepLinkAction.OPEN_STORE
         !onboardingCompleted -> DeepLinkAction.NONE
-        link == AiLink.SIGN_IN -> if (account == AccountStatus.Registered) DeepLinkAction.SHOW_SETTINGS else DeepLinkAction.SHOW_SIGN_IN
+        link == AiLink.SIGN_IN -> if (account == AccountStatus.Registered) DeepLinkAction.SHOW_KEYBOARD_SETTINGS else DeepLinkAction.SHOW_SIGN_IN
         link == AiLink.AI_SETTINGS -> DeepLinkAction.SHOW_PRIVACY
         link == AiLink.SETTINGS -> DeepLinkAction.SHOW_KEYBOARD_SETTINGS
         link == AiLink.EMAIL_WRITER -> DeepLinkAction.SHOW_EMAIL_WRITER

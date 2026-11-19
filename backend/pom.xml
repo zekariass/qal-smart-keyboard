@@ -32,6 +32,8 @@
 		<openapi-request-validator.version>3.0.0</openapi-request-validator.version>
 		<db-scheduler.version>17.1.0</db-scheduler.version>
 		<bucket4j.version>8.21.0</bucket4j.version>
+		<!-- ADR 0033: Argon2id for e-mail passwords (Spring Security's Argon2PasswordEncoder needs Bouncy Castle). -->
+		<bouncycastle.version>1.86</bouncycastle.version>
 		<!-- Crash reporting (ADR 0024). Off unless QAL_SENTRY_DSN is set. -->
 		<sentry.version>8.62.0</sentry.version>
 	</properties>
@@ -111,6 +113,12 @@
 		<dependency>
 			<groupId>com.github.ben-manes.caffeine</groupId>
 			<artifactId>caffeine</artifactId>
+		</dependency>
+		<!-- ADR 0033: Argon2id password hashing (Argon2PasswordEncoder of spring-security-crypto delegates to it). -->
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
+			<version>${bouncycastle.version}</version>
 		</dependency>
 		<!-- Crash reporting (ADR 0024): content-free, configured by platform.observability. -->
 		<dependency>

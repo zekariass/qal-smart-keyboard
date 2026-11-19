@@ -64,6 +64,10 @@ fun SettingsScreen(
     /** Qal is turned on and selected; when false the home page shows a setup prompt. */
     keyboardReady: Boolean = true,
     account: AccountStatus = AccountStatus.SignedOut(null),
+    /** Who is signed in (masked phone or e-mail, ADR 0035), for "Signed in as ..."; null when unknown. */
+    accountLabel: String? = null,
+    /** Opens the sign-in screen (owned by the host); the keyboard-opened home's account row uses it when nobody is signed in. */
+    onSignIn: () -> Unit = {},
     /** Opened from the keyboard's gear: the home page's arrow and Back call [onBackToTyping]. */
     fromKeyboard: Boolean = false,
     onBackToTyping: () -> Unit = {},
@@ -102,13 +106,18 @@ fun SettingsScreen(
                 themeAccess = themeAccess,
                 systemDark = systemDark,
                 keyboardReady = keyboardReady,
-                accountSummary = stringResource(
-                    when (account) {
-                        AccountStatus.Registered -> R.string.settings_account_signed_in
-                        AccountStatus.Guest -> R.string.settings_account_guest
-                        is AccountStatus.SignedOut -> R.string.settings_account_signed_out
-                    },
-                ),
+                accountSummary = if (account == AccountStatus.Registered && accountLabel != null) {
+                    stringResource(R.string.acct_signed_in_as, accountLabel)
+                } else {
+                    stringResource(
+                        when (account) {
+                            AccountStatus.Registered -> R.string.settings_account_signed_in
+                            AccountStatus.Guest -> R.string.settings_account_guest
+                            is AccountStatus.SignedOut -> R.string.settings_account_signed_out
+                        },
+                    )
+                },
+                signedIn = account == AccountStatus.Registered,
                 appLanguageSummary = appLanguageLabel(AppLanguage.get(LocalContext.current)),
                 fromKeyboard = fromKeyboard,
             ),
@@ -124,6 +133,7 @@ fun SettingsScreen(
                 openWordArt = onOpenWordArt,
                 openPrivacy = onOpenPrivacy,
                 backToTyping = onBackToTyping,
+                signIn = onSignIn,
             ),
             modifier = modifier,
         )

@@ -324,6 +324,12 @@ data class AiAvailability(
      * hint for the "Premium" marks of the panels: the server decides on every call.
      */
     val entitled: Set<AiTaskKind>? = null,
+    /**
+     * Changes whenever the signed-in account changes (sign-in, sign-out, another account), in the app or the keyboard
+     * (ADR 0035). What the panels learned about the previous account (e.g. a "not on your plan" answer) is dropped when
+     * it moves on.
+     */
+    val accountGeneration: Long = 0,
 ) {
     /** True when the cached plan state says [kind] is not part of the plan. Unknown state never locks. */
     fun locks(kind: AiTaskKind): Boolean = entitled?.let { kind !in it } == true

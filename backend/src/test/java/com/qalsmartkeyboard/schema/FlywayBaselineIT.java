@@ -38,12 +38,12 @@ class FlywayBaselineIT {
     @Test
     void baselineIsAppliedByTheBootedApplicationAndValidates() {
         MigrationInfo[] all = flyway.info().all();
-        assertEquals(21, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
+        assertEquals(22, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
                 + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up), V5 attestation nonces (B2.3), V6 language-resource discovery columns (B3.1), V7 preferences revisions (B3.3),"
                 + " V8 destination profiles and app rules (B3.4), V9 usage reservations (B4.2), V10 AI provider seeds (B5.1), V11 account deletion progress (B6.2), V12 AI provider cost control (B5.2), V13 dictionary sync (B3.6),"
                 + " V14 AI replay cache (B5.4), V15 language-resource datasets (B3.2),"
                 + " V16 retention: dictionary tombstone floor and purge indexes (B6.3), V17 AI feedback content and history uniqueness (B5.6, B5.7), V18 premium themes feature, V19 OpenAI and Google Translate providers (ADR 0023),"
-                + " V20 AI text actions and e-mail writer (ADR 0027), V21 prompt templates v2 for e-mail names and reply splitting");
+                + " V20 AI text actions and e-mail writer (ADR 0027), V21 prompt templates v2 for e-mail names and reply splitting, V22 e-mail sign-in challenges (ADR 0033)");
         assertEquals("1", all[0].getVersion().getVersion());
         assertEquals("baseline", all[0].getDescription());
         assertEquals(MigrationState.SUCCESS, all[0].getState());
@@ -81,6 +81,8 @@ class FlywayBaselineIT {
         assertEquals("20", all[19].getVersion().getVersion());
         assertEquals(MigrationState.SUCCESS, all[19].getState());
         assertEquals(MigrationState.SUCCESS, all[15].getState());
+        assertEquals("22", all[21].getVersion().getVersion());
+        assertEquals(MigrationState.SUCCESS, all[21].getState());
         flyway.validate(); // throws if an applied migration was edited
     }
 
@@ -94,7 +96,8 @@ class FlywayBaselineIT {
         // + ai_provider_prices, ai_provider_budgets and ai_provider_daily_spend from V12
         // + user_dictionary_sync_state and user_dictionary_applied_changes from V13
         // + ai_request_fingerprints and ai_replay_cache (UNLOGGED) from V14 + language_resource_datasets from V15
-        assertEquals(101, tables);
+        // + email_challenges from V22
+        assertEquals(102, tables);
         assertEquals("u", jdbc.queryForObject(
                 "select relpersistence::text from pg_class where relname = 'ai_replay_cache'", String.class));
         assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
