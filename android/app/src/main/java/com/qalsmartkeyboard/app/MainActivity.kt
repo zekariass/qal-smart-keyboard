@@ -218,6 +218,12 @@ class MainActivity : ComponentActivity() {
                         settingsNav.open(SettingsPage.LANGUAGES)
                         fromKeyboard = true
                     }
+                    DeepLinkAction.SHOW_KEYBOARD_TRANSLATION -> {
+                        showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        settingsNav.reset()
+                        settingsNav.open(SettingsPage.TRANSLATION)
+                        fromKeyboard = true
+                    }
                     DeepLinkAction.SHOW_KEYBOARD_THEMES -> {
                         showSignIn = false; showPlans = false; privacyRoute = null; wordArtOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()

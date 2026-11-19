@@ -27,8 +27,8 @@ import com.qalsmartkeyboard.ime.toolbar.ToolIcons
 /**
  * The AI toolbar (A2.5, SD 6-7, 11) in two parts:
  *
- * - [actionsRow]: Translate (+ destination chip), Grammar and Rewrite (+ tone chip) and the plan
- *   state (quota hint, or a "Sign in to use AI" / "Update needed" link, or "Offline"). It is not a
+ * - [actionsRow]: Translate (opens the translate panel, ADR 0037), Assist, Email, Grammar and Rewrite (+ tone chip)
+ *   and the plan state (quota hint, or a "Sign in to use AI" / "Update needed" link, or "Offline"). It is not a
  *   row of its own: [com.qalsmartkeyboard.ime.KeyboardBar] shows it in the middle of the one bar
  *   above the keys when the user opens the AI entry. It scrolls sideways; no chip is ever truncated.
  * - this view: the panel above that bar, shown only while there is something in it: the picker, the
@@ -44,6 +44,9 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
 
     /** Open the companion app at [AiLink] (sign-in, AI settings, upgrade, update). */
     var onLink: (AiLink) -> Unit = {}
+
+    /** The "Translate" chip: opens the translate panel above the bar (ADR 0037), the same as the Translate shortcut. */
+    var onOpenTranslate: () -> Unit = {}
 
     /** The "Assist" chip: opens the AI Assist panel in place of the keys (ADR 0031). */
     var onOpenAssist: () -> Unit = {}
@@ -122,72 +125,14 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
         if (blocked && state != null) toolbar.addView(state)
         val email = chip(context.getString(R.string.ai_email_chip), on = emailFirst, icon = ToolIcon.EMAIL) { onOpenEmail() }
         if (emailFirst) toolbar.addView(email)
-        // The direction control (ADR 0031): [ Auto · Amharic ⇄ English ] and the primary Translate action next to it.
-        toolbar.addView(directionGroup(c))
-        val dest = c.destination.label
-        val wide = resources.configuration.screenWidthDp >= WIDE_DP
-        toolbar.addView(
-            chip(
-                if (wide) context.getString(R.string.ai_translate_to, dest) else context.getString(R.string.ai_translate),
-                enabled = !busy, primary = true, icon = ToolIcon.TRANSLATE, description = context.getString(R.string.ai_translate_to, dest),
-            ) { c.onTask(AiTaskKind.TRANSLATE) },
-        )
+        // Translate opens translate mode (ADR 0037): the languages, the box and the result live in its panel.
+        toolbar.addView(chip(context.getString(R.string.ai_translate), icon = ToolIcon.TRANSLATE) { onOpenTranslate() })
         toolbar.addView(chip(context.getString(R.string.ai_assist_chip), icon = ToolIcon.AI, description = context.getString(R.string.ai_assist_chip_description)) { onOpenAssist() })
         if (!emailFirst) toolbar.addView(email)
         toolbar.addView(chip(context.getString(R.string.ai_grammar), enabled = !busy, icon = ToolIcon.GRAMMAR) { c.onTask(AiTaskKind.GRAMMAR) })
         toolbar.addView(chip(context.getString(R.string.ai_rewrite), enabled = !busy, icon = ToolIcon.REWRITE) { c.onTask(AiTaskKind.REWRITE) })
         toolbar.addView(chip(toneLabel(c.tone), on = c.picker == AiPicker.TONE, small = true) { c.openPicker(AiPicker.TONE) })
         if (!blocked && state != null) toolbar.addView(state)
-    }
-
-    /** `[ Auto · Amharic ⇄ English ]`: each side opens its language list above the bar; ⇄ swaps. */
-    private fun directionGroup(c: AiToolbarController): View {
-        val destLabel = c.destination.label // also brings the Auto source up to date with the keyboard language
-        val sourceLabel = c.direction.sourceLabel(context.getString(R.string.ai_auto))
-        val group = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable().apply {
-                cornerRadius = 16f * d
-                setColor(chipBg)
-                setStroke((1f * d).toInt(), chipStroke)
-            }
-            layoutParams = LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins((3f * d).toInt(), (2f * d).toInt(), (3f * d).toInt(), (2f * d).toInt())
-            }
-        }
-        fun side(text: String, on: Boolean, description: String, click: () -> Unit) = TextView(context).apply {
-            this.text = text
-            textSize = 13f
-            setTextColor(fg)
-            isSingleLine = true
-            gravity = Gravity.CENTER
-            minHeight = (32f * d).toInt()
-            setPadding((10f * d).toInt(), 0, (10f * d).toInt(), 0)
-            if (on) background = GradientDrawable().apply { cornerRadius = 16f * d; setColor(chipOn) }
-            isSelected = on
-            contentDescription = description
-            isClickable = true
-            setOnClickListener { click() }
-            asButton(this)
-        }
-        group.addView(side(sourceLabel, c.picker == AiPicker.SOURCE, context.getString(R.string.ai_direction_source, sourceLabel)) { c.openPicker(AiPicker.SOURCE) })
-        group.addView(
-            TextView(context).apply {
-                val size = (32f * d).toInt()
-                minWidth = size
-                minHeight = size
-                gravity = Gravity.CENTER
-                setCompoundDrawables(AiIconDrawable(AiIcons.SWAP, fg, (18f * d).toInt()).also { it.setBounds(0, 0, (18f * d).toInt(), (18f * d).toInt()) }, null, null, null)
-                setPadding((7f * d).toInt(), 0, (7f * d).toInt(), 0)
-                contentDescription = context.getString(R.string.ai_direction_swap)
-                isClickable = true
-                setOnClickListener { c.swapDirection() }
-                asButton(this)
-            },
-        )
-        group.addView(side(destLabel, c.picker == AiPicker.DESTINATION, context.getString(R.string.ai_direction_destination, destLabel)) { c.openPicker(AiPicker.DESTINATION) })
-        return group
     }
 
     /** The plan state: a link (sign in, update) where the user can fix it, else plain text; null when there is nothing to say. */
@@ -239,23 +184,6 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     private fun renderPanel(c: AiToolbarController) {
         panelBox.removeAllViews()
         when (c.picker) {
-            AiPicker.SOURCE -> {
-                val current = c.direction.manualSource
-                val items = listOf<Pair<String, () -> Unit>>(
-                    mark(context.getString(R.string.ai_auto_detect), current == null) to { c.chooseSource(null) },
-                ) + AiLanguages.ALL.map { code -> mark(AiLanguages.name(code), current == code) to { c.chooseSource(code) } }
-                panelBox.addView(pickerRow(items, context.getString(R.string.ai_translate_from)))
-                return
-            }
-            AiPicker.DESTINATION -> {
-                val current = c.destination
-                // Plain languages first (the source language itself is left out), then the user's destination profiles.
-                val plain = AiLanguages.ALL.filter { it != c.direction.source }.map(AiLanguages::plain)
-                val profiles = c.destinations().filter { it.isProfile }
-                val items = (plain + profiles).map { d -> mark(d.label, d.id == current.id) to { c.chooseDestination(d) } }
-                panelBox.addView(pickerRow(items, context.getString(R.string.ai_translate_into)))
-                return
-            }
             AiPicker.TONE -> {
                 val items = listOf<Pair<String, () -> Unit>>(toneLabel(null) to { c.chooseTone(null) }) +
                     AiTone.entries.map { t -> toneLabel(t) to { c.chooseTone(t) } }
@@ -272,30 +200,16 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
         }
     }
 
-    /** "✓ English" for the current choice (the check, the selected state and the spoken "selected" mark it). */
-    private fun mark(label: String, current: Boolean) = if (current) "✓ $label" else label
-
-    private fun pickerRow(items: List<Pair<String, () -> Unit>>, title: String? = null): View {
+    private fun pickerRow(items: List<Pair<String, () -> Unit>>): View {
         val row = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        if (title != null) row.addView(label(title, muted).apply { setPadding((8f * d).toInt(), 0, (4f * d).toInt(), 0) })
-        items.forEach { (label, act) -> row.addView(chip(label, on = label.startsWith("✓ ")) { act() }) }
+        items.forEach { (label, act) -> row.addView(chip(label) { act() }) }
         return HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             addView(row)
         }
     }
 
-    /** "Amharic → English" (the detected source when the server reported one, else the source the control shows). */
-    private fun directionText(c: AiToolbarController, task: AiTask.Translate, detected: String?): String {
-        val from = detected?.takeIf { it in AiLanguages.ALL }?.let(AiLanguages::name)
-            ?: task.sourceLanguage?.let(AiLanguages::name)
-            ?: c.direction.sourceLabel(context.getString(R.string.ai_auto))
-        return "$from → ${task.destination.label}"
-    }
-
     private fun workingPanel(c: AiToolbarController): View = column().apply {
-        val task = (c.panel as? AiPanel.Working)?.task
-        if (task is AiTask.Translate) addView(label(context.getString(R.string.ai_working_direction, directionText(c, task, null)), fg))
         addView(label(context.getString(R.string.ai_working), muted).apply { ViewCompat.setAccessibilityLiveRegion(this, ViewCompat.ACCESSIBILITY_LIVE_REGION_POLITE) })
         addView(buttons(chip(R.string.ai_cancel) { c.cancel() }))
     }
@@ -319,8 +233,6 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     }
 
     private fun reviewPanel(c: AiToolbarController, p: AiPanel.Review): View = column().apply {
-        val task = p.task
-        if (task is AiTask.Translate) addView(label(directionText(c, task, p.result.sourceLanguage), fg).apply { setTypeface(typeface, android.graphics.Typeface.BOLD) })
         addView(label(context.getString(R.string.ai_original), muted))
         addView(body(p.original, muted, maxLines = 2))
         addView(label(context.getString(R.string.ai_result), muted))
@@ -409,7 +321,7 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
         chip(context.getString(res), on, enabled, small, click = click)
 
     /**
-     * [primary]: the accent fill (the direction control's Translate). [icon]: a leading icon of the keyboard's icon family
+     * [primary]: the accent fill. [icon]: a leading icon of the keyboard's icon family
      * ([ToolIcons], ADR 0035). Tonal chips on the key fill; an outline only in themes that draw key borders.
      */
     private fun chip(
@@ -479,9 +391,6 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     }
 
     companion object {
-        /** From this screen width (dp) the Translate chip names its destination ("Translate to English"); narrower bars show "Translate". */
-        const val WIDE_DP = 600
-
         /** Chip height (dp) in the 44 dp bar. */
         const val CHIP_DP = 34f
     }

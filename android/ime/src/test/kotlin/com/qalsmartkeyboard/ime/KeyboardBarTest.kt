@@ -70,7 +70,7 @@ class KeyboardBarTest {
 
         fun targets() = strip.slots().map { it.target }
         fun row() = ai.actionsRow
-        /** Every text view of the row in order (the direction control is a group of three: source, swap, destination). */
+        /** Every text view of the row in order. */
         fun rowViews(): List<TextView> {
             fun walk(v: View): List<TextView> = when (v) {
                 is TextView -> listOf(v)
@@ -147,8 +147,8 @@ class KeyboardBarTest {
         assertEquals(AiEntry.OPEN, h.strip.aiEntry)
         assertEquals(View.VISIBLE, h.row().visibility)
         assertEquals(listOf(Target.Tools, Target.Pill, Target.AiClose), h.targets())
-        // ADR 0031: the direction control [ Auto · English ⇄ Amharic ] (the swap is an icon), Translate, Assist, Email, ...
-        assertEquals(listOf("Auto · English", "", "Amharic", "Translate", "Assist", "Email", "Grammar", "Rewrite", "Natural"), h.rowTexts())
+        // ADR 0037: Translate (opens the translate panel; no direction control in the row any more), Assist, Email, ...
+        assertEquals(listOf("Translate", "Assist", "Email", "Grammar", "Rewrite", "Natural"), h.rowTexts())
         // The row sits right after the close button, to the bar's end, as tall as the bar.
         val (start, end) = h.strip.middleRange(widthPx)
         val close = h.strip.slots().first { it.target == Target.AiClose }
@@ -168,21 +168,30 @@ class KeyboardBarTest {
         assertEquals("the bar keeps its height", barPx, h.layout())
     }
 
-    @Test fun theTranslateShortcutOpensTodaysTranslateEntryPoint() {
+    @Test fun theTranslateShortcutGoesToTheTranslatePanelNotTheActionsRow() {
+        // ADR 0037: the bar routes the shortcut to the service (ToolHost.openTranslate), which opens the translate panel.
         val h = H()
+        val tools = ArrayList<Tool>()
+        h.bar.onTool = { tools += it }
         h.strip.activate(Target.Shortcut(Tool.TRANSLATE))
+        assertEquals(listOf(Tool.TRANSLATE), tools)
+        assertFalse(h.bar.aiOpen)
+        assertTrue(h.actions.submitted.isEmpty())
+        // The row's Translate chip opens the same panel.
+        var opened = 0
+        h.ai.onOpenTranslate = { opened++ }
+        h.bar.setAiOpen(true)
         h.layout()
-        assertTrue(h.bar.aiOpen)
-        assertEquals(0, h.row().scrollX) // the direction control and Translate come first
-        assertEquals("Translate", h.rowTexts()[3])
+        h.rowChip("Translate").performClick()
+        assertEquals(1, opened)
         assertTrue(h.actions.submitted.isEmpty())
     }
 
     @Test fun theCloseButtonClosesTheActionsAndAnOpenPicker() {
         val h = H()
         h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
-        h.rowChip("Amharic").performClick()
-        assertEquals(AiPicker.DESTINATION, h.controller.picker)
+        h.rowChip("Natural").performClick()
+        assertEquals(AiPicker.TONE, h.controller.picker)
         assertEquals(View.VISIBLE, h.ai.visibility)
         h.strip.activate(Target.AiClose)
         assertFalse(h.bar.aiOpen)
@@ -330,7 +339,7 @@ class KeyboardBarTest {
         val h = H()
         h.actions.availability = AiAvailability(block = AiBlock.SIGNED_OUT)
         h.strip.activate(Target.Shortcut(Tool.AI_ACTIONS))
-        h.rowChip("Translate").performClick()
+        h.rowChip("Grammar").performClick()
         assertTrue(h.controller.panel is AiPanel.Failed)
         assertEquals(View.VISIBLE, h.ai.visibility)
         assertTrue(h.actions.submitted.isEmpty())

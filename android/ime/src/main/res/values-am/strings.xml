@@ -105,15 +105,21 @@
     <string name="ai_link_update">ያዘምኑ</string>
 
     <!-- AI panels, direction control and e-mail writer -->
-    <string name="ai_auto">ራስ-ሰር</string>
-    <string name="ai_auto_detect">በራስ-ሰር ለይ</string>
     <string name="ai_translate_to">ወደ %1$s ይተርጉሙ</string>
-    <string name="ai_translate_from">ከ</string>
-    <string name="ai_translate_into">ወደ</string>
     <string name="ai_direction_source">ከ%1$s ይተረጎማል። ይቀይሩ</string>
     <string name="ai_direction_destination">ወደ %1$s ይተረጎማል። ይቀይሩ</string>
     <string name="ai_direction_swap">ቋንቋዎቹን ያቀያይሩ</string>
-    <string name="ai_working_direction">%1$s በመተርጎም ላይ</string>
+    <string name="translate_detect">ለይ</string>
+    <string name="translate_detect_language">ቋንቋውን ለይ</string>
+    <string name="translate_hint">ለመተርጎም ይተይቡ</string>
+    <string name="translate_use_sentence">የመጨረሻ ዓረፍተ ነገር</string>
+    <string name="translate_source_sentence">የመጨረሻ ዓረፍተ ነገር</string>
+    <string name="translate_settings">የትርጉም ቅንብሮች</string>
+    <string name="translate_close">ትርጉሙን ይዝጉ</string>
+    <string name="translate_from_title">መነሻ ቋንቋ</string>
+    <string name="translate_into_title">መድረሻ ቋንቋ</string>
+    <string name="translate_input_spoken">የሚተረጎም ጽሑፍ፦ %1$s</string>
+    <string name="translate_direction_spoken">ከ%1$s ወደ %2$s</string>
     <string name="ai_assist_chip">እገዛ</string>
     <string name="ai_assist_chip_description">የAI እገዛ፦ በተመረጠ ወይም በተቀዳ ጽሑፍ ላይ ማብራራት፣ ማጠቃለል፣ መልስ መስጠት እና ሌሎችም</string>
     <string name="ai_email_chip">ኢሜይል</string>

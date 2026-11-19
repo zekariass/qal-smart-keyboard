@@ -106,15 +106,21 @@
     <string name="ai_link_update">Haaromsaa</string>
 
     <!-- AI panels, direction control and e-mail writer -->
-    <string name="ai_auto">Ofumaan</string>
-    <string name="ai_auto_detect">Ofumaan beekuu</string>
     <string name="ai_translate_to">Gara %1$s tti hiikaa</string>
-    <string name="ai_translate_from">Irraa</string>
-    <string name="ai_translate_into">Gara</string>
     <string name="ai_direction_source">%1$s irraa hiikaa. Jijjiiraa</string>
     <string name="ai_direction_destination">Gara %1$s tti hiikaa. Jijjiiraa</string>
     <string name="ai_direction_swap">Afaanota wal jijjiiraa</string>
-    <string name="ai_working_direction">%1$s hiikaa jira</string>
+    <string name="translate_detect">Adda baasi</string>
+    <string name="translate_detect_language">Afaan adda baasi</string>
+    <string name="translate_hint">Hiikuuf barreessaa</string>
+    <string name="translate_use_sentence">Hima dhumaa</string>
+    <string name="translate_source_sentence">Hima dhumaa</string>
+    <string name="translate_settings">Qindaa\'ina hiikkaa</string>
+    <string name="translate_close">Hiikkaa cufaa</string>
+    <string name="translate_from_title">Afaan madda</string>
+    <string name="translate_into_title">Afaan galmaa</string>
+    <string name="translate_input_spoken">Barreeffama hiikamu: %1$s</string>
+    <string name="translate_direction_spoken">%1$s irraa gara %2$s tti</string>
     <string name="ai_assist_chip">Gargaarsa</string>
     <string name="ai_assist_chip_description">Gargaarsa AI: barreeffama filatame ykn garagalfame ibsuu, cuunfuu, deebii kennuu fi kkf</string>
     <string name="ai_email_chip">Imeelii</string>

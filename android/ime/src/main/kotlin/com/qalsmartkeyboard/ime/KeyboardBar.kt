@@ -23,7 +23,8 @@ import com.qalsmartkeyboard.ime.toolbar.ToolSet
  * - **idle**: the pinned shortcuts ([ToolSet.shortcutCandidates] for the field, the first ones that fit);
  * - **composing** (phonetic candidates): the candidates; open actions close;
  * - **chooser**: the writing-mode options; opening it closes the AI actions and vice versa;
- * - **AI open**: a close (×) button and the actions row (opened by the AI or Translate shortcut);
+ * - **AI open**: a close (×) button and the actions row (opened by the AI shortcut; the Translate shortcut opens the
+ *   translate panel above the bar instead, ADR 0037, and shows as active while it is open);
  * - **tool panel open** ([CandidateStripView.panelTitle]): a back arrow and the panel's title;
  * - **sensitive field** (password, email, ...; [com.qalsmartkeyboard.ime.ai.AiToolbarController.visible] false): no AI
  *   shortcuts, no candidates; clipboard and emoji only where the field allows them ([ToolContext]).
@@ -46,9 +47,9 @@ class KeyboardBar(context: Context, val strip: CandidateStripView, val ai: AiToo
 
     /**
      * A shortcut was tapped. The service routes it through its tools controller; without one (tests, before the service
-     * wires it) Translate and AI open the actions row.
+     * wires it) AI opens the actions row; Translate needs the service's translate panel.
      */
-    var onTool: (Tool) -> Unit = { t -> if (t == Tool.TRANSLATE || t == Tool.AI_ACTIONS) setAiOpen(true) }
+    var onTool: (Tool) -> Unit = { t -> if (t == Tool.AI_ACTIONS) setAiOpen(true) }
 
     private var syncing = false
 
@@ -94,7 +95,7 @@ class KeyboardBar(context: Context, val strip: CandidateStripView, val ai: AiToo
             strip.closeModeChooser()
             ai.controller?.onToolbarOpened()
             ai.render() // the actions show the current (cached) plan state
-            ai.actionsRow.scrollTo(0, 0) // the direction control and Translate come first
+            ai.actionsRow.scrollTo(0, 0) // Translate and Assist come first
         } else {
             ai.controller?.closePicker()
         }

@@ -6,7 +6,7 @@ import com.qalsmartkeyboard.ime.InputProfile
 /**
  * The keyboard's tools (ADR 0035). Each is a tile of the tools panel; the first few that fit are also pinned to the
  * idle bar as shortcuts ([ToolSet.shortcuts]). [AI_ACTIONS] is the bar's "AI" shortcut (the quick actions row of
- * ADR 0007 D45); it has no tile of its own because Translate opens the same row and AI Assist covers its actions.
+ * ADR 0007 D45); it has no tile of its own because AI Assist covers its actions (and Translate has its own panel).
  */
 enum class Tool(val icon: ToolIcon) {
     TRANSLATE(ToolIcon.TRANSLATE),
@@ -96,7 +96,10 @@ object ToolSet {
 
 /** What the keyboard does when a tool is chosen (implemented by the service; faked in tests). */
 interface ToolHost {
-    /** Today's translate entry point: the AI actions row with the direction control and Translate first (ADR 0031). */
+    /**
+     * Translate mode (ADR 0037): the translate panel above the bar, the keys typing into its box. When it is already
+     * open (the active Translate shortcut tapped again) it closes, like Gboard's.
+     */
     fun openTranslate()
     fun openAiActions()
     fun openAssist()

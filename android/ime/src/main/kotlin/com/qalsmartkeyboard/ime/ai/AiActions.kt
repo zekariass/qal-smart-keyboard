@@ -231,6 +231,9 @@ enum class AiLink {
 
     /** The theme picker, opened by the bar's Theme shortcut or the tools panel's Theme tile (ADR 0035). */
     THEMES,
+
+    /** The settings' "Translate into" page (ADR 0036), opened by the translate panel's settings button (ADR 0037). */
+    TRANSLATION,
 }
 
 /**

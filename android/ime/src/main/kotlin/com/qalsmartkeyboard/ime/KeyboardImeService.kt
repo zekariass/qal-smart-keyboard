@@ -46,6 +46,10 @@ import com.qalsmartkeyboard.ime.ai.SystemAiClipboard
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
 import com.qalsmartkeyboard.ime.ai.AiToolbarView
 import com.qalsmartkeyboard.ime.ai.EditorAiAccess
+import com.qalsmartkeyboard.ime.ai.TranslateController
+import com.qalsmartkeyboard.ime.ai.TranslateLanguagesView
+import com.qalsmartkeyboard.ime.ai.TranslatePanelView
+import com.qalsmartkeyboard.ime.ai.TranslatePicker
 import com.qalsmartkeyboard.ime.theme.PremiumThemeAccess
 import com.qalsmartkeyboard.ime.theme.ResolvedTheme
 import com.qalsmartkeyboard.ime.theme.ThemeAccess
@@ -167,6 +171,8 @@ class KeyboardImeService : InputMethodService() {
         aiView?.theme = t
         aiPanelView?.theme = t
         aiFieldBar?.theme = t
+        translatePanel?.theme = t
+        translateLanguages?.theme = t
     }
 
     private fun attachThemeAccessInBackground() {
@@ -279,6 +285,7 @@ class KeyboardImeService : InputMethodService() {
             controller.emoji.close()
             bar?.closeAi()
             closeAiPanels()
+            closeTranslate()
         }
         override fun textBeforeCursor(): CharSequence? = adapter.editorOps()?.getTextBeforeCursor(VOICE_CONTEXT_CHARS)
         override fun wantsCapital(): Boolean = controller.wantsCapitalAtCursor()
@@ -308,11 +315,25 @@ class KeyboardImeService : InputMethodService() {
     )
 
     private val toolHost = object : ToolHost {
-        override fun openTranslate() = openAiActions()
+        override fun openTranslate() {
+            val tr = translate ?: return
+            if (tr.isOpen) {
+                closeTranslate() // the active shortcut tapped again: back to typing in the field
+                return
+            }
+            voice.cancel()
+            controller.emoji.close()
+            closeAiPanels()
+            bar?.closeAi()
+            aiToolbar?.close()
+            tr.open()
+            refreshViews()
+        }
         override fun openAiActions() {
             voice.cancel()
             controller.emoji.close()
             closeAiPanels()
+            closeTranslate()
             bar?.setAiOpen(true)
             refreshViews()
         }
@@ -322,6 +343,7 @@ class KeyboardImeService : InputMethodService() {
             voice.cancel()
             bar?.closeAi()
             closeAiPanels()
+            closeTranslate()
             controller.emoji.open(controller.profile.allowsEmoji)
             refreshViews()
         }
@@ -334,6 +356,7 @@ class KeyboardImeService : InputMethodService() {
         }
         override fun openWritingModes() {
             bar?.closeAi()
+            translate?.closePicker()
             strip?.openModeChooser()
         }
         override fun openLanguages() = openCompanion(AiLink.LANGUAGES)
@@ -345,6 +368,7 @@ class KeyboardImeService : InputMethodService() {
             controller.emoji.close()
             bar?.closeAi()
             closeAiPanels()
+            closeTranslate()
         }
     }
 
@@ -403,6 +427,14 @@ class KeyboardImeService : InputMethodService() {
     private var aiShownLanguage: String? = null
     private var column: KeyboardColumn? = null
 
+    // Translate mode (ADR 0037): its state is created with the AI client; the panel above the bar and the language list in
+    // place of the keys are built with the input view and stay hidden until opened.
+    private var translate: TranslateController? = null
+    private var translatePanel: TranslatePanelView? = null
+    private var translateLanguages: TranslateLanguagesView? = null
+    private var translateDirty = false
+    private var seenTranslatePicker = TranslatePicker.NONE
+
     /** The direction memory, the preferred destination and the e-mail sender name: device-local settings (ADR 0031). */
     private val aiPrefs = object : AiLanguagePrefs {
         override val preferredTarget: String? get() = snapshot.current.aiPreferredTarget
@@ -435,20 +467,37 @@ class KeyboardImeService : InputMethodService() {
                         post = { block -> main.post(block) },
                         copyToClipboard = ::copyResult,
                         onChanged = { aiView?.render() },
-                        keyboardLanguage = { controller.language },
-                        prefs = aiPrefs,
                     )
                     aiToolbar = toolbar
+                    val tr = TranslateController(
+                        actions = actions,
+                        editor = EditorAiAccess(adapter) { controller.commitComposition() },
+                        post = { block -> main.post(block) },
+                        copyToClipboard = ::copyResult,
+                        keyboardLanguage = { controller.language },
+                        prefs = aiPrefs,
+                        refresh = { toolbar.onToolbarOpened() },
+                        onChanged = {
+                            translateDirty = true
+                            refreshViews()
+                        },
+                        onInputChanged = { translatePanel?.renderInput() },
+                    )
+                    tr.onLeaveByKey = { toolHost.openEmoji() } // the emoji key leaves translate mode for the emoji panel
+                    translate = tr
+                    translatePanel?.controller = tr
+                    translateLanguages?.controller = tr
+                    controller.fieldTyping = ::fieldTyping
                     aiPanelsHandle = actions.addAvailabilityListener {
                         main.post {
-                            if (aiWorkspace?.isOpen == true) {
-                                aiPanelDirty = true
-                                refreshViews()
-                            }
+                            if (aiWorkspace?.isOpen == true) aiPanelDirty = true
+                            if (translate?.isOpen == true) translateDirty = true
+                            if (aiPanelDirty || translateDirty) refreshViews()
                         }
                     }
                     aiView?.controller = toolbar
                     toolbar.onFieldStarted(controller.profile, currentInputEditorInfo?.packageName)
+                    tr.onFieldStarted(controller.profile, currentInputEditorInfo?.packageName)
                     aiView?.render() // the bar shows the AI entry now (its height does not change)
                 }
             }
@@ -466,15 +515,32 @@ class KeyboardImeService : InputMethodService() {
             prefs = aiPrefs,
             post = { block -> main.post(block) },
             keyboardLanguage = { controller.language },
-            translateDefault = { aiToolbar?.destination?.language ?: AiLanguages.defaultTarget(controller.language) },
+            // AI Assist's Translate goes where the translate panel's direction points (one source of truth, ADR 0037).
+            translateDefault = { translate?.destination?.language ?: AiLanguages.defaultTarget(controller.language) },
             onChanged = {
                 aiPanelDirty = true
                 refreshViews()
             },
         )
         aiWorkspace = ws
-        controller.fieldTyping = { ws.fieldTyping() }
+        controller.fieldTyping = ::fieldTyping
         return ws
+    }
+
+    /** The panel field the keys type into: the translate box while translate mode is on, else an AI panel field. */
+    private fun fieldTyping(): FieldTyping? = translate?.fieldTyping() ?: aiWorkspace?.fieldTyping()
+
+    /** Leaves translate mode: a running call is cancelled, the box's text (and an open composition in it) dropped. */
+    private fun closeTranslate() {
+        val tr = translate ?: return
+        if (!tr.isOpen) return
+        tr.close()
+        controller.onCompositionAbandoned()
+    }
+
+    /** What Insert did: when the field had changed meanwhile, the translation went in at the cursor (say so). */
+    private fun onTranslateApplied(applied: AiApplied) {
+        if (applied == AiApplied.INSERTED_ORIGINAL_CHANGED) Toast.makeText(ui, R.string.ai_inserted_instead, Toast.LENGTH_SHORT).show()
     }
 
     /** Creates the panel and the typing strip and puts them in the keyboard column (first open only). */
@@ -511,6 +577,7 @@ class KeyboardImeService : InputMethodService() {
         val ws = workspace() ?: return
         voice.cancel()
         tools.close()
+        closeTranslate()
         controller.emoji.close()
         bar?.closeAi()
         aiToolbar?.close()
@@ -719,7 +786,11 @@ class KeyboardImeService : InputMethodService() {
                 Toast.makeText(ui, if (added) R.string.user_dictionary_added else R.string.user_dictionary_not_added, Toast.LENGTH_SHORT).show()
             }
             it.onModeSelected = { kind -> controller.selectWritingMode(kind) }
-            it.onTools = { tools.toggleTools() }
+            // The bar's left button: back from a translate language list, else the tools panel.
+            it.onTools = {
+                val tr = translate
+                if (tr != null && tr.isOpen && tr.picker != TranslatePicker.NONE) tr.closePicker() else tools.toggleTools()
+            }
             it.haptics = { controller.prefs.hapticsEnabled }
             strip = it
         }
@@ -728,7 +799,16 @@ class KeyboardImeService : InputMethodService() {
             it.onLink = ::openCompanion
             it.onOpenAssist = { openAiPanel(email = false) }
             it.onOpenEmail = { openAiPanel(email = true) }
+            it.onOpenTranslate = { toolHost.openTranslate() }
             aiView = it
+        }
+        val translateView = TranslatePanelView(ui).also {
+            it.controller = translate
+            it.onLink = ::openCompanion
+            it.onClose = { closeTranslate() }
+            it.onApplied = ::onTranslateApplied
+            it.haptics = { controller.prefs.hapticsEnabled }
+            translatePanel = it
         }
         // One bar above the keys: pill, AI entry (its actions open in the bar's middle), candidates, mic, gear.
         val b = KeyboardBar(ui, s, ai).also {
@@ -786,6 +866,14 @@ class KeyboardImeService : InputMethodService() {
             it.haptics = { controller.prefs.hapticsEnabled }
             toolsPanel = it
         }
+        val languagesView = TranslateLanguagesView(ui).also {
+            it.controller = translate
+            it.heightProvider = { k.preferredHeightPx() }
+            it.haptics = { controller.prefs.hapticsEnabled }
+            translateLanguages = it
+        }
+        seenTranslatePicker = TranslatePicker.NONE
+        translateDirty = true
         val clipView = ClipboardPanelView(ui).also {
             it.visibility = View.GONE
             it.heightProvider = { k.preferredHeightPx() }
@@ -806,6 +894,7 @@ class KeyboardImeService : InputMethodService() {
         val column = KeyboardColumn(ui, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.also { this.column = it }.apply {
             addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
             addView(ai, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(translateView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(search, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(wordArtStrip, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -815,6 +904,7 @@ class KeyboardImeService : InputMethodService() {
             addView(voiceView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(toolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(clipView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(languagesView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val root = OverlayStack(ui).apply {
             addView(column)
@@ -935,6 +1025,8 @@ class KeyboardImeService : InputMethodService() {
         if (aiWorkspace?.isOpen == true) closeAiPanels()
         aiView?.emailFirst = profile.allowsAi && AiEmailHints.looksLikeEmailBody(info.packageName, info.inputType, info.hintText)
         aiToolbar?.onFieldStarted(profile, info.packageName)
+        // A new field leaves translate mode; the direction starts again from Detect and the app's rule (ADR 0031).
+        translate?.onFieldStarted(profile, info.packageName)
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
@@ -967,6 +1059,13 @@ class KeyboardImeService : InputMethodService() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         // The tools and clipboard panels: Back returns to the keys.
         if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && tools.back()) return true
+        // Translate mode: Back closes a language list, then the panel.
+        val tr = translate
+        if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && tr != null && tr.isOpen) {
+            if (tr.picker != TranslatePicker.NONE) tr.closePicker() else closeTranslate()
+            refreshViews()
+            return true
+        }
         val ws = aiWorkspace
         if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && ws != null && ws.isOpen) {
             // AI panels: typing → panel, result → inputs, inputs → keyboard.
@@ -999,6 +1098,7 @@ class KeyboardImeService : InputMethodService() {
         clipHistory.prune()
         aiToolbar?.onKeyboardHidden()
         closeAiPanels()
+        closeTranslate()
         super.onFinishInputView(finishingInput)
     }
 
@@ -1056,19 +1156,42 @@ class KeyboardImeService : InputMethodService() {
                 ToolPanel.NONE -> Unit
             }
         }
-        strip?.panelTitle = when (toolPanel) {
-            ToolPanel.TOOLS -> ui.getString(R.string.tools_title)
-            ToolPanel.CLIPBOARD -> ui.getString(R.string.tool_clipboard)
-            ToolPanel.NONE -> null
+        // Translate mode (ADR 0037): its panel above the bar; a language list takes the key area like a tool panel.
+        val tr = translate
+        val translateOpen = tr != null && tr.isOpen
+        val picker = if (tr != null && translateOpen) tr.picker else TranslatePicker.NONE
+        val picking = picker != TranslatePicker.NONE
+        translatePanel?.let {
+            val was = it.visibility == View.VISIBLE
+            val show = translateOpen && !picking
+            it.visibility = if (show) View.VISIBLE else View.GONE
+            if (show && (translateDirty || !was)) {
+                it.render()
+                if (!was && seenTranslatePicker == TranslatePicker.NONE) it.reveal()
+            }
+        }
+        translateLanguages?.let {
+            it.visibility = if (picking) View.VISIBLE else View.GONE
+            if (picking && (picker != seenTranslatePicker || translateDirty)) it.render()
+        }
+        seenTranslatePicker = picker
+        translateDirty = false
+        strip?.panelTitle = when {
+            toolPanel == ToolPanel.TOOLS -> ui.getString(R.string.tools_title)
+            toolPanel == ToolPanel.CLIPBOARD -> ui.getString(R.string.tool_clipboard)
+            picker == TranslatePicker.SOURCE -> ui.getString(R.string.translate_from_title)
+            picker == TranslatePicker.DESTINATION -> ui.getString(R.string.translate_into_title)
+            else -> null
         }
         strip?.setActiveTools(
             buildSet {
                 if (inPanel || inSearch || inWordArt || inWordArtTyping) add(Tool.EMOJI)
                 if (aiPanelShown) add(Tool.AI_ACTIONS)
+                if (translateOpen) add(Tool.TRANSLATE)
             },
         )
         bar?.sync() // the field's shortcuts (clipboard, emoji, voice) follow the field and the settings
-        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE) View.GONE else View.VISIBLE
+        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE || picking) View.GONE else View.VISIBLE
         emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
         bar?.visibility = if (inSearch || inWordArtTyping || aiTyping) View.GONE else View.VISIBLE
         aiFieldBar?.let {
@@ -1083,10 +1206,10 @@ class KeyboardImeService : InputMethodService() {
                 it.render()
             }
         }
-        // The Auto source of the direction control follows the keyboard language.
+        // The Detect source of the translation direction follows the keyboard language.
         if (aiShownLanguage != controller.language) {
             aiShownLanguage = controller.language
-            aiToolbar?.onKeyboardLanguageChanged()
+            translate?.onKeyboardLanguageChanged()
         }
         emojiSearch?.visibility = if (inSearch) View.VISIBLE else View.GONE
         wordArtPanel?.visibility = if (inWordArt) View.VISIBLE else View.GONE
