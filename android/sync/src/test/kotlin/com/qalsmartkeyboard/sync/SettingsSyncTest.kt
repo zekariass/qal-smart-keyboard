@@ -155,11 +155,11 @@ class SettingsSyncTest {
 
         val local = a.settings.current()
         assertEquals(InputMode.DIRECT_SCRIPT_LAYOUT, local.language("am")!!.inputMode)
-        assertEquals(listOf("en", "am", "ti", "om"), local.languages.map { it.languageCode })
+        assertEquals(listOf("en", "am", "ti", "om", "ar"), local.languages.map { it.languageCode }) // ar: device only (ADR 0034)
 
         b.sync()
         val bs = b.settings.current()
-        assertEquals(listOf("en", "am", "ti", "om"), bs.languages.map { it.languageCode })
+        assertEquals(listOf("en", "am", "ti", "om", "ar"), bs.languages.map { it.languageCode })
         assertFalse(bs.language("ti")!!.enabled)
         assertFalse(bs.language("am")!!.showTransliterationCandidates)
     }
@@ -215,5 +215,60 @@ class SettingsSyncTest {
         a.sync()
         assertEquals("AM_OLD", str(typingEntries().first { str(it, "languageCode") == "am" }, "transliterationProfileCode"))
         assertEquals("ti", str(typingEntries().first(), "languageCode"))
+    }
+
+    private fun typingPuts() = backend.requests.filter { it.path == "/me/typing-languages" && it.method == "PUT" }
+
+    @Test fun arabicStaysOnTheDeviceWhileTheServerRefusesIt() = runBlocking {
+        // ADR 0034: the backend refuses `ar` until it is activated (FakeBackend.unsupportedLanguages, as the real one).
+        val a = device()
+        a.settings.setLanguageEnabled("ar", true)
+        a.settings.moveLanguage("ar", 0)
+        a.settings.setLanguageEnabled("ti", false)
+        val r = a.sync().steps.getValue(SyncStep.TYPING_LANGUAGES)
+        assertEquals(StepResult.Synced, r) // not Failed: the rest of the list synced
+        // Refused once, then the same run sent the list without Arabic.
+        assertEquals(2, typingPuts().size)
+        assertTrue(typingPuts().first().body.contains("\"ar\""))
+        assertEquals(listOf("am", "ti", "om", "en"), typingEntries().map { str(it, "languageCode") })
+        assertEquals("false", str(typingEntries().first { str(it, "languageCode") == "ti" }, "enabled"))
+        assertEquals("true", str(typingEntries().first { str(it, "languageCode") == "am" }, "isPrimary"))
+        // The device keeps Arabic exactly as the user set it: first, enabled.
+        val local = a.settings.current()
+        assertEquals(listOf("ar", "am", "ti", "om", "en"), local.languages.map { it.languageCode })
+        assertEquals(listOf("ar", "am", "om", "en"), local.enabledLanguages)
+
+        // The refusal is remembered: the next runs neither send Arabic nor fail, and nothing else changes.
+        backend.requests.clear()
+        assertTrue(a.sync().steps.getValue(SyncStep.TYPING_LANGUAGES).let { it == StepResult.Unchanged || it == StepResult.Synced })
+        assertTrue(typingPuts().isEmpty())
+        a.settings.moveLanguage("en", 1)
+        a.sync()
+        assertEquals(1, typingPuts().size)
+        assertFalse(typingPuts().single().body.contains("\"ar\""))
+        assertEquals(listOf("ar", "en", "am", "ti", "om"), a.settings.current().languages.map { it.languageCode })
+
+        // The backend activates Arabic; once the remembered refusal has expired, the next run sends it.
+        backend.unsupportedLanguages.clear()
+        a.state.put("refusedLanguages", null)
+        a.sync()
+        assertEquals(listOf("ar", "en", "am", "ti", "om"), typingEntries().map { str(it, "languageCode") })
+        assertEquals("true", str(typingEntries().first(), "isPrimary"))
+        assertEquals("LATIN_PASSTHROUGH", str(typingEntries().first(), "inputMode"))
+    }
+
+    @Test fun anotherDeviceDoesNotLoseItsArabicChoice() = runBlocking {
+        val a = device()
+        val b = device()
+        b.settings.setLanguageEnabled("ar", true)
+        a.sync()
+        b.sync()
+        a.settings.moveLanguage("om", 0)
+        a.sync()
+        b.sync()
+        // b follows a's order for the synced languages and keeps its own Arabic (enabled, after en as before).
+        assertEquals(listOf("om", "am", "ti", "en", "ar"), b.settings.current().languages.map { it.languageCode })
+        assertTrue(b.settings.current().language("ar")!!.enabled)
+        assertFalse(a.settings.current().language("ar")!!.enabled)
     }
 }

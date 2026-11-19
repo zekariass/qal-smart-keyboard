@@ -206,6 +206,13 @@ Deviations from the glossary:
 - Buttons that say "my" in English (Export my data, Delete my account) stay in the first person.
 - Oromo's name in Amharic and Tigrinya lists is ኦሮምኛ; prose in the app uses the self-name (Afaan Oromoo / አፋን ኦሮሞ). Pick one form.
 - Theme and Word Art style names are loose, descriptive translations. The panel may prefer to keep some in English.
+- Arabic as a typing language (ADR 0034, DRAFT like the rest): language_name_ar = ዓረብኛ (am), ዓረብኛ (ti), Afaan Arabaa (om),
+  following each language's pattern for language names (-ኛ in am and ti, *Afaan X* in om); lang_ar adds the self-name
+  العربية in brackets. Tigrinya ዓረብ (the people) was considered and not used: the other ti language names all end in -ኛ.
+  Key descriptions (kb_key_arabic_*) reuse the terms of their Ethiopic counterparts (ቁጥር/ቁጽሪ, ሥርዓተ ነጥብ, ኮማ,
+  lakkoofsa, mallattoo tuqaa, qoodduu); the names of the harakat (Fatha, Shadda, ...) are technical names and are not
+  translated, like Qubee and QWERTY.
+
 
 ### Settings redesign (ADR 0036)
 

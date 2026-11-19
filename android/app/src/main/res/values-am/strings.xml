@@ -53,6 +53,7 @@
     <string name="lang_ti">ትግርኛ</string>
     <string name="lang_om">አፋን ኦሮሞ (Afaan Oromoo)</string>
     <string name="lang_en">እንግሊዝኛ (English)</string>
+    <string name="lang_ar">ዓረብኛ (العربية)</string>
     <string name="lang_am_short">አማርኛ</string>
     <string name="lang_ti_short">ትግርኛ</string>
 
@@ -401,6 +402,7 @@
     <string name="settings_languages_title">ቋንቋዎች</string>
     <string name="settings_mode_phonetic">ፎነቲክ QWERTY</string>
     <string name="settings_mode_latin">ላቲን</string>
+    <string name="settings_layout_arabic">ዓረብኛ</string>
     <string name="settings_translit_profile">የፊደል ልውውጥ መገለጫ፦ አዲሱ ንቁ (ራስ-ሰር)</string>
     <string name="settings_show_candidates">ጥቆማዎችን አሳይ</string>
     <string name="settings_numerals_title">ቁጥሮች</string>

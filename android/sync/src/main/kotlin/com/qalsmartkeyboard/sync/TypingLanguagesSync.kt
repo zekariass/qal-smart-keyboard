@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 
@@ -99,27 +100,62 @@ internal class TypingDoc(val langs: List<WireLang>, val raw: List<JsonObject>) {
  * on this device since the last sync the local order wins, otherwise the server order; languages
  * the server does not list yet are appended. Entries the app cannot represent are preserved.
  * `isPrimary` is the first enabled language, `sortOrder` 10, 20, ... as `KeyboardSettings.toSyncItems`.
+ *
+ * **Languages the server does not support yet (ADR 0034).** The app may know a typing language before the
+ * backend activates it (Arabic). When a PUT is refused with 400 `LANGUAGE_NOT_SUPPORTED`, the refused codes
+ * (from the field errors `languages[i].languageCode`) are remembered for a day ([RefusedLanguages]) and the
+ * run is repeated once without them: the rest of the list still syncs. A held-back language stays exactly as
+ * it is on this device (enabled, position) and is reported in [TypingResult.heldBack]; it is not an error and
+ * is not retried with backoff. After the day, or as soon as the server lists the language, it is sent again.
  */
 class TypingLanguagesSync internal constructor(
     private val repo: SettingsRepository,
     private val doc: DocSync,
     private val profiles: ProfileDirectory,
+    private val refused: RefusedLanguages,
 ) {
-    class TypingResult internal constructor(internal val result: DocResult, val deferred: Set<String>) {
+    class TypingResult internal constructor(
+        internal val result: DocResult,
+        val deferred: Set<String>,
+        /** Languages kept on this device only because the server does not support them yet. */
+        val heldBack: Set<String> = emptySet(),
+    ) {
         val unchanged: Boolean get() = result == DocResult.UNCHANGED && deferred.isEmpty()
     }
 
-    internal suspend fun run(): TypingResult = try {
-        runOnce()
-    } catch (e: ApiError.Http) {
-        if (e.status == 422 && e.code == "PROFILE_NOT_ACTIVE") {
-            // Our cached profile list was stale: refetch and try once more.
-            profiles.invalidate()
-            runOnce()
-        } else {
-            throw e
+    /** Language codes in the order of the last PUT body's `languages` (field errors point into it). */
+    private var sentCodes: List<String?> = emptyList()
+
+    internal suspend fun run(): TypingResult {
+        var profileRetry = true
+        var refusedRetry = true
+        while (true) {
+            try {
+                return runOnce()
+            } catch (e: ApiError.Http) {
+                if (profileRetry && e.status == 422 && e.code == "PROFILE_NOT_ACTIVE") {
+                    // Our cached profile list was stale: refetch and try once more.
+                    profileRetry = false
+                    profiles.invalidate()
+                    continue
+                }
+                val codes = if (e.status == 400 && e.code == "LANGUAGE_NOT_SUPPORTED") refusedCodes(e) else emptySet()
+                if (refusedRetry && codes.isNotEmpty()) {
+                    // The server does not take these languages yet: keep them on this device and sync the rest.
+                    refusedRetry = false
+                    refused.remember(codes)
+                    continue
+                }
+                throw e
+            }
         }
     }
+
+    /** The known languages a `LANGUAGE_NOT_SUPPORTED` answer names (`languages[i].languageCode` of the last PUT). */
+    private fun refusedCodes(e: ApiError.Http): Set<String> = e.fieldErrors.mapNotNull { f ->
+        val i = f.field?.let { FIELD.matchEntire(it) }?.groupValues?.get(1)?.toIntOrNull() ?: return@mapNotNull null
+        sentCodes.getOrNull(i)?.takeIf { LanguageRules.isKnown(it) }
+    }.toSet()
 
     private suspend fun runOnce(): TypingResult {
         val start = repo.current()
@@ -135,32 +171,44 @@ class TypingLanguagesSync internal constructor(
         val baseDoc = lastDoc?.let { TypingDoc.parse(it) }
         val baseBy = baseDoc?.langs?.associateBy { it.code }.orEmpty()
         val baseOrder = baseDoc?.langs?.map { it.code }?.let { it + (LanguageRules.KNOWN - it.toSet()) } ?: LanguageRules.KNOWN
+        // Schema defaults: a language the user opts into (Arabic) starts switched off, like on the device.
         fun baseOf(code: String): WireLang = baseBy[code]
-            ?: wireOf(TypingLanguageSetting(code), active[code], null)
-            ?: WireLang(code, true, LanguageRules.defaultMode(code), null, ConversionTrigger.LIVE_COMPOSING, true, UnknownTokenBehavior.PRESERVE_LATIN)
+            ?: wireOf(TypingLanguageSetting(code, enabled = code !in LanguageRules.OPT_IN), active[code], null)
+            ?: WireLang(code, code !in LanguageRules.OPT_IN, LanguageRules.defaultMode(code), null, ConversionTrigger.LIVE_COMPOSING, true, UnknownTokenBehavior.PRESERVE_LATIN)
+        val refusedNow = refused.current()
+        val heldOut = LinkedHashSet<String>()
 
         val result = doc.run { server ->
             val serverDoc = TypingDoc.parse(server)
             val serverBy = serverDoc.langs.associateBy { it.code }
+            // A refused language the server now lists is supported again: send it.
+            val held = start.languages.map { it.languageCode }.filter { it in refusedNow && it !in serverBy }.toSet()
             val local = HashMap<String, WireLang?>()
-            for (l in start.languages) local[l.languageCode] = wireOf(l, active[l.languageCode], serverBy[l.languageCode]?.profile)
+            for (l in start.languages) {
+                local[l.languageCode] = if (l.languageCode in held) null else wireOf(l, active[l.languageCode], serverBy[l.languageCode]?.profile)
+            }
             val merged = mergeTyping(
-                localOrder = start.languages.map { it.languageCode },
+                // A held-back language takes no part in the order either: where it sits on the device is not a reorder.
+                localOrder = start.languages.map { it.languageCode } - held,
                 local = local,
-                baseOrder = baseOrder,
+                baseOrder = baseOrder - held,
                 base = ::baseOf,
                 serverOrder = serverDoc.langs.map { it.code },
                 server = serverBy,
+                heldEnabled = start.languages.any { it.enabled && it.languageCode in held },
             )
             deferredOut.clear()
-            deferredOut += local.filterValues { it == null }.keys
+            deferredOut += local.filterValues { it == null }.keys - held
+            heldOut.clear()
+            heldOut += held
             val needsPut = merged != serverDoc.langs
             val primary = merged.firstOrNull { it.enabled }?.code
             val items = merged.mapIndexed { i, w -> w.toJson((i + 1) * 10, w.code == primary) } + serverDoc.raw
+            sentCodes = merged.map { it.code } + serverDoc.raw.map { (it["languageCode"] as? JsonPrimitive)?.contentOrNull }
             val body = JsonObject(server.filterKeys { it != "revision" } + ("languages" to JsonArray(items)))
             DocPlan(body, needsPut) { applyLocal(start, local, merged) }
         }
-        return TypingResult(result, deferredOut.toSet())
+        return TypingResult(result, deferredOut.toSet(), heldOut.toSet())
     }
 
     private suspend fun applyLocal(start: KeyboardSettings, local: Map<String, WireLang?>, merged: List<WireLang>) {
@@ -191,7 +239,7 @@ class TypingLanguagesSync internal constructor(
                 if (c.unknownTokenBehavior == st.unknownTokenBehavior) n = n.copy(unknownTokenBehavior = r.unknown)
                 n
             }
-            val order = merged.map { it.code }
+            val order = localOrderAfterMerge(start.languages.map { it.languageCode }, merged.map { it.code })
             val ordered = if (cur.languages.map { it.languageCode } == start.languages.map { it.languageCode }) {
                 updated.sortedBy { order.indexOf(it.languageCode).let { i -> if (i < 0) Int.MAX_VALUE else i } }
             } else {
@@ -216,7 +264,29 @@ class TypingLanguagesSync internal constructor(
             return WireLang(l.languageCode, l.enabled, l.inputMode, profile, l.conversionTrigger, l.showTransliterationCandidates, l.unknownTokenBehavior)
         }
 
-        /** The three-way merge (see the class comment). [local] holds null for a deferred language. */
+        private val FIELD = Regex("""languages\[(\d+)]\.languageCode""")
+
+        /**
+         * The device's language order after a merge: the merged order, with each language the merge left out (held
+         * back, or deferred and unknown to the server) kept just before the language it preceded on the device, or
+         * at the end when it was last.
+         */
+        internal fun localOrderAfterMerge(localOrder: List<String>, merged: List<String>): List<String> {
+            val out = merged.filter { it in localOrder }.toMutableList()
+            for (i in localOrder.indices.reversed()) {
+                val code = localOrder[i]
+                if (code in out) continue
+                val next = localOrder.subList(i + 1, localOrder.size).firstOrNull { it in out }
+                out.add(if (next == null) out.size else out.indexOf(next), code)
+            }
+            return out
+        }
+
+        /**
+         * The three-way merge (see the class comment). [local] holds null for a deferred or held-back language.
+         * [heldEnabled]: a held-back language is enabled on the device, so the list has an enabled language even if
+         * every merged one is off (none is then switched on).
+         */
         internal fun mergeTyping(
             localOrder: List<String>,
             local: Map<String, WireLang?>,
@@ -224,6 +294,7 @@ class TypingLanguagesSync internal constructor(
             base: (String) -> WireLang,
             serverOrder: List<String>,
             server: Map<String, WireLang>,
+            heldEnabled: Boolean = false,
         ): List<WireLang> {
             val result = LinkedHashMap<String, WireLang>()
             for (code in localOrder) {
@@ -250,7 +321,7 @@ class TypingLanguagesSync internal constructor(
             }
             val order = if (localOrder != baseOrder) localOrder else serverOrder + (localOrder - serverOrder.toSet())
             val out = order.mapNotNull { result[it] }.toMutableList()
-            if (out.isNotEmpty() && out.none { it.enabled }) out[0] = out[0].copy(enabled = true)
+            if (out.isNotEmpty() && out.none { it.enabled } && !heldEnabled) out[0] = out[0].copy(enabled = true)
             return out
         }
     }
@@ -306,5 +377,35 @@ class ProfileDirectory(
 
     private companion object {
         const val SECTION = "profiles"
+    }
+}
+
+/**
+ * Typing languages the server refused with `LANGUAGE_NOT_SUPPORTED` (ADR 0034: the app can know a language before
+ * the backend activates it), with when, kept in the sync state for [ttlMs] and then asked about again. Holds language
+ * codes only, never user text.
+ */
+class RefusedLanguages(
+    private val state: SyncStateStore,
+    private val now: () -> Long = System::currentTimeMillis,
+    private val ttlMs: Long = 24L * 3600 * 1000,
+) {
+    /** The codes refused within the last [ttlMs]. */
+    fun current(): Set<String> {
+        val t = now()
+        return state.section(SECTION).filter { (_, v) ->
+            val at = (v as? JsonPrimitive)?.longOrNull ?: return@filter false
+            t - at in 0..ttlMs
+        }.keys
+    }
+
+    fun remember(codes: Set<String>) {
+        if (codes.isEmpty()) return
+        val at = JsonPrimitive(now())
+        state.put(SECTION, JsonObject(state.section(SECTION).filterKeys { it in current() } + codes.associateWith { at }))
+    }
+
+    private companion object {
+        const val SECTION = "refusedLanguages"
     }
 }

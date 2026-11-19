@@ -43,6 +43,9 @@ class FakeBackend {
 
     @Volatile var alwaysConflict = false
 
+    /** Typing languages the server refuses (400 LANGUAGE_NOT_SUPPORTED), as the real backend refuses `ar` until it is activated. */
+    val unsupportedLanguages: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf("ar"))
+
     // ---- profiles
     val profiles = LinkedHashMap<String, JsonObject>()
     val transliterationProfiles = HashMap<String, List<Pair<String, String>>>().apply {
@@ -101,6 +104,21 @@ class FakeBackend {
                 val nowRev = (now["revision"] as JsonPrimitive).intOrNull!!
                 val sent = parse(body)
                 val sentRev = (sent["revision"] as JsonPrimitive).intOrNull
+                if (name == "typing") {
+                    // Like TypingLanguagesService: an unknown or inactive language is 400 with one field error per entry.
+                    val errors = (sent["languages"] as? JsonArray).orEmpty().mapIndexedNotNull { i, e ->
+                        val code = ((e as? JsonObject)?.get("languageCode") as? JsonPrimitive)?.contentOrNull
+                        if (code !in unsupportedLanguages) return@mapIndexedNotNull null
+                        JsonObject(
+                            mapOf(
+                                "field" to JsonPrimitive("languages[$i].languageCode"),
+                                "code" to JsonPrimitive("LANGUAGE_NOT_SUPPORTED"),
+                                "message" to JsonPrimitive("The language is not supported."),
+                            ),
+                        )
+                    }
+                    if (errors.isNotEmpty()) return problem(400, "LANGUAGE_NOT_SUPPORTED", mapOf("errors" to JsonArray(errors)))
+                }
                 if (alwaysConflict || sentRev != nowRev) {
                     return problem(409, "REVISION_CONFLICT", mapOf("currentRevision" to JsonPrimitive(nowRev)))
                 }

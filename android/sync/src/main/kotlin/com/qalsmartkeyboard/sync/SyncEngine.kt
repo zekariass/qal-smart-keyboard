@@ -50,7 +50,9 @@ class SyncEngine(
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val prefs = PreferencesSync.create(settings, http, state)
-    private val typing = TypingLanguagesSync(settings, DocSync(http, state, "/me/typing-languages", "typing"), ProfileDirectory(http, state, now))
+    private val typing = TypingLanguagesSync(
+        settings, DocSync(http, state, "/me/typing-languages", "typing"), ProfileDirectory(http, state, now), RefusedLanguages(state, now),
+    )
     private val destination = DestinationSync.create(http, destinations, state)
     val consent = DictionaryConsent(http, state)
     private val running = AtomicBoolean(false)

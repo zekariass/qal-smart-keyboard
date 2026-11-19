@@ -133,7 +133,7 @@ class SettingsRepositoryTest {
 
         val s = open().current()
         assertEquals(listOf("en", "am", "om"), s.enabledLanguages)
-        assertEquals(listOf("en", "am", "ti", "om"), s.languages.map { it.languageCode })
+        assertEquals(listOf("en", "am", "ti", "om", "ar"), s.languages.map { it.languageCode })
         assertEquals(NumeralStyle.ETHIOPIC, s.numeralStyle)
         assertEquals(ThemeIds.CLASSIC_DARK, s.theme)
         assertFalse(s.hapticsEnabled)
@@ -172,7 +172,7 @@ class SettingsRepositoryTest {
             ),
             lastModes = mapOf("xx" to "FIDEL", "am" to "bad mode!", "ti" to "PHONETIC"),
         ).sanitized()
-        assertEquals(listOf("om", "am", "ti", "en"), s(dirty))
+        assertEquals(listOf("om", "am", "ti", "en", "ar"), s(dirty))
         assertEquals(InputMode.LATIN_PASSTHROUGH, dirty.language("om")!!.inputMode)
         assertNull(dirty.language("om")!!.transliterationProfileCode)
         assertNull(dirty.language("am")!!.transliterationProfileCode)
@@ -181,6 +181,53 @@ class SettingsRepositoryTest {
     }
 
     private fun s(x: KeyboardSettings) = x.languages.map { it.languageCode }
+
+    @Test fun arabicIsOptInOnFirstRun() = runBlocking {
+        val r = open()
+        val s = r.current()
+        assertEquals(listOf("am", "ti", "om", "en", "ar"), s.languages.map { it.languageCode })
+        assertFalse(s.language("ar")!!.enabled)
+        assertEquals(listOf("am", "ti", "om", "en"), s.enabledLanguages)
+        assertEquals(InputMode.LATIN_PASSTHROUGH, s.language("ar")!!.inputMode)
+        assertEquals(listOf(InputMode.LATIN_PASSTHROUGH), LanguageRules.allowedModes("ar"))
+        assertTrue(LanguageRules.isKnown("ar") && "ar" in LanguageRules.OPT_IN)
+        // Arabic is never phonetic: a stale or tampered phonetic mode falls back to its one mode, with no profile code.
+        r.updateLanguage("ar") { it.copy(inputMode = InputMode.PHONETIC_LATIN_TO_NATIVE, transliterationProfileCode = "AR_X") }
+        assertEquals(InputMode.LATIN_PASSTHROUGH, r.current().language("ar")!!.inputMode)
+        assertNull(r.current().language("ar")!!.transliterationProfileCode)
+    }
+
+    @Test fun existingUsersGetArabicAppendedSwitchedOff() = runBlocking {
+        // Settings saved by a version that knew four languages: Oromo first, Tigrinya off.
+        val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "old.preferences_pb")
+        store.edit {
+            it[stringPreferencesKey("languages")] = listOf(
+                "om|1|LATIN_PASSTHROUGH||LIVE_COMPOSING|1|PRESERVE_LATIN",
+                "am|1|PHONETIC_LATIN_TO_NATIVE||LIVE_COMPOSING|1|PRESERVE_LATIN",
+                "ti|0|DIRECT_SCRIPT_LAYOUT||LIVE_COMPOSING|1|PRESERVE_LATIN",
+                "en|1|LATIN_PASSTHROUGH||LIVE_COMPOSING|1|PRESERVE_LATIN",
+            ).joinToString("\n")
+        }
+        val r = SettingsRepository(store)
+        val s = r.current()
+        assertEquals(listOf("om", "am", "ti", "en", "ar"), s.languages.map { it.languageCode })
+        assertEquals(listOf("om", "am", "en"), s.enabledLanguages) // the user's choice is untouched
+        assertFalse(s.language("ar")!!.enabled)
+        assertEquals(InputMode.DIRECT_SCRIPT_LAYOUT, s.language("ti")!!.inputMode)
+        // Opting in is an ordinary edit, and it is kept.
+        r.setLanguageEnabled("ar", true)
+        assertEquals(listOf("om", "am", "en", "ar"), r.current().enabledLanguages)
+        // Arabic can be the only language.
+        for (c in listOf("om", "am", "en")) r.setLanguageEnabled(c, false)
+        assertEquals(listOf("ar"), r.current().enabledLanguages)
+    }
+
+    @Test fun arabicIsAValidTranslationTargetAndVoiceKey() {
+        val s = KeyboardSettings(aiPreferredTarget = "ar", voiceLanguages = mapOf("ar" to "ar-EG"), lastModes = mapOf("ar" to "ARABIC")).sanitized()
+        assertEquals("ar", s.aiPreferredTarget)
+        assertEquals(mapOf("ar" to "ar-EG"), s.voiceLanguages)
+        assertEquals(mapOf("ar" to "ARABIC"), s.lastModes)
+    }
 
     @Test fun corruptStoredValuesFallBackToDefaults() = runBlocking {
         // Write garbage straight into the file through a second view of the same store.
@@ -193,7 +240,7 @@ class SettingsRepositoryTest {
         val s = SettingsRepository(store).current()
         assertEquals(ThemeIds.SYSTEM, s.theme)
         assertEquals(80, s.keyHeightPercent)
-        assertEquals(listOf("am", "ti", "om", "en"), s.languages.map { it.languageCode })
+        assertEquals(listOf("am", "ti", "om", "en", "ar"), s.languages.map { it.languageCode })
         assertEquals(InputMode.PHONETIC_LATIN_TO_NATIVE, s.language("am")!!.inputMode)
         assertTrue(s.enabledLanguages.isNotEmpty())
     }
@@ -301,7 +348,7 @@ class SettingsRepositoryTest {
         r.setLanguageEnabled("ti", false)
         r.moveLanguage("en", 0)
         val s = r.current()
-        assertEquals(listOf("en", "ti", "om", "am"), s.languages.map { it.languageCode })
+        assertEquals(listOf("en", "ti", "om", "am", "ar"), s.languages.map { it.languageCode })
         assertEquals(listOf("en", "om", "am"), s.enabledLanguages)
         assertEquals("AM_PHONETIC_V0", s.language("am")!!.transliterationProfileCode) // kept until resolved
 
@@ -314,7 +361,7 @@ class SettingsRepositoryTest {
 
     @Test fun syncItemsMatchContractShape() {
         val items = KeyboardSettings().copy(
-            languages = phonetic("AM_PHONETIC_V2").languages.reversed().let { l -> l.map { if (it.languageCode == "ti") it.copy(enabled = false) else it } },
+            languages = phonetic("AM_PHONETIC_V2").languages.filter { it.languageCode != "ar" }.reversed().let { l -> l.map { if (it.languageCode == "ti") it.copy(enabled = false) else it } },
         ).toSyncItems()
         assertEquals(listOf("en", "om", "ti", "am"), items.map { it.languageCode })
         assertEquals(listOf(10, 20, 30, 40), items.map { it.sortOrder })

@@ -306,11 +306,28 @@ class SettingsScreenTest {
         compose.onNodeWithText("Amharic · Fidel grid").assertExists()
     }
 
-    @Test fun aLatinOnlyLanguageShowsItsSingleLayout() {
+    @Test fun aSingleLayoutLanguageNamesItsOwnLayoutNotLatin() {
         show()
         compose.onNodeWithText("Languages").performClick()
+        compose.onNodeWithText("Qubee").assertExists() // Afaan Oromoo's row
+        compose.onNodeWithText("QWERTY").assertExists() // English's row
         compose.onNodeWithText("Afaan Oromoo").performClick()
-        compose.onNodeWithText("Latin").assertIsSelected()
+        compose.onNodeWithText("Layout").assertExists()
+        compose.onNodeWithText("Qubee").assertExists()
+        compose.onAllNodesWithText("Latin").assertCountEquals(0)
         compose.onAllNodesWithText("Fidel grid").assertCountEquals(0)
+    }
+
+    @Test fun arabicIsOptInAndShownWithItsOwnLayout() {
+        assertTrue(stored().languages.any { it.languageCode == "ar" && !it.enabled })
+        runBlocking { repository.setLanguageEnabled("ar", true) }
+        show()
+        compose.onNodeWithText("Languages").performClick()
+        compose.onNodeWithText("العربية").assertExists()
+        compose.onNodeWithText("Arabic").assertExists() // UI-language name; the layout name is not repeated
+        compose.onAllNodesWithText("Arabic · Latin").assertCountEquals(0)
+        compose.onNodeWithText("العربية").performClick()
+        compose.onNodeWithText("Layout").assertExists()
+        compose.onAllNodesWithText("Latin").assertCountEquals(0)
     }
 }

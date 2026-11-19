@@ -84,7 +84,9 @@ content, nor put it in error messages. Tests use synthetic text only.
 - `CoreError`: `PackRejected { reason: PackRejectReason, detail }`, `UnsupportedLanguage`,
   `InvalidState`, `InvalidConfig`.
 
-Current behaviour: Abc/English pass characters through. `set_input_mode` returns `InvalidState` for a
+Current behaviour: Abc/English pass characters through. Arabic (`ar` only, ADR 0034) is a passthrough
+too, but sanitised and NFC like the Fidel popups (control characters dropped, alef + combining hamza
+committed as أ); it has no packs and no candidates. `set_input_mode` returns `InvalidState` for a
 mode that does not fit the language (e.g. Qubee is only for `om`), that is not implemented yet
 (PhoneticLatin, Qubee until C1.4/C1.5), or, for DirectFidel, when no `KEYBOARD_LAYOUT` pack is
 loaded for the language ("no keyboard layout is loaded for am"). The host therefore keeps a

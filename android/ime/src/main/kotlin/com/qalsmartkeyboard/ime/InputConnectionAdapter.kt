@@ -385,8 +385,11 @@ class InputConnectionAdapter(private val editor: () -> EditorOps?) : TextSink {
         private const val MAX_PENDING = 64
 
         /**
-         * UTF-16 length of the last [n] extended grapheme clusters of [text] (all of it if it has
-         * fewer). One Fidel syllable, an emoji ZWJ sequence or a flag is one cluster.
+         * UTF-16 length of the last [n] deletion units of [text] (all of it if it has fewer): extended
+         * grapheme clusters, so one Fidel syllable, an emoji ZWJ sequence or a flag is one unit. The
+         * exception is Arabic (ADR 0034): a cluster that ends in an Arabic mark (a harakah, shadda,
+         * superscript alef, ...) loses that mark alone, so Backspace removes a vowel sign without the
+         * letter under it, as Arabic keyboards do. Text is in logical order, so this is right for RTL.
          */
         fun utf16LengthOfLastGraphemes(text: CharSequence, n: Int): Int {
             if (n <= 0 || text.isEmpty()) return 0
@@ -401,10 +404,23 @@ class InputConnectionAdapter(private val editor: () -> EditorOps?) : TextSink {
                     pos = 0
                     break
                 }
-                pos = prev
+                val last = s.codePointBefore(pos)
+                val lastStart = pos - Character.charCount(last)
+                pos = if (lastStart > prev && isArabicMark(last)) lastStart else prev
                 count++
             }
             return s.length - pos
+        }
+
+        /** A combining mark of the Arabic blocks (most harakat have the Inherited script, so the block decides). */
+        private fun isArabicMark(cp: Int): Boolean {
+            if (Character.getType(cp) != Character.NON_SPACING_MARK.toInt()) return false
+            return when (Character.UnicodeBlock.of(cp)) {
+                Character.UnicodeBlock.ARABIC, Character.UnicodeBlock.ARABIC_SUPPLEMENT,
+                Character.UnicodeBlock.ARABIC_EXTENDED_A, Character.UnicodeBlock.ARABIC_PRESENTATION_FORMS_A,
+                -> true
+                else -> false
+            }
         }
     }
 }

@@ -55,13 +55,27 @@ fun nativeLanguageName(code: String): String {
 
 /** The supporting line of a language: its UI-language name when that differs from the self-name, plus [extra]. */
 private fun languageLine(native: String, uiName: String, extra: String? = null): String? =
-    listOfNotNull(uiName.takeIf { !it.equals(native, ignoreCase = true) }, extra).joinToString(" · ").ifEmpty { null }
+    listOfNotNull(uiName.takeIf { !it.equals(native, ignoreCase = true) }, extra?.takeIf { !it.equals(uiName, ignoreCase = true) })
+        .joinToString(" · ").ifEmpty { null }
 
 /** Whether [query] matches the language (self-name, UI name or code; case-insensitive). */
 internal fun languageMatches(query: String, code: String, native: String, uiName: String): Boolean {
     val q = query.trim()
     if (q.isEmpty()) return true
     return listOf(code, native, uiName).any { it.contains(q, ignoreCase = true) }
+}
+
+/**
+ * The name of a language's key layout. Languages with one layout store `LATIN_PASSTHROUGH` (the only mode the server
+ * takes for them), which must not be shown as "Latin": Afaan Oromoo types on Qubee, Arabic on its own Arabic keys.
+ */
+@Composable
+internal fun layoutLabel(code: String, m: InputMode): String = when {
+    LanguageRules.allowedModes(code).size > 1 -> modeLabel(m)
+    code == "om" -> "Qubee"
+    code == "en" -> "QWERTY"
+    code == "ar" -> stringResource(R.string.settings_layout_arabic)
+    else -> modeLabel(m)
 }
 
 @Composable
@@ -107,7 +121,7 @@ fun LanguagesPage(
             val downTo = if (pos < enabled.lastIndex) settings.languages.indexOfFirst { it.languageCode == enabled[pos + 1].languageCode } else -1
             ListItem(
                 headlineContent = { Text(native) },
-                supportingContent = languageLine(native, uiName, modeLabel(l.inputMode))?.let { { Text(it) } },
+                supportingContent = languageLine(native, uiName, layoutLabel(code, l.inputMode))?.let { { Text(it) } },
                 trailingContent = {
                     Row {
                         IconButton(onClick = { onMove(code, upTo) }, enabled = upTo >= 0) {
@@ -190,7 +204,11 @@ fun LanguagePage(
         val native = nativeLanguageName(code)
         languageLine(native, languageName(code))?.let { SettingsNote(it) }
         val modes = LanguageRules.allowedModes(code)
-        if (modes.isNotEmpty()) {
+        if (modes.size == 1) {
+            // One layout (Qubee, QWERTY, Arabic): name it; a single radio button would offer no choice.
+            SettingsHeader(stringResource(R.string.settings_layout_title))
+            SettingsNote(layoutLabel(code, modes[0]))
+        } else if (modes.isNotEmpty()) {
             SettingsHeader(stringResource(R.string.settings_layout_title))
             Column(Modifier.selectableGroup()) {
                 modes.forEach { m ->

@@ -413,9 +413,10 @@ class EditorAiAccess(private val adapter: InputConnectionAdapter, private val co
 
     override fun insertAtCursor(text: String): Boolean {
         val e = ed ?: return false
-        if (!e.getSelectedText().isNullOrEmpty()) {
+        val selected = e.getSelectedText()
+        if (!selected.isNullOrEmpty()) {
             val end = adapter.selectionEnd
-            if (end >= 0) e.setSelection(end, end) else e.sendKey(KEYCODE_DPAD_RIGHT)
+            if (end >= 0) e.setSelection(end, end) else e.sendKey(collapseToEndKey(selected))
         }
         val before = e.getTextBeforeCursor(1)
         val space = if (!before.isNullOrEmpty() && !before.last().isWhitespace()) " " else ""
@@ -448,7 +449,22 @@ class EditorAiAccess(private val adapter: InputConnectionAdapter, private val co
         adapter.editedExternally()
     }
 
-    private companion object {
+    internal companion object {
+        const val KEYCODE_DPAD_LEFT = 21
         const val KEYCODE_DPAD_RIGHT = 22
+
+        /**
+         * The arrow key that collapses a selection to its logical end. Arrow keys move visually: in right-to-left text
+         * (Arabic, ADR 0034) the end is on the left. The selection's first strong character decides.
+         */
+        fun collapseToEndKey(selected: CharSequence): Int {
+            for (c in selected) {
+                when (Character.getDirectionality(c)) {
+                    Character.DIRECTIONALITY_RIGHT_TO_LEFT, Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC -> return KEYCODE_DPAD_LEFT
+                    Character.DIRECTIONALITY_LEFT_TO_RIGHT -> return KEYCODE_DPAD_RIGHT
+                }
+            }
+            return KEYCODE_DPAD_RIGHT
+        }
     }
 }

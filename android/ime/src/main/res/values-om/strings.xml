@@ -344,12 +344,14 @@
     <string name="language_name_ti">Afaan Tigiraay</string>
     <string name="language_name_om">Afaan Oromoo</string>
     <string name="language_name_en">Afaan Ingiliffaa</string>
+    <string name="language_name_ar">Afaan Arabaa</string>
     <string name="kb_mode_phonetic">Foonetikii</string>
     <string name="kb_mode_english">Ingiliffa</string>
     <string name="kb_spoken_fidel">Fidala</string>
     <string name="kb_spoken_fidel_grid">gabatee Fidalaa</string>
     <string name="kb_spoken_phonetic_keys">furtuuwwan Laatinii foonetikii</string>
     <string name="kb_spoken_abc_latin">ABC Laatinii</string>
+    <string name="kb_spoken_arabic_keys">qubee Arabaa</string>
     <string name="kb_mode_description">%1$s, %2$s</string>
     <string name="kb_keyboard_description">Kiiboordii, %1$s</string>
     <string name="kb_key_delete">Haqaa</string>
@@ -361,6 +363,11 @@
     <string name="kb_key_ethiopic_full_stop">Tuqaa Gi\'iizii</string>
     <string name="kb_key_comma">Qoodduu</string>
     <string name="kb_key_ethiopic_comma">Qoodduu Gi\'iizii</string>
+    <string name="kb_key_arabic_numeral">Lakkoofsa Arabaa %1$s</string>
+    <string name="kb_key_arabic_punctuation">Mallattoo tuqaa Arabaa %1$s</string>
+    <string name="kb_key_arabic_comma">Qoodduu Arabaa</string>
+    <string name="kb_key_arabic_mark">Mallattoo Arabaa %1$s</string>
+    <string name="kb_key_arabic_marks">Mallattoolee Arabaa</string>
     <string name="kb_key_switch_to_language_keys">Gara furtuuwwan %1$s tti jijjiiraa</string>
     <string name="kb_key_switch_to_english_mode">Gara akkaataa barreessuu Ingiliffaatti jijjiiraa</string>
     <string name="kb_key_switch_to_abc">Gara furtuuwwan Laatinii ABC tti jijjiiraa</string>

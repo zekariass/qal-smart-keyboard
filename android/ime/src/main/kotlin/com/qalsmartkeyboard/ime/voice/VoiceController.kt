@@ -289,11 +289,16 @@ class VoiceController(
         onChanged()
     }
 
-    /** am, ti, om, en: the best tag of each and whether it works here. */
+    /**
+     * am, ti, om, en (and Arabic when a speech service can take it or it is the keyboard language): the best tag of each
+     * and whether it works here.
+     */
     fun languageOptions(): List<VoiceLanguageOption> {
         val current = currentTag
-        return VoiceLanguages.KEYBOARD_LANGUAGES.map { kl ->
+        return VoiceLanguages.KEYBOARD_LANGUAGES.mapNotNull { kl ->
             val c = support.choose(VoiceLanguages.defaults(kl, deviceLocale()))
+            val listed = kl !in VoiceLanguages.LISTED_WHEN_AVAILABLE || c.support.usable || kl == host.keyboardLanguage
+            if (!listed) return@mapNotNull null
             VoiceLanguageOption(c.tag, VoiceLanguages.displayName(c.tag), c.support, selected = c.tag == current)
         }
     }
