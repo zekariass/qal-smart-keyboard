@@ -73,17 +73,12 @@
 
     <!-- Settings entry point -->
     <string name="settings_setup_title">የቁልፍ ሰሌዳ ማዋቀሪያ</string>
-    <string name="settings_setup_body">የቁልፍ ሰሌዳውን ያብሩና ይምረጡ፣ ቋንቋዎችን ይምረጡ፣ ይሞክሩትም።</string>
-    <string name="settings_setup_button">ማዋቀሩን እንደገና ያስኪዱ</string>
     <string name="settings_back_to_typing">ወደ መተየብ ይመለሱ</string>
-    <string name="settings_opened_from_keyboard">ለውጦቹ በቁልፍ ሰሌዳው ላይ ወዲያውኑ ይተገበራሉ።</string>
 
     <!-- Keyboard themes -->
     <string name="themes_title">የቁልፍ ሰሌዳ ገጽታ</string>
-    <string name="themes_intro">የቁልፍ ሰሌዳው እንዴት እንደሚታይ ይምረጡ። ትልቅ ቅድመ እይታ ለማየት ገጽታን ይንኩ፤ «ይተግብሩ»ን እስኪነኩ ድረስ ምንም አይቀየርም።</string>
     <string name="themes_section_free">ነፃ ገጽታዎች</string>
     <string name="themes_section_premium">የPremium ገጽታዎች</string>
-    <string name="themes_premium_note">የPremium ገጽታዎች ከPremium ጋር ይካተታሉ። ሁሉንም አስቀድመው ማየት ይችላሉ።</string>
     <string name="themes_system">ሲስተም</string>
     <string name="themes_system_hint">ክላሲክ ብሩህ ወይም ክላሲክ ጨለማ፣ እንደ ስልክዎ።</string>
     <string name="themes_applied">ተተግብሯል</string>
@@ -95,7 +90,6 @@
     <string name="themes_preview_note">ይህ ቅድመ እይታ ብቻ ነው። ይህን እስኪተገብሩ ድረስ የቁልፍ ሰሌዳዎ የአሁኑን ገጽታ ይይዛል።</string>
     <string name="themes_apply">ገጽታውን ይተግብሩ</string>
     <string name="themes_unlock">በPremium ይክፈቱ</string>
-    <string name="themes_back_to_list">ወደ ሁሉም ገጽታዎች ይመለሱ</string>
     <string name="themes_locked_title">%1$s የPremium ገጽታ ነው</string>
     <string name="themes_locked_body">የቁልፍ ሰሌዳዎ ለአሁኑ %1$sን ያሳያል። %2$s</string>
     <string name="themes_reason_allowed">የPremium ገጽታዎች ይገኛሉ።</string>
@@ -103,19 +97,15 @@
     <string name="themes_reason_not_on_plan">ጥቅልዎ የPremium ገጽታዎችን አያካትትም።</string>
     <string name="themes_reason_needs_check">ጥቅልዎን እንድናረጋግጥ አንድ ጊዜ ከኢንተርኔት ጋር ይገናኙ።</string>
     <string name="settings_theme_title">ገጽታ</string>
-    <string name="settings_theme_current">የአሁኑ፦ %1$s</string>
-    <string name="settings_theme_button">ገጽታ ይምረጡ</string>
 
     <!-- Personal dictionary -->
     <string name="pd_title">የግል መዝገበ ቃላት</string>
-    <string name="pd_body">እርስዎ ያከሏቸው ወይም የቁልፍ ሰሌዳው ሲተይቡ የተማራቸው ቃላት። በዚህ ስልክ ላይ ተመስጥረው ይቀመጣሉ፣ በፍጹም አይሰቀሉም። በይለፍ ቃል መስኮች ውስጥ ወይም መስኩ የግል ትምህርት እንዳይደረግ ሲጠይቅ ምንም አይማርም።</string>
+    <string name="pd_body">እርስዎ ያከሏቸው ወይም የቁልፍ ሰሌዳው የተማራቸው ቃላት፣ በዚህ ስልክ ላይ ተመስጥረው ይቀመጣሉ። በይለፍ ቃል መስኮች ውስጥ ምንም አይማርም።</string>
     <string name="pd_empty">እስካሁን ምንም ቃል የለም።</string>
     <string name="pd_loading">በመጫን ላይ…</string>
-    <string name="pd_language_count">%1$s፦ %2$d ቃላት</string>
     <string name="pd_show">ቃላትን አሳይ</string>
     <string name="pd_hide">ቃላትን ደብቅ</string>
     <string name="pd_show_more">ተጨማሪ አሳይ</string>
-    <string name="pd_delete">ይሰርዙ</string>
     <string name="pd_delete_description">%1$sን ከመዝገበ ቃላቱ ይሰርዙ</string>
     <string name="pd_clear_all">ሁሉንም ያጽዱ</string>
     <string name="pd_clear_title">የግል መዝገበ ቃላትዎን ያጽዱ?</string>
@@ -204,8 +194,6 @@
 
     <!-- Privacy dashboard -->
     <string name="pv_entry_title">ግላዊነት</string>
-    <string name="pv_entry_body">በስልክዎ ላይ የሚቀረውንና የሚላከውን ይመልከቱ፤ ፈቃዶችዎን፣ የተቀመጠ የAI ታሪክን፣ የመረጃ ማውጣትንና መለያ መሰረዝን ያስተዳድሩ።</string>
-    <string name="pv_entry_button">ግላዊነትን ይክፈቱ</string>
     <string name="pv_title">ግላዊነት</string>
     <string name="pv_loading">እባክዎ ይጠብቁ…</string>
     <string name="pv_ok">እሺ</string>
@@ -221,7 +209,7 @@
     <string name="pv_voice_title">በድምፅ መተየብ</string>
     <string name="pv_voice_body">የቁልፍ ሰሌዳውን ማይክሮፎን ሲነኩ የስልክዎ የንግግር አገልግሎት (ለምሳሌ Google) ድምፅዎን ወደ ጽሑፍ ይቀይራል። ያ አገልግሎት ድምፁን በራሱ የግላዊነት ደንብ መሠረት ወደ ራሱ አገልጋዮች ሊልክ ይችላል። Qal ድምፅዎን አይቀዳም፣ አያስቀምጥም፣ አይልክምም፤ ጽሑፉም እንደሚተይቡት ማንኛውም ነገር ይያዛል፦ በስልክዎ ላይ ይቀራል፣ ወደ መዝገበ ቃላትዎም በፍጹም አይማርም። በድምፅ መተየብን በቁልፍ ሰሌዳ ቅንብሮች ውስጥ ማጥፋት ይችላሉ።</string>
     <string name="settings_voice_typing">በድምፅ መተየብ</string>
-    <string name="settings_voice_typing_body">በቁልፍ ሰሌዳው አሞሌ ላይ ማይክሮፎን ያሳያል። የስልክዎ የንግግር አገልግሎት ንግግርን ወደ ጽሑፍ ይቀይራል፤ የትኞቹ ቋንቋዎች እንደሚሠሩ በዚያ አገልግሎት ይወሰናል።</string>
+    <string name="settings_voice_typing_body">የስልክዎ የንግግር አገልግሎት ድምፅዎን ወደ ጽሑፍ ይቀይራል፤ ድምፁን ወደ ራሱ አገልጋዮች ሊልክ ይችላል። Qal ድምፅዎን አይቀዳም፣ አያስቀምጥምም።</string>
     <string name="voice_perm_title">ማይክሮፎን ለድምፅ መተየብ</string>
     <string name="voice_perm_why">በድምፅዎ ለመተየብ Qal Keyboard ማይክሮፎኑን ለመጠቀም ፈቃድ ያስፈልገዋል። የሚያዳምጠው በቁልፍ ሰሌዳው ላይ ማይክሮፎኑን ከነኩ በኋላ ብቻ ነው፣ የቁልፍ ሰሌዳው ክፍት እስከሆነ ድረስ ብቻ።</string>
     <string name="voice_perm_privacy">የስልክዎ የንግግር አገልግሎት (ለምሳሌ Google) ድምፅዎን ወደ ጽሑፍ ይቀይራል፤ ለዚህም ኢንተርኔት ሊጠቀም ይችላል። Qal ድምፅዎን አይቀዳም አያስቀምጥምም።</string>
@@ -382,15 +370,11 @@
 
     <!-- Word Art -->
     <string name="settings_wordart_title">የቃል ጥበብ</string>
-    <string name="settings_wordart_body">ለሰላምታዎች፣ ለስሞችና ለመግለጫዎች ያጌጠ ጽሑፍ። ከዚህ ይቅዱት ወይም ያጋሩት፣ ወይም በቁልፍ ሰሌዳው ውስጥ የኢሞጂ ፓነሉን Aa ትር ይጠቀሙ።</string>
-    <string name="settings_wordart_button">የቃል ጥበብን ይክፈቱ</string>
     <!-- Write Email with AI and the translation destination -->
     <string name="settings_email_title">በAI ኢሜይል ይጻፉ</string>
-    <string name="settings_email_body">ማለት የሚፈልጉትን በማንኛውም ቋንቋ ይግለጹና ርዕስ ያለው ዝግጁ ኢሜይል ያግኙ፤ ወይም ለኢሜይል ይመልሱ ወይም ያሻሽሉት። በቁልፍ ሰሌዳው ውስጥም፦ AI፣ ከዚያ ኢሜይል።</string>
-    <string name="settings_email_button">ኢሜይል ይጻፉ</string>
     <string name="settings_translate_title">የሚተረጎምበት ቋንቋ</string>
-    <string name="settings_translate_body">የቁልፍ ሰሌዳው በነባሪ የሚተረጉምበት ቋንቋ። በእያንዳንዱ ጊዜ ከ«ትርጉም» አጠገብ ባሉት የቋንቋ አዝራሮች መቀየር ይችላሉ።</string>
-    <string name="settings_translate_auto">ራስ-ሰር (እንግሊዝኛ፣ ወይም ለእንግሊዝኛ ጽሑፍ አማርኛ)</string>
+    <string name="settings_translate_body">የቁልፍ ሰሌዳው በነባሪ የሚተረጉምበት ቋንቋ።</string>
+    <string name="settings_translate_auto">ራስ-ሰር</string>
     <string name="email_title">በAI ኢሜይል ይጻፉ</string>
     <string name="email_from_keyboard">ከቁልፍ ሰሌዳው ያስገቧቸው ተሞልተዋል። ኢሜይሉ ዝግጁ ሲሆን ቀድተው በኢሜይል መተግበሪያዎ ውስጥ ይለጥፉት።</string>
     <string name="email_preview">ኢሜይልዎ</string>
@@ -414,8 +398,7 @@
     <string name="wordart_app_lang_en">እንግሊዝኛ</string>
 
     <!-- Settings screen -->
-    <string name="settings_title">የቁልፍ ሰሌዳ ቅንብሮች</string>
-    <string name="settings_languages_title">ቋንቋዎች (ከላይ ያለው በሉል ቁልፉ የመጀመሪያ ነው)</string>
+    <string name="settings_languages_title">ቋንቋዎች</string>
     <string name="settings_mode_phonetic">ፎነቲክ QWERTY</string>
     <string name="settings_mode_latin">ላቲን</string>
     <string name="settings_translit_profile">የፊደል ልውውጥ መገለጫ፦ አዲሱ ንቁ (ራስ-ሰር)</string>
@@ -429,6 +412,46 @@
     <string name="settings_key_height">የቁልፍ ቁመት፦ %1$d%%</string>
     <string name="settings_reset">ወደ ነባሪ መልስ</string>
     <string name="settings_app_language_title">የመተግበሪያ ቋንቋ</string>
-    <string name="settings_app_language_body">የዚህ መተግበሪያ እና የቁልፍ ሰሌዳው አዝራሮችና ምናሌዎች ቋንቋ። የሚተይቡባቸውን ቋንቋዎች አይቀይርም።</string>
+    <string name="settings_app_language_body">የሚተይቡባቸውን ቋንቋዎች አይቀይርም።</string>
     <string name="settings_app_language_system">የስልኩ ነባሪ</string>
+
+    <!-- Settings redesign (ADR 0036): home groups, pages, languages, theme strip. -->
+    <string name="settings_theme_more">ተጨማሪ ይመልከቱ</string>
+    <string name="settings_theme_selected">ተመርጧል</string>
+    <string name="settings_setup_prompt">የቁልፍ ሰሌዳውን ማዋቀር ያጠናቁ</string>
+    <string name="settings_setup_prompt_button">ያዋቅሩ</string>
+    <string name="settings_group_keyboard">የቁልፍ ሰሌዳ</string>
+    <string name="settings_group_tools">AI እና መሣሪያዎች</string>
+    <string name="settings_group_account">መለያ እና ግላዊነት</string>
+    <string name="settings_group_app">መተግበሪያ</string>
+    <string name="settings_preferences">ምርጫዎች</string>
+    <string name="settings_prefs_keys">ቁልፎች</string>
+    <string name="settings_dictionary">መዝገበ ቃላት</string>
+    <string name="settings_advanced">የላቀ</string>
+    <string name="settings_about">ስለ መተግበሪያው</string>
+    <string name="settings_about_version">የመተግበሪያ ስሪት</string>
+    <string name="settings_about_core">ዋና ሞተር</string>
+    <string name="settings_about_privacy_notice">የግላዊነት ማስታወቂያ</string>
+    <string name="settings_account_signed_in">ገብተዋል</string>
+    <string name="settings_account_guest">እንግዳ</string>
+    <string name="settings_account_signed_out">አልገቡም</string>
+    <string name="settings_languages_order">የሉል ቁልፉ በዚህ ቅደም ተከተል ይቀያይራቸዋል።</string>
+    <string name="settings_languages_manage">ቋንቋዎችን ያክሉ ወይም ያስወግዱ</string>
+    <string name="settings_languages_all">ሁሉም ቋንቋዎች</string>
+    <string name="settings_languages_search">ቋንቋዎችን ይፈልጉ</string>
+    <string name="settings_languages_search_clear">ፍለጋውን ያጽዱ</string>
+    <string name="settings_languages_no_match">ምንም ቋንቋ አልተገኘም</string>
+    <string name="settings_languages_last">ቢያንስ አንድ ቋንቋ በርቶ ይቆያል</string>
+    <string name="settings_layout_title">አቀማመጥ</string>
+    <string name="settings_phonetic_title">ፎነቲክ መተየብ</string>
+    <string name="settings_mode_latin_hint">ተራ የላቲን ፊደላት (QWERTY)።</string>
+    <string name="settings_voice_typing_switch">በድምፅ መተየብን ይጠቀሙ</string>
+    <string name="settings_translate_auto_hint">እንግሊዝኛ፣ ወይም ለእንግሊዝኛ ጽሑፍ አማርኛ</string>
+    <string name="settings_reset_title">የቁልፍ ሰሌዳ ቅንብሮች ወደ ነባሪ ይመለሱ?</string>
+    <string name="settings_reset_message">ቋንቋዎች፣ አቀማመጦች፣ ገጽታ እና ምርጫዎች ወደ ነባሪያቸው ይመለሳሉ።</string>
+    <string name="settings_reset_confirm">ዳግም ያስጀምሩ</string>
+    <plurals name="pd_word_count">
+        <item quantity="one">%1$d ቃል</item>
+        <item quantity="other">%1$d ቃላት</item>
+    </plurals>
 </resources>

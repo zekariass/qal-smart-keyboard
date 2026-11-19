@@ -1,9 +1,9 @@
 package com.qalsmartkeyboard.app
 
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.datastore.core.DataStoreFactory
 import androidx.datastore.core.okio.OkioStorage
@@ -29,8 +29,8 @@ import java.io.File
 import java.nio.file.Files
 
 /**
- * ADR 0032: the main settings screen renders in Amharic, Tigrinya and Afaan Oromoo with no missing resource; the App
- * language card names every option in its own language.
+ * ADR 0032: the settings (home, App language, Languages, Preferences, Advanced; ADR 0036) render in Amharic, Tigrinya
+ * and Afaan Oromoo with no missing resource; App language names every option in its own language.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h3000dp")
@@ -54,16 +54,28 @@ class SettingsLocalisationTest {
 
     private fun renders() {
         val c = RuntimeEnvironment.getApplication()
-        val title = c.getString(R.string.settings_title)
-        assertNotEquals("Keyboard settings", title)
+        val languages = c.getString(R.string.settings_languages_title)
+        assertNotEquals("Languages", languages)
         compose.setContent { SettingsScreen(KeyboardSettings.DEFAULT, repository, dictionaryContent = {}) } // no native core on the JVM
-        compose.onNodeWithText(title).assertExists()
-        compose.onNodeWithText(c.getString(R.string.settings_app_language_title)).assertExists()
+        // Home: the theme strip, then the groups.
+        for (id in listOf(R.string.settings_theme_title, R.string.settings_theme_more, R.string.settings_group_keyboard, R.string.settings_preferences)) {
+            compose.onNodeWithText(c.getString(id)).performScrollTo().assertExists()
+        }
+        // App language: every option in its own language.
+        compose.onNodeWithText(c.getString(R.string.settings_app_language_title)).performScrollTo().performClick()
         compose.onNodeWithText(c.getString(R.string.settings_app_language_system)).assertExists()
-        // A self-name can also be a typing language's name on this screen (ትግርኛ in Tigrinya): the first match is enough.
-        for (self in listOf("English", "አማርኛ", "ትግርኛ", "Afaan Oromoo")) compose.onAllNodesWithText(self).onFirst().performScrollTo().assertExists()
-        compose.onNodeWithText(c.getString(R.string.settings_key_height, KeyboardSettings.DEFAULT.keyHeightPercent)).performScrollTo().assertExists()
-        compose.onNodeWithText(c.getString(R.string.settings_reset)).performScrollTo().assertExists()
+        for (self in listOf("English", "አማርኛ", "ትግርኛ", "Afaan Oromoo")) compose.onNodeWithText(self).assertExists()
+        compose.onNodeWithContentDescription(c.getString(R.string.onb_back)).performClick()
+        // Languages: self-names, each with its name in the UI language.
+        compose.onNodeWithText(languages).performScrollTo().performClick()
+        compose.onNodeWithText(c.getString(R.string.settings_languages_order)).assertExists()
+        for (self in listOf("አማርኛ", "ትግርኛ", "Afaan Oromoo", "English")) compose.onNodeWithText(self).assertExists()
+        compose.onNodeWithContentDescription(c.getString(R.string.onb_back)).performClick()
+        compose.onNodeWithText(c.getString(R.string.settings_preferences)).performScrollTo().performClick()
+        compose.onNodeWithText(c.getString(R.string.settings_key_height, KeyboardSettings.DEFAULT.keyHeightPercent)).assertExists()
+        compose.onNodeWithContentDescription(c.getString(R.string.onb_back)).performClick()
+        compose.onNodeWithText(c.getString(R.string.settings_advanced)).performScrollTo().performClick()
+        compose.onNodeWithText(c.getString(R.string.settings_reset)).assertExists()
     }
 
     @Test @Config(qualifiers = "am-w411dp-h3000dp")
