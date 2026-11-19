@@ -14,6 +14,9 @@
     <string name="top_bar_ai_open">AI tools</string>
     <string name="top_bar_ai_close">Close AI tools</string>
     <string name="top_bar_candidate_add">Add to your dictionary</string>
+    <string name="top_bar_candidate_autocorrect">%1$s, auto-correction</string>
+    <string name="top_bar_more_suggestions">More suggestions</string>
+    <string name="top_bar_fewer_suggestions">Fewer suggestions</string>
     <!-- Accessibility: keys. -->
     <string name="key_draft_description">draft, not verified by native speakers</string>
     <string name="key_globe_long_action">Change layout</string>

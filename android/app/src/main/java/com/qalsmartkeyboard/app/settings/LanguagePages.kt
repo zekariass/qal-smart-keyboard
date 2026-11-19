@@ -221,10 +221,18 @@ fun LanguagePage(
             SettingsSwitchRow(stringResource(R.string.settings_show_candidates), language.showTransliterationCandidates, onShowSuggestions)
             SettingsNote(stringResource(R.string.settings_translit_profile))
         } else if (LanguageRules.hasWordSuggestions(code)) {
-            // Qubee (Afaan Oromoo) suggests dictionary words for the word being typed; the same per-language switch hides the strip.
+            // Qubee and English suggest dictionary words, Arabic the user's own words (ADR 0039); the same per-language switch hides the strip.
             SettingsHeader(stringResource(R.string.settings_suggestions_title))
             SettingsSwitchRow(stringResource(R.string.settings_show_candidates), language.showTransliterationCandidates, onShowSuggestions)
-            SettingsNote(stringResource(R.string.settings_word_suggestions_note))
+            SettingsNote(
+                stringResource(
+                    when (code) {
+                        "en" -> R.string.settings_word_suggestions_note_en
+                        "ar" -> R.string.settings_word_suggestions_note_ar
+                        else -> R.string.settings_word_suggestions_note
+                    },
+                ),
+            )
         }
     }
 }

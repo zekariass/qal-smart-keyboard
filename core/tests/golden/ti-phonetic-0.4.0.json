@@ -1,6 +1,6 @@
 {
   "profile": "ti-phonetic",
-  "profile_version": "0.3.0",
+  "profile_version": "0.4.0",
   "status": "DRAFT",
   "profile_source": "language-data/profiles/ti-phonetic-draft.json",
   "notation": "same as am-phonetic-0.2.0.json (see tests/golden/README.md); 0.3.0: a word-initial `a` gives ኣ (Tigrinya spelling), አ is its first alternative",
@@ -62,6 +62,17 @@
       "committed": "ጓ "
     },
     {
+      "name": "repeated-bare-consonant-types-twice",
+      "keystrokes": ["g", "g", "r", "Space", "l", "l"],
+      "steps": [
+        { "after": 2, "composing": "ግግ", "commit": "" },
+        { "after": 4, "composing": "", "commit": "ግግር " }
+      ],
+      "composing": "ልል",
+      "alternatives": [],
+      "committed": "ግግር "
+    },
+    {
       "name": "initial-vowels-and-gemination",
       "keystrokes": ["e", "t", "t", "a"],
       "composing": "እታ",
@@ -113,7 +124,7 @@
       "keystrokes": ["q", "e", "Select:1"],
       "composing": "",
       "alternatives": [],
-      "committed": "ቐ"
+      "committed": "ቐ "
     },
     {
       "name": "x-stays-kx-in-tigrinya",
@@ -151,11 +162,29 @@
       "committed": ""
     },
     {
-      "name": "capital-k-offers-kx",
+      "name": "capital-k-is-kx",
       "keystrokes": ["K", "e"],
-      "composing": "ከ",
-      "alternatives": ["ኸ"],
+      "composing": "ኸ",
+      "alternatives": ["ከ"],
       "committed": ""
+    },
+    {
+      "name": "capital-q-is-qh-in-every-order",
+      "keystrokes": ["Q", "e", "Space", "Q", "u", "Space", "Q", "i", "Space", "Q", "a", "Space", "Q", "e", "e", "Space", "Q", "Space", "Q", "o", "Space", "Q", "W", "a", "Space", "q", "h", "e"],
+      "steps": [
+        {"after": 2, "composing": "ቐ", "commit": "", "alternatives": ["ቀ"]},
+        {"after": 17, "composing": "ቕ", "commit": "", "alternatives": ["ቅ"]}
+      ],
+      "composing": "ቐ",
+      "alternatives": ["ቀ"],
+      "committed": "ቐ ቑ ቒ ቓ ቔ ቕ ቖ ቛ "
+    },
+    {
+      "name": "capitals-are-their-own-letters",
+      "keystrokes": ["N", "a", "Space", "T", "e", "Space", "K", "Space", "P", "a", "Space", "n", "a"],
+      "composing": "ና",
+      "alternatives": [],
+      "committed": "ኛ ጠ ኽ ጳ "
     },
     {
       "name": "word-initial-a-is-a-not-ae",

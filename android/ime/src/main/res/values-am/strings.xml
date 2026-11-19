@@ -13,6 +13,9 @@
     <string name="top_bar_ai_open">የAI መሣሪያዎች</string>
     <string name="top_bar_ai_close">የAI መሣሪያዎችን ይዝጉ</string>
     <string name="top_bar_candidate_add">ወደ መዝገበ ቃላትዎ ያክሉ</string>
+    <string name="top_bar_candidate_autocorrect">%1$s፣ ራስ-ሰር እርማት</string>
+    <string name="top_bar_more_suggestions">ተጨማሪ ጥቆማዎች</string>
+    <string name="top_bar_fewer_suggestions">ያነሱ ጥቆማዎች</string>
     <!-- Accessibility: keys -->
     <string name="key_draft_description">ረቂቅ፣ በቋንቋው ተወላጅ ተናጋሪዎች ያልተረጋገጠ</string>
     <string name="key_globe_long_action">ሰሌዳውን ይቀይሩ</string>

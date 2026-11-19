@@ -25,8 +25,10 @@ class BottomRowTest {
                 listOf(KeyKind.TO_SYMBOLS, KeyKind.CHAR, KeyKind.GLOBE, KeyKind.EMOJI, KeyKind.SPACE, KeyKind.CHAR, KeyKind.ENTER),
                 bottom(m).map { it.kind },
             )
-            assertEquals("$m", ",", bottom(m)[1].text)
-            assertEquals("$m", ".", bottom(m)[5].text)
+            // Ge'ez typed natively (am/ti Phonetic) taps the Ethiopic comma and full stop (owner, 2026-11-19).
+            val geez = m.kind == LayoutKind.PHONETIC
+            assertEquals("$m", if (geez) "፣" else ",", bottom(m)[1].text)
+            assertEquals("$m", if (geez) "።" else ".", bottom(m)[5].text)
         }
     }
 

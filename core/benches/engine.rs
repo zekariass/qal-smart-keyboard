@@ -10,6 +10,9 @@
 //!
 //! Corpus: 200k synthetic words made by typing deterministic pseudo-random Latin syllables into
 //! the DRAFT Amharic profile, so typed prefixes really reach dictionary words; bigrams over them.
+//! ADR 0039 adds an English run: 200k synthetic Latin words + 20k pairs, every prediction option on
+//! (completions, autocorrection at Space with ~30% one-letter typos, next-word predictions), and
+//! times every key *including* the Space that autocorrects and predicts.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -18,8 +21,8 @@ use qal_keyboard_core::lexicon::{Lexicon, WordEntry};
 use qal_keyboard_core::pack::builder::{self, ManifestFields};
 use qal_keyboard_core::ranker::bigram_payload_from_text;
 use qal_keyboard_core::{
-    EngineConfig, InputMode, KeyEvent, KeyStatus, KeyboardEngine, PackPlatform, ReleaseChannel,
-    ResourceType, TrustedKey,
+    EngineConfig, InputMode, KeyEvent, KeyStatus, KeyboardEngine, PackPlatform, PredictionOptions,
+    ReleaseChannel, ResourceType, TrustedKey,
 };
 
 const BUDGET_P95_MS: f64 = 10.0;
@@ -53,7 +56,13 @@ fn latin_word(r: &mut Rng) -> String {
     w
 }
 
-fn engine() -> Arc<KeyboardEngine> {
+const ALL_ON: PredictionOptions = PredictionOptions {
+    suggestions: true,
+    next_word: true,
+    autocorrect: true,
+};
+
+fn new_engine() -> (Arc<KeyboardEngine>, ed25519_dalek::SigningKey) {
     let sk = builder::signing_key_from_seed([7; 32]);
     let e = KeyboardEngine::new(EngineConfig {
         max_candidates: 8,
@@ -65,11 +74,19 @@ fn engine() -> Arc<KeyboardEngine> {
         pack_limits: None,
     })
     .expect("engine");
-    let e2 = Arc::clone(&e);
-    let load = move |rt: ResourceType, artifact: &[u8]| {
+    (e, sk)
+}
+
+fn loader(
+    e: &Arc<KeyboardEngine>,
+    sk: ed25519_dalek::SigningKey,
+    lang: &'static str,
+) -> impl Fn(ResourceType, &[u8]) {
+    let e2 = Arc::clone(e);
+    move |rt: ResourceType, artifact: &[u8]| {
         let f = ManifestFields {
             resource_id: "0f8fad5b-d9cb-469f-a165-70867728950e".into(),
-            language_code: "am".into(),
+            language_code: lang.into(),
             resource_type: rt,
             version: "1.0.0".into(),
             platform: PackPlatform::Shared,
@@ -80,7 +97,12 @@ fn engine() -> Arc<KeyboardEngine> {
         };
         e2.load_pack(builder::build_pack(&sk, "bench-1", &f, artifact).expect("pack"))
             .expect("load");
-    };
+    }
+}
+
+fn engine() -> Arc<KeyboardEngine> {
+    let (e, sk) = new_engine();
+    let load = loader(&e, sk, "am");
     load(ResourceType::TransliterationRules, PROFILE);
     e.set_input_mode("am".into(), InputMode::PhoneticLatin)
         .expect("phonetic");
@@ -123,42 +145,107 @@ fn pct(sorted: &[f64], p: f64) -> f64 {
     sorted[((sorted.len() - 1) as f64 * p) as usize]
 }
 
-fn main() {
-    let e = engine();
+/// The English engine: 200k synthetic Latin words (corpus-like counts) and 20k pairs.
+fn english_engine() -> Arc<KeyboardEngine> {
+    let (e, sk) = new_engine();
+    let load = loader(&e, sk, "en");
+    let mut r = Rng(0x51_7C_C1_B7_27_22_0A_95);
+    let mut entries = Vec::with_capacity(WORDS);
+    let mut seen = std::collections::HashSet::new();
+    let mut i = 0u64;
+    while entries.len() < WORDS {
+        let w = latin_word(&mut r);
+        if seen.insert(w.clone()) {
+            entries.push(WordEntry {
+                word: w,
+                frequency: (2_000_000 / (1 + (i * 7 % 50_000))) as u32 + 1,
+            });
+            i += 1;
+        }
+    }
+    let mut text = String::new();
+    for _ in 0..20_000 {
+        let a = &entries[r.below(WORDS)].word;
+        let b = &entries[r.below(2_000)].word;
+        text.push_str(&format!(
+            "{a}	{b}	{}
+",
+            1 + r.below(500)
+        ));
+    }
+    load(
+        ResourceType::Dictionary,
+        &Lexicon::from_entries(entries).to_bytes(),
+    );
+    load(ResourceType::FrequencyList, &bigram_payload_from_text(text));
+    e.set_input_mode("en".into(), InputMode::English)
+        .expect("english");
+    e
+}
+
+/// Types 3,000 timed words (after 200 warm-up words), each key and the closing Space timed.
+/// `typos`: replace one letter of about 30% of the words (exercises autocorrection).
+fn run(label: &str, e: &KeyboardEngine, typos: bool) -> f64 {
     let mut r = Rng(42);
-    // Warm up, then time every key of 3,000 words (letters, then Space to commit).
-    let mut ms = Vec::new();
+    let mut keys = Vec::new();
+    let mut spaces = Vec::new();
     let mut candidates = 0usize;
     for round in 0..3_200 {
-        let word = latin_word(&mut r);
-        for c in word.chars() {
+        let mut word: Vec<char> = latin_word(&mut r).chars().collect();
+        if typos && r.below(10) < 3 {
+            let at = r.below(word.len());
+            word[at] = char::from(b'a' + r.below(26) as u8);
+        }
+        for c in word {
             let t = Instant::now();
             let u = e.on_key(KeyEvent::Char { text: c.into() });
             let dt = t.elapsed().as_secs_f64() * 1e3;
             if round >= 200 {
-                ms.push(dt);
+                keys.push(dt);
                 candidates += u.candidates.len();
             }
             std::hint::black_box(u);
         }
-        std::hint::black_box(e.on_key(KeyEvent::Space));
+        let t = Instant::now();
+        let u = e.on_key(KeyEvent::Space);
+        let dt = t.elapsed().as_secs_f64() * 1e3;
+        if round >= 200 {
+            spaces.push(dt);
+        }
+        std::hint::black_box(u);
     }
-    ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let p95 = pct(&ms, 0.95);
+    let mut worst: f64 = 0.0;
+    for (what, ms) in [("letters", &mut keys), ("Space", &mut spaces)] {
+        ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let p95 = pct(ms, 0.95);
+        worst = worst.max(p95);
+        println!(
+            "{:<44} n={:<6} p50={:.4} ms  p95={:.4} ms  p99={:.4} ms  max={:.4} ms",
+            format!("on_key, {label}, {what}"),
+            ms.len(),
+            pct(ms, 0.5),
+            p95,
+            pct(ms, 0.99),
+            ms[ms.len() - 1]
+        );
+    }
     println!(
-        "{:<34} n={:<6} p50={:.4} ms  p95={:.4} ms  p99={:.4} ms  max={:.4} ms",
-        "on_key, phonetic + lexicon",
-        ms.len(),
-        pct(&ms, 0.5),
-        p95,
-        pct(&ms, 0.99),
-        ms[ms.len() - 1]
+        "mean candidates per letter = {:.2}",
+        candidates as f64 / keys.len() as f64
     );
-    println!(
-        "mean candidates per key = {:.2}; budget (p95, host proxy) = {BUDGET_P95_MS} ms",
-        candidates as f64 / ms.len() as f64
-    );
-    if p95 > BUDGET_P95_MS {
+    worst
+}
+
+fn main() {
+    let e = engine();
+    let mut worst = run("phonetic + lexicon", &e, false);
+    e.set_prediction_options(ALL_ON);
+    worst = worst.max(run("phonetic, all predictions", &e, false));
+    let en = english_engine();
+    en.set_prediction_options(ALL_ON);
+    worst = worst.max(run("English, all predictions", &en, true));
+    println!("budget (p95, host proxy) = {BUDGET_P95_MS} ms");
+    if worst > BUDGET_P95_MS {
         eprintln!("FAIL: on_key exceeds budget");
         std::process::exit(1);
     }

@@ -18,7 +18,7 @@ const AM_PROFILE: &[u8] = include_bytes!("../../language-data/profiles/am-phonet
 const AM_LEXICON: &[u8] = include_bytes!("../../language-data/seed/artifacts/am.lexicon.qlx");
 const AM_BIGRAMS: &[u8] = include_bytes!("../../language-data/seed/artifacts/am.bigrams.qbg");
 const TI_LEXICON: &[u8] = include_bytes!("../../language-data/seed/artifacts/ti.lexicon.qlx");
-const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.2.0.json");
+const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.3.0.json");
 
 fn pack_of(lang: &str, rt: ResourceType, version: &str, artifact: &[u8]) -> Vec<u8> {
     let mut f = fields(version);
@@ -114,7 +114,9 @@ fn without_lexicon_packs_candidates_are_unchanged() {
 }
 
 #[test]
-fn completions_follow_transliteration_alternatives() {
+fn completions_come_before_alternatives_that_are_not_words() {
+    // ADR 0039: the composition, then alternatives that are dictionary words, then completions,
+    // then alternatives that are not words (ሠላ is not in the seed dictionary).
     let u = typed(&full(), "sela");
     assert_eq!(u.composing, "ሰላ");
     assert_eq!(
@@ -125,21 +127,13 @@ fn completions_follow_transliteration_alternatives() {
                 kind: CandidateKind::Transliteration
             },
             Candidate {
-                text: "ሠላ".into(),
-                kind: CandidateKind::Transliteration
+                text: "ሰላም".into(),
+                kind: CandidateKind::Completion
             },
         ]
     );
-    assert!(of_kind(&u, CandidateKind::Completion).contains(&"ሰላም"));
-    // Transliteration first, then lexicon candidates: never interleaved.
-    let first_lexicon = u
-        .candidates
-        .iter()
-        .position(|c| c.kind != CandidateKind::Transliteration)
-        .unwrap();
-    assert!(u.candidates[first_lexicon..]
-        .iter()
-        .all(|c| c.kind != CandidateKind::Transliteration));
+    let pos = |t: &str| u.candidates.iter().position(|c| c.text == t).unwrap();
+    assert!(pos("ሰላም") < pos("ሠላ"));
 }
 
 #[test]
@@ -148,7 +142,8 @@ fn selecting_a_completion_commits_it() {
     let u = typed(&e, "sela");
     let i = u.candidates.iter().position(|c| c.text == "ሰላም").unwrap();
     let s = e.select_candidate(u32::try_from(i).unwrap());
-    assert_eq!(s.commit, "ሰላም");
+    // A picked word is followed by a space (ADR 0039).
+    assert_eq!(s.commit, "ሰላም ");
     assert!(s.composing.is_empty() && s.candidates.is_empty());
     // The next word starts a fresh composition.
     assert_eq!(typed(&e, "ne").composing, "ነ");
@@ -247,6 +242,7 @@ fn golden_vectors_keep_their_behaviour_with_a_dictionary() {
         let name = v["name"].as_str().unwrap();
         a.reset();
         b.reset();
+        let (mut last_x, mut last_y) = (EditorUpdate::default(), EditorUpdate::default());
         for k in v["keystrokes"].as_array().unwrap() {
             let k = k.as_str().unwrap();
             let step = |e: &KeyboardEngine| match k {
@@ -254,42 +250,50 @@ fn golden_vectors_keep_their_behaviour_with_a_dictionary() {
                 "Space" => e.on_key(KeyEvent::Space),
                 "Enter" => e.on_key(KeyEvent::Enter),
                 "Commit" => e.on_key(KeyEvent::Commit),
-                _ => match k.strip_prefix("Select:") {
-                    Some(n) => e.select_candidate(n.parse().unwrap()),
-                    None => e.on_key(KeyEvent::Char { text: k.into() }),
-                },
+                _ => e.on_key(KeyEvent::Char { text: k.into() }),
             };
-            let (x, y) = (step(&a), step(&b));
+            let (x, y) = match k.strip_prefix("Select:") {
+                // A pick selects the same text in both strips (its index may differ).
+                Some(n) => {
+                    let i: usize = n.parse().unwrap();
+                    let j = last_x.candidates.get(i).map_or(i, |c| {
+                        last_y
+                            .candidates
+                            .iter()
+                            .position(|y| y.text == c.text)
+                            .unwrap()
+                    });
+                    (a.select_candidate(i as u32), b.select_candidate(j as u32))
+                }
+                None => (step(&a), step(&b)),
+            };
             assert_eq!(x.composing, y.composing, "{name}: composing");
             assert_eq!(x.commit, y.commit, "{name}: commit");
             assert_eq!(x.delete_before, y.delete_before, "{name}: delete_before");
             // The transliteration candidates stay in front: the default first, its alternatives
             // after it (known words may move up, ADR 0004 U6). Only when completions take their
             // reserved slots is the tail of a long transliteration list cut.
-            let t = y
-                .candidates
-                .iter()
-                .take_while(|c| c.kind == CandidateKind::Transliteration)
-                .count()
-                .min(x.candidates.len());
+            // ADR 0039: the default first; every transliteration candidate shown is one of the
+            // plain strip's; alternatives are only dropped when a full strip needs the room.
             assert_eq!(
                 x.candidates.first(),
                 y.candidates.first(),
                 "{name}: default"
             );
+            let shown: Vec<&Candidate> = y
+                .candidates
+                .iter()
+                .filter(|c| c.kind == CandidateKind::Transliteration)
+                .collect();
             assert!(
-                y.candidates[..t].iter().all(|c| x.candidates.contains(c)),
-                "{name}: transliteration prefix"
+                shown.iter().all(|c| x.candidates.contains(c)),
+                "{name}: transliteration candidates"
             );
-            if t < x.candidates.len() {
+            if shown.len() < x.candidates.len() {
                 assert_eq!(y.candidates.len(), 5, "{name}: cut only in a full strip");
-                assert!(
-                    y.candidates[t..]
-                        .iter()
-                        .all(|c| c.kind != CandidateKind::Transliteration),
-                    "{name}: cut only for completions"
-                );
             }
+            last_x = x;
+            last_y = y;
         }
     }
 }
@@ -528,8 +532,8 @@ const HASA_WORDS: &str = "ሃሣ	900
 fn homophones_are_sorted_by_dictionary_frequency() {
     let u = typed(&custom(8, HASA_WORDS), "hasa");
     assert_eq!(u.candidates[0].text, "ሃሳ");
-    // ሃሣ (900) before ኃሳ (500); the unknown ሓሳ keeps its place after the known ones.
-    assert_eq!(texts(&u)[..4], ["ሃሳ", "ሃሣ", "ኃሳ", "ሓሳ"]);
+    // ሃሣ (900) before ኃሳ (500), then completions; the unknown ሓሳ comes after them (ADR 0039).
+    assert_eq!(texts(&u)[..4], ["ሃሳ", "ሃሣ", "ኃሳ", "ሃሳብ"]);
     assert_eq!(
         of_kind(&u, CandidateKind::Transliteration),
         ["ሃሳ", "ሃሣ", "ኃሳ", "ሓሳ"]
@@ -548,7 +552,8 @@ fn unknown_homophones_keep_their_c14_order() {
         ),
         "hasa",
     );
-    assert_eq!(texts(&u)[..4], HASA_C14);
+    assert_eq!(of_kind(&u, CandidateKind::Transliteration), HASA_C14);
+    assert_eq!(texts(&u)[..3], ["ሃሳ", "ሃሳብ", "ሃሳቡ"]);
     // Equal frequencies keep C1.4 order too (deterministic tie-break).
     let u = typed(
         &custom(
@@ -560,7 +565,11 @@ fn unknown_homophones_keep_their_c14_order() {
         ),
         "hasa",
     );
-    assert_eq!(texts(&u)[..4], ["ሃሳ", "ኃሳ", "ሃሣ", "ሓሳ"]);
+    assert_eq!(
+        of_kind(&u, CandidateKind::Transliteration),
+        ["ሃሳ", "ኃሳ", "ሃሣ", "ሓሳ"]
+    );
+    assert_eq!(texts(&u)[..4], ["ሃሳ", "ኃሳ", "ሃሣ", "ሃሳብ"]);
 }
 
 #[test]
@@ -576,7 +585,8 @@ fn completions_keep_two_reserved_slots() {
     assert_eq!(texts(&u), ["ሃሳ", "ሃሳብ"]);
     // max 1: only the literal output.
     assert_eq!(texts(&typed(&custom(1, HASA_WORDS), "hasa")), ["ሃሳ"]);
-    // One completion available: only that one slot is reserved, homophones fill the rest.
+    // One completion available: only that one slot is reserved; known homophones, the
+    // completion, then the other homophones fill the rest.
     let u = typed(
         &custom(
             4,
@@ -586,7 +596,7 @@ fn completions_keep_two_reserved_slots() {
         ),
         "hasa",
     );
-    assert_eq!(texts(&u), ["ሃሳ", "ሃሣ", "ሓሳ", "ሃሳብ"]);
+    assert_eq!(texts(&u), ["ሃሳ", "ሃሣ", "ሃሳብ", "ሓሳ"]);
 }
 
 #[test]
@@ -611,7 +621,7 @@ fn select_after_reorder_commits_the_shown_text() {
             let e = custom(max, HASA_WORDS);
             typed(&e, "hasa");
             let u = e.select_candidate(i as u32);
-            assert_eq!(u.commit, *want, "max {max} index {i}");
+            assert_eq!(u.commit, format!("{want} "), "max {max} index {i}");
         }
         // Out of range changes nothing.
         let u = e.select_candidate(shown.len() as u32);

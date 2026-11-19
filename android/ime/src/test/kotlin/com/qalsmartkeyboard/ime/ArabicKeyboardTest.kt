@@ -166,8 +166,8 @@ class ArabicKeyboardTest {
         assertTrue(listOf("am", "ti", "om", "en").all { LanguageCatalog.hasAbcLayout(it) })
         assertTrue(LanguageCatalog.writingModes("ar").isEmpty())
         assertFalse(LanguageCatalog.isEthiopic("ar"))
-        assertFalse(LanguageCatalog.learnsWords("ar"))
-        assertTrue(listOf("am", "ti", "om", "en").all { LanguageCatalog.learnsWords(it) })
+        // ADR 0039: Arabic learns the user's own words (its only suggestions; no licensed list, N10).
+        assertTrue(listOf("am", "ti", "om", "en", "ar").all { LanguageCatalog.learnsWords(it) })
         assertFalse(LayoutKind.ARABIC.latin || LayoutKind.ARABIC.phonetic)
         assertEquals("Arabic letters", LanguageCatalog.spokenKind(LayoutKind.ARABIC))
     }
@@ -202,7 +202,8 @@ class ArabicKeyboardTest {
         val s = session(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
         assertEquals(ar, s.c.effectiveMode)
         assertEquals("ع · العربية", s.c.indicator)
-        assertFalse(s.c.showCandidateStrip)
+        // ADR 0039: the strip applies (the user's own words); with none learned it stays empty and nothing composes.
+        assertTrue(s.c.showCandidateStrip && s.c.candidatesRtl)
         assertTrue(s.c.writingModeOptions.isEmpty())
         s.type("مرحبا ")
         s.tap(s.charKey("،"))
@@ -246,11 +247,12 @@ class ArabicKeyboardTest {
         assertEquals("كل", s.ed.text.toString())
     }
 
-    @Test fun arabicWordsAreNotLearned() {
+    @Test fun arabicWordsAreLearned() {
+        // ADR 0039: Arabic suggestions are the user's own words, so Arabic words are learned like any language's.
         val learned = Learned()
         val s = session(dictionary = learned)
-        repeat(3) { s.type("كتاب ") }
-        assertTrue(learned.words.toString(), learned.words.isEmpty())
+        repeat(2) { s.type("كتاب ") }
+        assertEquals(listOf("ar:كتاب", "ar:كتاب"), learned.words)
     }
 
     @Test fun noAbcLayoutInArabicAndTheGlobeSwitchesLanguage() {

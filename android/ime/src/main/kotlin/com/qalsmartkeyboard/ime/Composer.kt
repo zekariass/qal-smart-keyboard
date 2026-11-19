@@ -16,9 +16,25 @@ data class ComposerUpdate(
     val commit: String = "",
     val deleteBefore: Int = 0,
     val candidates: List<Suggestion> = emptyList(),
+    /** Index in [candidates] of the correction a Space will apply (ADR 0039), or -1. */
+    val autocorrectIndex: Int = -1,
 ) {
     companion object {
         val NONE = ComposerUpdate()
+    }
+}
+
+/**
+ * What the composer may predict in the current field (mirrors the core's `PredictionOptions`, ADR 0039): word
+ * candidates while typing, next-word predictions after a word, autocorrection at a word boundary.
+ */
+data class PredictionSettings(
+    val suggestions: Boolean = true,
+    val nextWord: Boolean = false,
+    val autocorrect: Boolean = false,
+) {
+    companion object {
+        val OFF = PredictionSettings(suggestions = false)
     }
 }
 
@@ -65,6 +81,16 @@ interface Composer {
 
     /** The cached single-key outputs of [language]'s phonetic profile, for the key hints (never computed here). */
     fun phoneticHints(language: String): PhoneticHints? = null
+
+    /** The prediction options of the current field (ADR 0039); kept across mode switches. */
+    fun setPredictionOptions(options: PredictionSettings) {}
+
+    /**
+     * The cursor moved for a reason the composer did not see (field start, a tap in the text; [reset] first): [before]
+     * and [after] are the text around it (a short tail / the first character). Returns the strip for the new position
+     * (next-word predictions, Fidel completions); nothing is kept beyond the composer's word context.
+     */
+    fun setCursorContext(before: String, after: String): ComposerUpdate = ComposerUpdate.NONE
 }
 
 /** ABC-only composer used until the core and its packs are loaded: text is committed as typed. */

@@ -46,6 +46,16 @@ class SettingsPreferences(
     override fun showCandidates(language: String): Boolean =
         settings().language(language)?.showTransliterationCandidates ?: true
 
+    override val nextWordPredictions: Boolean get() = settings().nextWordPredictions
+
+    override fun autocorrect(language: String): Boolean = when (language) {
+        "en" -> settings().autocorrectEnglish
+        "om" -> settings().autocorrectOromo
+        else -> false
+    }
+
+    override val learnWords: Boolean get() = settings().learnWords
+
     override val ethiopicNumerals: Boolean get() = settings().numeralStyle == NumeralStyle.ETHIOPIC
     override val hapticsEnabled: Boolean get() = settings().hapticsEnabled
     override val keyPreviewEnabled: Boolean get() = settings().keyPreviewEnabled

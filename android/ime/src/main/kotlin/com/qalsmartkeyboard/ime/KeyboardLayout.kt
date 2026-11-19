@@ -90,8 +90,13 @@ data class LayoutContext(
         get() = if (!LanguageCatalog.isEthiopic(mode.language) || mode.isAbc) emptyList()
         else (grid?.punctuation.orEmpty() + Layouts.GEEZ_MARKS).distinct()
 
-    /** The Fidel grid layout: `.` and `,` tap the Ethiopic full stop and comma (ADR 0007). */
-    val fidelPunctuation: Boolean get() = mode.kind == LayoutKind.FIDEL && grid != null
+    /**
+     * Ge'ez is typed natively (the Fidel grid, ADR 0007, or Phonetic, product owner 2026-11-19): `.` and `,` tap the
+     * Ethiopic full stop ። and comma ፣, with the ASCII mark first in the long-press popup. Not in the English (ABC)
+     * writing mode of am/ti, nor in om, en or ar.
+     */
+    val ethiopicPunctuation: Boolean
+        get() = LanguageCatalog.isEthiopic(mode.language) && (mode.kind == LayoutKind.FIDEL && grid != null || mode.kind == LayoutKind.PHONETIC)
 
     /** The Arabic letter layout is in force (ADR 0034): Arabic punctuation, Arabic-Indic digits and the marks. */
     val arabic: Boolean get() = mode.kind == LayoutKind.ARABIC
@@ -273,8 +278,8 @@ object Layouts {
             return Key(KeyKind.CHAR, ".", ".", 1f, popup = p, popupColumns = 4, hint = ArabicKeys.QUESTION, description = L.keyPeriod)
         }
         val m = marks(ctx)
-        if (ctx.fidelPunctuation) {
-            // Fidel grid only (ADR 0007): tap = ። ; ASCII "." leads the popup, then the other marks.
+        if (ctx.ethiopicPunctuation) {
+            // Ge'ez typed natively (Fidel, ADR 0007; Phonetic): tap = ። ; ASCII "." leads the popup, then the other marks.
             val others = m.filter { it.label != FULL_STOP }
             return Key(
                 KeyKind.CHAR, FULL_STOP, FULL_STOP, 1f,
@@ -298,7 +303,7 @@ object Layouts {
             )
         }
         val m = marks(ctx, setOf("፣", "፤"))
-        if (ctx.fidelPunctuation) {
+        if (ctx.ethiopicPunctuation) {
             val others = m.filter { it.label != ETHIOPIC_COMMA }
             return Key(
                 KeyKind.CHAR, ETHIOPIC_COMMA, ETHIOPIC_COMMA, 1f,

@@ -58,14 +58,18 @@ object LanguageCatalog {
      */
     fun hasAbcLayout(language: String) = language != "ar"
 
-    /** Languages whose words the personal dictionary learns: those with a core dictionary (A1.8). Arabic has none (N10). */
+    /**
+     * Languages whose words the personal dictionary learns (A1.8): those with a core dictionary, and Arabic, whose
+     * suggestions are the user's own words only (no licensed Arabic list, N10; ADR 0039).
+     */
     fun learnsWords(language: String) = language in com.qalsmartkeyboard.ime.userdict.UserDictionary.LANGUAGES
 
     /**
-     * Modes with a candidate strip: am/ti Phonetic (transliteration alternatives and dictionary words) and Afaan Oromoo
-     * Qubee (dictionary words for the word being typed, from the `om` packs). Fidel, English, ABC and Arabic have none.
+     * Modes with a candidate strip (ADR 0039): am/ti Phonetic (transliteration alternatives and dictionary words) and
+     * Fidel (completions of the word typed so far), Qubee and English (dictionary words, autocorrection), Arabic (the
+     * user's own words), each with next-word predictions. ABC (Latin text in another language) has none.
      */
-    fun offersSuggestions(mode: TypingMode) = mode.phonetic || mode.kind == LayoutKind.QUBEE
+    fun offersSuggestions(mode: TypingMode) = !mode.isAbc
 
     /** Languages written in Ge'ez script: Ethiopic punctuation and numerals apply (SD 7.2). */
     fun isEthiopic(language: String) = language == "am" || language == "ti"
@@ -194,6 +198,15 @@ interface ModePreferences {
 
     /** Whether the candidate strip is shown for [language]'s phonetic mode. */
     fun showCandidates(language: String): Boolean = true
+
+    /** Next-word predictions after a word (ADR 0039). */
+    val nextWordPredictions: Boolean get() = true
+
+    /** Autocorrection in [language] (ADR 0039): English on, Afaan Oromoo off until its lexicon is reviewed; others never. */
+    fun autocorrect(language: String): Boolean = language == "en"
+
+    /** Words typed are learned into the personal dictionary ("Learn from my typing", ADR 0039). */
+    val learnWords: Boolean get() = true
 
     /** numeralStyle ETHIOPIC: offer Ethiopic numerals as digit alternatives. */
     val ethiopicNumerals: Boolean get() = false

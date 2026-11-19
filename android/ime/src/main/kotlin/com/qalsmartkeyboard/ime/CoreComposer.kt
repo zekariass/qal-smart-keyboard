@@ -7,6 +7,7 @@ import uniffi.qal_keyboard_core.FidelLayout
 import uniffi.qal_keyboard_core.InputMode
 import uniffi.qal_keyboard_core.KeyEvent
 import uniffi.qal_keyboard_core.KeyboardEngine
+import uniffi.qal_keyboard_core.PredictionOptions
 import uniffi.qal_keyboard_core.ReleaseChannel
 import uniffi.qal_keyboard_core.ResourceType
 import uniffi.qal_keyboard_core.TranslitProfileStatus
@@ -29,9 +30,13 @@ class CoreComposer(
     private val phoneticOk = HashSet<String>()
 
     init {
-        // Qubee suggestions come from the om DICTIONARY pack: DRAFT unless that pack was released on the STABLE channel (N9).
-        draft[TypingMode("om", LayoutKind.QUBEE)] = engine.loadedPacks().none {
-            it.languageCode == "om" && it.resourceType == ResourceType.DICTIONARY && it.releaseChannel == ReleaseChannel.STABLE
+        // Qubee and English suggestions come from the om / en DICTIONARY pack: DRAFT unless that pack was released on the
+        // STABLE channel (N9). Arabic suggestions are the user's own words only (ADR 0039): not DRAFT data.
+        val packs = engine.loadedPacks()
+        for ((lang, kind) in listOf("om" to LayoutKind.QUBEE, "en" to LayoutKind.ENGLISH)) {
+            draft[TypingMode(lang, kind)] = packs.none {
+                it.languageCode == lang && it.resourceType == ResourceType.DICTIONARY && it.releaseChannel == ReleaseChannel.STABLE
+            }
         }
         for (lang in languages) {
             try {
@@ -80,6 +85,12 @@ class CoreComposer(
     override fun reset() {
         engine.reset()
     }
+
+    override fun setPredictionOptions(options: PredictionSettings) =
+        engine.setPredictionOptions(PredictionOptions(options.suggestions, options.nextWord, options.autocorrect))
+
+    override fun setCursorContext(before: String, after: String): ComposerUpdate =
+        engine.setCursorContext(before, after).toUpdate()
 
     override fun setMode(mode: TypingMode): Boolean {
         if (!supports(mode)) return false
@@ -154,6 +165,7 @@ class CoreComposer(
         composing = composing,
         commit = commit,
         deleteBefore = deleteBefore.toInt(),
+        autocorrectIndex = autocorrectIndex?.toInt() ?: -1,
         candidates = candidates.map {
             Suggestion(
                 it.text,

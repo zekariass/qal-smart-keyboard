@@ -12,6 +12,9 @@ interface EditorOps {
 
     /** Up to [n] UTF-16 units before the cursor; null when the editor does not answer. */
     fun getTextBeforeCursor(n: Int): CharSequence?
+
+    /** Up to [n] UTF-16 units after the cursor; null when the editor does not answer. */
+    fun getTextAfterCursor(n: Int): CharSequence? = null
     fun deleteSurroundingText(beforeLength: Int): Boolean
     fun commitText(text: String): Boolean
     fun setComposingText(text: String): Boolean
@@ -52,6 +55,13 @@ interface TextSink {
 
     /** The text selected in the host field (Word Art starts from it), or null when none or unknown. */
     fun selectedText(): String? = null
+
+    /**
+     * Up to [before] UTF-16 units before the cursor and [after] after it, for the composer's word context (ADR 0039:
+     * the previous word, the sentence start, the spacing of a picked suggestion). Null when the editor has no text model
+     * or does not answer. Read only when nothing is composing; never logged or stored (N2).
+     */
+    fun textAroundCursor(before: Int, after: Int): Pair<String, String>? = null
 }
 
 /** How composing text reaches the editor in the current editor session. */
@@ -163,6 +173,14 @@ class InputConnectionAdapter(private val editor: () -> EditorOps?) : TextSink {
         (editor()?.getCursorCapsMode(capsFlags) ?: 0) != 0
 
     override fun selectedText(): String? = editor()?.getSelectedText()?.toString()?.takeIf { it.isNotEmpty() }
+
+    override fun textAroundCursor(before: Int, after: Int): Pair<String, String>? {
+        if (typeNull || shown.isNotEmpty() || (selStart >= 0 && selStart != selEnd)) return null
+        val ed = editor() ?: return null
+        val b = ed.getTextBeforeCursor(before) ?: return null
+        val a = ed.getTextAfterCursor(after) ?: ""
+        return b.toString() to a.toString()
+    }
 
     /** The editor, for edits the user asked for explicitly (the AI toolbar's Replace/Insert). */
     fun editorOps(): EditorOps? = editor()

@@ -1,6 +1,6 @@
 # Golden vectors
 
-## Phonetic (C1.4): `am-phonetic-0.2.0.json`, `ti-phonetic-0.3.0.json`
+## Phonetic (C1.4): `am-phonetic-0.3.0.json`, `ti-phonetic-0.4.0.json`
 Profile 0.2.0 (coverage audit, `docs/specs/phonetic-coverage-am-ti.md`) retired 0.1.0: its vectors
 were carried over unchanged except for alternatives the new rules add (and `x`, now ሸ in Amharic);
 0.1.0 was never released outside INTERNAL DRAFT packs, so its files were removed (see git history).

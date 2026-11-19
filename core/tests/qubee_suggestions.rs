@@ -102,7 +102,8 @@ fn picking_a_suggestion_replaces_the_composed_word() {
     let i = texts(&u).iter().position(|t| t == "nagaa").unwrap();
     let picked = e.select_candidate(u32::try_from(i).unwrap());
     ed.apply(&picked);
-    assert_eq!(picked.commit, "nagaa");
+    // The picked word comes with its space (ADR 0039); a Space right after adds no second one.
+    assert_eq!(picked.commit, "nagaa ");
     assert!(picked.composing.is_empty() && picked.candidates.is_empty());
     type_into(&e, &mut ed, " ");
     assert_eq!(ed.shown(), "nagaa ");
