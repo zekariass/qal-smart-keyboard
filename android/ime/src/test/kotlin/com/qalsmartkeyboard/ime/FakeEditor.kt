@@ -89,6 +89,12 @@ class FakeEditor(initial: String = "") : EditorOps {
         return text.substring(maxOf(0, selStart - n), selStart)
     }
 
+    override fun getTextAfterCursor(n: Int): CharSequence? {
+        calls += "getTextAfterCursor"
+        if (!answersTextQueries) return null
+        return text.substring(selEnd, minOf(text.length, selEnd + n))
+    }
+
     override fun deleteSurroundingText(beforeLength: Int): Boolean {
         calls += "deleteSurroundingText($beforeLength)"
         if (!honoursDeleteSurrounding) return true
@@ -170,5 +176,8 @@ class FakeEditor(initial: String = "") : EditorOps {
         return true
     }
 
-    override fun getCursorCapsMode(reqModes: Int): Int = 0
+    /** What `getCursorCapsMode` answers (0: never capitalise; e.g. `TextUtils.CAP_MODE_SENTENCES`). */
+    var capsMode = 0
+
+    override fun getCursorCapsMode(reqModes: Int): Int = capsMode and reqModes
 }

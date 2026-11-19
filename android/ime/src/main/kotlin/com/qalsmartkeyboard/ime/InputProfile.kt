@@ -34,7 +34,22 @@ data class InputProfile(
     val capsFlags: Int,
     /** `inputType == TYPE_NULL`: the host has no text model (terminals, custom views). */
     val noTextModel: Boolean = false,
+    /** The app set `TYPE_TEXT_FLAG_NO_SUGGESTIONS`: no candidate strip, no autocorrection (ADR 0039). */
+    val noSuggestions: Boolean = false,
+    /** A person-name, postal-address or filter field: suggestions yes, autocorrection never (ADR 0039). */
+    val noAutoCorrect: Boolean = false,
 ) {
+    /**
+     * Word suggestions and next-word predictions may be shown (ADR 0039): plain text fields that did not ask for none.
+     * Never in password, email, URI, number or phone fields.
+     */
+    val suggestionsAllowed: Boolean
+        get() = kind == FieldKind.TEXT && !noSuggestions && !noTextModel
+
+    /** Autocorrection may apply here (ADR 0039): where suggestions are allowed, except names, addresses and filters. */
+    val autoCorrectAllowed: Boolean
+        get() = suggestionsAllowed && !noAutoCorrect
+
     /**
      * The AI toolbar (A2.5) is offered here: plain text fields only, so never password, email, URI,
      * number or phone fields, never where the host asked for no personalised learning (incognito),
@@ -134,7 +149,16 @@ data class InputProfile(
                 0
             }
 
-            return InputProfile(kind, multiline, learning, enter, caps, noTextModel = inputType == InputType.TYPE_NULL)
+            val noSuggestions = cls == InputType.TYPE_CLASS_TEXT && (flags and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) != 0
+            val noAutoCorrect = cls == InputType.TYPE_CLASS_TEXT && variation in setOf(
+                InputType.TYPE_TEXT_VARIATION_PERSON_NAME,
+                InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS,
+                InputType.TYPE_TEXT_VARIATION_FILTER,
+            )
+            return InputProfile(
+                kind, multiline, learning, enter, caps, noTextModel = inputType == InputType.TYPE_NULL,
+                noSuggestions = noSuggestions, noAutoCorrect = noAutoCorrect,
+            )
         }
     }
 }

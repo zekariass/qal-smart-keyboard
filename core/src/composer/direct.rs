@@ -65,6 +65,16 @@ impl DirectFidel {
         self.pending = None;
     }
 
+    /// No syllable is pending.
+    pub fn is_idle(&self) -> bool {
+        self.pending.is_none()
+    }
+
+    /// The composing text the host shows now (the pending syllable, or nothing).
+    pub fn shown_text(&self) -> String {
+        self.shown()
+    }
+
     pub fn on_key(&mut self, event: KeyEvent) -> EditorUpdate {
         match event {
             KeyEvent::Char { text } => {

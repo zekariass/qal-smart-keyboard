@@ -88,10 +88,12 @@ class CoreWritingModesTest {
     @Test fun lettersPageIsNotCrowdedByTheMarks() {
         val s = session("am", LayoutKind.PHONETIC)
         val letters = s.c.layout.rows.flatten().filter { it.kind == KeyKind.CHAR }.map { it.text }
-        assertTrue(Layouts.GEEZ_MARKS.none { it in letters })
-        // ... but they are one long-press away on the period key
-        val period = s.c.layout.rows.last().first { it.text == "." }
-        assertTrue(Layouts.GEEZ_MARKS.all { m -> period.popup.any { it.text == m } })
+        // Only ። and ፣ are keys (the period and comma keys, owner 2026-11-19); the other marks are not.
+        assertTrue(Layouts.GEEZ_MARKS.filter { it != "።" && it != "፣" }.none { it in letters })
+        // ... they are one long-press away on the period key, after the ASCII full stop
+        val period = s.c.layout.rows.last().first { it.text == "።" }
+        assertEquals(".", period.popup.first().text)
+        assertTrue(Layouts.GEEZ_MARKS.filter { it != "።" }.all { m -> period.popup.any { it.text == m } })
     }
 
     @Test fun englishWritingModeHasNoGeezMarks() {

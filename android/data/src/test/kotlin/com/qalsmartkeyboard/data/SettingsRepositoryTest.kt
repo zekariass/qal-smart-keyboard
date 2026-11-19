@@ -201,8 +201,8 @@ class SettingsRepositoryTest {
         // Qubee, a single Latin layout: never phonetic or a Fidel grid, never an Amharic profile; it suggests words.
         assertEquals(listOf(InputMode.LATIN_PASSTHROUGH), LanguageRules.allowedModes("om"))
         assertEquals(InputMode.LATIN_PASSTHROUGH, LanguageRules.defaultMode("om"))
-        assertTrue(LanguageRules.hasWordSuggestions("om"))
-        for (code in listOf("am", "ti", "en", "ar")) assertFalse(code, LanguageRules.hasWordSuggestions(code))
+        for (code in listOf("om", "en", "ar")) assertTrue(code, LanguageRules.hasWordSuggestions(code))
+        for (code in listOf("am", "ti")) assertFalse(code, LanguageRules.hasWordSuggestions(code))
         // Tigrinya has its own entry with the same writing modes as Amharic (phonetic first, Fidel, Latin).
         assertEquals(LanguageRules.allowedModes("am"), LanguageRules.allowedModes("ti"))
         assertTrue("om" !in LanguageRules.OPT_IN && "ti" !in LanguageRules.OPT_IN)
@@ -520,5 +520,23 @@ class SettingsRepositoryTest {
         val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "old-clip.preferences_pb")
         store.edit { it[intPreferencesKey("schema_version")] = 1 }
         assertTrue(SettingsRepository(store).current().clipboardHistoryEnabled)
+    }
+
+    /** ADR 0039: next word, English autocorrection and learning default on, Oromo autocorrection off; all persist. */
+    @Test fun predictionSwitchesHaveTheirDefaultsAndPersist() = runBlocking {
+        val first = open()
+        val d = first.current()
+        assertTrue(d.nextWordPredictions && d.autocorrectEnglish && d.learnWords)
+        assertFalse(d.autocorrectOromo)
+        first.update { it.copy(nextWordPredictions = false, autocorrectEnglish = false, autocorrectOromo = true, learnWords = false) }
+        closeAll()
+        val s = open().current()
+        assertFalse(s.nextWordPredictions || s.autocorrectEnglish || s.learnWords)
+        assertTrue(s.autocorrectOromo)
+        // A store written before the keys existed takes the defaults.
+        val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "old-predict.preferences_pb")
+        store.edit { it[intPreferencesKey("schema_version")] = 1 }
+        val old = SettingsRepository(store).current()
+        assertTrue(old.nextWordPredictions && old.autocorrectEnglish && old.learnWords && !old.autocorrectOromo)
     }
 }

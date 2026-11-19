@@ -102,6 +102,7 @@ class KeyboardController(
             orderRows.clear()
             pendingSeries = null
             cachedLayout = null
+            sentOptions = null
             applyMode()
             onChanged()
         }
@@ -144,6 +145,14 @@ class KeyboardController(
     var candidates: List<Suggestion> = emptyList()
         private set
 
+    /** Index in [candidates] of the correction a Space will apply (ADR 0039; the strip marks it), or -1. */
+    var autocorrectIndex: Int = -1
+        private set
+
+    /** The strip's left and right slots are mirrored (Arabic is written right to left, ADR 0039). */
+    val candidatesRtl: Boolean
+        get() = effectiveMode.kind == LayoutKind.ARABIC
+
     /** A composition (e.g. a pending Fidel consonant) is open: the vowel-order keys are live. */
     var composing: Boolean = false
         private set
@@ -179,6 +188,46 @@ class KeyboardController(
      */
     val showCandidateStrip: Boolean
         get() = LanguageCatalog.offersSuggestions(effectiveMode) && profile.kind != FieldKind.PASSWORD && prefs.showCandidates(language)
+
+    /**
+     * What the composer may predict in this field (ADR 0039). Suggestions where the strip applies and the field allows
+     * them (never passwords, e-mail, URLs, `NO_SUGGESTIONS`); next-word predictions and autocorrection only while the keys
+     * type into the host field (not the emoji search or an AI panel field), autocorrection per the language's setting and
+     * never in name, address or filter fields.
+     */
+    private fun predictionSettings(): PredictionSettings {
+        val m = effectiveMode
+        val suggestions = showCandidateStrip && profile.suggestionsAllowed
+        if (!suggestions) return PredictionSettings.OFF
+        val host = emoji.redirect == null && fieldTyping() == null
+        return PredictionSettings(
+            suggestions = true,
+            nextWord = host && prefs.nextWordPredictions,
+            autocorrect = host && profile.autoCorrectAllowed && prefs.autocorrect(m.language),
+        )
+    }
+
+    private var sentOptions: PredictionSettings? = null
+
+    /** Tells the composer the field's prediction options when they changed (cheap: compared before the call). */
+    private fun syncPredictionOptions() {
+        val o = predictionSettings()
+        if (o != sentOptions) {
+            sentOptions = o
+            composer.setPredictionOptions(o)
+        }
+    }
+
+    /**
+     * Gives the composer the text around the cursor after a move it did not see (field start, mode switch, a tap in the
+     * text), so the strip predicts the next word there (ADR 0039). Never in fields without suggestions (passwords).
+     */
+    private fun refreshCursorContext() {
+        syncPredictionOptions()
+        if (sentOptions?.suggestions != true || emoji.redirect != null || fieldTyping() != null) return
+        val (before, after) = sink.textAroundCursor(CONTEXT_BEFORE, CONTEXT_AFTER) ?: return
+        apply(composer.setCursorContext(before, after))
+    }
 
     /** The active profile or layout is DRAFT: the UI must say it is not verified (rule N9). */
     val candidatesAreDraft: Boolean
@@ -249,6 +298,8 @@ class KeyboardController(
             kind = startKind(language)
             afterSwitch()
         }
+        sentOptions = null // the prediction settings may have changed
+        syncPredictionOptions()
         onChanged()
     }
 
@@ -319,8 +370,10 @@ class KeyboardController(
         composer.reset()
         learner.reset()
         candidates = emptyList()
+        autocorrectIndex = -1
         composing = false
         pendingSeries = null
+        refreshCursorContext()
         refreshAutoCapital()
         onChanged()
     }
@@ -381,6 +434,7 @@ class KeyboardController(
     /** A tap on candidate [index] of the strip. */
     fun selectCandidate(index: Int) {
         if (index !in candidates.indices) return
+        syncPredictionOptions()
         apply(composer.selectCandidate(index))
         refreshAutoCapital()
         onChanged()
@@ -522,13 +576,18 @@ class KeyboardController(
     private fun applyMode() {
         learner.reset()
         candidates = emptyList()
+        autocorrectIndex = -1
         composing = false
         pendingSeries = null
         val m = effectiveMode
         if (!composer.setMode(m)) composer.setMode(TypingMode.abc(m.language))
+        refreshCursorContext()
     }
 
-    private fun send(key: ComposerKey) = apply(composer.onKey(key))
+    private fun send(key: ComposerKey) {
+        syncPredictionOptions()
+        apply(composer.onKey(key))
+    }
 
     private fun apply(update: ComposerUpdate) {
         // While the emoji search or the Word Art text field is open the keys type into it, not into the host field, and nothing is learned.
@@ -539,12 +598,19 @@ class KeyboardController(
         val m = effectiveMode
         // A Latin word typed in ABC is not an Amharic or Tigrinya word (SD 7.4: learn per language and script). Languages
         // without a core dictionary (Arabic, ADR 0034) learn nothing: no word would ever be suggested back.
-        val learns = profile.learnsWords && LanguageCatalog.learnsWords(m.language) && !(m.isAbc && LanguageCatalog.isEthiopic(m.language))
+        val learns = profile.learnsWords && prefs.learnWords && LanguageCatalog.learnsWords(m.language) && !(m.isAbc && LanguageCatalog.isEthiopic(m.language))
         learner.observe(update, m.language, !searching && learns)
         candidates = update.candidates
+        autocorrectIndex = update.autocorrectIndex.takeIf { it in update.candidates.indices } ?: -1
         composing = update.composing.isNotEmpty()
         // Anything that commits or cancels the composition (space, another consonant's commit, backspace, an order key,
         // a mode switch) ends the family selection; the consonant branch of [onKey] sets it again.
         if (!composing) pendingSeries = null
+    }
+
+    private companion object {
+        /** Text read around the cursor for the word context (ADR 0039): a tail before it, one character after. */
+        const val CONTEXT_BEFORE = 96
+        const val CONTEXT_AFTER = 1
     }
 }

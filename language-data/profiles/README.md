@@ -4,7 +4,7 @@
 (`qal-transliteration-profile` v1, parsed and validated by `core/src/translit/profile.rs`). Status is
 **DRAFT** until the native-speaker panel (gate G0) approves them; they must never be shown to users as
 verified (rule N9; hosts read the status through `KeyboardEngine::translit_profile`). The L1.1 pack build
-tool wraps them into signed packs. Golden corpora: `core/tests/golden/am-phonetic-0.2.0.json`, `core/tests/golden/ti-phonetic-0.3.0.json`; coverage matrices (every required
+tool wraps them into signed packs. Golden corpora: `core/tests/golden/am-phonetic-0.3.0.json`, `core/tests/golden/ti-phonetic-0.4.0.json`; coverage matrices (every required
 Fidel form and the sequences that reach it, checked end to end by `core/tests/phonetic_coverage.rs`):
 `core/tests/golden/{am,ti}-phonetic-coverage.json`, explained in `docs/specs/phonetic-coverage-am-ti.md`.
 Syllable forms come from the generated Fidel table (`../generated/fidel-table-v1.json`); profiles only
@@ -21,19 +21,30 @@ name series ids and order numbers.
   gives ኋ: `h` maps to the ኀ labiovelar series). If no such form exists the `W` is read as the consonant.
   Lowercase `w` (`labialAltMarker`) stays the consonant ወ by default (`gwa` gives ግዋ) but the labialised
   form is offered as the first alternative (ጓ).
-- Doubled consonants collapse (`messeret` gives መሰረት, Fidel does not mark gemination); `_` separates
-  letters that would otherwise combine (`s_h` gives ስህ, `s_s` gives ስስ).
+- Doubled consonants **before a vowel** collapse (`messeret` gives መሰረት, Fidel does not mark gemination); the
+  two-letter reading is offered as the last alternative (`messeret`: መስሰረት). A doubled consonant with **no vowel
+  after it** types two letters: pressing a key twice gives the letter twice (`ggr` ግግር, `gg` ግግ; engine rule since
+  the r2 repeated-key fix, no profile change). `_` separates letters that would otherwise combine (`s_h` gives ስህ,
+  `s_se` gives ስሰ).
 - A vowel typed without a consonant uses the glottal series: `a` አ, `e` እ, `u` ኡ, `i` ኢ, `ee` ኤ, `I` እ, `o` ኦ.
   Tigrinya (0.3.0) writes initial /a/ with its own letter: `a` gives ኣ (ኣብ, ኣነ), with አ as the first alternative.
-- Case is folded (a sentence-initial capital is safe), except the explicit `I` and the labial marker `W`.
-  Capitals with a SERA meaning keep the folded default and offer it as an alternative (0.2.0): `T` ጥ,
-  `C` ጭ, `P` ጵ, `S` ሥ/ጽ, `K` ኽ, `N` ኝ, `Z` ዥ.
+- Case is folded, except the explicit `I`, the labial marker `W` and the **capital letters** below.
+- **Capitals are their own letters** (am 0.3.0, ti 0.4.0, product owner's request): `N` ኝ series (`Na` ኛ), `T` ጥ
+  series (`Te` ጠ), `K` ኽ series (`Ke` ኸ), `P` ጵ series (`Pa` ጳ) by default, with the plain letter (ን ት ክ ፕ) as the
+  alternative; Tigrinya also `Q` ቐ series (`Qe` ቐ … `Qo` ቖ, `QWa` ቛ). The lowercase digraphs keep working (`ny`,
+  `t'`, `kh` / ti `x`, `p'`, ti `qh`). `K` is ኽ and `Q` is ቐ (the common Ge'ez keyboard convention; the owner also
+  wrote "K" for ቕ, but one key cannot do both). Amharic has no `Q` rule: its profile and Fidel grid have no ቐ series.
+  Still folded with the SERA reading as an alternative: `C` (ቸ, alt ጭ), `S` (ስ, alt ሥ/ጽ), `Z` (ዝ, alt ዥ), so names
+  such as Selam or Zewdu keep their letter; the panel decides whether these follow. Because capitals now change the
+  letter, the keyboard never auto-capitalises in Phonetic mode (only a manual Shift gives a capital).
 - Alternatives (one substitution at a time, left to right, capped by `max_candidates`): homophone series
   (ሰ/ሠ, ሀ/ሐ/ኀ, ጸ/ፀ; Tigrinya ቀ/ቐ), and for a standalone vowel the other glottal orders and the
   pharyngeal series in the same and the other orders (`a`: ኣ ዐ ዓ, Tigrinya አ ዓ ዐ; `e`: አ ዕ ዐ ኧ). A bare consonant
   followed by a lowercase-`w` syllable also offers the labialised letter (counts as one substitution).
 - Punctuation by doubling: `..` ። `,,` ፣ `;;` ፤ `::` ፥ `??` ፧. A single `.` `,` `;` `:` `?` stays ASCII (it is
-  held as composing text until the next key decides).
+  held as composing text until the next key decides). On the phone the comma and period keys of the Phonetic and Fidel
+  layouts type ፣ and ። directly (ASCII `,` / `.` first in their long-press popups), so the doubling is only needed
+  from a hardware keyboard or the symbols page.
 - Protected tokens stay Latin: a buffer starting with `http` or `www`, anything containing `@`, and the
   listed product names (`whatsapp`, `telegram`, ...; transliteration is offered as the alternative).
   The real list will come from the `PROTECTED_TERMS` pack and lexicon (C1.6).

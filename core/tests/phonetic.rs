@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 const AM_PROFILE: &str = include_str!("../../language-data/profiles/am-phonetic-draft.json");
 const TI_PROFILE: &str = include_str!("../../language-data/profiles/ti-phonetic-draft.json");
-const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.2.0.json");
-const TI_GOLDEN: &str = include_str!("golden/ti-phonetic-0.3.0.json");
+const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.3.0.json");
+const TI_GOLDEN: &str = include_str!("golden/ti-phonetic-0.4.0.json");
 
 fn profile_pack(lang: &str, version: &str, artifact: &[u8]) -> Vec<u8> {
     let mut f = fields(version);
@@ -150,7 +150,7 @@ fn golden_ti() {
 
 #[test]
 fn source_profiles_are_valid_and_draft() {
-    for (lang, src, version) in [("am", AM_PROFILE, "0.2.0"), ("ti", TI_PROFILE, "0.3.0")] {
+    for (lang, src, version) in [("am", AM_PROFILE, "0.3.0"), ("ti", TI_PROFILE, "0.4.0")] {
         let p = Profile::parse(src.as_bytes()).unwrap();
         assert_eq!(p.language(), lang);
         // N9: unreviewed profiles stay DRAFT until the G0 panel approves them.
@@ -236,7 +236,7 @@ fn profile_validation() {
         ("\"status\": \"DRAFT\"", "\"status\": \"FINAL\"", "status"),
         ("\"language\": \"am\"", "\"language\": \"om\"", "language"),
         (
-            "\"profileVersion\": \"0.2.0\"",
+            "\"profileVersion\": \"0.3.0\"",
             "\"profileVersion\": \"x\"",
             "semver",
         ),
@@ -325,6 +325,61 @@ fn candidates_respect_max_candidates() {
     // "aman" has three alternatives; only the default and one fit.
     assert_eq!(u.candidates.len(), 2);
     assert_eq!(u.candidates[0].text, u.composing);
+}
+
+/// Owner report (repeated-key bug): typing ግግር needs ግ twice, but the second press of the same key
+/// never showed because every doubled consonant collapsed as gemination. Every letter key whose
+/// single press is a bare consonant must now give two letters when pressed twice (and the word
+/// committed by Space keeps both), in both profiles, whatever comes after it except a vowel.
+#[test]
+fn a_repeated_consonant_key_is_never_swallowed() {
+    for (lang, profile) in [("am", AM_PROFILE), ("ti", TI_PROFILE)] {
+        let e = engine_with(lang, profile);
+        for key in ('a'..='z')
+            .filter(|c| !"aeiou".contains(*c))
+            .map(String::from)
+        {
+            e.reset();
+            let once = e.on_key(KeyEvent::Char { text: key.clone() });
+            if once.composing.chars().count() != 1 || once.composing.is_ascii() {
+                continue; // a vowel, an unmapped key, or a digraph start
+            }
+            let twice = e.on_key(KeyEvent::Char { text: key.clone() });
+            if twice.composing == once.composing {
+                // A digraph of a doubled letter (`hh` ሐ) is a different letter, not a lost one.
+                panic!("{lang} {key}{key} swallowed the second press");
+            }
+            let bare = once.composing.clone();
+            let space = e.on_key(KeyEvent::Space);
+            if key != "h" {
+                assert_eq!(space.commit, format!("{bare}{bare} "), "{lang} {key}{key}");
+            }
+        }
+        // Before a vowel a doubled consonant is still gemination (one letter), with the
+        // two-letter reading as an alternative.
+        e.reset();
+        let mut u = EditorUpdate::default();
+        for k in ["g", "g", "e"] {
+            u = e.on_key(KeyEvent::Char { text: k.into() });
+        }
+        assert_eq!(u.composing, "ገ", "{lang}");
+        assert!(u.candidates.iter().any(|c| c.text == "ግገ"), "{lang}");
+        // Owner words.
+        for (keys, want) in [("ggr ", "ግግር "), ("selam ", "ሰላም "), ("tegt'ami ", "ተግጣሚ ")]
+        {
+            e.reset();
+            let mut out = String::new();
+            for ch in keys.chars() {
+                let ev = if ch == ' ' {
+                    KeyEvent::Space
+                } else {
+                    KeyEvent::Char { text: ch.into() }
+                };
+                out.push_str(&e.on_key(ev).commit);
+            }
+            assert_eq!(out, want, "{lang} {keys}");
+        }
+    }
 }
 
 #[test]

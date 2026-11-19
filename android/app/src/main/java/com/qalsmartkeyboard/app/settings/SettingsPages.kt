@@ -35,7 +35,7 @@ import kotlin.math.roundToInt
 /** Applies a change to the stored settings (the host launches `SettingsRepository.update`). */
 typealias SettingsUpdate = ((KeyboardSettings) -> KeyboardSettings) -> Unit
 
-/** "Preferences": key feedback, key height, clipboard history and numerals. */
+/** "Preferences": key feedback, key height, clipboard history, text correction (ADR 0039) and numerals. */
 @Composable
 fun PreferencesPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: SettingsUpdate, modifier: Modifier = Modifier) {
     SettingsScaffold(stringResource(R.string.settings_preferences), onBack, modifier) {
@@ -60,6 +60,27 @@ fun PreferencesPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: Se
             stringResource(R.string.settings_clipboard_history), settings.clipboardHistoryEnabled,
             { on -> onUpdate { it.copy(clipboardHistoryEnabled = on) } },
             summary = stringResource(R.string.settings_clipboard_history_summary),
+        )
+        // ADR 0039: prediction and learning switches (per-language "Show suggestions" stay on the language pages).
+        SettingsHeader(stringResource(R.string.settings_prefs_text))
+        SettingsSwitchRow(
+            stringResource(R.string.settings_next_word), settings.nextWordPredictions,
+            { on -> onUpdate { it.copy(nextWordPredictions = on) } },
+            summary = stringResource(R.string.settings_next_word_summary),
+        )
+        SettingsSwitchRow(
+            stringResource(R.string.settings_autocorrect_en), settings.autocorrectEnglish,
+            { on -> onUpdate { it.copy(autocorrectEnglish = on) } },
+            summary = stringResource(R.string.settings_autocorrect_summary),
+        )
+        SettingsSwitchRow(
+            stringResource(R.string.settings_autocorrect_om), settings.autocorrectOromo,
+            { on -> onUpdate { it.copy(autocorrectOromo = on) } },
+        )
+        SettingsSwitchRow(
+            stringResource(R.string.settings_learn_words), settings.learnWords,
+            { on -> onUpdate { it.copy(learnWords = on) } },
+            summary = stringResource(R.string.settings_learn_words_summary),
         )
         SettingsHeader(stringResource(R.string.settings_numerals_title))
         Column(Modifier.selectableGroup()) {

@@ -182,14 +182,38 @@ class CoreLayoutsTest {
         assertTrue(s.c.layout.rows.flatten().none { it.text == "፨" })
     }
 
-    @Test fun phoneticAmharicKeepsPunctuationAndNumeralsOnLongPress() {
+    @Test fun phoneticAmharicTapsEthiopicPunctuationAndKeepsNumeralsOnLongPress() {
         val s = session()
         s.mode(amPhonetic)
         assertEquals("፩", s.c.layout.rows.flatten().first { it.text == "1" }.popup.first().text)
+        // Product owner 2026-11-19: like the Fidel grid, a tap types ። / ፣ and the ASCII mark leads the popup.
+        val period = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "።" }
+        val comma = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "፣" }
+        assertEquals(".", period.popup.first().text)
+        assertEquals(",", comma.popup.first().text)
         s.type("sela")
-        s.pick(s.c.layout.rows.last().first { it.text == "." }.popup.first { it.text == "።" })
-        assertEquals("ሰላ።", s.ed.text.toString())
+        s.tap(comma)
+        s.type("selam")
+        s.tap(period)
+        assertEquals("ሰላ፣ሰላም።", s.ed.text.toString())
         assertEquals("", s.ed.composing)
+        // The ASCII marks stay one long-press away.
+        s.pick(period.popup.first())
+        s.pick(comma.popup.first())
+        assertEquals("ሰላ፣ሰላም።.,", s.ed.text.toString())
+    }
+
+    @Test fun asciiPunctuationKeysInEveryNonGeezLayout() {
+        val s = session()
+        for (m in listOf(TypingMode("am", LayoutKind.ABC), TypingMode("ti", LayoutKind.ABC), TypingMode("om", LayoutKind.QUBEE), en)) {
+            s.mode(m)
+            val bottom = s.c.layout.rows.last()
+            assertTrue("$m", bottom.any { it.kind == KeyKind.CHAR && it.text == "." })
+            assertTrue("$m", bottom.any { it.kind == KeyKind.CHAR && it.text == "," })
+            assertTrue("$m", bottom.none { it.text == "።" || it.text == "፣" })
+        }
+        s.mode(TypingMode("ti", LayoutKind.PHONETIC))
+        assertTrue(s.c.layout.rows.last().any { it.kind == KeyKind.CHAR && it.text == "።" })
     }
 
     // ------------------------------------------------------------------ switching with the real core

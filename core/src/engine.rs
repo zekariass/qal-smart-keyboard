@@ -8,7 +8,11 @@ use crate::pack::{
     self, KeyRing, PackInfo, PackLimits, PackPlatform, PackRejectReason, ResourceType, TrustedKey,
     VerifiedPack,
 };
-use crate::ranker::{RankKind, Ranker};
+use crate::predict::{
+    attaches_to_word, ends_sentence_part, graphemes, is_word_apostrophe, PredictionOptions,
+    WordContext, WordScript,
+};
+use crate::ranker::{AutocorrectAction, RankKind, Ranker};
 use crate::translit::{PhoneticSession, Profile, ProfileStatus};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -89,6 +93,10 @@ pub struct EditorUpdate {
     /// code units; one Fidel syllable is one cluster).
     pub delete_before: u32,
     pub candidates: Vec<Candidate>,
+    /// Index in `candidates` of the correction a Space (or sentence punctuation) will apply
+    /// now (ADR 0039: English and Afaan Oromoo with autocorrection on). The host marks it on the
+    /// strip; `None` when the word will be committed as typed.
+    pub autocorrect_index: Option<u32>,
 }
 
 /// Review status of a transliteration profile. `Draft` profiles have not been approved by the
@@ -122,9 +130,72 @@ struct State {
     direct: Option<DirectFidel>,
     /// Active phonetic session; `Some` exactly when `mode` is `PhoneticLatin`.
     phonetic: Option<PhoneticSession>,
-    /// Qubee: the strip the host shows for the composed word (index 0 = the word as typed), so
-    /// `select_candidate` resolves exactly what the host shows. Empty while nothing is composed.
+    /// The strip the engine shows outside a phonetic composition (word modes: index 0 = the
+    /// word as typed; next-word predictions; Fidel completions), so `select_candidate` resolves
+    /// exactly what the host shows. What it holds is `strip`.
     word_candidates: Vec<Candidate>,
+    strip: Strip,
+    /// The host's prediction choices for the current field (ADR 0039).
+    options: PredictionOptions,
+    /// After an autocorrection: what an immediate Backspace restores.
+    undo: Option<Undo>,
+    /// The last commit ended with the space added behind a picked suggestion: a Space now adds
+    /// none, and attaching punctuation replaces it.
+    auto_space: bool,
+    /// A word the user restored after an autocorrection: it is not corrected again.
+    keep_typed: Option<String>,
+    /// The composed word began at a word boundary (eligible for autocorrection).
+    word_start_ok: bool,
+    /// The text after the cursor starts with whitespace (`set_cursor_context`): a picked
+    /// suggestion then gets no space of its own.
+    space_after: bool,
+}
+
+/// What `State::word_candidates` holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Strip {
+    None,
+    /// Word modes: the composed word (index 0) and dictionary words for it.
+    Word,
+    /// Next-word predictions while nothing composes.
+    Predictions,
+    /// Direct Fidel: completions of the word typed so far (committed letters plus the pending
+    /// syllable).
+    Fidel,
+}
+
+/// An applied autocorrection, undone by a Backspace right after it.
+#[derive(Debug, Clone)]
+struct Undo {
+    typed: String,
+    /// Grapheme clusters to delete: the correction plus what was committed after it.
+    remove: u32,
+    /// The word context before the correction was committed (restored with the typed word).
+    previous: Option<String>,
+    sentence_start: bool,
+    last: Option<char>,
+}
+
+impl State {
+    /// Clears every prediction state (mode switch, reset, cursor move).
+    fn clear_prediction(&mut self) {
+        self.context.clear();
+        self.composing.clear();
+        self.word_candidates.clear();
+        self.strip = Strip::None;
+        self.undo = None;
+        self.auto_space = false;
+        self.keep_typed = None;
+        self.word_start_ok = false;
+        self.space_after = false;
+    }
+
+    /// Nothing composes in any mode.
+    fn idle(&self) -> bool {
+        self.composing.is_empty()
+            && self.phonetic.as_ref().is_none_or(PhoneticSession::is_idle)
+            && self.direct.as_ref().is_none_or(DirectFidel::is_idle)
+    }
 }
 
 /// A language's user overlay as exported by the host: ("QUD1" dictionary, "QBG1" bigrams).
@@ -132,63 +203,6 @@ type UserData = (Vec<u8>, Vec<u8>);
 
 /// Rollback-protection slot: one loaded pack per (language, resource type, platform).
 type PackSlot = (String, ResourceType, PackPlatform);
-
-/// Longest word kept as ranking context (the ranker's typed-word bound).
-const MAX_CONTEXT_CHARS: usize = 48;
-
-/// The last committed word, kept in memory only for bigram ranking: never logged, never
-/// persisted, cleared by `reset`, `set_input_mode` and any deletion.
-#[derive(Debug, Default)]
-struct WordContext {
-    /// The last complete word before the cursor (`None` at the start or after a sentence end).
-    previous: Option<String>,
-    /// Letters committed since the last word boundary.
-    current: String,
-}
-
-impl WordContext {
-    fn clear(&mut self) {
-        self.previous = None;
-        self.current.clear();
-    }
-
-    /// Follows the text the host commits. Whitespace and the Ethiopic wordspace end a word;
-    /// any other punctuation ends the context (a new sentence has no useful previous word).
-    fn observe(&mut self, update: &EditorUpdate) {
-        if update.delete_before > 0 {
-            self.clear();
-        }
-        for c in update.commit.chars() {
-            // An apostrophe inside a Latin word (the Afaan Oromoo hudhaa in `har'a`, English
-            // `don't`) belongs to the word; a trailing one (a closing quote) is dropped below.
-            if c.is_alphanumeric()
-                || is_combining_mark(c)
-                || (is_word_apostrophe(c) && !self.current.is_empty())
-            {
-                if self.current.chars().count() < MAX_CONTEXT_CHARS {
-                    self.current.push(c);
-                }
-            } else if c.is_whitespace() || c == '\u{1361}' {
-                let word = self.current.trim_end_matches(is_word_apostrophe);
-                if !word.is_empty() {
-                    self.previous = Some(word.to_string());
-                }
-                self.current.clear();
-            } else {
-                self.clear();
-            }
-        }
-    }
-}
-
-/// The apostrophe characters a Latin word may contain (U+0027, U+2019, U+02BC; `crate::latin`).
-fn is_word_apostrophe(c: char) -> bool {
-    matches!(c, '\'' | '\u{2019}' | '\u{02BC}')
-}
-
-fn is_combining_mark(c: char) -> bool {
-    matches!(c, '\u{0300}'..='\u{036F}' | '\u{135D}'..='\u{135F}')
-}
 
 /// Ethiopic blocks (SD 7.2). Lexicon candidates are only looked up for a composition that is
 /// entirely Ge'ez, so protected Latin tokens and pending punctuation get none.
@@ -202,21 +216,23 @@ fn is_ethiopic(c: char) -> bool {
     )
 }
 
-/// Longest word Qubee composes; a longer run of letters goes on as plain typed text.
+/// Longest word a word mode composes; a longer run of letters goes on as plain typed text.
 const MAX_WORD_CHARS: usize = 48;
 
-/// One key in Qubee with word suggestions (Afaan Oromoo, used once the `om` dictionary is
-/// loaded). The word being typed is held as composing text so that the host can replace it with
-/// a suggestion the user picks; everything is still committed exactly as typed (SD 7.1: no
-/// transformation, no auto-capitalisation, nothing applied automatically). Letters compose; an
-/// apostrophe (hudhaa) composes right after a letter (`ba'a`, SD 7.3); any other key ends the
-/// word and commits it together with that key.
-fn qubee_key(s: &mut State, o: &Orthography, event: KeyEvent) -> EditorUpdate {
+/// One key in a word mode (ADR 0039): Qubee (Afaan Oromoo) and English once their dictionary is
+/// loaded, Arabic once the user has learned or added Arabic words. The word being typed is held as
+/// composing text so that the host can replace it with a suggestion the user picks; it is
+/// committed exactly as typed (SD 7.1: no transformation, no auto-capitalisation) unless the
+/// caller applied an autocorrection to `s.composing` first. Letters compose; an apostrophe
+/// (hudhaa, `don't`) composes right after a letter (`ba'a`, SD 7.3); a key of several letters
+/// (Arabic lam-alef) composes as a whole; any other key ends the word and commits it together
+/// with that key. Arabic text is sanitised and NFC like the Arabic passthrough (ADR 0034).
+fn word_key(s: &mut State, script: &WordScript<'_>, event: KeyEvent) -> EditorUpdate {
     fn finish(s: &mut State, tail: &str) -> EditorUpdate {
         let mut commit = std::mem::take(&mut s.composing);
         commit.push_str(tail);
         EditorUpdate {
-            commit,
+            commit: crate::composer::nfc_commit(commit),
             ..Default::default()
         }
     }
@@ -226,20 +242,33 @@ fn qubee_key(s: &mut State, o: &Orthography, event: KeyEvent) -> EditorUpdate {
             ..Default::default()
         }
     }
+    let arabic = matches!(script, WordScript::Arabic);
     match event {
         KeyEvent::Char { text } => {
-            let mut chars = text.chars();
-            let single = match (chars.next(), chars.next()) {
-                (Some(c), None) => Some(c),
-                _ => None,
+            let text = if arabic {
+                match sanitize(&text) {
+                    Some(t) => t,
+                    None => return composing(s),
+                }
+            } else {
+                text
             };
-            let after_letter = s.composing.chars().last().is_some_and(|p| o.is_letter(p));
-            let composes = single.is_some_and(|c| {
-                (o.is_letter(c) || (o.is_apostrophe(c) && after_letter))
-                    && s.composing.chars().count() < MAX_WORD_CHARS
-            });
+            let mut after_letter = s
+                .composing
+                .chars()
+                .last()
+                .is_some_and(|p| script.is_letter(p));
+            let mut composes = !text.is_empty()
+                && s.composing.chars().count() + text.chars().count() <= MAX_WORD_CHARS;
+            for c in text.chars() {
+                composes &= script.is_letter(c) || (script.is_apostrophe(c) && after_letter);
+                after_letter = script.is_letter(c);
+            }
             if composes {
                 s.composing.push_str(&text);
+                if arabic {
+                    s.composing = crate::composer::nfc_commit(std::mem::take(&mut s.composing));
+                }
                 composing(s)
             } else {
                 finish(s, &text)
@@ -263,49 +292,118 @@ fn qubee_key(s: &mut State, o: &Orthography, event: KeyEvent) -> EditorUpdate {
     }
 }
 
-/// Qubee: commits the strip entry `index` in place of the composed word. Out of range changes
-/// nothing (the composition and strip stay).
-fn qubee_select(s: &mut State, index: usize) -> EditorUpdate {
-    let Some(text) = s.word_candidates.get(index).map(|c| c.text.clone()) else {
-        return EditorUpdate {
-            composing: s.composing.clone(),
-            candidates: s.word_candidates.clone(),
-            ..Default::default()
-        };
-    };
-    s.composing.clear();
-    s.word_candidates.clear();
-    let update = EditorUpdate {
+/// Abc, English and Qubee without a dictionary, and Arabic without learned words, are plain
+/// passthrough (SD 7.1): typed text is committed exactly as received, never transformed (no
+/// auto-capitalisation, no apostrophe rewriting). After commit, Backspace deletes one grapheme
+/// cluster, so a digraph such as `dh` takes two presses (the host's cursor view). Arabic
+/// (ADR 0034) is sanitised and NFC like every script-native mode: a host that sends alef +
+/// combining hamza gets the precomposed letter, and control characters are never committed. Text
+/// is in logical order; the editor's bidi algorithm shows it right to left.
+fn passthrough(s: &mut State, event: KeyEvent) -> EditorUpdate {
+    let commit = |text: String| EditorUpdate {
         commit: text,
         ..Default::default()
     };
-    s.context.observe(&update);
-    update
+    match event {
+        // Two-key Fidel events only mean something in DirectFidel.
+        KeyEvent::FidelConsonant { .. } | KeyEvent::FidelVowel { .. } | KeyEvent::Commit => {
+            EditorUpdate::default()
+        }
+        KeyEvent::Char { text } if s.mode == InputMode::Arabic => {
+            commit(sanitize(&text).unwrap_or_default())
+        }
+        KeyEvent::Char { text } => commit(text),
+        KeyEvent::Space => commit(" ".to_string()),
+        KeyEvent::Enter => commit("\n".to_string()),
+        KeyEvent::Backspace => {
+            if s.composing.pop().is_some() {
+                EditorUpdate {
+                    composing: s.composing.clone(),
+                    ..Default::default()
+                }
+            } else {
+                EditorUpdate {
+                    delete_before: 1,
+                    ..Default::default()
+                }
+            }
+        }
+    }
+}
+
+/// The update ended a word: nothing composes and the last committed character is whitespace or
+/// the Ethiopic wordspace.
+fn ends_at_word_boundary(update: &EditorUpdate) -> bool {
+    update.composing.is_empty()
+        && update
+            .commit
+            .chars()
+            .last()
+            .is_some_and(|c| c.is_whitespace() || c == '\u{1361}')
 }
 
 /// Dictionary-backed ranking for one language: built from its `DICTIONARY` pack plus, when
-/// loaded, its `FREQUENCY_LIST` (bigram) pack.
+/// loaded, its `FREQUENCY_LIST` (bigram) pack. Arabic (no licensed dictionary, N10) gets a model
+/// with an empty base lexicon holding only the user's own words and word pairs (ADR 0039).
 struct LangModel {
-    /// The dictionary pack the lexicon was parsed from (reused when only the bigrams change).
-    /// Not necessarily the active pack: an active dictionary that does not parse leaves the
-    /// last good one in service.
-    dictionary: Arc<VerifiedPack>,
+    /// The dictionary pack the lexicon was parsed from (reused when only the bigrams change);
+    /// `None` for a user-only model. Not necessarily the active pack: an active dictionary that
+    /// does not parse leaves the last good one in service.
+    dictionary: Option<Arc<VerifiedPack>>,
     /// The bigram pack the ranker was loaded from, if any (same last-good rule).
     bigrams: Option<Arc<VerifiedPack>>,
     lexicon: Arc<Lexicon>,
     ranker: Arc<Ranker>,
 }
 
+/// Languages without a shippable dictionary whose model holds only the user's words (N10).
+const USER_ONLY_LANGUAGES: [&str; 1] = ["ar"];
+
+/// Latin-script languages whose lexicons guard each other against autocorrection (a word valid
+/// in one is never "corrected" while typing the other).
+const LATIN_LANGUAGES: [&str; 2] = ["en", "om"];
+
 /// Slots of the strip kept for dictionary completions when the lexicon offers any (ADR 0004 U6).
 const RESERVED_COMPLETION_SLOTS: usize = 2;
 
-/// What a key event needs to look up lexicon candidates once the state lock is released.
+/// What an update needs to look up candidates once the state lock is released.
 struct CompletionRequest {
     language: String,
     previous: Option<String>,
     generation: u64,
-    /// The composition's transliteration alternatives (after index 0), in C1.4 order.
-    homophones: Vec<String>,
+    kind: RequestKind,
+}
+
+enum RequestKind {
+    /// Phonetic composition: the transliteration alternatives (after index 0), in C1.4 order.
+    Phonetic { homophones: Vec<String> },
+    /// Word modes: dictionary words for the composed word; `autocorrect` when the word may be
+    /// corrected (the strip marks the correction).
+    Word {
+        script: WordKind,
+        autocorrect: bool,
+        sentence_start: bool,
+    },
+    /// Direct Fidel: completions of the word typed so far.
+    Fidel { key: String },
+    /// Next-word predictions after `previous`.
+    Predict,
+}
+
+/// Which word script a request uses (the orthography lives in the engine).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WordKind {
+    Oromo,
+    English,
+    Arabic,
+}
+
+/// Which follow-up an update gets.
+enum Follow {
+    None,
+    Phonetic,
+    Word(WordKind),
+    Fidel,
 }
 
 /// The language engine. Internally synchronised, so it is `Send + Sync`.
@@ -334,6 +432,8 @@ pub struct KeyboardEngine {
     config: EngineConfig,
     /// The Qubee orthography (`crate::latin`): which characters compose an Afaan Oromoo word.
     qubee: Option<Orthography>,
+    /// The English orthography: which characters compose an English word.
+    english: Option<Orthography>,
 }
 
 /// Typing languages the engine accepts. `ar` (ADR 0034) has its own passthrough mode and no packs.
@@ -358,6 +458,13 @@ impl KeyboardEngine {
                 direct: None,
                 phonetic: None,
                 word_candidates: Vec::new(),
+                strip: Strip::None,
+                options: PredictionOptions::default(),
+                undo: None,
+                auto_space: false,
+                keep_typed: None,
+                word_start_ok: false,
+                space_after: false,
             }),
             packs: Mutex::new(HashMap::new()),
             layouts: Mutex::new(HashMap::new()),
@@ -369,6 +476,7 @@ impl KeyboardEngine {
             pack_limits,
             config,
             qubee: Orthography::builtin("om"),
+            english: Orthography::builtin("en"),
         }))
     }
 
@@ -522,12 +630,64 @@ impl KeyboardEngine {
         s.mode = mode;
         s.language = language_code;
         s.generation = s.generation.wrapping_add(1);
-        s.context.clear();
-        s.composing.clear();
-        s.word_candidates.clear();
+        s.clear_prediction();
         s.direct = direct;
         s.phonetic = phonetic;
         Ok(())
+    }
+
+    /// The host's prediction choices for the current field (ADR 0039). Kept across mode
+    /// switches; set again for every field. Turning an option off takes effect at the next key.
+    pub fn set_prediction_options(&self, options: PredictionOptions) {
+        let mut s = self.lock();
+        s.generation = s.generation.wrapping_add(1);
+        s.options = options;
+        if !options.autocorrect {
+            s.undo = None;
+        }
+    }
+
+    /// Tells the engine the text around the cursor after it moved for a reason the engine did
+    /// not see (field start, a tap in the text; call `reset` first): `before` is the text before
+    /// the cursor (its tail is enough; at most the last 96 characters are read), `after` the text
+    /// after it (only its first character is read). The engine rebuilds its word context from
+    /// it (previous word, sentence start, Fidel word prefix) and returns the strip for the new
+    /// position: next-word predictions after a word, Fidel completions inside an Ethiopic word.
+    /// Ignored while something composes. Nothing is kept beyond the context (N2).
+    pub fn set_cursor_context(&self, before: String, after: String) -> EditorUpdate {
+        let mut s = self.lock();
+        s.generation = s.generation.wrapping_add(1);
+        if !s.idle() {
+            return EditorUpdate::default();
+        }
+        s.context = WordContext::from_text(&before);
+        s.space_after = after.chars().next().is_some_and(char::is_whitespace);
+        s.undo = None;
+        s.auto_space = false;
+        s.keep_typed = None;
+        s.word_candidates.clear();
+        s.strip = Strip::None;
+        let follow = match s.mode {
+            InputMode::DirectFidel => Follow::Fidel,
+            InputMode::PhoneticLatin => Follow::Phonetic,
+            InputMode::Qubee => Follow::Word(WordKind::Oromo),
+            InputMode::English => Follow::Word(WordKind::English),
+            InputMode::Arabic => Follow::Word(WordKind::Arabic),
+            InputMode::Abc => Follow::None,
+        };
+        let mut update = EditorUpdate::default();
+        // Predictions need a word boundary right before the cursor.
+        let boundary = before
+            .chars()
+            .last()
+            .is_some_and(|c| c.is_whitespace() || c == '\u{1361}');
+        let request = if boundary || matches!(follow, Follow::Fidel) {
+            self.followup(&mut s, &mut update, &follow, boundary)
+        } else {
+            None
+        };
+        drop(s);
+        self.complete(update, request)
     }
 
     /// Identity and review status of the phonetic profile loaded for `language_code`, so the
@@ -572,113 +732,108 @@ impl KeyboardEngine {
     pub fn on_key(&self, event: KeyEvent) -> EditorUpdate {
         let mut s = self.lock();
         s.generation = s.generation.wrapping_add(1);
-        if s.mode == InputMode::DirectFidel {
-            return s
-                .direct
-                .as_mut()
-                .map(|d| d.on_key(event))
-                .unwrap_or_default();
-        }
-        if s.mode == InputMode::PhoneticLatin {
-            let update = s
-                .phonetic
-                .as_mut()
-                .map(|p| p.on_key(event))
-                .unwrap_or_default();
-            let request = Self::phonetic_followup(&mut s, &update);
-            drop(s);
-            return self.with_lexicon_candidates(update, request);
-        }
-        if s.mode == InputMode::Qubee {
-            // A word starts composing only when the language has a dictionary to suggest from
-            // (lock order: state, then models); without one Qubee stays plain passthrough.
-            let suggests = !s.composing.is_empty() || self.lock_models().contains_key(&s.language);
-            if suggests {
-                if let Some(o) = &self.qubee {
-                    let mut update = qubee_key(&mut s, o, event);
-                    let request = Self::word_followup(&mut s, &mut update);
-                    drop(s);
-                    return self.with_word_candidates(update, request);
-                }
+        // ADR 0039: a Backspace right after an autocorrection restores the typed word.
+        if let Some(u) = s.undo.take() {
+            if event == KeyEvent::Backspace && s.idle() {
+                return self.undo_correction(s, u);
             }
         }
-        // Abc, English and Qubee without a dictionary are plain passthrough (SD 7.1): typed text is committed exactly
-        // as received, never transformed (no auto-capitalisation, no apostrophe rewriting). The
-        // Qubee apostrophe (hudhaa) is an ordinary character here; word segmentation around it
-        // lives in `crate::latin`. After commit, Backspace deletes one grapheme cluster, so a
-        // digraph such as `dh` takes two presses (the host's cursor view).
-        // Arabic (ADR 0034) is passthrough too, but its text is sanitised and NFC like every
-        // script-native mode: a host that sends alef + combining hamza gets the precomposed
-        // letter, and control characters are never committed. Text is in logical order; the
-        // editor's bidi algorithm shows it right to left.
-        debug_assert!(matches!(
-            s.mode,
-            InputMode::Abc | InputMode::English | InputMode::Qubee | InputMode::Arabic
-        ));
-        match event {
-            // Two-key Fidel events only mean something in DirectFidel.
-            KeyEvent::FidelConsonant { .. } | KeyEvent::FidelVowel { .. } => {
-                EditorUpdate::default()
-            }
-            KeyEvent::Char { text } if s.mode == InputMode::Arabic => EditorUpdate {
-                commit: sanitize(&text).unwrap_or_default(),
-                ..Default::default()
-            },
-            KeyEvent::Char { text } => EditorUpdate {
-                commit: text,
-                ..Default::default()
-            },
-            KeyEvent::Space => EditorUpdate {
-                commit: " ".to_string(),
-                ..Default::default()
-            },
-            KeyEvent::Enter => EditorUpdate {
-                commit: "\n".to_string(),
-                ..Default::default()
-            },
-            KeyEvent::Backspace => {
-                if s.composing.pop().is_some() {
-                    EditorUpdate {
-                        composing: s.composing.clone(),
+        // After the space added behind a picked suggestion: a Space adds no second one, and
+        // punctuation that attaches to the word replaces it (`word ` + `,` gives `word,`).
+        let mut drop_space = false;
+        if std::mem::take(&mut s.auto_space) && s.idle() {
+            match &event {
+                KeyEvent::Space => {
+                    return EditorUpdate {
+                        candidates: s.word_candidates.clone(),
                         ..Default::default()
-                    }
-                } else {
-                    EditorUpdate {
-                        delete_before: 1,
-                        ..Default::default()
-                    }
+                    };
                 }
+                KeyEvent::Char { text } if attaches_to_word(text) => drop_space = true,
+                _ => {}
             }
-            KeyEvent::Commit => EditorUpdate::default(),
         }
+        let (mut update, follow) = self.dispatch(&mut s, event);
+        if drop_space {
+            update.delete_before = update.delete_before.saturating_add(1);
+        }
+        s.context.observe(&update);
+        let boundary = ends_at_word_boundary(&update);
+        let request = self.followup(&mut s, &mut update, &follow, boundary);
+        drop(s);
+        self.complete(update, request)
     }
 
-    /// Select a candidate by index from the last update's `candidates`: the composing text is
-    /// replaced by it and committed (index 0 is the default composition; transliteration
-    /// alternatives and lexicon candidates follow; in Qubee index 0 is the word as typed, then
-    /// dictionary words). Other modes offer no candidates, and an index that is out of range
-    /// changes nothing.
+    /// Select a candidate by index from the last update's `candidates`. With a composition its
+    /// text is replaced by the candidate (phonetic: index 0 is the default composition,
+    /// transliteration alternatives and dictionary words follow; word modes: index 0 is the word
+    /// as typed); a next-word prediction is inserted; a Fidel completion replaces the letters of
+    /// the word typed so far. A space follows the inserted word (ADR 0039) unless the text after
+    /// the cursor already starts with one (`set_cursor_context`); a Space typed right after it
+    /// adds no second space, and attaching punctuation replaces it. An index that is out of
+    /// range changes nothing.
     pub fn select_candidate(&self, index: u32) -> EditorUpdate {
         let mut s = self.lock();
         s.generation = s.generation.wrapping_add(1);
-        if s.mode == InputMode::Qubee {
-            return qubee_select(&mut s, usize::try_from(index).unwrap_or(usize::MAX));
-        }
-        let Some(p) = s.phonetic.as_mut() else {
-            return EditorUpdate::default();
+        s.undo = None;
+        let i = usize::try_from(index).unwrap_or(usize::MAX);
+        let space = if s.space_after { "" } else { " " };
+        let follow = Self::follow_of(s.mode);
+        let picked = (s.strip != Strip::None)
+            .then(|| s.word_candidates.get(i).map(|c| c.text.clone()))
+            .flatten();
+        let mut update = match (s.strip, picked) {
+            (Strip::None, _) => {
+                // A phonetic composition's strip (the session resolves the index).
+                let Some(p) = s.phonetic.as_mut().filter(|p| !p.is_idle()) else {
+                    return EditorUpdate::default();
+                };
+                let mut u = p.select(i);
+                if !u.commit.is_empty() {
+                    u.commit.push_str(space);
+                }
+                u
+            }
+            (_, None) => {
+                // Out of range: the composition and the strip stay as they are.
+                return EditorUpdate {
+                    composing: Self::shown(&s),
+                    candidates: s.word_candidates.clone(),
+                    ..Default::default()
+                };
+            }
+            (strip, Some(text)) => {
+                let mut u = EditorUpdate {
+                    commit: format!("{text}{space}"),
+                    ..Default::default()
+                };
+                match strip {
+                    Strip::Fidel => {
+                        // The committed letters of the word go; the pending syllable is replaced.
+                        u.delete_before = graphemes(&s.context.current);
+                        if let Some(d) = s.direct.as_mut() {
+                            d.reset();
+                        }
+                    }
+                    Strip::Word => s.composing.clear(),
+                    Strip::Predictions | Strip::None => {}
+                }
+                u
+            }
         };
-        let update = p.select(usize::try_from(index).unwrap_or(usize::MAX));
-        let request = Self::phonetic_followup(&mut s, &update);
+        s.auto_space = !space.is_empty() && update.commit.ends_with(' ');
+        s.keep_typed = None;
+        s.context.observe(&update);
+        let boundary = ends_at_word_boundary(&update);
+        let request = self.followup(&mut s, &mut update, &follow, boundary);
         drop(s);
-        self.with_lexicon_candidates(update, request)
+        self.complete(update, request)
     }
 
     pub fn reset(&self) -> EditorUpdate {
         let mut s = self.lock();
         s.generation = s.generation.wrapping_add(1);
-        s.context.clear();
-        s.composing.clear();
-        s.word_candidates.clear();
+        s.clear_prediction();
         if let Some(d) = s.direct.as_mut() {
             d.reset();
         }
@@ -713,7 +868,11 @@ impl KeyboardEngine {
                 .map_err(|_| Self::bad_user_data())?;
         }
         let _build = self.lock_model_build();
-        let model = self.lock_models().get(&language_code).cloned();
+        let mut model = self.lock_models().get(&language_code).cloned();
+        if model.is_none() && !(dictionary.is_empty() && bigrams.is_empty()) {
+            // Arabic: the user's own words are the whole model (ADR 0039).
+            model = self.user_only_model(&language_code);
+        }
         match model {
             Some(m) => Self::apply_user_data(&m, &dictionary, &bigrams),
             None => {
@@ -725,10 +884,10 @@ impl KeyboardEngine {
     }
 
     /// Adds `word` to the user dictionary of `language_code` (explicit "add to dictionary").
-    /// False if refused (invalid word, full, or no dictionary loaded for the language).
+    /// False if refused (invalid word, full, or no dictionary loaded for the language; Arabic,
+    /// which has no shippable dictionary, gets a model of the user's own words, ADR 0039).
     pub fn add_user_word(&self, language_code: String, word: String) -> bool {
-        self.lock_models()
-            .get(&language_code)
+        self.model_or_user_only(&language_code)
             .is_some_and(|m| m.lexicon.add_user_word(word))
     }
 
@@ -741,7 +900,7 @@ impl KeyboardEngine {
         word: String,
         previous: Option<String>,
     ) -> bool {
-        let Some(m) = self.lock_models().get(&language_code).cloned() else {
+        let Some(m) = self.model_or_user_only(&language_code) else {
             return false;
         };
         if !m.lexicon.learn_word(word.clone()) {
@@ -907,13 +1066,19 @@ impl KeyboardEngine {
         let current = self.lock_models().get(language_code).cloned();
         let parsed = match (fresh, &current) {
             (Some((p, l)), _) if Arc::ptr_eq(&p, &dictionary) => Some(l),
-            (_, Some(m)) if Arc::ptr_eq(&m.dictionary, &dictionary) => Some(Arc::clone(&m.lexicon)),
+            (_, Some(m))
+                if m.dictionary
+                    .as_ref()
+                    .is_some_and(|d| Arc::ptr_eq(d, &dictionary)) =>
+            {
+                Some(Arc::clone(&m.lexicon))
+            }
             _ => Lexicon::from_bytes(dictionary.artifact().to_vec()).ok(),
         };
         // An active dictionary that does not parse never drops the working model.
         let (dictionary, lexicon) = match (parsed, &current) {
-            (Some(l), _) => (dictionary, l),
-            (None, Some(m)) => (Arc::clone(&m.dictionary), Arc::clone(&m.lexicon)),
+            (Some(l), _) => (Some(dictionary), l),
+            (None, Some(m)) => (m.dictionary.clone(), Arc::clone(&m.lexicon)),
             (None, None) => return,
         };
         let ranker = Ranker::new(Arc::clone(&lexicon));
@@ -953,77 +1118,351 @@ impl KeyboardEngine {
                 ranker,
             }),
         );
+        self.refresh_guards();
     }
 
-    /// After a phonetic update (state lock held): follows committed words for ranking context
-    /// and says whether lexicon candidates should be looked up for the new composition.
-    fn phonetic_followup(s: &mut State, update: &EditorUpdate) -> Option<CompletionRequest> {
-        s.context.observe(update);
-        let wants = !update.composing.is_empty() && update.composing.chars().all(is_ethiopic);
-        wants.then(|| CompletionRequest {
-            language: s.language.clone(),
-            previous: s.context.previous.clone(),
-            generation: s.generation,
-            homophones: s
-                .phonetic
-                .as_ref()
-                .map(|p| p.alternatives())
-                .unwrap_or_default(),
-        })
+    /// The Latin-script lexicons guard each other: a word valid in Afaan Oromoo is never
+    /// autocorrected while typing English, and the other way round (ranker harm guard).
+    fn refresh_guards(&self) {
+        let models = self.lock_models();
+        for lang in LATIN_LANGUAGES {
+            if let Some(m) = models.get(lang) {
+                let others: Vec<Arc<Lexicon>> = LATIN_LANGUAGES
+                    .iter()
+                    .filter(|l| **l != lang)
+                    .filter_map(|l| models.get(*l).map(|o| Arc::clone(&o.lexicon)))
+                    .collect();
+                m.ranker.set_guard_lexicons(others);
+            }
+        }
     }
 
-    /// After a Qubee update (state lock held): follows committed words for ranking context, puts
-    /// the word as typed at index 0 of the strip and says whether dictionary words should be
-    /// looked up for it.
-    fn word_followup(s: &mut State, update: &mut EditorUpdate) -> Option<CompletionRequest> {
-        s.context.observe(update);
-        s.word_candidates.clear();
-        if update.composing.is_empty() {
+    /// The model of `language_code`, creating the user-only model of a language without a
+    /// shippable dictionary (Arabic) on first use. Lock order: `models` only.
+    fn model_or_user_only(&self, language_code: &str) -> Option<Arc<LangModel>> {
+        if let Some(m) = self.lock_models().get(language_code).cloned() {
+            return Some(m);
+        }
+        self.user_only_model(language_code)
+    }
+
+    /// Creates (or returns) the user-only model of `language_code`; `None` for a language that
+    /// needs a dictionary pack.
+    fn user_only_model(&self, language_code: &str) -> Option<Arc<LangModel>> {
+        if !USER_ONLY_LANGUAGES.contains(&language_code) {
             return None;
         }
-        s.word_candidates.push(Candidate {
-            text: update.composing.clone(),
-            kind: CandidateKind::Transliteration,
+        let mut models = self.lock_models();
+        let m = models.entry(language_code.to_string()).or_insert_with(|| {
+            let lexicon = Lexicon::new_empty();
+            Arc::new(LangModel {
+                dictionary: None,
+                bigrams: None,
+                ranker: Ranker::new(Arc::clone(&lexicon)),
+                lexicon,
+            })
         });
-        update.candidates = s.word_candidates.clone();
-        Some(CompletionRequest {
-            language: s.language.clone(),
-            previous: s.context.previous.clone(),
-            generation: s.generation,
-            homophones: Vec::new(),
-        })
+        Some(Arc::clone(m))
     }
 
-    /// Qubee strip: the word as typed (index 0, kind `Transliteration`: the identity "rule"),
-    /// then completions and one-edit corrections from the language's lexicon + user overlay, in
-    /// the ranker's order, up to `max_candidates`. The ranker keeps the typed word's
-    /// capitalisation (`Akk` offers `Akkam`). Nothing is applied automatically (harm guard).
-    /// A word ending in an apostrophe (a closing quote, or a hudhaa still waiting for its vowel)
-    /// is not looked up. Ranking runs outside the state lock; if another call changed the state
-    /// meanwhile the strip stays the typed word alone.
-    fn with_word_candidates(
+    /// The follow-up a mode's updates get.
+    fn follow_of(mode: InputMode) -> Follow {
+        match mode {
+            InputMode::DirectFidel => Follow::Fidel,
+            InputMode::PhoneticLatin => Follow::Phonetic,
+            InputMode::Qubee => Follow::Word(WordKind::Oromo),
+            InputMode::English => Follow::Word(WordKind::English),
+            InputMode::Arabic => Follow::Word(WordKind::Arabic),
+            InputMode::Abc => Follow::None,
+        }
+    }
+
+    fn script(&self, kind: WordKind) -> Option<WordScript<'_>> {
+        match kind {
+            WordKind::Oromo => self.qubee.as_ref().map(WordScript::Latin),
+            WordKind::English => self.english.as_ref().map(WordScript::Latin),
+            WordKind::Arabic => Some(WordScript::Arabic),
+        }
+    }
+
+    /// What the host shows as composing text now.
+    fn shown(s: &State) -> String {
+        if let Some(d) = s.direct.as_ref() {
+            return d.shown_text();
+        }
+        if let Some(p) = s.phonetic.as_ref() {
+            return p.shown_text();
+        }
+        s.composing.clone()
+    }
+
+    /// Runs `event` through the mode's composer (state lock held).
+    fn dispatch(&self, s: &mut State, event: KeyEvent) -> (EditorUpdate, Follow) {
+        match s.mode {
+            InputMode::DirectFidel => (
+                s.direct
+                    .as_mut()
+                    .map(|d| d.on_key(event))
+                    .unwrap_or_default(),
+                Follow::Fidel,
+            ),
+            InputMode::PhoneticLatin => (
+                s.phonetic
+                    .as_mut()
+                    .map(|p| p.on_key(event))
+                    .unwrap_or_default(),
+                Follow::Phonetic,
+            ),
+            InputMode::Qubee | InputMode::English | InputMode::Arabic => {
+                let follow = Self::follow_of(s.mode);
+                let Follow::Word(kind) = follow else {
+                    return (passthrough(s, event), Follow::None);
+                };
+                // A word composes only when the language has a model to suggest from (lock
+                // order: state, then models); without one the mode stays plain passthrough.
+                let active =
+                    !s.composing.is_empty() || self.lock_models().contains_key(&s.language);
+                let Some(script) = self.script(kind).filter(|_| active) else {
+                    return (passthrough(s, event), Follow::None);
+                };
+                let was_empty = s.composing.is_empty();
+                let corrected = self.autocorrect_at_boundary(s, &event, kind);
+                let update = word_key(s, &script, event);
+                if was_empty && !s.composing.is_empty() {
+                    s.word_start_ok = s.context.at_word_boundary();
+                }
+                if s.composing.is_empty() {
+                    s.keep_typed = None;
+                }
+                if let Some(typed) = corrected {
+                    s.undo = Some(Undo {
+                        typed,
+                        remove: graphemes(&update.commit),
+                        previous: s.context.previous.clone(),
+                        sentence_start: s.context.sentence_start,
+                        last: s.context.last,
+                    });
+                }
+                (update, follow)
+            }
+            InputMode::Abc => (passthrough(s, event), Follow::None),
+        }
+    }
+
+    /// At a word boundary (Space, Enter, sentence punctuation) in English or Afaan Oromoo with
+    /// autocorrection on: replaces the composed word by a confident correction and returns the
+    /// typed word. The ranker's harm guard decides (never a known or user word, a word of the
+    /// other Latin language, a capitalised word mid-sentence, a word with digits or symbols);
+    /// a word glued to `@`, `/`, `.` or digits (an address, a number) is never corrected.
+    fn autocorrect_at_boundary(
         &self,
-        mut update: EditorUpdate,
-        request: Option<CompletionRequest>,
-    ) -> EditorUpdate {
+        s: &mut State,
+        event: &KeyEvent,
+        kind: WordKind,
+    ) -> Option<String> {
+        let latin = matches!(kind, WordKind::English | WordKind::Oromo);
+        let boundary = match event {
+            KeyEvent::Space | KeyEvent::Enter => true,
+            KeyEvent::Char { text } => ends_sentence_part(text),
+            _ => false,
+        };
+        if !latin
+            || !boundary
+            || !s.options.autocorrect
+            || !s.options.suggestions
+            || s.composing.is_empty()
+            || !s.word_start_ok
+            || s.keep_typed.as_deref() == Some(s.composing.as_str())
+        {
+            return None;
+        }
+        let model = self.lock_models().get(&s.language).cloned()?;
+        let key = self.script(kind)?.key(&s.composing);
+        let d = model
+            .ranker
+            .autocorrect(key, s.context.previous.clone(), s.context.sentence_start);
+        let replacement = d
+            .replacement
+            .filter(|r| d.action == AutocorrectAction::Apply && *r != s.composing)?;
+        Some(std::mem::replace(&mut s.composing, replacement))
+    }
+
+    /// Backspace right after an autocorrection: deletes the correction and what followed it and
+    /// composes the typed word again; it is not corrected a second time (ADR 0039).
+    fn undo_correction(&self, mut s: MutexGuard<'_, State>, u: Undo) -> EditorUpdate {
+        let follow = Self::follow_of(s.mode);
+        if !matches!(follow, Follow::Word(_)) {
+            return EditorUpdate::default();
+        }
+        s.composing.clone_from(&u.typed);
+        s.keep_typed = Some(u.typed.clone());
+        s.word_start_ok = true;
+        s.auto_space = false;
+        let mut update = EditorUpdate {
+            delete_before: u.remove,
+            composing: u.typed,
+            ..Default::default()
+        };
+        s.context.observe(&update);
+        s.context.previous = u.previous;
+        s.context.sentence_start = u.sentence_start;
+        s.context.last = u.last;
+        let request = self.followup(&mut s, &mut update, &follow, false);
+        drop(s);
+        self.complete(update, request)
+    }
+
+    /// After an update (state lock held, context already updated): sets up the strip the engine
+    /// owns and says which candidates to look up once the lock is released. `boundary`: the
+    /// update ended a word (next-word predictions may follow).
+    fn followup(
+        &self,
+        s: &mut State,
+        update: &mut EditorUpdate,
+        follow: &Follow,
+        boundary: bool,
+    ) -> Option<CompletionRequest> {
+        s.word_candidates.clear();
+        s.strip = Strip::None;
+        let request = |s: &State, kind| {
+            Some(CompletionRequest {
+                language: s.language.clone(),
+                previous: s.context.previous.clone(),
+                generation: s.generation,
+                kind,
+            })
+        };
+        let composing_empty = update.composing.is_empty();
+        let predict = |s: &State| {
+            let wants = boundary
+                && composing_empty
+                && s.options.next_word
+                && s.options.suggestions
+                && (s.context.previous.is_some() || s.context.sentence_start);
+            if wants {
+                request(s, RequestKind::Predict)
+            } else {
+                None
+            }
+        };
+        match follow {
+            Follow::None => None,
+            Follow::Phonetic => {
+                if composing_empty {
+                    return predict(s);
+                }
+                let wants = s.options.suggestions && update.composing.chars().all(is_ethiopic);
+                if !wants {
+                    return None;
+                }
+                let homophones = s
+                    .phonetic
+                    .as_ref()
+                    .map(PhoneticSession::alternatives)
+                    .unwrap_or_default();
+                request(s, RequestKind::Phonetic { homophones })
+            }
+            Follow::Word(kind) => {
+                if composing_empty {
+                    return predict(s);
+                }
+                s.word_candidates.push(Candidate {
+                    text: update.composing.clone(),
+                    kind: CandidateKind::Transliteration,
+                });
+                s.strip = Strip::Word;
+                update.candidates = s.word_candidates.clone();
+                if !s.options.suggestions {
+                    return None;
+                }
+                let autocorrect = s.options.autocorrect
+                    && matches!(kind, WordKind::English | WordKind::Oromo)
+                    && s.word_start_ok
+                    && s.keep_typed.as_deref() != Some(update.composing.as_str());
+                let sentence_start = s.context.sentence_start;
+                request(
+                    s,
+                    RequestKind::Word {
+                        script: *kind,
+                        autocorrect,
+                        sentence_start,
+                    },
+                )
+            }
+            Follow::Fidel => {
+                if !s.options.suggestions {
+                    return None;
+                }
+                let key = format!("{}{}", s.context.current, update.composing);
+                if !key.is_empty() && key.chars().all(is_ethiopic) {
+                    request(s, RequestKind::Fidel { key })
+                } else if composing_empty {
+                    predict(s)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    /// Looks up the candidates a follow-up asked for (outside the state lock) and attaches them
+    /// if nothing changed the state meanwhile, so `select_candidate` always matches the strip.
+    fn complete(&self, update: EditorUpdate, request: Option<CompletionRequest>) -> EditorUpdate {
         let Some(req) = request else {
             return update;
         };
         let max = usize::try_from(self.config.max_candidates).unwrap_or(usize::MAX);
+        let Some(model) = self.lock_models().get(&req.language).cloned() else {
+            return update;
+        };
+        match &req.kind {
+            RequestKind::Phonetic { homophones } => {
+                self.with_lexicon_candidates(update, &req, &model, homophones.clone(), max)
+            }
+            RequestKind::Word {
+                script,
+                autocorrect,
+                sentence_start,
+            } => self.with_word_candidates(
+                update,
+                &req,
+                &model,
+                (*script, *autocorrect, *sentence_start),
+                max,
+            ),
+            RequestKind::Fidel { key } => {
+                self.with_fidel_candidates(update, &req, &model, key, max)
+            }
+            RequestKind::Predict => self.with_predictions(update, &req, &model, max),
+        }
+    }
+
+    /// Word modes' strip: the word as typed (index 0, kind `Transliteration`: the identity
+    /// "rule"), then completions and one-edit corrections from the language's lexicon + user
+    /// overlay, in the ranker's order (frequency, the previous word's bigrams, edit cost), up to
+    /// `max_candidates`. The ranker keeps the typed word's capitalisation (`Akk` offers `Akkam`).
+    /// When autocorrection may apply, the correction a Space would apply is moved to index 1 and
+    /// reported as `autocorrect_index`. A word ending in an apostrophe (a closing quote, or a
+    /// hudhaa still waiting for its vowel) is not looked up.
+    fn with_word_candidates(
+        &self,
+        mut update: EditorUpdate,
+        req: &CompletionRequest,
+        model: &LangModel,
+        (kind, autocorrect, sentence_start): (WordKind, bool, bool),
+        max: usize,
+    ) -> EditorUpdate {
         let typed = update.composing.clone();
         if max <= 1 || typed.ends_with(is_word_apostrophe) {
             return update;
         }
-        let Some(model) = self.lock_models().get(&req.language).cloned() else {
+        let Some(script) = self.script(kind) else {
             return update;
         };
-        let key = self
-            .qubee
-            .as_ref()
-            .map_or_else(|| typed.clone(), |o| o.fold_apostrophes(&typed));
+        let key = script.key(&typed);
         let want = self.config.max_candidates.saturating_add(1);
         let mut list = update.candidates.clone();
-        for c in model.ranker.rank(key, req.previous, want) {
+        for c in model.ranker.rank(key.clone(), req.previous.clone(), want) {
             let kind = match c.kind {
                 RankKind::Exact | RankKind::Variant | RankKind::Completion => {
                     CandidateKind::Completion
@@ -1038,64 +1477,78 @@ impl KeyboardEngine {
                 list.push(Candidate { text: c.text, kind });
             }
         }
+        let mut autocorrect_index = None;
+        if autocorrect {
+            let d = model
+                .ranker
+                .autocorrect(key, req.previous.clone(), sentence_start);
+            if let Some(r) = d
+                .replacement
+                .filter(|r| d.action == AutocorrectAction::Apply && *r != typed)
+            {
+                list.retain(|c| c.text != r);
+                list.insert(
+                    1.min(list.len()),
+                    Candidate {
+                        text: r,
+                        kind: CandidateKind::Correction,
+                    },
+                );
+                list.truncate(max);
+                autocorrect_index = Some(1);
+            }
+        }
         let mut s = self.lock();
         if s.generation != req.generation || s.composing != typed {
             return update;
         }
         s.word_candidates.clone_from(&list);
+        s.strip = Strip::Word;
         drop(s);
         update.candidates = list;
+        update.autocorrect_index = autocorrect_index;
         update
     }
 
-    /// Merges lexicon candidates into the strip (A1.3 merge policy, ADR 0004 incl. the U6
-    /// amendment). Index 0 stays the literal rule output. The transliteration alternatives
-    /// follow sorted by dictionary frequency (known words first, most frequent first; unknown
-    /// ones keep their C1.4 order after them; ties keep C1.4 order). At least
-    /// [`RESERVED_COMPLETION_SLOTS`] slots go to completions and one-edit corrections from the
-    /// ranker whenever it offers any; the rest of the strip is filled in order, up to
-    /// `max_candidates`. Nothing is applied automatically (harm guard): corrections are only
-    /// offered. Ranking runs outside the state lock; if another call changed the state in the
-    /// meantime the candidates are dropped, so `select_candidate` always matches the strip.
-    /// Without a dictionary for the language the C1.4 strip is returned unchanged.
+    /// Merges lexicon candidates into the phonetic strip (A1.3 merge policy, ADR 0004 incl. the
+    /// U6 amendment, reordered by ADR 0039). Index 0 stays the literal rule output. Then the
+    /// transliteration alternatives that are dictionary words (most frequent first), then the
+    /// ranker's completions and one-edit corrections of the composition (frequency + the
+    /// previous word), then the alternatives that are not dictionary words (C1.4 order), up to
+    /// `max_candidates`. At least [`RESERVED_COMPLETION_SLOTS`] slots go to completions whenever
+    /// the ranker offers any. Nothing is applied automatically (harm guard): corrections are only
+    /// offered. Without a dictionary for the language the C1.4 strip is returned unchanged.
     fn with_lexicon_candidates(
         &self,
         mut update: EditorUpdate,
-        request: Option<CompletionRequest>,
+        req: &CompletionRequest,
+        model: &LangModel,
+        homophones: Vec<String>,
+        max: usize,
     ) -> EditorUpdate {
-        let Some(req) = request else {
-            return update;
-        };
-        let max = usize::try_from(self.config.max_candidates).unwrap_or(usize::MAX);
         if update.candidates.is_empty() || max <= 1 {
             return update;
         }
-        let Some(model) = self.lock_models().get(&req.language).cloned() else {
-            return update;
-        };
         // Ask for enough to survive removing the homophones that the ranker may also return.
         let want = self
             .config
             .max_candidates
-            .saturating_add(u32::try_from(req.homophones.len()).unwrap_or(u32::MAX));
+            .saturating_add(u32::try_from(homophones.len()).unwrap_or(u32::MAX));
         let ranked = model
             .ranker
-            .rank(update.composing.clone(), req.previous, want);
+            .rank(update.composing.clone(), req.previous.clone(), want);
         let primary = update.candidates[0].text.clone();
-        // Stable sort: known words by descending frequency, unknown ones last, C1.4 order kept
-        // for ties and among the unknown.
-        let mut keyed: Vec<(Option<u32>, String)> = req
-            .homophones
-            .into_iter()
-            .map(|t| (model.lexicon.word_score(t.clone()), t))
-            .collect();
-        keyed.sort_by(|a, b| match (a.0, b.0) {
-            (Some(x), Some(y)) => y.cmp(&x),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        });
-        let homophones: Vec<String> = keyed.into_iter().map(|(_, t)| t).collect();
+        // Stable sort: known words by descending frequency; unknown ones keep C1.4 order.
+        let mut known: Vec<(u32, String)> = Vec::new();
+        let mut unknown: Vec<String> = Vec::new();
+        for t in homophones {
+            match model.lexicon.word_score(t.clone()) {
+                Some(score) => known.push((score, t)),
+                None => unknown.push(t),
+            }
+        }
+        known.sort_by(|a, b| b.0.cmp(&a.0));
+        let known: Vec<String> = known.into_iter().map(|(_, t)| t).collect();
         let mut completions: Vec<(String, CandidateKind)> = Vec::new();
         for c in ranked {
             let kind = match c.kind {
@@ -1108,23 +1561,32 @@ impl KeyboardEngine {
             let text = c.text;
             if !text.is_empty()
                 && text != primary
-                && !homophones.contains(&text)
+                && !known.contains(&text)
+                && !unknown.contains(&text)
                 && !completions.iter().any(|(t, _)| *t == text)
             {
                 completions.push((text, kind));
             }
         }
+        let room = max - 1;
         let reserved = completions.len().min(RESERVED_COMPLETION_SLOTS);
-        let hom_take = homophones.len().min((max - 1).saturating_sub(reserved));
-        let comp_take = completions.len().min(max - 1 - hom_take);
+        let known_take = known.len().min(room.saturating_sub(reserved));
+        let comp_take = completions.len().min(room - known_take);
+        let unknown_take = unknown.len().min(room - known_take - comp_take);
         let mut merged = vec![(primary, CandidateKind::Transliteration)];
         merged.extend(
-            homophones
+            known
                 .into_iter()
-                .take(hom_take)
+                .take(known_take)
                 .map(|t| (t, CandidateKind::Transliteration)),
         );
         merged.extend(completions.into_iter().take(comp_take));
+        merged.extend(
+            unknown
+                .into_iter()
+                .take(unknown_take)
+                .map(|t| (t, CandidateKind::Transliteration)),
+        );
         let mut s = self.lock();
         if s.generation != req.generation {
             return update;
@@ -1139,6 +1601,90 @@ impl KeyboardEngine {
             .map(|(text, kind)| Candidate { text, kind })
             .collect();
         update
+    }
+
+    /// Direct Fidel's strip: completions (and one-edit corrections) of the word typed so far,
+    /// the committed letters since the last word boundary plus the pending syllable, ranked by
+    /// frequency and the previous word. A pick replaces those letters (ADR 0039).
+    fn with_fidel_candidates(
+        &self,
+        mut update: EditorUpdate,
+        req: &CompletionRequest,
+        model: &LangModel,
+        key: &str,
+        max: usize,
+    ) -> EditorUpdate {
+        let want = self.config.max_candidates.saturating_add(1);
+        let mut list: Vec<Candidate> = Vec::new();
+        for c in model
+            .ranker
+            .rank(key.to_string(), req.previous.clone(), want)
+        {
+            let kind = match c.kind {
+                RankKind::Variant | RankKind::Completion => CandidateKind::Completion,
+                RankKind::Correction => CandidateKind::Correction,
+                RankKind::Exact | RankKind::NextWord | RankKind::Frequent => continue,
+            };
+            if list.len() >= max {
+                break;
+            }
+            if c.text != key && !list.iter().any(|x| x.text == c.text) {
+                list.push(Candidate { text: c.text, kind });
+            }
+        }
+        self.attach(&mut update, req, list, Strip::Fidel);
+        update
+    }
+
+    /// Next-word predictions after the previous word: the bigram pack and the user's own word
+    /// pairs first, then frequent words to fill the strip (never the previous word itself). After a
+    /// sentence end (`. ! ? ። ፧ ؟` and a space) there is no previous word: the most frequent words.
+    fn with_predictions(
+        &self,
+        mut update: EditorUpdate,
+        req: &CompletionRequest,
+        model: &LangModel,
+        max: usize,
+    ) -> EditorUpdate {
+        let limit = self.config.max_candidates.saturating_add(1);
+        let prev = req.previous.clone().unwrap_or_default();
+        let ranked = if prev.is_empty() {
+            model.ranker.frequent(limit)
+        } else {
+            model.ranker.next_words(prev.clone(), limit)
+        };
+        let list: Vec<Candidate> = ranked
+            .into_iter()
+            .filter(|c| !c.text.is_empty() && c.text != prev)
+            .take(max)
+            .map(|c| Candidate {
+                text: c.text,
+                kind: CandidateKind::Prediction,
+            })
+            .collect();
+        self.attach(&mut update, req, list, Strip::Predictions);
+        update
+    }
+
+    /// Attaches an engine-owned strip if nothing changed the state since the request.
+    fn attach(
+        &self,
+        update: &mut EditorUpdate,
+        req: &CompletionRequest,
+        list: Vec<Candidate>,
+        strip: Strip,
+    ) {
+        if list.is_empty() {
+            return;
+        }
+        let mut s = self.lock();
+        if s.generation != req.generation {
+            return;
+        }
+        s.word_candidates.clone_from(&list);
+        s.strip = strip;
+        drop(s);
+        update.candidates = list;
     }
 
     /// Parses the `TRANSLITERATION_RULES` artifact loaded for `language_code`. The pack was
@@ -1273,58 +1819,6 @@ mod tests {
                 Err(CoreError::PackRejected { .. })
             ));
         }
-    }
-
-    fn commit(text: &str) -> EditorUpdate {
-        EditorUpdate {
-            commit: text.into(),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn word_context_follows_commits() {
-        let mut c = WordContext::default();
-        c.observe(&commit("ሰላም"));
-        assert_eq!(c.previous, None);
-        c.observe(&commit(" "));
-        assert_eq!(c.previous.as_deref(), Some("ሰላም"));
-        // The Ethiopic wordspace is a word boundary too.
-        c.observe(&commit("ነው፡"));
-        assert_eq!(c.previous.as_deref(), Some("ነው"));
-        // Sentence punctuation ends the context; deletions forget it.
-        c.observe(&commit("ደህና። "));
-        assert_eq!(c.previous, None);
-        c.observe(&commit("ሰላም "));
-        c.observe(&EditorUpdate {
-            delete_before: 1,
-            ..Default::default()
-        });
-        assert_eq!(c.previous, None);
-        assert!(c.current.is_empty());
-    }
-
-    #[test]
-    fn word_context_keeps_the_hudhaa_inside_a_word() {
-        let mut c = WordContext::default();
-        // Afaan Oromoo `har'a` is one word, not `har` + `a`.
-        c.observe(&commit("har'a "));
-        assert_eq!(c.previous.as_deref(), Some("har'a"));
-        c.observe(&commit("baay\u{2019}ee "));
-        assert_eq!(c.previous.as_deref(), Some("baay\u{2019}ee"));
-        // A closing quote is not part of the word; an opening one ends the context.
-        c.observe(&commit("dhugaa' "));
-        assert_eq!(c.previous.as_deref(), Some("dhugaa"));
-        c.observe(&commit("'jedhe"));
-        assert_eq!(c.previous, None);
-        assert_eq!(c.current, "jedhe");
-    }
-
-    #[test]
-    fn word_context_is_bounded() {
-        let mut c = WordContext::default();
-        c.observe(&commit(&"ሰ".repeat(500)));
-        assert_eq!(c.current.chars().count(), MAX_CONTEXT_CHARS);
     }
 
     #[test]

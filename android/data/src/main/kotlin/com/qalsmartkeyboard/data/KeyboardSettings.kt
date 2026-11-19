@@ -69,10 +69,11 @@ object LanguageRules {
     fun defaultMode(code: String): InputMode = allowedModes(code).firstOrNull() ?: InputMode.LATIN_PASSTHROUGH
 
     /**
-     * Languages whose single Latin layout suggests dictionary words while typing: Afaan Oromoo (Qubee). Their suggestion
-     * strip is switched by the same per-language [TypingLanguageSetting.showTransliterationCandidates] as phonetic am/ti.
+     * Languages whose single layout suggests words while typing (ADR 0039): Afaan Oromoo (Qubee) and English (dictionary
+     * words), Arabic (the user's own words). Their suggestion strip is switched by the same per-language
+     * [TypingLanguageSetting.showTransliterationCandidates] as phonetic am/ti.
      */
-    fun hasWordSuggestions(code: String) = code == "om"
+    fun hasWordSuggestions(code: String) = code == "om" || code == "en" || code == "ar"
 }
 
 /**
@@ -169,6 +170,17 @@ data class KeyboardSettings(
      * an hour, never persisted). On by default; off = the panel offers only the current clip. Device-local, not synced.
      */
     val clipboardHistoryEnabled: Boolean = true,
+    /** ADR 0039: next-word predictions after a word (bigram pack + the user's own word pairs). On by default. Device-local. */
+    val nextWordPredictions: Boolean = true,
+    /** ADR 0039: autocorrection while typing English (Space applies a confident correction, Backspace undoes). On by default. */
+    val autocorrectEnglish: Boolean = true,
+    /**
+     * ADR 0039: autocorrection while typing Afaan Oromoo. **Off** by default until the om lexicon (a ~90-word DRAFT seed) is
+     * reviewed: with so few words most real words would be "corrected". Device-local.
+     */
+    val autocorrectOromo: Boolean = false,
+    /** ADR 0039: learn new words from typing into the personal dictionary (never in password or incognito fields). On by default. */
+    val learnWords: Boolean = true,
 ) {
     /** Enabled language codes in the user's order. */
     val enabledLanguages: List<String> get() = languages.filter { it.enabled }.map { it.languageCode }

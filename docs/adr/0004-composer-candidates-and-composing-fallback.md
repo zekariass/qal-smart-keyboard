@@ -107,3 +107,9 @@ the grapheme clusters the core asked for (one Fidel syllable, a whole emoji sequ
   terminal (TYPE_NULL) and a WebView/Chrome field to the device matrix.
 - Revisit if the reference-device QA (A1.9) finds hosts that defeat the heuristic; the policy lives in
   `InputConnectionAdapter` only.
+
+## Amendment (ADR 0039, 2026-11-19)
+The U6 merge now places transliteration alternatives that are **not** dictionary words after the completions
+(composition, known alternatives by frequency, completions / corrections, unknown alternatives), so that completions
+reach the three visible slots of the new strip. Picking a candidate now also inserts a space (Gboard behaviour). See
+[ADR 0039](0039-prediction-engine.md).

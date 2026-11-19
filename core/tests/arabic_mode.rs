@@ -156,7 +156,7 @@ fn backspace_deletes_one_cluster_and_nothing_composes() {
 }
 
 #[test]
-fn ar_has_no_packs_and_no_learning() {
+fn ar_has_no_packs_but_learns_the_users_own_words() {
     let e = engine();
     // ar is a supported language (no UnsupportedLanguage), it just has no layout or profile pack.
     assert!(matches!(
@@ -167,11 +167,28 @@ fn ar_has_no_packs_and_no_learning() {
         e.translit_profile("ar".into()),
         Err(CoreError::InvalidState { .. })
     ));
-    // No Arabic dictionary is licensed (N10): nothing can be learned or added.
-    assert!(!e.learn_user_word("ar".into(), "كتاب".into(), None));
-    assert!(!e.add_user_word("ar".into(), "كتاب".into()));
-    // An (empty) overlay import is accepted and parked, like any language without a dictionary.
+    // An empty overlay import creates nothing: Arabic stays plain passthrough.
     e.import_user_data("ar".into(), vec![], vec![]).unwrap();
+    e.set_input_mode("ar".into(), InputMode::Arabic).unwrap();
+    assert_eq!(e.on_key(ch("ك")).commit, "ك");
+    // No Arabic dictionary is licensed (N10), but the user's own words are (ADR 0039): learning
+    // creates a user-only model, and Arabic words compose with the learned words as suggestions.
+    assert!(e.learn_user_word("ar".into(), "كتاب".into(), None));
+    assert!(e.add_user_word("ar".into(), "مدرسة".into()));
+    e.set_input_mode("ar".into(), InputMode::Arabic).unwrap();
+    e.on_key(ch("ك"));
+    let u = e.on_key(ch("ت"));
+    assert_eq!(u.composing, "كت");
+    assert_eq!(u.candidates[0].text, "كت");
+    assert!(u.candidates.iter().any(|c| c.text == "كتاب"));
+    // Never autocorrected, even with autocorrection on.
+    assert_eq!(u.autocorrect_index, None);
+    let i = u.candidates.iter().position(|c| c.text == "كتاب").unwrap();
+    let picked = e.select_candidate(u32::try_from(i).unwrap());
+    assert_eq!(picked.commit, "كتاب ");
+    // Lam-alef (one key, two letters) composes as part of the word.
+    let u = e.on_key(ch("لا"));
+    assert_eq!(u.composing, "لا");
 }
 
 #[test]

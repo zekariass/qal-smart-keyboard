@@ -472,6 +472,16 @@
     <string name="settings_group_app">Appii</string>
     <string name="settings_preferences">Filannoowwan</string>
     <string name="settings_prefs_keys">Furtuuwwan</string>
+    <string name="settings_prefs_text">Sirreeffama barreeffamaa</string>
+    <string name="settings_next_word">Yaada jecha itti aanu</string>
+    <string name="settings_next_word_summary">Iddoo duwwaa booda jecha itti aanu yaada</string>
+    <string name="settings_autocorrect_en">Ofumaan sirreessuu: Ingiliffaa</string>
+    <string name="settings_autocorrect_om">Ofumaan sirreessuu: Afaan Oromoo (wixinee)</string>
+    <string name="settings_autocorrect_summary">Yeroo iddoo duwwaa tuqxan dogoggora barreeffamaa ifa ta\'e sirreessa. Battalumatti haquun deebisa.</string>
+    <string name="settings_learn_words">Barreeffama koo irraa baradhu</string>
+    <string name="settings_learn_words_summary">Jechoota haaraa yaaduuf meeshaa kana irratti yaadata. Jecha darbii ykn dirree dhuunfaa keessatti gonkumaa miti.</string>
+    <string name="settings_word_suggestions_note_en">Jechoota galmee jechootaa Ingiliffaa (wixinee) irraa jecha barreessitaniif fi jecha itti aanuuf. Ofumaan sirreessuun Filannoowwan keessa jira.</string>
+    <string name="settings_word_suggestions_note_ar">Jechoota kanaan dura barreessitan qofa: galmeen jechootaa Arabaa ammallee hin dabalamne. Barreeffamni keessan kan jijjiiramu yaada tuqxan qofa.</string>
     <string name="settings_dictionary">Galmee jechootaa</string>
     <string name="settings_advanced">Olaanaa</string>
     <string name="settings_about">Waa\'ee appii</string>
