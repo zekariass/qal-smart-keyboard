@@ -288,7 +288,9 @@ class AiPanelView(context: Context) : LinearLayout(context) {
             val langs = a.outputChoices().map { code ->
                 val name = AiMessages.language(context, code)
                 ui.chip(name, if (code == out) AiIcons.CHECK else null, selected = code == out) { a.chooseOutput(code) }
-            }
+            }.toMutableList()
+            // ADR 0040: Translate's list is the translation catalogue; the short list first, the rest on request.
+            if (a.hasMoreOutputs()) langs += ui.chip(context.getString(R.string.ai_output_more_languages)) { a.moreOutputs() }
             body.addView(chipRow(ui, "outputs", langs))
         }
         // 4. Reply: what the user wants to say.
@@ -312,7 +314,7 @@ class AiPanelView(context: Context) : LinearLayout(context) {
         val name = AiMessages.action(context, s.action)
         val direction = when (s.action) {
             AiAssistAction.TRANSLATE -> {
-                val from = s.result.sourceLanguage?.takeIf { it in AiLanguages.ALL }?.let(AiLanguages::name) ?: context.getString(R.string.translate_detect)
+                val from = s.result.sourceLanguage?.takeIf { TranslationLanguages.current.isKnown(it) }?.let(AiLanguages::name) ?: context.getString(R.string.translate_detect)
                 "$from → ${AiLanguages.name(s.output ?: "en")}"
             }
             else -> if (s.output == null) context.getString(R.string.ai_same_language) else context.getString(R.string.ai_in_language, AiLanguages.name(s.output))

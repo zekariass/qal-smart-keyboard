@@ -12,6 +12,7 @@ import com.qalsmartkeyboard.aiclient.PinnedKeys
 import com.qalsmartkeyboard.aiclient.ServerAiActions
 import com.qalsmartkeyboard.aiclient.ServerThemeAccess
 import com.qalsmartkeyboard.aiclient.SessionAccessInfo
+import com.qalsmartkeyboard.aiclient.TranslationCatalogStore
 import com.qalsmartkeyboard.api.ApiClients
 import com.qalsmartkeyboard.api.CallLogger
 import com.qalsmartkeyboard.api.ClientInfo
@@ -75,6 +76,8 @@ class AiGraph private constructor(context: Context) {
         lastDestinations = LastDestinationStore(files),
         // A2.6: only while the person turned history on (the privacy screens set it); the server still checks consent and plan.
         saveToHistory = { PrivacyGraph.get(context).historyFlag.enabled },
+        // ADR 0040: the translation language catalogue's device copy (language names only: a plain file).
+        catalogStore = TranslationCatalogStore(File(context.noBackupFilesDir, "translation-catalog.json")),
     )
 
     /** Premium keyboard themes (`PREMIUM_THEMES`), answered from the cached verified entitlement token. */

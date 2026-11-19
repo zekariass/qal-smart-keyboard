@@ -564,4 +564,10 @@
     <string name="editor_dictate_stop">ብድምጺ ምጽሓፍ ኣቋሪጽኩም ጽሑፍ ኣእትዉ</string>
     <string name="wordart_open_preview">ዓቢ ቅድመ-ምርኣይ ክፈቱ</string>
     <string name="wordart_typing_label">ጽሑፍ ስነ-ጥበብ ቃላት</string>
+    <!-- Translation languages and AI reliability (ADR 0040). DRAFT (N9). -->
+    <string name="ai_err_unreachable">ምስ ኣገልጋሊ Qal ክራኸብ ኣይተኻእለን። ምትእስሳር ኢንተርነትኩም ኣረጋግጹ እሞ ደጊምኩም ፈትኑ።</string>
+    <string name="translate_search_languages">ቋንቋታት ድለዩ</string>
+    <string name="translate_search_clear">ምድላይ ኣጽርዩ</string>
+    <string name="translate_no_languages">ዝኾነ ቋንቋ ኣይተረኽበን</string>
+    <string name="ai_output_more_languages">ተወሰኽቲ ቋንቋታት</string>
 </resources>

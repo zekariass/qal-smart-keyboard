@@ -3,26 +3,41 @@ package com.qalsmartkeyboard.ime.ai
 import com.qalsmartkeyboard.ime.LanguageCatalog
 
 /**
- * The languages the AI panels offer as source and output: the keyboard's typing languages (ADR 0031), Arabic included
- * (ADR 0034). The server decides which pairs it can translate; an unsupported pair is reported as such, never faked.
+ * Language names and the keyboard's own languages for the AI panels. The keyboard's typing languages ([ALL]: am, ti,
+ * om, en, ar; ADR 0031, ADR 0034) are what the LLM features write in (e-mail, rewrite, summaries). Translation offers the
+ * longer, server-driven list of [TranslationLanguages] (ADR 0040), which starts with these five.
  */
 object AiLanguages {
     val ALL: List<String> = listOf("am", "ti", "om", "en", "ar")
 
-    /** The language's name in the UI language ("Amharic", "አማርኛ" in Amharic, ADR 0032), as the AI panels show it. */
-    fun name(code: String): String = LanguageCatalog.spokenName(code)
+    /**
+     * The language's name in the UI language ("Amharic", "አማርኛ" in Amharic, ADR 0032), as the AI panels show it: the
+     * keyboard's own labels for its languages, else the platform's name in the UI language, else the catalogue's
+     * English name (ADR 0040: no hand-written string per translation language).
+     */
+    fun name(code: String): String = if (code in ALL) LanguageCatalog.spokenName(code) else translationLanguageName(code)
 
     /** A plain-language destination (no profile). */
     fun plain(code: String) = AiDestination("lang:$code", name(code), code)
 
-    /** The default destination for text in [source]: English for am/ti/om/ar, Amharic for English (ADR 0031). */
+    /** The default destination for text in [source]: English for am/ti/om/ar (and any other language), Amharic for English (ADR 0031). */
     fun defaultTarget(source: String): String = if (source == "en") "am" else "en"
 
-    /** The language's name in itself ("አማርኛ", "Afaan Oromoo", "العربية"): the translate panel's language list shows both (ADR 0037). */
-    fun selfName(code: String): String = com.qalsmartkeyboard.ime.LanguageCatalog.displayName(code)
+    /**
+     * The language's name in itself ("አማርኛ", "Afaan Oromoo", "العربية", "Français"): the translate panel's language list
+     * shows both (ADR 0037). From the catalogue's autonym (ADR 0040).
+     */
+    fun selfName(code: String): String =
+        TranslationLanguages.current.find(code)?.nativeName?.takeIf { it.isNotBlank() }
+            ?: TranslationCatalog.BUNDLED.find(code)?.nativeName
+            ?: LanguageCatalog.displayName(code)
 
-    /** Arabic is written right to left (ADR 0034): a translation into it is shown right-aligned. */
-    fun isRtl(code: String?): Boolean = code != null && com.qalsmartkeyboard.ime.LanguageCatalog.isRtl(code)
+    /** Written right to left (Arabic, ADR 0034; Hebrew, Persian, Urdu, ... ADR 0040): shown right-aligned. */
+    fun isRtl(code: String?): Boolean =
+        code != null && (TranslationLanguages.current.find(code)?.rtl ?: LanguageCatalog.isRtl(code))
+
+    /** [name] wrapped in Unicode isolates when it is right to left, so "Detect · العربية" keeps its order (ADR 0040). */
+    fun isolated(name: String, rtl: Boolean): String = if (rtl) "⁧$name⁩" else name
 }
 
 /**
@@ -38,6 +53,12 @@ interface AiLanguagePrefs {
 
     fun rememberTarget(source: String, destinationId: String)
 
+    /**
+     * Languages used recently in translation (plain destinations and their sources), most recent first: the language
+     * lists put them near the top (ADR 0040). Default: none.
+     */
+    fun recentLanguages(): List<String> = emptyList()
+
     /** The name the user signs e-mails with ("" when never given). */
     val senderName: String
 
@@ -48,8 +69,18 @@ interface AiLanguagePrefs {
         val pairs = LinkedHashMap<String, String>()
         override var senderName: String = ""
         override fun lastTarget(source: String) = pairs[source]
-        override fun rememberTarget(source: String, destinationId: String) { pairs[source] = destinationId }
+        override fun rememberTarget(source: String, destinationId: String) {
+            pairs.remove(source)
+            pairs[source] = destinationId
+        }
+        override fun recentLanguages(): List<String> = recentFrom(pairs)
         override fun rememberSenderName(name: String) { senderName = name }
+    }
+
+    companion object {
+        /** Recent languages from the remembered pairs (insertion order, newest last): each plain destination, then its source. */
+        fun recentFrom(pairs: Map<String, String>): List<String> =
+            pairs.entries.reversed().flatMap { (src, id) -> listOfNotNull(id.takeIf { it.startsWith("lang:") }?.removePrefix("lang:"), src) }.distinct()
     }
 }
 
@@ -65,11 +96,14 @@ interface AiLanguagePrefs {
  *   settings; English for am/ti/om and Amharic for English. A candidate in the source language itself is skipped.
  * - **Swap** makes the destination's language the explicit source and the old source the destination, and remembers
  *   that pair.
+ * - **Languages** (ADR 0040) come from the translation catalogue ([catalog]): the server's list when fetched, else the
+ *   five keyboard languages. A language the catalogue does not offer in a role is never chosen for it.
  *
  * Pure state: no Android, no text. A new field starts again from Auto and the defaults.
  */
 class TranslationDirection(
     private val prefs: AiLanguagePrefs,
+    private val catalog: () -> TranslationCatalog = { TranslationLanguages.current },
     private val destinations: () -> List<AiDestination>,
 ) {
     /** The keyboard language, the likely source while the source is Auto. */
@@ -101,18 +135,21 @@ class TranslationDirection(
     fun defaultFor(src: String): AiDestination {
         appRule?.takeIf { it.language != src }?.let { return it }
         prefs.lastTarget(src)?.let { id -> resolve(id)?.takeIf { it.language != src }?.let { return it } }
-        prefs.preferredTarget?.takeIf { it in AiLanguages.ALL && it != src }?.let { return AiLanguages.plain(it) }
+        prefs.preferredTarget?.takeIf { catalog().isDestination(it) && it != src }?.let { return AiLanguages.plain(it) }
         return AiLanguages.plain(AiLanguages.defaultTarget(src))
     }
 
     private fun resolve(id: String): AiDestination? {
-        if (id.startsWith("lang:")) return id.removePrefix("lang:").takeIf { it in AiLanguages.ALL }?.let(AiLanguages::plain)
+        if (id.startsWith("lang:")) return id.removePrefix("lang:").takeIf { catalog().isDestination(it) }?.let(AiLanguages::plain)
         return destinations().firstOrNull { it.id == id }
     }
 
-    /** [language] null: back to Auto. A destination in the new source language falls back to the default. */
+    /**
+     * [language] null: back to Auto. A language the catalogue offers no source for is ignored. A destination in the new
+     * source language falls back to the default.
+     */
     fun chooseSource(language: String?) {
-        manualSource = language?.takeIf { it in AiLanguages.ALL }
+        manualSource = language?.takeIf { catalog().isSource(it) }
         if (chosen?.language == source) chosen = null
     }
 
@@ -136,7 +173,7 @@ class TranslationDirection(
 
     /** The source the user sees: the explicit one; while Auto, the [detected] language if known, else the keyboard language. */
     fun likelySource(detected: String? = null): String =
-        if (isAuto) detected?.takeIf { it in AiLanguages.ALL } ?: source else source
+        if (isAuto) detected?.takeIf { catalog().isKnown(it) } ?: source else source
 
     /** The source label: "Auto · Amharic" (or "Detect · Amharic") while Auto, else "Amharic". */
     fun sourceLabel(auto: String, detected: String? = null): String {
@@ -144,21 +181,37 @@ class TranslationDirection(
         return if (isAuto) "$auto · $name" else name
     }
 
-    /**
-     * The source list (ADR 0037): Auto (null, "Detect language") first, then the current language, then the keyboard
-     * language, then the rest in [AiLanguages.ALL] order. Five languages need no search.
-     */
-    fun sourceChoices(): List<String?> =
-        listOf<String?>(null) + (listOfNotNull(manualSource, keyboardLanguage.takeIf { it in AiLanguages.ALL }) + AiLanguages.ALL).distinct()
+    /** The languages the lists put first: the current one, the keyboard language, then the recent ones. */
+    private fun leading(current: String?): List<String> =
+        (listOf(current, keyboardLanguage) + prefs.recentLanguages()).filterNotNull().distinct()
 
     /**
-     * The destination list: the current destination first, then the plain languages (the source language left out),
-     * then the user's destination profiles (ADR 0012); nothing twice.
+     * The source list (ADR 0037, ADR 0040): Auto (null, "Detect language") first, then the current language, the keyboard
+     * language and the recent ones, then the keyboard's other languages, then every other source of the catalogue by
+     * name. With a [query] (the list's search), only the languages it matches, and Auto only while it is empty.
      */
-    fun destinationChoices(): List<AiDestination> {
+    fun sourceChoices(query: String = ""): List<String?> {
+        val ordered = TranslationLanguageSearch.order(catalog().sources, leading(manualSource))
+            .filter { TranslationLanguageSearch.matches(query, it) }.map { it.code }
+        return if (query.isBlank()) listOf<String?>(null) + ordered else ordered
+    }
+
+    /**
+     * The destination list: the current destination first, then the plain languages (the source language left out) in
+     * the order of [sourceChoices], then the user's destination profiles (ADR 0012); nothing twice. A [query] keeps the
+     * languages it matches and the profiles whose label or language it matches.
+     */
+    fun destinationChoices(query: String = ""): List<AiDestination> {
         val current = destination
-        val plain = AiLanguages.ALL.filter { it != source }.map(AiLanguages::plain)
-        val profiles = destinations().filter { it.isProfile && it.language != source }
-        return (listOf(current) + plain + profiles).distinctBy { it.id }
+        val src = source
+        val plain = TranslationLanguageSearch.order(catalog().destinations.filter { it.code != src }, leading(current.language))
+            .filter { TranslationLanguageSearch.matches(query, it) }.map { AiLanguages.plain(it.code) }
+        val q = TranslationLanguageSearch.fold(query.trim())
+        val profiles = destinations().filter { it.isProfile && it.language != src }.filter { p ->
+            q.isEmpty() || TranslationLanguageSearch.fold(p.label).contains(q) ||
+                catalog().find(p.language)?.let { TranslationLanguageSearch.matches(query, it) } == true
+        }
+        val head = if (q.isEmpty()) listOf(current) else emptyList()
+        return (head + plain + profiles).distinctBy { it.id }
     }
 }

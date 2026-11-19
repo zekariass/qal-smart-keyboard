@@ -15,6 +15,14 @@ class FakeAiActions : AiActions {
     /** When set, [submit] answers at once (synchronously) with this. */
     var autoAnswer: AiOutcome? = null
 
+    /** When set, [submit] throws this instead of starting a call (an implementation bug the panels must survive). */
+    var submitThrows: RuntimeException? = null
+
+    /** The translation catalogue (ADR 0040); the bundled five by default. */
+    var catalog: TranslationCatalog = TranslationCatalog.BUNDLED
+
+    override fun translationCatalog() = catalog
+
     override var availability = AiAvailability()
         get() { availabilityReads++; return field }
 
@@ -29,6 +37,7 @@ class FakeAiActions : AiActions {
     override fun rememberDestination(packageName: String?, destination: AiDestination) { remembered += packageName to destination }
 
     override fun submit(request: AiRequest, onOutcome: (AiOutcome) -> Unit): AiCall {
+        submitThrows?.let { throw it }
         val s = Submitted(request, onOutcome)
         submitted += s
         autoAnswer?.let(onOutcome)

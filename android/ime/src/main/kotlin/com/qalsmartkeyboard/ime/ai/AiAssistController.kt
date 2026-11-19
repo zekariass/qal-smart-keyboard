@@ -246,30 +246,58 @@ class AiAssistController(
     fun outputLanguage(a: AiAssistAction = action): String? = if (picked.containsKey(a)) picked[a] else defaultOutput(a)
 
     fun defaultOutput(a: AiAssistAction): String? = when (a.output) {
-        AiOutputRule.DESTINATION -> translateDefault().takeIf { it in AiLanguages.ALL } ?: "en"
+        AiOutputRule.DESTINATION -> translateDefault().takeIf { actions.translationCatalog().isDestination(it) } ?: "en"
         AiOutputRule.KEYBOARD -> keyboardLanguage().takeIf { it in AiLanguages.ALL } ?: "en"
         AiOutputRule.SAME_BY_DEFAULT, AiOutputRule.FIXED_SAME -> null
     }
 
     fun canChooseOutput(a: AiAssistAction = action): Boolean = a.output != AiOutputRule.FIXED_SAME
 
-    /** The choices of the output picker (null = "Same as text"). */
+    /**
+     * The choices of the output picker (null = "Same as text"). Translate (ADR 0040) offers the translation catalogue's
+     * destinations: the current one, the keyboard languages and the recent ones first ([SHORT_LIST] of them until "More
+     * languages" shows all, [moreOutputs]); the LLM actions write in the keyboard's languages.
+     */
     fun outputChoices(a: AiAssistAction = action): List<String?> = when (a.output) {
         AiOutputRule.SAME_BY_DEFAULT -> listOf<String?>(null) + AiLanguages.ALL
         AiOutputRule.FIXED_SAME -> listOf(null)
+        AiOutputRule.DESTINATION -> translationOutputs(a).let { if (showAllOutputs) it else it.take(SHORT_LIST) }
         else -> AiLanguages.ALL
+    }
+
+    /** More translation languages exist than the short list shows (the picker then ends with "More languages"). */
+    fun hasMoreOutputs(a: AiAssistAction = action): Boolean =
+        a.output == AiOutputRule.DESTINATION && !showAllOutputs && translationOutputs(a).size > SHORT_LIST
+
+    /** "More languages": the picker lists every translation destination. */
+    fun moreOutputs() {
+        if (showAllOutputs) return
+        showAllOutputs = true
+        onChanged()
+    }
+
+    private var showAllOutputs = false
+
+    private fun translationOutputs(a: AiAssistAction): List<String> {
+        val chosen = outputLanguage(a)
+        return TranslationLanguageSearch.order(actions.translationCatalog().destinations, listOfNotNull(chosen, translateDefault(), keyboardLanguage()))
+            .map { it.code }
     }
 
     fun toggleOutputPicker() {
         if (!canChooseOutput()) return
         outputPickerOpen = !outputPickerOpen
+        if (!outputPickerOpen) showAllOutputs = false
         onChanged()
     }
 
     fun chooseOutput(language: String?) {
-        if (!canChooseOutput() || language !in outputChoices()) return
+        val allowed = if (action.output == AiOutputRule.DESTINATION) language != null && actions.translationCatalog().isDestination(language)
+        else language in outputChoices()
+        if (!canChooseOutput() || !allowed) return
         picked[action] = language
         outputPickerOpen = false
+        showAllOutputs = false
         onChanged()
     }
 
@@ -442,5 +470,8 @@ class AiAssistController(
 
         /** `RepliesRequest.instructions`. */
         const val MAX_NOTE = 1000
+
+        /** Translate's output picker shows this many languages before "More languages" (ADR 0040). */
+        const val SHORT_LIST = 8
     }
 }

@@ -303,8 +303,8 @@ class AiEndpointsIT {
 		breakers.resetAll();
 		mock.setBehavior(Behavior.ok());
 		fallback.reset();
-		// no capability for am -> ti
-		send(user, "translate", key(), translateBody(IN_AM, "am", "ti")).andExpect(status().isServiceUnavailable())
+		// no capability for am -> aa (Afar: a planned typing language no provider lists, ADR 0040)
+		send(user, "translate", key(), translateBody(IN_AM, "am", "aa")).andExpect(status().isServiceUnavailable())
 				.andExpect(jsonPath("$.code").value("LANGUAGE_PAIR_UNAVAILABLE"));
 
 		// validation

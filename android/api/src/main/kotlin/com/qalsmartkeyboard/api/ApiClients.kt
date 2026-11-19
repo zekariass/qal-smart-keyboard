@@ -19,7 +19,8 @@ data class TransportConfig(
     val baseUrl: String,
     val client: ClientInfo,
     val certificatePins: Map<String, List<String>> = emptyMap(),
-    val connectTimeoutMs: Long = 10_000,
+    /** Separate from the call timeouts: an unreachable server fails fast instead of stalling the UI (ADR 0040, B). */
+    val connectTimeoutMs: Long = DEFAULT_CONNECT_TIMEOUT_MS,
     val readTimeoutMs: Long = 30_000,
     val writeTimeoutMs: Long = 30_000,
     val callTimeoutMs: Long = 60_000,
@@ -38,6 +39,23 @@ data class TransportConfig(
     companion object {
         /** Hosts that may use cleartext: the local stack (`10.0.2.2` is the emulator's host loopback). */
         val LOCAL_HOSTS = setOf("localhost", "127.0.0.1", "10.0.2.2")
+
+        /** The emulator's alias for the development machine: unreachable from a physical phone. */
+        const val EMULATOR_HOST = "10.0.2.2"
+
+        const val DEFAULT_CONNECT_TIMEOUT_MS = 5_000L
+
+        /**
+         * True when [baseUrl] points at the emulator-only host [EMULATOR_HOST]. A build like that on a physical phone
+         * can never reach the server (every AI call used to hang until its timeout); see `android/README.md` for
+         * building against a phone (`-Pqal.apiBaseUrl=http://localhost:8080` with `adb reverse`).
+         */
+        fun isEmulatorOnly(baseUrl: String): Boolean =
+            try {
+                baseUrl.toHttpUrl().host == EMULATOR_HOST
+            } catch (e: IllegalArgumentException) {
+                false
+            }
     }
 }
 

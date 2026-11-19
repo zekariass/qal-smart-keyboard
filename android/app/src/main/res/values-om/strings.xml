@@ -513,4 +513,8 @@
     <!-- ADR 0035: the keyboard's clipboard panel. DRAFT (N9). -->
     <string name="settings_clipboard_history">Seenaa kuusaa garagalchaa</string>
     <string name="settings_clipboard_history_summary">Kan dhiyeenya garagalfame, yaadannoo keessa qofa sa\'aatii 1 tura</string>
+    <!-- Translation languages and AI reliability (ADR 0040). DRAFT (N9). -->
+    <string name="settings_translate_search">Afaanota barbaadaa</string>
+    <string name="settings_translate_none_found">Afaan tokkollee hin argamne</string>
+    <string name="settings_translate_offline_note">Appiin yeroo tokko toora irra erga ta\'ee booda afaanonni dabalataa asitti mul\'atu.</string>
 </resources>

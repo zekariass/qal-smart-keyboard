@@ -1,9 +1,13 @@
 package com.qalsmartkeyboard.aigateway;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,9 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.qalsmartkeyboard.aigateway.AiDtos.Capabilities;
 import com.qalsmartkeyboard.aigateway.pipeline.AiUserContext;
+import com.qalsmartkeyboard.aigateway.pipeline.LanguageCatalog;
 import com.qalsmartkeyboard.aigateway.spi.AiFeature;
 import com.qalsmartkeyboard.aigateway.spi.ProviderCapability;
 import com.qalsmartkeyboard.aigateway.spi.ProviderDescriptor;
+import com.qalsmartkeyboard.aigateway.spi.QualityTier;
 import com.qalsmartkeyboard.entitlements.EntitlementResolver;
 import com.qalsmartkeyboard.entitlements.ResolvedEntitlements;
 import com.qalsmartkeyboard.identity.AuthenticatedUser;
@@ -89,10 +95,12 @@ class AiController {
 	private final Clock clock;
 	private final AiRequestParser parser;
 	private final AiFeedback feedback;
+	private final LanguageCatalog languages;
+	private final JsonMapper mapper;
 
 	AiController(AiPipeline pipeline, RateLimiter limiter, ProviderRegistry registry, EntitlementResolver entitlements,
 			AiUserContext users, AiGatewayProperties properties, ObjectProvider<Clock> clock, JsonMapper mapper,
-			AiFeedback feedback) {
+			AiFeedback feedback, LanguageCatalog languages) {
 		this.pipeline = pipeline;
 		this.limiter = limiter;
 		this.registry = registry;
@@ -102,6 +110,8 @@ class AiController {
 		this.clock = clock.getIfAvailable(Clock::systemUTC);
 		this.parser = new AiRequestParser(mapper);
 		this.feedback = feedback;
+		this.languages = languages;
+		this.mapper = mapper;
 	}
 
 	// The bodies arrive as bytes and are read by AiRequestParser: a framework binding error would quote the value.
@@ -166,13 +176,19 @@ class AiController {
 	 * Which tasks and language pairs the server can serve now, from the active providers' enabled BETA/PRODUCTION
 	 * capabilities. Anonymous callers see all of them; a signed-in caller only those the plan includes (and nothing
 	 * when the account may not use server AI or prefers ON_DEVICE_ONLY), so the UI never offers what would be refused.
+	 * ADR 0040: {@code translationLanguages} is the translation catalogue those TRANSLATE capabilities cover (pair rows
+	 * and the models' language sets), and the answer carries an ETag over everything but {@code generatedAt}, so a
+	 * client revalidates its stored copy with {@code If-None-Match} and gets a 304.
 	 */
 	@GetMapping("/api/v1/ai/capabilities")
 	ResponseEntity<Capabilities> getAiCapabilities(@AuthenticationPrincipal AuthenticatedUser caller,
+			@RequestHeader(name = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch,
 			HttpServletRequest request) {
 		limiter.tryConsume(CAPABILITIES_PER_CLIENT,
 				caller != null ? caller.userId().toString() : request.getRemoteAddr()).orThrow();
 		Map<String, ProviderCapability> best = new LinkedHashMap<>();
+		List<ProviderCapability> translations = new ArrayList<>();
+		Predicate<AiFeature> visible = visibleTo(caller);
 		for (ProviderDescriptor d : registry.activeDescriptors()) {
 			for (ProviderCapability c : d.capabilities()) {
 				if (!c.qualityTier().userExposed() || !SERVED.contains(c.feature())) {
@@ -180,16 +196,84 @@ class AiController {
 				}
 				best.merge(c.feature() + "|" + c.sourceLanguage() + "|" + c.destinationLanguage(), c,
 						AiController::better);
+				if (c.feature() == AiFeature.TRANSLATE && visible.test(AiFeature.TRANSLATE)) {
+					translations.add(c);
+				}
 			}
 		}
-		Predicate<AiFeature> visible = visibleTo(caller);
 		List<Capabilities.Capability> items = best.values().stream().filter(c -> visible.test(c.feature()))
 				.sorted(Comparator.comparing((ProviderCapability c) -> c.feature().name())
 						.thenComparing(c -> String.valueOf(c.sourceLanguage()))
 						.thenComparing(c -> String.valueOf(c.destinationLanguage())))
 				.map(this::capability).toList();
-		return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
-				.body(new Capabilities(clock.instant(), items));
+		List<Capabilities.TranslationLanguage> catalogue = translationLanguages(translations);
+		String etag = etag(items, catalogue);
+		CacheControl cache = CacheControl.noCache().cachePrivate();
+		if (matches(ifNoneMatch, etag)) {
+			return ResponseEntity.status(HttpStatus.NOT_MODIFIED).cacheControl(cache).eTag(etag).build();
+		}
+		return ResponseEntity.ok().cacheControl(cache).eTag(etag)
+				.body(new Capabilities(clock.instant(), items, catalogue));
+	}
+
+	/**
+	 * ADR 0040: every active catalogue language some visible TRANSLATE capability serves, in catalogue order. A language
+	 * is a source when a row serves it as one (and detectable when such a row detects), a destination likewise; its
+	 * tier is the best tier among the rows that serve it. Codes the catalogue does not know (or has deactivated) are
+	 * left out: a request naming them is refused with LANGUAGE_NOT_SUPPORTED anyway.
+	 */
+	private List<Capabilities.TranslationLanguage> translationLanguages(List<ProviderCapability> rows) {
+		if (rows.isEmpty()) {
+			return List.of();
+		}
+		List<Capabilities.TranslationLanguage> out = new ArrayList<>();
+		for (LanguageCatalog.Language l : languages.allActive()) {
+			boolean source = false;
+			boolean destination = false;
+			boolean detect = false;
+			QualityTier tier = null;
+			for (ProviderCapability c : rows) {
+				boolean s = c.servesSource(l.code());
+				boolean d = c.servesDestination(l.code());
+				if (!s && !d) {
+					continue;
+				}
+				source |= s;
+				destination |= d;
+				detect |= s && c.supportsAutoDetection();
+				tier = tier == null || c.qualityTier().compareTo(tier) > 0 ? c.qualityTier() : tier;
+			}
+			if (source || destination) {
+				out.add(new Capabilities.TranslationLanguage(l.code(), l.englishName(), l.nativeName(), l.scriptCode(),
+						l.rtl() ? "RTL" : "LTR", source, destination, detect, tier, l.typing()));
+			}
+		}
+		return out;
+	}
+
+	/** A strong validator over the items and the catalogue (not {@code generatedAt}): SHA-256, 32 hex digits, quoted. */
+	private String etag(List<Capabilities.Capability> items, List<Capabilities.TranslationLanguage> catalogue) {
+		try {
+			byte[] body = mapper.writeValueAsBytes(new Capabilities(null, items, catalogue));
+			byte[] hash = MessageDigest.getInstance("SHA-256").digest(body);
+			return '"' + HexFormat.of().formatHex(hash, 0, 16) + '"';
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	/** {@code If-None-Match}: {@code *} or a list of (possibly weak) tags, one of which is {@code etag}. */
+	static boolean matches(String ifNoneMatch, String etag) {
+		if (ifNoneMatch == null || ifNoneMatch.isBlank()) {
+			return false;
+		}
+		for (String tag : ifNoneMatch.split(",")) {
+			String t = tag.strip();
+			if (t.equals("*") || t.equals(etag) || (t.startsWith("W/") && t.substring(2).equals(etag))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// ---------------------------------------------------------------------------------------------------- helpers

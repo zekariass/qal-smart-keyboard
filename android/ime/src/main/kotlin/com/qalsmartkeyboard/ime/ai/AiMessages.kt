@@ -11,6 +11,7 @@ object AiMessages {
     fun failure(c: Context, f: AiFailure): String = when (f) {
         AiFailure.Offline -> c.getString(R.string.ai_err_offline)
         AiFailure.Timeout -> c.getString(R.string.ai_err_timeout)
+        AiFailure.Unreachable -> c.getString(R.string.ai_err_unreachable)
         AiFailure.Busy -> c.getString(R.string.ai_err_busy)
         is AiFailure.QuotaExceeded -> {
             val reset = f.resetAtMs?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it)) }
