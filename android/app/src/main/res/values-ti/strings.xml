@@ -138,6 +138,7 @@
     <string name="acct_signed_out">ኣይኣቶኹምን። ምጽሓፍ ብዘይ ኣካውንት ይሰርሕ።</string>
     <string name="acct_session_ended">ኣጠቓቕማኹም ስለ ዝተወድአ ወጺእኩም። ንምቕጻል ደጊምኩም እተዉ።</string>
     <string name="acct_signed_in">ኣቲኹም ኣለኹም።</string>
+    <string name="acct_signed_in_as">ብ%1$s ኣቲኹም ኣለኹም</string>
     <string name="acct_guest">ናይ ጋሻ ኣጠቓቕማ ትጥቀሙ ኣለኹም። ንምዕቃቡ እተዉ።</string>
     <string name="acct_sign_in">እተዉ</string>
     <string name="acct_sign_out">ውጹ</string>

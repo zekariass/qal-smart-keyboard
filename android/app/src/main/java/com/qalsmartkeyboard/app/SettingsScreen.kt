@@ -72,10 +72,13 @@ fun SettingsScreen(
     onOpenEmail: () -> Unit = {},
     /** The personal dictionary (A1.8); a slot so JVM tests can render the screen without the native core. */
     dictionaryContent: @Composable () -> Unit = { PersonalDictionarySection() },
+    /** Opened from the keyboard (ADR 0034): the account card comes first, right under the title. */
+    accountFirst: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall)
+        if (accountFirst) accountContent()
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.settings_setup_title), style = MaterialTheme.typography.titleMedium)
@@ -84,7 +87,7 @@ fun SettingsScreen(
             }
         }
         AppLanguageCard()
-        accountContent()
+        if (!accountFirst) accountContent()
         syncContent()
         Text(stringResource(R.string.settings_languages_title), style = MaterialTheme.typography.titleMedium)
         val onlyOneEnabled = settings.enabledLanguages.size <= 1

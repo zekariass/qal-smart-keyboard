@@ -21,6 +21,8 @@ import com.qalsmartkeyboard.data.secure.EncryptedFileStore
 import com.qalsmartkeyboard.data.secure.StoreRead
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import java.io.IOException
 import java.security.GeneralSecurityException
@@ -63,10 +65,13 @@ class AttestationException(val unavailable: Boolean) : RuntimeException(if (unav
  * stores anything but the token pair (in the Keystore-backed [EncryptedTokenStore] behind the session) and
  * the account kind.
  *
- * **Guest linking (B2.6):** when a guest session exists, the bearer interceptor already sends
- * its token on `otp/start`, `otp/verify` and `oauth/GOOGLE`, so the server links the guest. If the
- * server says the guest can no longer link (401 `GUEST_SESSION_INVALID`; the authenticator then
- * clears the tokens), the same call is repeated once without it, as the contract prescribes.
+ * **Bearer policy of sign-in calls (ADR 0034):** `otp/start`, `otp/verify` and `oauth/GOOGLE` carry a bearer only when
+ * the stored session is a guest's, so the server links the guest (B2.6). Any other stored session (a registered
+ * account, or one whose kind is unknown) is never presented: the call goes out without it ([ApiClients.anonymousAuth])
+ * and a successful sign-in replaces it locally. If the guest bearer is refused and the session ends
+ * ([ApiError.SignedOut]: `GUEST_SESSION_INVALID`, or a token the server cannot verify whose refresh failed; the
+ * authenticator has cleared the tokens), the same call is repeated exactly once without a bearer: the guest's data is
+ * unreachable for this device anyway, and the user still gets signed in.
  */
 class AuthRepository(
     private val clients: ApiClients,
@@ -74,10 +79,18 @@ class AuthRepository(
     private val installationId: () -> UUID,
     private val attestation: AttestationProvider,
     private val device: DeviceInfo,
+    private val labels: AccountLabelStore? = null,
 ) {
     private val session get() = clients.session
     private val auth: AuthApi get() = clients.auth
     private val kind = MutableStateFlow(kinds.load())
+    private val label = MutableStateFlow(labels?.load())
+
+    /**
+     * Who is signed in, for "Signed in as ...": the masked phone number or the masked e-mail address of the last
+     * sign-in, or null (unknown, a guest, or signed out). Only meaningful while [status] is [AccountStatus.Registered].
+     */
+    val accountLabel: StateFlow<String?> = label.asStateFlow()
 
     val guestSupported: Boolean get() = attestation.isSupported
 
@@ -96,7 +109,7 @@ class AuthRepository(
             channel = OtpStartRequest.Channel.SMS,
             installationId = installationId(),
         )
-        val c = linking { apiCall { auth.startPhoneOtp(request) } }
+        val c = signInCall { it.startPhoneOtp(request) }
         return OtpChallengeInfo(c.challengeId, c.codeLength, c.expiresAt.toInstant().toEpochMilli(), c.resendAvailableAt?.toInstant()?.toEpochMilli())
     }
 
@@ -107,7 +120,7 @@ class AuthRepository(
             ageConfirmed = ageConfirmed.takeIf { it },
             device = deviceRegistration(),
         )
-        return accept(linking { apiCall { auth.verifyPhoneOtp(request) } })
+        return accept(signInCall { it.verifyPhoneOtp(request) })
     }
 
     suspend fun signInWithGoogle(idToken: String, nonce: String, displayName: String?, ageConfirmed: Boolean): SignInOutcome {
@@ -118,12 +131,12 @@ class AuthRepository(
             ageConfirmed = ageConfirmed.takeIf { it },
             device = deviceRegistration(),
         )
-        return accept(linking { apiCall { auth.exchangeOAuthIdToken(AuthApi.ProviderExchangeOAuthIdToken.GOOGLE, request) } })
+        return accept(signInCall { it.exchangeOAuthIdToken(AuthApi.ProviderExchangeOAuthIdToken.GOOGLE, request) })
     }
 
-    /** Attested guest session: server nonce, then the Integrity (or mock) token over it, then `/auth/guest`. */
+    /** Attested guest session: server nonce, then the Integrity (or mock) token over it, then `/auth/guest` (no bearer). */
     suspend fun continueAsGuest(): SignInOutcome {
-        val nonce = apiCall { auth.createAttestationNonce() }.nonce
+        val nonce = apiCall { clients.anonymousAuth.createAttestationNonce() }.nonce
         val token = when (val r = attestation.attest(nonce)) {
             is AttestationResult.Token -> r.token
             AttestationResult.Unavailable -> throw AttestationException(unavailable = true)
@@ -134,7 +147,7 @@ class AuthRepository(
             platform = ClientPlatformEnum.ANDROID,
             attestation = AttestationEvidence(provider = AttestationEvidence.Provider.PLAY_INTEGRITY, token = token, nonce = nonce),
         )
-        return accept(apiCall { auth.createGuestSession(request) })
+        return accept(apiCall { clients.anonymousAuth.createGuestSession(request) })
     }
 
     /**
@@ -156,20 +169,33 @@ class AuthRepository(
     private fun forgetKind() {
         kind.value = null
         kinds.clear()
+        label.value = null
+        labels?.clear()
     }
 
-    private suspend fun <T> linking(block: suspend () -> T): T = try {
-        block()
-    } catch (e: ApiError.SignedOut) {
-        if (e.reason != SignedOutReason.GUEST_SESSION_INVALID) throw e
-        forgetKind() // the stale guest token is gone (authenticator); retry as a plain sign-in
-        block()
+    /** True when the stored session is a guest's that a sign-in should link (B2.6). */
+    private fun linksGuest(): Boolean = kind.value == AccountKind.GUEST && session.tokens() != null
+
+    /** One sign-in call under the bearer policy (class doc): at most one retry, and that one never carries a bearer. */
+    private suspend fun <T> signInCall(call: (AuthApi) -> T): T {
+        if (!linksGuest()) return apiCall { call(clients.anonymousAuth) }
+        return try {
+            apiCall { call(auth) }
+        } catch (e: ApiError.SignedOut) {
+            // The authenticator ended the dead guest session; make sure nothing of it is presented again.
+            if (session.tokens() != null) session.signedOut(e.reason)
+            forgetKind()
+            apiCall { call(clients.anonymousAuth) }
+        }
     }
 
     private fun accept(s: AuthSession): SignInOutcome {
         val k = if (s.user.accountType == UserProfile.AccountType.GUEST) AccountKind.GUEST else AccountKind.REGISTERED
         kinds.save(k)
         kind.value = k
+        val who = if (k == AccountKind.REGISTERED) AccountLabels.of(s.user) else null
+        if (who != null) labels?.save(who) else labels?.clear()
+        label.value = who
         session.signedIn(s)
         val merged = s.mergedGuestUserId
         val link = when {
@@ -206,6 +232,37 @@ class AccountKindStore(private val files: EncryptedFileStore) {
 
     private companion object {
         const val NAME = "account-kind"
+    }
+}
+
+/** "Signed in as ..." without showing a full identifier: the server's masked phone number, else a masked e-mail. */
+object AccountLabels {
+    fun of(user: UserProfile): String? = user.phoneNumberMasked?.takeIf { it.isNotBlank() } ?: user.email?.let(::maskEmail)
+
+    /** Keeps the first character and the domain (`zemen@example.com` gives `z` + three bullets + `@example.com`); no usable `@` gives null. */
+    fun maskEmail(email: String): String? {
+        val at = email.lastIndexOf('@')
+        if (at < 1 || at == email.lastIndex) return null
+        return email.first() + "\u2022\u2022\u2022" + email.substring(at)
+    }
+}
+
+/** The masked account label next to the tokens (encrypted, excluded from backups like them). */
+class AccountLabelStore(private val files: EncryptedFileStore) {
+    fun load(): String? = (files.read(NAME) as? StoreRead.Ok)?.let { String(it.bytes, Charsets.UTF_8) }?.takeIf { it.isNotBlank() }
+
+    fun save(label: String) {
+        try {
+            files.write(NAME, label.toByteArray(Charsets.UTF_8))
+        } catch (_: IOException) {
+        } catch (_: GeneralSecurityException) {
+        }
+    }
+
+    fun clear() = files.delete(NAME)
+
+    private companion object {
+        const val NAME = "account-label"
     }
 }
 

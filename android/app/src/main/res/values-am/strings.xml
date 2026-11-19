@@ -137,6 +137,7 @@
     <string name="acct_signed_out">አልገቡም። መተየብ ያለ መለያ ይሠራል።</string>
     <string name="acct_session_ended">ክፍለ ጊዜዎ ስላበቃ ወጥተዋል። ለመቀጠል እንደገና ይግቡ።</string>
     <string name="acct_signed_in">ገብተዋል።</string>
+    <string name="acct_signed_in_as">በ%1$s ገብተዋል</string>
     <string name="acct_guest">የእንግዳ ክፍለ ጊዜ እየተጠቀሙ ነው። እንዲቆይ ይግቡ።</string>
     <string name="acct_sign_in">ይግቡ</string>
     <string name="acct_sign_out">ይውጡ</string>

@@ -138,6 +138,7 @@
     <string name="acct_signed_out">You are not signed in. Typing works without an account.</string>
     <string name="acct_session_ended">You were signed out because your session ended. Sign in again to continue.</string>
     <string name="acct_signed_in">You are signed in.</string>
+    <string name="acct_signed_in_as">Signed in as %1$s</string>
     <string name="acct_guest">You are using a guest session. Sign in to keep it.</string>
     <string name="acct_sign_in">Sign in</string>
     <string name="acct_sign_out">Sign out</string>

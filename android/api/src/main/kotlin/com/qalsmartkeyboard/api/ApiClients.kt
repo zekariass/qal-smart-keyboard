@@ -46,7 +46,8 @@ data class TransportConfig(
  *
  * Main client interceptors, in order: client headers, bearer, correlation-id capture; the
  * [TokenAuthenticator] handles 401. Refresh calls use a second client with the same headers and
- * logging but neither bearer nor authenticator, so a refresh can never recurse.
+ * logging but neither bearer nor authenticator, so a refresh can never recurse. [anonymousAuth] is the auth API over
+ * that bearer-free client: sign-in calls that must not carry the stored session (ADR 0034).
  */
 class ApiClients(val config: TransportConfig, val session: SessionManager) {
 
@@ -82,6 +83,12 @@ class ApiClients(val config: TransportConfig, val session: SessionManager) {
     fun <A> api(create: (String, Call.Factory) -> A): A = create(config.baseUrl, okHttpClient)
 
     val auth: AuthApi by lazy { api(::AuthApi) }
+
+    /**
+     * The auth API without the session: no `Authorization` header and no refresh on 401. For sign-in calls that must
+     * not present the stored token (ADR 0034: only a guest session meant for linking is sent on sign-in).
+     */
+    val anonymousAuth: AuthApi by lazy { AuthApi(config.baseUrl, refreshClient) }
     val appConfig: ConfigApi by lazy { api(::ConfigApi) }
 }
 

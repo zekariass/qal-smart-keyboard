@@ -138,6 +138,7 @@
     <string name="acct_signed_out">Hin seenne. Barreessuun akkaawuntii malee hojjeta.</string>
     <string name="acct_session_ended">Yeroon tajaajilaa keessanii waan xumurameef baatanii jirtu. Itti fufuuf irra deebi\'aa seenaa.</string>
     <string name="acct_signed_in">Seentanii jirtu.</string>
+    <string name="acct_signed_in_as">%1$s tiin seentanii jirtu</string>
     <string name="acct_guest">Tajaajila keessummaa fayyadamaa jirtu. Isa eeguuf seenaa.</string>
     <string name="acct_sign_in">Seenuu</string>
     <string name="acct_sign_out">Ba\'uu</string>

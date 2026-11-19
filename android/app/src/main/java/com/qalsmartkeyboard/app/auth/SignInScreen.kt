@@ -210,13 +210,17 @@ private fun DoneStep(state: SignInState, actions: SignInActions) {
     Button(onClick = actions.onDone) { Text(stringResource(R.string.si_done_button)) }
 }
 
-/** "Account" card for the settings screen. */
+/**
+ * "Account" card for the settings screen. [label] is who is signed in ([AuthRepository.accountLabel]: a masked phone
+ * number or e-mail), shown as "Signed in as ..." when known.
+ */
 @Composable
 fun AccountSection(
     status: AccountStatus,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
+    label: String? = null,
 ) {
     var confirming by rememberSaveable { mutableStateOf(false) }
     Card(modifier.fillMaxWidth()) {
@@ -233,7 +237,7 @@ fun AccountSection(
                     Button(onClick = onSignIn) { Text(stringResource(R.string.acct_sign_in)) }
                 }
                 AccountStatus.Registered -> {
-                    Text(stringResource(R.string.acct_signed_in))
+                    Text(if (label != null) stringResource(R.string.acct_signed_in_as, label) else stringResource(R.string.acct_signed_in))
                     OutlinedButton(onClick = { confirming = true }) { Text(stringResource(R.string.acct_sign_out)) }
                 }
             }

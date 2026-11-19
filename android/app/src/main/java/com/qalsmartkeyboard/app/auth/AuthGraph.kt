@@ -46,6 +46,7 @@ class AuthGraph private constructor(context: Context) {
         installationId = InstallationIdStore(files)::get,
         attestation = AttestationProviders.create(context),
         device = DeviceInfo(appVersion = BuildConfig.VERSION_NAME, osVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"),
+        labels = AccountLabelStore(files),
     )
 
     companion object {
