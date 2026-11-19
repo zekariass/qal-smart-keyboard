@@ -17,6 +17,7 @@ pub mod langid;
 pub mod latin;
 pub mod lexicon;
 pub mod pack;
+pub mod predict;
 pub mod ranker;
 pub mod segmenter;
 pub mod signature;
@@ -32,5 +33,6 @@ pub use pack::{
     KeyStatus, PackInfo, PackLimits, PackPlatform, PackRejectReason, ReleaseChannel, ResourceType,
     TrustedKey,
 };
+pub use predict::PredictionOptions;
 
 uniffi::setup_scaffolding!();

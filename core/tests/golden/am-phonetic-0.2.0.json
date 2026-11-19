@@ -370,10 +370,10 @@
     {
       "name": "select-alternative-replaces-composing",
       "keystrokes": ["s", "e", "l", "a", "m", "Select:1"],
-      "steps": [{ "after": 6, "composing": "", "commit": "ሠላም", "alternatives": [] }],
+      "steps": [{ "after": 6, "composing": "", "commit": "ሠላም ", "alternatives": [] }],
       "composing": "",
       "alternatives": [],
-      "committed": "ሠላም"
+      "committed": "ሠላም "
     },
     {
       "name": "select-default-candidate",

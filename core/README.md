@@ -16,6 +16,7 @@ content, nor put it in error messages. Tests use synthetic text only.
 | `segmenter` | grapheme-safe segmentation | C1.4, C1.10 |
 | `lexicon` | trie/FST lexicon, user dictionary overlay | C1.6 |
 | `ranker` | ranking, suggestions, autocorrect harm guard | C1.7 |
+| `predict` | prediction options, word context, spacing rules (ADR 0039) | r2 |
 | `langid` | code-switching language ID | C1.8 |
 | `calendar` | Ethiopian calendar, clock, numerals | C1.9 |
 | `pack` | pack format, Ed25519 verification (N11) | C1.2 |
@@ -43,12 +44,12 @@ content, nor put it in error messages. Tests use synthetic text only.
 - Dictionary candidates (A1.3, ADR 0004): `DICTIONARY` ("QLX1" lexicon) and `FREQUENCY_LIST`
   ("QBG1" bigrams) packs per language build a lexicon + ranker inside the engine. In PhoneticLatin the
   strip is the composition (index 0, the literal rule output), then the transliteration alternatives
-  (kind `Transliteration`) sorted by dictionary frequency (most frequent first; words absent from the
-  lexicon keep their C1.4 order after the known ones; ties keep C1.4 order), then the ranker's candidates
-  for the composition (`Completion`, or `Correction` for one-edit corrections), de-duplicated and capped
-  at `max_candidates`. At least two slots are reserved for completions whenever the lexicon offers any
-  (ADR 0004 U6 amendment). Without a dictionary the strip is exactly C1.4's. Nothing is applied
-  automatically. The last committed word is kept in memory (cleared by `reset`, `set_input_mode`,
+  that are dictionary words (kind `Transliteration`, most frequent first; ties keep C1.4 order), then the
+  ranker's candidates for the composition (`Completion`, or `Correction` for one-edit corrections), then
+  the alternatives that are not words (C1.4 order; ADR 0039 moved them behind the completions),
+  de-duplicated and capped at `max_candidates`. At least two slots are reserved for completions whenever
+  the lexicon offers any (ADR 0004 U6 amendment). Without a dictionary the strip is exactly C1.4's.
+  Nothing is applied automatically in phonetic mode. The last committed word is kept in memory (cleared by `reset`, `set_input_mode`,
   deletions and sentence punctuation) as bigram context. A verified `DICTIONARY` / `FREQUENCY_LIST` pack whose
   payload does not parse (A1.6) is still activated (it counts for rollback protection) and returned with
   `payload_usable: false`, but never replaces a working model: the language keeps its last good lexicon
@@ -65,6 +66,17 @@ content, nor put it in error messages. Tests use synthetic text only.
   so a newer dictionary never drops what the user learned. `Lexicon` also gained `user_words()` (alphabetical,
   for a settings list) and `forget_user_word`. The engine never decides whether to learn (password and
   incognito fields are the host's call, SD 7.4) and never persists anything.
+- Prediction (ADR 0039, [`docs/specs/prediction-engine.md`](../docs/specs/prediction-engine.md)):
+  `set_prediction_options(PredictionOptions { suggestions, next_word, autocorrect })` per field (defaults: suggestions
+  on, the rest off); `set_cursor_context(before, after) -> EditorUpdate` after a cursor move the engine did not see
+  (rebuilds the word context; returns next-word predictions or Fidel completions); `EditorUpdate.autocorrect_index`
+  marks the correction a Space will apply. English and Qubee (with their dictionary) and Arabic (with user words)
+  compose the current word; Direct Fidel completes the letters typed since the last boundary (a pick deletes them).
+  After a word boundary the strip predicts the next word (bigrams + the user's pairs). Autocorrection (English /
+  Qubee only, `Ranker::autocorrect` harm guard, never a word glued to `@ / . digits`) applies at Space, Enter or
+  `. , ! ? ; :`; a Backspace right after restores the typed word. A picked candidate is followed by a space unless
+  one follows the cursor; Space right after adds none, attaching punctuation replaces it. Arabic has no shippable
+  dictionary: `learn_user_word` / `add_user_word` / a non-empty import create a user-only model.
 - `EngineConfig { max_candidates, trusted_keys: Vec<TrustedKey>, pack_limits: Option<PackLimits> }`.
 - `TrustedKey { key_id, public_key (32 raw bytes), status: KeyStatus }`,
   `KeyStatus { Active, Retiring, Revoked }`,
@@ -84,9 +96,9 @@ content, nor put it in error messages. Tests use synthetic text only.
 - `CoreError`: `PackRejected { reason: PackRejectReason, detail }`, `UnsupportedLanguage`,
   `InvalidState`, `InvalidConfig`.
 
-Current behaviour: Abc/English pass characters through. Arabic (`ar` only, ADR 0034) is a passthrough
-too, but sanitised and NFC like the Fidel popups (control characters dropped, alef + combining hamza
-committed as أ); it has no packs and no candidates. `set_input_mode` returns `InvalidState` for a
+Current behaviour: Abc passes characters through, as do English without an `en` dictionary and Arabic
+without user words (ADR 0039). Arabic (`ar` only, ADR 0034) is sanitised and NFC like the Fidel popups
+(control characters dropped, alef + combining hamza committed as أ); it has no packs. `set_input_mode` returns `InvalidState` for a
 mode that does not fit the language (e.g. Qubee is only for `om`), that is not implemented yet
 (PhoneticLatin, Qubee until C1.4/C1.5), or, for DirectFidel, when no `KEYBOARD_LAYOUT` pack is
 loaded for the language ("no keyboard layout is loaded for am"). The host therefore keeps a

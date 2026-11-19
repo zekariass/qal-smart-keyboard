@@ -82,6 +82,20 @@ impl PhoneticSession {
         &self.profile
     }
 
+    /// Nothing is composing (no Latin keystrokes, no pending punctuation).
+    pub fn is_idle(&self) -> bool {
+        self.raw.is_empty() && self.pending.is_none()
+    }
+
+    /// The composing text the host shows now.
+    pub fn shown_text(&self) -> String {
+        if self.raw.is_empty() {
+            self.pending.map(String::from).unwrap_or_default()
+        } else {
+            self.render().0
+        }
+    }
+
     pub fn reset(&mut self) {
         self.raw.clear();
         self.pending = None;
@@ -171,6 +185,7 @@ impl PhoneticSession {
             composing,
             commit: nfc_commit(commit),
             delete_before: 0,
+            autocorrect_index: None,
             candidates: self
                 .candidates
                 .iter()
