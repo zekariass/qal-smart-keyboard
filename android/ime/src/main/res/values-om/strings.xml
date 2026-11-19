@@ -12,7 +12,6 @@
     <string name="top_bar_mode_change">Akkaataa barreessuu jijjiiraa</string>
     <string name="top_bar_mode_option">Akkaataa barreessuu %1$s</string>
     <string name="top_bar_ai_open">Meeshaalee AI</string>
-    <string name="top_bar_ai_close">Meeshaalee AI cufaa</string>
     <string name="top_bar_candidate_add">Galmee jechootaa keessanitti dabalaa</string>
     <string name="top_bar_candidate_autocorrect">%1$s, ofumaan sirreessuu</string>
     <string name="top_bar_more_suggestions">Yaadota dabalataa</string>
@@ -51,15 +50,15 @@
     <string name="user_dictionary_not_added">Jecha kana dabaluun hin danda\'amne</string>
     <!-- AI toolbar -->
     <string name="ai_translate">Hiikkaa</string>
-    <string name="ai_grammar">Seerluga</string>
-    <string name="ai_rewrite">Irra deebi\'ii barreessi</string>
-    <string name="ai_tone_natural">Uumamaa</string>
     <string name="ai_tone_friendly">Michummaa</string>
     <string name="ai_tone_polite">Kabajaa</string>
     <string name="ai_tone_professional">Ogummaa</string>
     <string name="ai_tone_concise">Gabaabaa</string>
     <string name="ai_tone_apologetic">Dhiifama</string>
     <string name="ai_tone_honorific">Kabaja olaanaa</string>
+    <string name="ai_tile_tone_description">Irra deebi\'ii barreessi, akkaataa: %1$s</string>
+    <string name="ai_grid_offline">Toora ala: AI walqunnamtii barbaada</string>
+    <string name="ai_grid_quota">%1$s: %2$s</string>
     <string name="ai_status_offline">Toora ala</string>
     <string name="ai_status_signed_out">AI fayyadamuuf seenaa</string>
     <string name="ai_status_update">Haaromsuun barbaachisa</string>
@@ -124,9 +123,7 @@
     <string name="translate_into_title">Afaan galmaa</string>
     <string name="translate_input_spoken">Barreeffama hiikamu: %1$s</string>
     <string name="translate_direction_spoken">%1$s irraa gara %2$s tti</string>
-    <string name="ai_assist_chip">Gargaarsa</string>
     <string name="ai_assist_chip_description">Gargaarsa AI: barreeffama filatame ykn garagalfame ibsuu, cuunfuu, deebii kennuu fi kkf</string>
-    <string name="ai_email_chip">Imeelii</string>
     <string name="ai_assist_title">Gargaarsa AI</string>
     <string name="ai_panel_back">Deebi\'aa</string>
     <string name="ai_panel_close">Gara kiiboordiitti deebi\'aa</string>
@@ -586,4 +583,10 @@
     <string name="editor_dictate_stop">Sagaleedhaan barreessuu dhaabaatii barreeffama galchaa</string>
     <string name="wordart_open_preview">Agarsiisa guddaa banaa</string>
     <string name="wordart_typing_label">Barreeffama Aartii Jechaa</string>
+    <!-- Translation languages and AI reliability (ADR 0040). DRAFT (N9). -->
+    <string name="ai_err_unreachable">Sarvara Qal waliin walqunnamuun hin danda\'amne. Walqunnamtii interneetii keessanii mirkaneessaatii irra deebi\'aa yaalaa.</string>
+    <string name="translate_search_languages">Afaanota barbaadaa</string>
+    <string name="translate_search_clear">Barbaacha haqaa</string>
+    <string name="translate_no_languages">Afaan tokkollee hin argamne</string>
+    <string name="ai_output_more_languages">Afaanota dabalataa</string>
 </resources>

@@ -195,10 +195,53 @@ class ServerAiActionsTest {
         assertEquals(AiFailure.Timeout, failure(out))
     }
 
-    @Test fun anUnreachableServerIsReportedAsOfflineWithTheSameKeyRetry() {
+    /** Reliability (ADR 0040, B): a refused connection is "can't reach the server", fast, retried with the same key. */
+    @Test fun anUnreachableServerIsReportedAsUnreachableWithTheSameKeyRetry() {
         server.shutdown()
+        val t0 = System.nanoTime()
         val out = run(actions(), AiTask.Grammar, key = "k")
-        assertEquals(AiFailure.Offline, failure(out))
+        assertEquals(AiFailure.Unreachable, failure(out))
+        assertTrue(failure(out).retrySameKey)
+        assertTrue("fails fast", System.nanoTime() - t0 < TimeUnit.SECONDS.toNanos(5))
+    }
+
+    /** A host that never answers the connection attempt (the phone build with 10.0.2.2) ends at the connect timeout. */
+    @Test fun aConnectTimeoutIsUnreachableNotTooLong() {
+        // 10.255.255.1 is a non-routable address: the TCP connect hangs until the connect timeout.
+        val client = rig.clients.okHttpClient.newBuilder().connectTimeout(300, TimeUnit.MILLISECONDS).build()
+        val a = ServerAiActions(client, "http://10.255.255.1:8080", session, conn, { profiles to rules },
+            EntitlementManager(client, rig.baseUrl, session, EntitlementTokenVerifier(PinnedKeys.NONE), EntitlementTokenStore(rig.files)),
+            { false }, direct)
+        val w = Waiter()
+        a.submit(AiRequest("k", AiTask.Grammar, "text"), w.callback)
+        assertEquals(AiFailure.Unreachable, failure(w.await(10_000)))
+    }
+
+    /** The connect timeout of the AI calls is short and separate from their call timeouts. */
+    @Test fun theConnectTimeoutIsShortAndTheCallTimeoutsStay() {
+        val a = actions()
+        for (kind in AiTaskKind.values()) {
+            val c = a.clientFor(kind)
+            assertTrue(kind.name, c.connectTimeoutMillis <= AiTimeouts.CONNECT_SECONDS * 1000)
+            assertEquals(kind.name, AiTimeouts.callTimeoutSeconds(kind) * 1000, c.callTimeoutMillis.toLong())
+        }
+    }
+
+    /** A server that took the request and then went silent is still "That took too long". */
+    @Test fun aSilentServerAfterTheRequestIsATimeout() {
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        val out = run(actions(callTimeouts = { 1L }), AiTask.Grammar, key = "k")
+        assertEquals(AiFailure.Timeout, failure(out))
+    }
+
+    /** A request that cannot even be built (a broken base URL) still ends with an outcome, and nothing is sent. */
+    @Test fun aBrokenBaseUrlEndsWithAnOutcome() {
+        val entitlements = EntitlementManager(rig.clients.okHttpClient, rig.baseUrl, session, EntitlementTokenVerifier(PinnedKeys.NONE), EntitlementTokenStore(rig.files))
+        val a = ServerAiActions(rig.clients.okHttpClient, "not a url", session, conn, { profiles to rules }, entitlements, { false }, direct)
+        val w = Waiter()
+        a.submit(AiRequest("k", AiTask.Grammar, "text"), w.callback)
+        assertEquals(AiFailure.Other, failure(w.await()))
+        assertEquals(0, server.requestCount)
     }
 
     @Test fun offlineMakesNoRequestAtAll() {

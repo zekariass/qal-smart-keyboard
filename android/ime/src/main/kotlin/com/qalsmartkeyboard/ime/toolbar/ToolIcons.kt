@@ -16,12 +16,21 @@ import kotlin.math.sin
  * with whatever colour the caller passes (the theme's strip or key tokens). No image resources, no icon library: each
  * icon is a few `Path`s built once and scaled on the canvas, so drawing allocates nothing.
  *
- * The bar's shortcuts, the tools panel tiles, the clipboard panel, the AI chips and the special keys (shift, delete,
+ * The bar's shortcuts, the tools and AI tools grids, the clipboard panel, the AI panels and the special keys (shift, delete,
  * Enter actions, globe, emoji) all use these, so stroke weight and proportions match everywhere.
  */
 enum class ToolIcon {
-    TOOLS, BACK, CLOSE, TRANSLATE, AI, CLIPBOARD, EMOJI, MIC, SETTINGS, THEME, LANGUAGES, EMAIL, WORD_ART, WRITING_MODE,
+    TOOLS, BACK, CLOSE, TRANSLATE, CLIPBOARD, EMOJI, MIC, SETTINGS, THEME, LANGUAGES, EMAIL, WORD_ART, WRITING_MODE,
     LOCK, CHECK, GRAMMAR, REWRITE,
+
+    /** The AI entry (ADR 0041): an "AI" wordmark in a rounded outline, drawn as paths so it never scales with the font. */
+    AI,
+
+    // The AI tools grid (ADR 0041): one icon per action.
+    ASSIST, SIMPLIFY, EXPLAIN, SUMMARIZE, REPLY, PROFESSIONAL, FRIENDLY, POLITE, CONCISE, APOLOGETIC, HONORIFIC,
+
+    // The text field's action row (ADR 0038) when its labels do not fit.
+    CUT, SELECT_ALL,
 
     // The translate panel (ADR 0037): swap languages, a list's caret, copy.
     SWAP, EXPAND, COPY,
@@ -34,8 +43,14 @@ object ToolIcons {
     /** Stroke width in grid units (of 24). */
     const val STROKE = 2f
 
-    /** One icon: [stroke] is outlined, [fill] filled (small dots, the sparkle's star, a filled shift arrow). */
-    private class Glyph(val stroke: Path, val fill: Path? = null)
+    /** Stroke width (grid units) of the bold parts of a glyph: the letters of the AI wordmark. */
+    const val BOLD_STROKE = 2.2f
+
+    /**
+     * One icon: [stroke] is outlined ([strokeUnits] wide), [fill] filled (small dots, the sparkle's star, a filled shift
+     * arrow), [bold] outlined [BOLD_STROKE] wide (the AI wordmark's letters).
+     */
+    private class Glyph(val stroke: Path, val fill: Path? = null, val bold: Path? = null, val strokeUnits: Float = STROKE)
 
     private val glyphs = HashMap<ToolIcon, Glyph>()
 
@@ -54,10 +69,14 @@ object ToolIcons {
         paint.isAntiAlias = true
         paint.color = color
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = STROKE * strokeScale
+        paint.strokeWidth = g.strokeUnits * strokeScale
         paint.strokeCap = Paint.Cap.ROUND
         paint.strokeJoin = Paint.Join.ROUND
         canvas.drawPath(g.stroke, paint)
+        g.bold?.let {
+            paint.strokeWidth = BOLD_STROKE * strokeScale
+            canvas.drawPath(it, paint)
+        }
         g.fill?.let {
             paint.style = Paint.Style.FILL
             canvas.drawPath(it, paint)
@@ -126,7 +145,139 @@ object ToolIcons {
         ToolIcon.CLOSE -> Glyph(Path().apply { poly(6f, 6f, 18f, 18f); poly(18f, 6f, 6f, 18f) })
         // The Material "translate" mark is drawn as a filled outline of 2-unit strokes, the same weight as the rest.
         ToolIcon.TRANSLATE -> Glyph(Path(), parse(TRANSLATE_PATH))
-        ToolIcon.AI -> Glyph(Path().apply { sparkle(10.5f, 13.5f, 8f) }, Path().apply { sparkle(19f, 5f, 3.2f) })
+        // A subtle rounded outline (so it reads as a tool, not as text) around a bold "A" and a serifed "I".
+        ToolIcon.AI -> Glyph(
+            Path().apply { rect(2.5f, 4f, 21.5f, 20f, 4.5f) },
+            bold = Path().apply {
+                poly(5.5f, 16f, 8.5f, 8f, 11.5f, 16f)
+                poly(6.7f, 13.2f, 10.3f, 13.2f)
+                poly(16.8f, 8f, 16.8f, 16f)
+                poly(15.3f, 8f, 18.3f, 8f)
+                poly(15.3f, 16f, 18.3f, 16f)
+            },
+            strokeUnits = 1.6f,
+        )
+        // A wand with sparkles: AI Assist, the free-form panel.
+        ToolIcon.ASSIST -> Glyph(
+            Path().apply { poly(3.5f, 20.5f, 14f, 10f) },
+            Path().apply { sparkle(17.5f, 6.5f, 4f); sparkle(8f, 5f, 2.2f); sparkle(19.5f, 16f, 2.2f) },
+        )
+        // A tangled line, an arrow down, a straight line.
+        ToolIcon.SIMPLIFY -> Glyph(
+            Path().apply {
+                poly(3f, 6.5f, 6f, 3.5f, 9f, 6.5f, 12f, 3.5f, 15f, 6.5f, 18f, 3.5f, 21f, 6.5f)
+                poly(12f, 9.5f, 12f, 16f)
+                poly(8.8f, 12.8f, 12f, 16f, 15.2f, 12.8f)
+                poly(3f, 20f, 21f, 20f)
+            },
+        )
+        // A light bulb.
+        ToolIcon.EXPLAIN -> Glyph(
+            Path().apply {
+                addArc(RectF(5.5f, 2.5f, 18.5f, 15.5f), 135f, 270f)
+                poly(7.4f, 13.6f, 9f, 16.8f, 15f, 16.8f, 16.6f, 13.6f)
+                poly(9.5f, 20.5f, 14.5f, 20.5f)
+            },
+        )
+        // Lines that narrow: long text condensed.
+        ToolIcon.SUMMARIZE -> Glyph(Path().apply { poly(3.5f, 5.5f, 20.5f, 5.5f); poly(6f, 12f, 18f, 12f); poly(9f, 18.5f, 15f, 18.5f) })
+        // The reply arrow.
+        ToolIcon.REPLY -> Glyph(
+            Path().apply {
+                poly(9.5f, 5f, 3.5f, 11f, 9.5f, 17f)
+                moveTo(3.5f, 11f)
+                lineTo(13f, 11f)
+                quadTo(20.5f, 11f, 20.5f, 19.5f)
+            },
+        )
+        // A briefcase.
+        ToolIcon.PROFESSIONAL -> Glyph(
+            Path().apply {
+                rect(3f, 7.5f, 21f, 20f, 2.5f)
+                poly(9f, 7.5f, 9f, 4.5f, 15f, 4.5f, 15f, 7.5f)
+                poly(3f, 13f, 21f, 13f)
+            },
+        )
+        // A face with smiling eyes.
+        ToolIcon.FRIENDLY -> Glyph(
+            Path().apply {
+                circle(12f, 12f, 9f)
+                addArc(RectF(7f, 8.5f, 11f, 12f), 200f, 140f)
+                addArc(RectF(13f, 8.5f, 17f, 12f), 200f, 140f)
+                addArc(RectF(7.5f, 9f, 16.5f, 16.5f), 25f, 130f)
+            },
+        )
+        // A speech bubble with a heart: kind words.
+        ToolIcon.POLITE -> Glyph(
+            Path().apply {
+                moveTo(6f, 3.5f)
+                lineTo(18f, 3.5f)
+                quadTo(21f, 3.5f, 21f, 6.5f)
+                lineTo(21f, 14f)
+                quadTo(21f, 17f, 18f, 17f)
+                lineTo(11f, 17f)
+                lineTo(6.5f, 21f)
+                lineTo(6.5f, 17f)
+                lineTo(6f, 17f)
+                quadTo(3f, 17f, 3f, 14f)
+                lineTo(3f, 6.5f)
+                quadTo(3f, 3.5f, 6f, 3.5f)
+                close()
+            },
+            Path().apply {
+                moveTo(12f, 14f)
+                cubicTo(8f, 11.3f, 8f, 7.2f, 10.2f, 7.2f)
+                cubicTo(11.2f, 7.2f, 11.8f, 7.9f, 12f, 8.6f)
+                cubicTo(12.2f, 7.9f, 12.8f, 7.2f, 13.8f, 7.2f)
+                cubicTo(16f, 7.2f, 16f, 11.3f, 12f, 14f)
+                close()
+            },
+        )
+        // Two arrows pressing on a line.
+        ToolIcon.CONCISE -> Glyph(
+            Path().apply {
+                poly(12f, 2.5f, 12f, 9f); poly(8.8f, 5.8f, 12f, 9f, 15.2f, 5.8f)
+                poly(12f, 21.5f, 12f, 15f); poly(8.8f, 18.2f, 12f, 15f, 15.2f, 18.2f)
+                poly(3.5f, 12f, 20.5f, 12f)
+            },
+        )
+        // A face with worried brows: sorry.
+        ToolIcon.APOLOGETIC -> Glyph(
+            Path().apply {
+                circle(12f, 12f, 9f)
+                poly(7.3f, 9.3f, 10f, 8f)
+                poly(16.7f, 9.3f, 14f, 8f)
+                addArc(RectF(8.5f, 15f, 15.5f, 20f), 205f, 130f)
+            },
+            Path().apply { circle(9f, 11.6f, 1.2f); circle(15f, 11.6f, 1.2f) },
+        )
+        // A crown: respectful forms.
+        ToolIcon.HONORIFIC -> Glyph(
+            Path().apply {
+                poly(3.5f, 18f, 3f, 7.5f, 8f, 12f, 12f, 5f, 16f, 12f, 21f, 7.5f, 20.5f, 18f, close = true)
+                poly(4f, 21f, 20f, 21f)
+            },
+        )
+        ToolIcon.CUT -> Glyph(
+            Path().apply {
+                circle(6.5f, 17.5f, 3f)
+                circle(17.5f, 17.5f, 3f)
+                poly(8.6f, 15.3f, 17.5f, 3.5f)
+                poly(15.4f, 15.3f, 6.5f, 3.5f)
+            },
+        )
+        // Dashed corners around a square.
+        ToolIcon.SELECT_ALL -> Glyph(
+            Path().apply {
+                poly(3.5f, 7.5f, 3.5f, 3.5f, 7.5f, 3.5f)
+                poly(16.5f, 3.5f, 20.5f, 3.5f, 20.5f, 7.5f)
+                poly(20.5f, 16.5f, 20.5f, 20.5f, 16.5f, 20.5f)
+                poly(7.5f, 20.5f, 3.5f, 20.5f, 3.5f, 16.5f)
+                poly(11f, 3.5f, 13f, 3.5f); poly(11f, 20.5f, 13f, 20.5f)
+                poly(3.5f, 11f, 3.5f, 13f); poly(20.5f, 11f, 20.5f, 13f)
+                rect(8f, 8f, 16f, 16f, 1.5f)
+            },
+        )
         ToolIcon.CLIPBOARD -> Glyph(
             Path().apply {
                 rect(5f, 4.5f, 19f, 21f, 2.5f)

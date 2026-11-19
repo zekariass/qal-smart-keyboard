@@ -513,4 +513,8 @@
     <!-- ADR 0035: the keyboard's clipboard panel. DRAFT (N9). -->
     <string name="settings_clipboard_history">የቅንጥብ ሰሌዳ ታሪክ</string>
     <string name="settings_clipboard_history_summary">በቅርቡ የተቀዱ፣ በማህደረ ትውስታ ብቻ ለ1 ሰዓት ይቆያሉ</string>
+    <!-- Translation languages and AI reliability (ADR 0040). DRAFT (N9). -->
+    <string name="settings_translate_search">ቋንቋዎችን ይፈልጉ</string>
+    <string name="settings_translate_none_found">ምንም ቋንቋ አልተገኘም</string>
+    <string name="settings_translate_offline_note">መተግበሪያው አንዴ በመስመር ላይ ከሆነ በኋላ ተጨማሪ ቋንቋዎች እዚህ ይታያሉ።</string>
 </resources>

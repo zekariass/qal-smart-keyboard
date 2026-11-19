@@ -24,8 +24,13 @@ import com.qalsmartkeyboard.ime.ai.AiFailure
 import com.qalsmartkeyboard.ime.ai.AiLanguages
 import com.qalsmartkeyboard.ime.ai.AiOutcome
 import com.qalsmartkeyboard.ime.ai.AiResult
+import com.qalsmartkeyboard.ime.ai.AiTaskKind
+import com.qalsmartkeyboard.ime.ai.AiToolSet
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
 import com.qalsmartkeyboard.ime.ai.AiToolbarView
+import com.qalsmartkeyboard.ime.ai.AiToolsPanelView
+import com.qalsmartkeyboard.ime.ai.AiPeriod
+import com.qalsmartkeyboard.ime.ai.AiQuotaHint
 import com.qalsmartkeyboard.ime.ai.EditorAiAccess
 import com.qalsmartkeyboard.ime.ai.FakeAiActions
 import com.qalsmartkeyboard.ime.ai.TranslateController
@@ -43,11 +48,13 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import java.util.Locale
 
 /**
- * A developer aid, not a check: renders the bar in its states, the tools and clipboard panels, the translate panel and
- * its language list (ADR 0037) and the keys to PNG files for a visual review (ADR 0035). Runs only when
- * `QAL_RENDER_DIR` names an output directory.
+ * A developer aid, not a check: renders the bar in its states (the "AI" mark idle, active and locked, ADR 0041), the tools,
+ * AI tools and clipboard panels, the translate panel and its language list (ADR 0037), the text field's action row at
+ * 360 dp in Oromo, and the keys to PNG files for a visual review (ADR 0035). Runs only when `QAL_RENDER_DIR` names an
+ * output directory.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
@@ -64,7 +71,7 @@ class ToolbarRenderTest {
         override fun wantsAutoCapital(capsFlags: Int) = false
     }
 
-    private fun shoot(views: List<View>, out: File) {
+    private fun shoot(views: List<View>, out: File, w: Int = this.w) {
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         views.forEach { (it.parent as? android.view.ViewGroup)?.removeView(it) }
         views.forEach { col.addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)) }
@@ -75,16 +82,21 @@ class ToolbarRenderTest {
         out.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    private fun bar(theme: KeyboardTheme, setup: (CandidateStripView, KeyboardBar) -> Unit): View {
-        val actions = FakeAiActions()
+    private fun bar(
+        theme: KeyboardTheme,
+        availability: AiAvailability = AiAvailability(),
+        ui: android.content.Context = ctx,
+        setup: (CandidateStripView, KeyboardBar) -> Unit,
+    ): View {
+        val actions = FakeAiActions().also { it.availability = availability }
         val ed = FakeEditor("Hello there.")
         val adapter = InputConnectionAdapter { ed }.also { it.startSession(false, 12, 12) }
-        val strip = CandidateStripView(ctx).also { it.theme = theme }
-        val ai = AiToolbarView(ctx).also { it.theme = theme }
+        val strip = CandidateStripView(ui).also { it.theme = theme }
+        val ai = AiToolbarView(ui).also { it.theme = theme }
         val controller = AiToolbarController(actions, EditorAiAccess(adapter) {}, { it() }, {}, onChanged = { ai.render() })
         ai.controller = controller
         controller.onFieldStarted(InputProfile.DEFAULT, "x")
-        val bar = KeyboardBar(ctx, strip, ai)
+        val bar = KeyboardBar(ui, strip, ai)
         strip.setModes(listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC, LayoutKind.ABC), LayoutKind.PHONETIC)
         strip.micShown = true
         setup(strip, bar)
@@ -110,7 +122,7 @@ class ToolbarRenderTest {
 
     private fun renderTranslate(theme: KeyboardTheme, keys: KeyboardSurface, out: File) {
         val active = { s: CandidateStripView, _: KeyboardBar -> s.setActiveTools(setOf(Tool.TRANSLATE)) }
-        shoot(listOf(translate(theme) { _, _ -> }, bar(theme, active), keys), File(out, "translate-empty-${theme.id}.png"))
+        shoot(listOf(translate(theme) { _, _ -> }, bar(theme, setup = active), keys), File(out, "translate-empty-${theme.id}.png"))
         shoot(
             listOf(
                 translate(theme) { c, _ -> type(c, "ሰላም ነህ? ነገ እንገናኝ") },
@@ -120,7 +132,7 @@ class ToolbarRenderTest {
                     c.translate()
                     a.answer(0, AiOutcome.Success(AiResult("Hi, how are you? See you tomorrow.", listOf(AiAlternative("formal", "Hello, how are you? I will see you tomorrow.")), sourceLanguage = "am")))
                 },
-                bar(theme, active),
+                bar(theme, setup = active),
             ),
             File(out, "translate-states-${theme.id}.png"),
         )
@@ -134,7 +146,7 @@ class ToolbarRenderTest {
                 },
                 translate(theme) { c, a -> type(c, "Hello"); c.translate(); a.answer(0, AiOutcome.Failure(AiFailure.Timeout)) },
                 translate(theme) { _, a -> a.availability = AiAvailability(block = AiBlock.SIGNED_OUT) },
-                bar(theme, active),
+                bar(theme, setup = active),
             ),
             File(out, "translate-more-${theme.id}.png"),
         )
@@ -163,7 +175,7 @@ class ToolbarRenderTest {
                 selecting,
                 translate(theme) { c, _ -> type(c, "Good "); c.input.buffer.apply(ComposerUpdate(composing = "ሰላ")) },
                 translate(theme) { c, _ -> type(c, "مرحبا بالعالم"); c.input.buffer.setSelection(5) },
-                bar(theme, active),
+                bar(theme, setup = active),
                 strip,
                 keys,
             ),
@@ -173,6 +185,72 @@ class ToolbarRenderTest {
         translate(theme) { c, _ -> list.controller = c; c.openPicker(TranslatePicker.SOURCE) }
         list.render()
         shoot(listOf(bar(theme) { s, _ -> s.panelTitle = "Translate from" }, list), File(out, "translate-list-${theme.id}.png"))
+    }
+
+    private fun localized(lang: String): android.content.Context =
+        ctx.createConfigurationContext(android.content.res.Configuration(ctx.resources.configuration).apply { setLocale(Locale(lang)) })
+
+    /** The AI tools grid (ADR 0041) under its bar, at the keys' height. */
+    private fun aiGrid(theme: KeyboardTheme, keys: KeyboardSurface, availability: AiAvailability, ui: android.content.Context = ctx): AiToolsPanelView =
+        AiToolsPanelView(ui).also {
+            it.theme = theme
+            it.heightProvider = { keys.preferredHeightPx() }
+            it.tiles = { AiToolSet.tiles(availability) }
+            it.availability = { availability }
+            it.render()
+        }
+
+    private fun renderAi(theme: KeyboardTheme, keys: KeyboardSurface, out: File) {
+        val title = { s: CandidateStripView, _: KeyboardBar -> s.panelTitle = "AI tools" }
+        shoot(listOf(bar(theme, setup = title), aiGrid(theme, keys, AiAvailability())), File(out, "ai-grid-${theme.id}.png"))
+        val signedOut = AiAvailability(block = AiBlock.SIGNED_OUT)
+        shoot(listOf(bar(theme, signedOut, setup = title), aiGrid(theme, keys, signedOut)), File(out, "ai-grid-signed-out-${theme.id}.png"))
+        val plan = AiAvailability(
+            entitled = setOf(AiTaskKind.TRANSLATE, AiTaskKind.GRAMMAR, AiTaskKind.REWRITE),
+            quota = mapOf(AiTaskKind.TRANSLATE to AiQuotaHint(3, 10, AiPeriod.MONTHLY, null)),
+        )
+        shoot(listOf(bar(theme, plan, setup = title), aiGrid(theme, keys, plan)), File(out, "ai-grid-plan-${theme.id}.png"))
+        if (theme === ThemeCatalog.classicLight || theme === ThemeCatalog.classicDark) {
+            val narrow = (360 * d).toInt()
+            for (lang in listOf("am", "ti", "om")) {
+                val ui = localized(lang)
+                val offline = AiAvailability(block = AiBlock.OFFLINE)
+                shoot(
+                    listOf(bar(theme, offline, ui) { s, _ -> s.panelTitle = ui.getString(com.qalsmartkeyboard.ime.R.string.top_bar_ai_open) }, aiGrid(theme, keys, offline, ui)),
+                    File(out, "ai-grid-$lang-360-${theme.id}.png"),
+                    narrow,
+                )
+            }
+        }
+    }
+
+    /** The text field's action row at 360 dp in Oromo (the longest labels): the translate box and a typing strip. */
+    private fun renderEditorRow(theme: KeyboardTheme, out: File) {
+        val narrow = (360 * d).toInt()
+        val ui = localized("om")
+        val clip = com.qalsmartkeyboard.ime.ai.FakeClipboard(com.qalsmartkeyboard.ime.ai.ClipAvailability.TEXT, "x").forEditor()
+        val ed = FakeEditor("")
+        val adapter = InputConnectionAdapter { ed }.also { it.startSession(false, 0, 0) }
+        val view = TranslatePanelView(ui).also { it.theme = theme; it.visibility = View.VISIBLE; it.clipboard = clip }
+        val c = TranslateController(FakeAiActions(), EditorAiAccess(adapter) {}, { it() }, {}, { "om" }, onChanged = { view.render() }, onInputChanged = { view.renderInput() })
+        view.controller = c
+        c.onFieldStarted(InputProfile.DEFAULT, "x")
+        c.open()
+        type(c, "Akkam jirta? Boru wal argina")
+        c.input.buffer.setSelection(6, 12)
+        view.render()
+        view.inputEditor.setActions(true)
+        val strip = com.qalsmartkeyboard.ime.editor.EditorStrip(ui).also {
+            it.theme = theme
+            it.micShown = true
+            it.field.clipboard = clip
+            it.field.editor.buffer = com.qalsmartkeyboard.ime.editor.EditorBuffer().apply {
+                setText("Please send me the report before Friday.")
+                setSelection(7, 11)
+            }
+            it.field.editor.setActions(true)
+        }
+        shoot(listOf(view, strip), File(out, "editor-row-om-360-${theme.id}.png"), narrow)
     }
 
     @Test fun render() {
@@ -203,14 +281,19 @@ class ToolbarRenderTest {
                 listOf(
                     bar(theme) { _, _ -> },
                     bar(theme) { s, _ -> s.show(listOf(Suggestion("ሰላም", SuggestionKind.TRANSLITERATION), Suggestion("ሰላማ", SuggestionKind.COMPLETION)), true) },
-                    bar(theme) { _, b -> b.setAiOpen(true) },
+                    bar(theme) { s, _ -> s.setActiveTools(setOf(Tool.AI)) },
+                    bar(theme, AiAvailability(block = AiBlock.SIGNED_OUT)) { _, _ -> },
                     bar(theme) { s, _ -> s.activate(CandidateStripView.Target.Pill) },
                     keys,
                 ),
                 File(out, "keys-${theme.id}.png"),
             )
             shoot(listOf(bar(theme) { s, _ -> s.panelTitle = "Tools" }, tools), File(out, "tools-${theme.id}.png"))
-            if (theme !in gallery) renderTranslate(theme, keys, out)
+            if (theme !in gallery) {
+                renderAi(theme, keys, out)
+                renderEditorRow(theme, out)
+                renderTranslate(theme, keys, out)
+            }
             shoot(listOf(bar(theme) { s, _ -> s.panelTitle = "Clipboard" }, clips), File(out, "clipboard-${theme.id}.png"))
         }
     }

@@ -20,9 +20,6 @@ sealed interface AiPanel {
     class Failed(val task: AiTask?, val failure: AiFailure) : AiPanel
 }
 
-/** The toolbar's chooser: the rewrite tone. (Translation languages live in the translate panel, ADR 0037.) */
-enum class AiPicker { NONE, TONE }
-
 /** What a Replace or Insert did, for the user's feedback. */
 enum class AiApplied { REPLACED, INSERTED, INSERTED_ORIGINAL_CHANGED, FAILED }
 
@@ -51,11 +48,11 @@ interface AiEditor {
 }
 
 /**
- * The AI toolbar's state machine (A2.5), free of Views so it runs on the JVM: the AI row's quick Grammar and Rewrite on
- * the sentence or selection, and their review panel above the bar. Translation has its own panel and state
- * ([TranslateController], ADR 0037); the row's Translate chip opens it. Rules:
+ * The quick actions' state machine (A2.5), free of Views so it runs on the JVM: the AI tools grid's quick actions
+ * ([AiQuickAction]: fix grammar, rewrite, simplify, the tones; ADR 0041) on the sentence or selection, and their review
+ * panel above the bar. Translation has its own panel and state ([TranslateController], ADR 0037). Rules:
  *
- * - **Explicit action only:** the only code that calls [AiActions.submit] is [onTask] (a tap) and
+ * - **Explicit action only:** the only code that calls [AiActions.submit] is [run] (a tap on a tile) and
  *   [retry] (a tap). Typing, selection changes and focus never send text.
  * - **Targets:** see [AiTextTarget]. Read at tap time, never earlier.
  * - **Non-blocking:** [AiActions.submit] returns at once; results arrive through [post] on the main
@@ -84,12 +81,6 @@ class AiToolbarController(
         private set
     var panel: AiPanel = AiPanel.Closed
         private set
-    var picker: AiPicker = AiPicker.NONE
-        private set
-
-    var tone: AiTone? = null
-        private set
-
     val availability: AiAvailability get() = actions.availability
 
     private class Flight(val id: Long, val request: AiRequest, var call: AiCall? = null)
@@ -99,7 +90,7 @@ class AiToolbarController(
 
     /** The text of the last request and its key, for [retry]; kept only while the panel is open. */
     private var lastRequest: AiRequest? = null
-    private var lastKind: AiTaskKind? = null
+    private var lastAction: AiQuickAction? = null
     private var source: AiSource? = null
     private var listener: AutoCloseable? = null
     private var lastRefreshMs = 0L
@@ -118,7 +109,7 @@ class AiToolbarController(
     }
 
     /**
-     * The user touched the toolbar (opened a picker or tapped an action): refresh plan state and the
+     * The user opened the AI tools or tapped an action: refresh plan state and the
      * offline token in the background, at most once per [REFRESH_WINDOW_MS] (the implementation
      * throttles its calls further). Showing the keyboard never refreshes (ADR 0007 D40): the toolbar
      * renders cached state until the user acts. Sends no text.
@@ -145,38 +136,15 @@ class AiToolbarController(
         listener = null
     }
 
-    // ---------------------------------------------------------------- chips
-
-    fun openPicker(p: AiPicker) {
-        if (!visible) return
-        onToolbarOpened()
-        picker = if (picker == p) AiPicker.NONE else p
-        onChanged()
-    }
-
-    /** Closes an open picker without choosing (the AI actions were closed). Sends nothing. */
-    fun closePicker() {
-        if (picker == AiPicker.NONE) return
-        picker = AiPicker.NONE
-        onChanged()
-    }
-
-    fun chooseTone(t: AiTone?) {
-        tone = t
-        picker = AiPicker.NONE
-        onChanged()
-    }
-
     // ---------------------------------------------------------------- actions (explicit taps)
 
-    /** A tap on Grammar or Rewrite. */
-    fun onTask(kind: AiTaskKind) {
+    /** A tap on a quick action's tile. */
+    fun run(action: AiQuickAction) {
         if (!visible) return
         onToolbarOpened()
         if (flight != null) return // one request at a time; Cancel aborts it
-        val task = taskFor(kind) ?: return
-        picker = AiPicker.NONE
-        lastKind = kind
+        val task = action.task
+        lastAction = action
         lastRequest = null
         source = null
         val block = blockFailure()
@@ -201,16 +169,6 @@ class AiToolbarController(
                 start(AiRequest(newKey(), task, src.text))
             }
         }
-    }
-
-    /**
-     * The toolbar's quick actions on the sentence or selection; translation is the translate panel's (ADR 0037), the other
-     * kinds live in the Assist and Email panels.
-     */
-    private fun taskFor(kind: AiTaskKind): AiTask? = when (kind) {
-        AiTaskKind.GRAMMAR -> AiTask.Grammar
-        AiTaskKind.REWRITE, AiTaskKind.TONE -> AiTask.Rewrite(tone)
-        else -> null
     }
 
     private fun capture(): AiSource? {
@@ -263,7 +221,7 @@ class AiToolbarController(
         val p = panel
         if (prev == null || source == null) {
             // A local failure (nothing to process, too long) or a block: read the editor again.
-            lastKind?.let(::onTask)
+            lastAction?.let(::run)
             return
         }
         val block = blockFailure()
@@ -327,9 +285,8 @@ class AiToolbarController(
         flight = null
         generation++
         panel = AiPanel.Closed
-        picker = AiPicker.NONE
         lastRequest = null
-        lastKind = null
+        lastAction = null
         source = null
     }
 

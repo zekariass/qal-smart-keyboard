@@ -499,14 +499,23 @@ class SettingsRepositoryTest {
 
     @Test fun aiChoicesAreSanitised() {
         val s = KeyboardSettings(
-            aiPreferredTarget = "xx",
-            aiTranslatePairs = mapOf("am" to "lang:en", "xx" to "lang:am", "en" to "bad id|x"),
+            aiPreferredTarget = "not a tag|",
+            aiTranslatePairs = mapOf("am" to "lang:en", "x|y" to "lang:am", "en" to "bad id|x"),
             emailSenderName = "  Abebe\nKebede|" + "x".repeat(200),
         ).sanitized()
         assertEquals(null, s.aiPreferredTarget)
         assertEquals(mapOf("am" to "lang:en"), s.aiTranslatePairs)
         assertTrue(s.emailSenderName.startsWith("Abebe Kebede "))
         assertEquals(KeyboardSettings.SENDER_NAME_MAX, s.emailSenderName.length)
+    }
+
+    /** ADR 0040: translation languages are not typing languages, so a translation-only code is kept for translation. */
+    @Test fun translationOnlyLanguagesAreKeptForTranslation() {
+        val s = KeyboardSettings(aiPreferredTarget = "zh-CN", aiTranslatePairs = mapOf("fr" to "lang:am", "en" to "lang:mni-Mtei")).sanitized()
+        assertEquals("zh-CN", s.aiPreferredTarget)
+        assertEquals(mapOf("fr" to "lang:am", "en" to "lang:mni-Mtei"), s.aiTranslatePairs)
+        // ... but never as typing languages
+        assertFalse(s.languages.any { it.languageCode == "fr" || it.languageCode == "zh-CN" })
     }
 
     /** ADR 0035: the clipboard-history switch is on by default, persists, and old files decode to on. */

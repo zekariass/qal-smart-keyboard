@@ -11,7 +11,6 @@
     <string name="top_bar_mode_change">የአጻጻፍ ዘዴ ይቀይሩ</string>
     <string name="top_bar_mode_option">የ%1$s አጻጻፍ ዘዴ</string>
     <string name="top_bar_ai_open">የAI መሣሪያዎች</string>
-    <string name="top_bar_ai_close">የAI መሣሪያዎችን ይዝጉ</string>
     <string name="top_bar_candidate_add">ወደ መዝገበ ቃላትዎ ያክሉ</string>
     <string name="top_bar_candidate_autocorrect">%1$s፣ ራስ-ሰር እርማት</string>
     <string name="top_bar_more_suggestions">ተጨማሪ ጥቆማዎች</string>
@@ -50,15 +49,15 @@
     <string name="user_dictionary_not_added">ይህን ቃል ማከል አልተቻለም</string>
     <!-- AI toolbar -->
     <string name="ai_translate">ትርጉም</string>
-    <string name="ai_grammar">ሰዋስው</string>
-    <string name="ai_rewrite">እንደገና ጻፍ</string>
-    <string name="ai_tone_natural">ተፈጥሯዊ</string>
     <string name="ai_tone_friendly">ወዳጃዊ</string>
     <string name="ai_tone_polite">ትሁት</string>
     <string name="ai_tone_professional">ሙያዊ</string>
     <string name="ai_tone_concise">አጭር</string>
     <string name="ai_tone_apologetic">ይቅርታ ጠያቂ</string>
     <string name="ai_tone_honorific">አክብሮታዊ</string>
+    <string name="ai_tile_tone_description">እንደገና መጻፍ፣ ቃና፦ %1$s</string>
+    <string name="ai_grid_offline">ከመስመር ውጭ፦ AI ግንኙነት ያስፈልገዋል</string>
+    <string name="ai_grid_quota">%1$s፦ %2$s</string>
     <string name="ai_status_offline">ከመስመር ውጭ</string>
     <string name="ai_status_signed_out">AI ለመጠቀም ይግቡ</string>
     <string name="ai_status_update">ማዘመን ያስፈልጋል</string>
@@ -123,9 +122,7 @@
     <string name="translate_into_title">መድረሻ ቋንቋ</string>
     <string name="translate_input_spoken">የሚተረጎም ጽሑፍ፦ %1$s</string>
     <string name="translate_direction_spoken">ከ%1$s ወደ %2$s</string>
-    <string name="ai_assist_chip">እገዛ</string>
     <string name="ai_assist_chip_description">የAI እገዛ፦ በተመረጠ ወይም በተቀዳ ጽሑፍ ላይ ማብራራት፣ ማጠቃለል፣ መልስ መስጠት እና ሌሎችም</string>
-    <string name="ai_email_chip">ኢሜይል</string>
     <string name="ai_assist_title">የAI እገዛ</string>
     <string name="ai_panel_back">ይመለሱ</string>
     <string name="ai_panel_close">ወደ ቁልፍ ሰሌዳው ይመለሱ</string>
@@ -585,4 +582,10 @@
     <string name="editor_dictate_stop">በድምፅ መተየብን አቁመው ጽሑፉን ያስገቡ</string>
     <string name="wordart_open_preview">ትልቅ ቅድመ እይታ ይክፈቱ</string>
     <string name="wordart_typing_label">የቃል ጥበብ ጽሑፍ</string>
+    <!-- Translation languages and AI reliability (ADR 0040). DRAFT (N9). -->
+    <string name="ai_err_unreachable">ከQal አገልጋይ ጋር መገናኘት አልተቻለም። የኢንተርኔት ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።</string>
+    <string name="translate_search_languages">ቋንቋዎችን ይፈልጉ</string>
+    <string name="translate_search_clear">ፍለጋውን ያጽዱ</string>
+    <string name="translate_no_languages">ምንም ቋንቋ አልተገኘም</string>
+    <string name="ai_output_more_languages">ተጨማሪ ቋንቋዎች</string>
 </resources>

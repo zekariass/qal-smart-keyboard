@@ -244,3 +244,13 @@ galmaa; sentence = ዓረፍተ ነገር / ሓረግ / hima. Unsure drafts:
 | translate_from_title / translate_into_title | መነሻ ቋንቋ / መድረሻ ቋንቋ | መበገሲ ቋንቋ / መዕለቢ ቋንቋ | Afaan madda / Afaan galmaa | "Translate from / into" rendered as "source / destination language" (the English preposition forms do not stand alone as titles). |
 | translate_use_sentence | የመጨረሻ ዓረፍተ ነገር | ናይ መወዳእታ ሓረግ | Hima dhumaa | A chip: "Use last sentence" shortened to "Last sentence" for width; the same text as the box's label. |
 | translate_direction_spoken | ከ%1$s ወደ %2$s | ካብ %1$s ናብ %2$s | %1$s irraa gara %2$s tti | Spoken after a swap; check the case endings with every language name. |
+
+### AI tools grid (ADR 0041)
+
+New strings of the AI tools grid; tile labels reuse the Assist action and tone names above. Unsure drafts:
+
+| key | am | ti | om | why |
+|---|---|---|---|---|
+| ai_tile_tone_description | እንደገና መጻፍ፣ ቃና፦ %1$s | ደጊምኩም ጽሓፉ፣ ቃና፦ %1$s | Irra deebi'ii barreessi, akkaataa: %1$s | TalkBack name of a tone tile ("Rewrite, tone: Friendly"); the tone names are adjectives or nouns, so a "make it …" form may read better. |
+| ai_grid_offline | ከመስመር ውጭ፦ AI ግንኙነት ያስፈልገዋል | ካብ መስመር ወጻኢ፦ AI ምትእስሳር የድልዮ | Toora ala: AI walqunnamtii barbaada | One line above the tiles; shortened from ai_err_offline. |
+| ai_grid_quota | %1$s፦ %2$s | %1$s፦ %2$s | %1$s: %2$s | "Translate: 3 of 10 left this month"; only the punctuation is localised. |

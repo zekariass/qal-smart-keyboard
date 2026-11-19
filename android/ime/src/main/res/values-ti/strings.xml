@@ -12,7 +12,6 @@
     <string name="top_bar_mode_change">ኣገባብ ጽሕፈት ቀይሩ</string>
     <string name="top_bar_mode_option">ኣገባብ ጽሕፈት %1$s</string>
     <string name="top_bar_ai_open">መሳርሒታት AI</string>
-    <string name="top_bar_ai_close">መሳርሒታት AI ዕጸዉ</string>
     <string name="top_bar_candidate_add">ናብ መዝገበ ቃላትኩም ወስኹ</string>
     <string name="top_bar_candidate_autocorrect">%1$s፣ ባዕላዊ መአረሚ</string>
     <string name="top_bar_more_suggestions">ተወሳኺ ርእይቶታት</string>
@@ -51,15 +50,15 @@
     <string name="user_dictionary_not_added">እዚ ቃል ክውሰኽ ኣይከኣለን</string>
     <!-- AI toolbar -->
     <string name="ai_translate">ትርጉም</string>
-    <string name="ai_grammar">ሰዋሰው</string>
-    <string name="ai_rewrite">ዳግመ ጽሕፈት</string>
-    <string name="ai_tone_natural">ባህርያዊ</string>
     <string name="ai_tone_friendly">ዕርካዊ</string>
     <string name="ai_tone_polite">ትሑት</string>
     <string name="ai_tone_professional">ሞያዊ</string>
     <string name="ai_tone_concise">ሓጺር</string>
     <string name="ai_tone_apologetic">ይቕሬታ</string>
     <string name="ai_tone_honorific">ኣኽብሮት</string>
+    <string name="ai_tile_tone_description">ደጊምኩም ጽሓፉ፣ ቃና፦ %1$s</string>
+    <string name="ai_grid_offline">ካብ መስመር ወጻኢ፦ AI ምትእስሳር የድልዮ</string>
+    <string name="ai_grid_quota">%1$s፦ %2$s</string>
     <string name="ai_status_offline">ካብ መስመር ወጻኢ</string>
     <string name="ai_status_signed_out">AI ንምጥቃም እተዉ</string>
     <string name="ai_status_update">ምሕዳስ የድሊ</string>
@@ -124,9 +123,7 @@
     <string name="translate_into_title">መዕለቢ ቋንቋ</string>
     <string name="translate_input_spoken">ዝትርጎም ጽሑፍ፡ %1$s</string>
     <string name="translate_direction_spoken">ካብ %1$s ናብ %2$s</string>
-    <string name="ai_assist_chip">ሓገዝ</string>
     <string name="ai_assist_chip_description">ሓገዝ AI: ኣብ ዝተመረጸ ወይ ዝተቐድሐ ጽሑፍ ምብራህ፣ ምጥቕላል፣ ምምላስን ካልእን</string>
-    <string name="ai_email_chip">ኢመይል</string>
     <string name="ai_assist_title">ሓገዝ AI</string>
     <string name="ai_panel_back">ተመለሱ</string>
     <string name="ai_panel_close">ናብ ኪቦርድ ተመለሱ</string>
@@ -587,4 +584,10 @@
     <string name="editor_dictate_stop">ብድምጺ ምጽሓፍ ኣቋሪጽኩም ጽሑፍ ኣእትዉ</string>
     <string name="wordart_open_preview">ዓቢ ቅድመ-ምርኣይ ክፈቱ</string>
     <string name="wordart_typing_label">ጽሑፍ ስነ-ጥበብ ቃላት</string>
+    <!-- Translation languages and AI reliability (ADR 0040). DRAFT (N9). -->
+    <string name="ai_err_unreachable">ምስ ኣገልጋሊ Qal ክራኸብ ኣይተኻእለን። ምትእስሳር ኢንተርነትኩም ኣረጋግጹ እሞ ደጊምኩም ፈትኑ።</string>
+    <string name="translate_search_languages">ቋንቋታት ድለዩ</string>
+    <string name="translate_search_clear">ምድላይ ኣጽርዩ</string>
+    <string name="translate_no_languages">ዝኾነ ቋንቋ ኣይተረኽበን</string>
+    <string name="ai_output_more_languages">ተወሰኽቲ ቋንቋታት</string>
 </resources>

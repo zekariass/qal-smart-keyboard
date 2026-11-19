@@ -20,6 +20,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.qalsmartkeyboard.aigateway.pipeline.AiUserContext;
+import com.qalsmartkeyboard.aigateway.pipeline.LanguageCatalog;
 import com.qalsmartkeyboard.entitlements.EntitlementResolver;
 import com.qalsmartkeyboard.identity.security.ApiSecurityConfiguration;
 import com.qalsmartkeyboard.identity.token.AccessTokenService;
@@ -56,6 +57,8 @@ class AiControllerCancelTest {
 	EntitlementResolver entitlements;
 	@MockitoBean
 	AiUserContext users;
+	@MockitoBean
+	LanguageCatalog languages;
 
 	@Test
 	void aCancelledRequestEndsWithoutABodyAndWithACleanThread() throws Exception {

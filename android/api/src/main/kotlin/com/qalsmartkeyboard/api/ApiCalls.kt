@@ -10,6 +10,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import java.io.IOException
 import java.io.InterruptedIOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 /**
  * Runs a blocking generated-client call on [Dispatchers.IO] and maps every failure to
@@ -21,8 +25,8 @@ import java.io.InterruptedIOException
  *
  * Success returns the generated model. Problem Details answers become [ApiError.Http] (with
  * [ApiError.UpdateRequired] for 426, [ApiError.RateLimited] for 429 and [ApiError.SignedOut]
- * when the authenticator ended the session), timeouts [ApiError.Timeout], other I/O failures
- * [ApiError.Network].
+ * when the authenticator ended the session), a server that cannot be reached at all (refused, unknown host, connect
+ * timeout) [ApiError.Unreachable], other timeouts [ApiError.Timeout], other I/O failures [ApiError.Network].
  */
 suspend fun <T> apiCall(block: () -> T): T = withContext(Dispatchers.IO) {
     try {
@@ -50,6 +54,9 @@ object ApiErrors {
         is ServerException -> fromServer(e.statusCode, e.response as? ServerError<*>)
         is SessionEndedException -> ApiError.SignedOut(e.details, e.reason)
         is RefreshUnavailableException -> e.error
+        is ConnectException, is UnknownHostException, is NoRouteToHostException -> ApiError.Unreachable(e)
+        // The JVM says "connect timed out", Android "failed to connect to ... after 5000ms": no connection was made.
+        is SocketTimeoutException -> if (e.message.orEmpty().contains("connect", ignoreCase = true)) ApiError.Unreachable(e) else ApiError.Timeout(e)
         is InterruptedIOException -> ApiError.Timeout(e)
         is IOException -> ApiError.Network(e)
         is SerializationException, is UnsupportedOperationException, is IllegalArgumentException ->

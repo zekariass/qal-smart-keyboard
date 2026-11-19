@@ -35,6 +35,13 @@ interface AiActions {
     fun appRuleDestination(packageName: String?): AiDestination? = null
 
     /**
+     * The translation language catalogue (ADR 0040): the server's list as last fetched (cached on the device), else the
+     * bundled five keyboard languages. Cached, never blocks, never touches the network; [addAvailabilityListener]
+     * listeners fire when a refresh brought a new one.
+     */
+    fun translationCatalog(): TranslationCatalog = TranslationCatalog.BUNDLED
+
+    /**
      * Starts one request. Returns at once; [onOutcome] is called exactly once, on any thread, unless
      * the call is cancelled (then possibly never). [AiRequest.requestId] is the `Idempotency-Key`:
      * calling again with the same id after a network error lets the server replay instead of
@@ -247,7 +254,15 @@ sealed interface AiFailure {
     /** No connection (known before the call, or the call failed with an I/O error). */
     data object Offline : AiFailure { override val retrySameKey get() = true }
 
+    /** The server accepted the request but did not answer in time ("That took too long"). */
     data object Timeout : AiFailure { override val retrySameKey get() = true }
+
+    /**
+     * No connection to the server could be made although the device is online: refused, unknown host, no route, or the
+     * connect timeout (a build pointing at the wrong address, a server that is down). Shown as "can't reach the server",
+     * never as "That took too long" (the request never arrived). Retried with the same key (ADR 0031).
+     */
+    data object Unreachable : AiFailure { override val retrySameKey get() = true }
 
     /** 409 `REQUEST_IN_PROGRESS`: the same key is still running on the server. */
     data object Busy : AiFailure { override val retrySameKey get() = true }

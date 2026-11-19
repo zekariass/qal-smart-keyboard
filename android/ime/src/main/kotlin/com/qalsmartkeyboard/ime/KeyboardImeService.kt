@@ -48,6 +48,7 @@ import com.qalsmartkeyboard.ime.ai.AiToolbarView
 import com.qalsmartkeyboard.ime.ai.EditorAiAccess
 import com.qalsmartkeyboard.ime.ai.TranslateController
 import com.qalsmartkeyboard.ime.ai.TranslateLanguagesView
+import com.qalsmartkeyboard.ime.ai.TranslationLanguages
 import com.qalsmartkeyboard.ime.ai.TranslatePanelView
 import com.qalsmartkeyboard.ime.ai.TranslatePicker
 import com.qalsmartkeyboard.ime.ai.forEditor
@@ -78,6 +79,12 @@ import com.qalsmartkeyboard.ime.toolbar.ToolHost
 import com.qalsmartkeyboard.ime.toolbar.ToolPanel
 import com.qalsmartkeyboard.ime.toolbar.ToolsController
 import com.qalsmartkeyboard.ime.toolbar.ToolsPanelView
+import com.qalsmartkeyboard.ime.ai.AiAssistAction
+import com.qalsmartkeyboard.ime.ai.AiQuickAction
+import com.qalsmartkeyboard.ime.ai.AiTool
+import com.qalsmartkeyboard.ime.ai.AiToolHost
+import com.qalsmartkeyboard.ime.ai.AiToolSet
+import com.qalsmartkeyboard.ime.ai.AiToolsPanelView
 import com.qalsmartkeyboard.ime.packs.PackStorage
 import java.util.concurrent.atomic.AtomicBoolean
 import com.qalsmartkeyboard.ime.packs.installedProfiles
@@ -103,6 +110,7 @@ class KeyboardImeService : InputMethodService() {
     private var wordArtBar: WordArtBar? = null
     private var voicePanel: VoicePanelView? = null
     private var toolsPanel: ToolsPanelView? = null
+    private var aiToolsPanel: AiToolsPanelView? = null
     private var clipPanel: ClipboardPanelView? = null
     private var seenToolPanel = ToolPanel.NONE
     private var seenEmojiMode = EmojiMode.CLOSED
@@ -172,6 +180,7 @@ class KeyboardImeService : InputMethodService() {
         wordArtBar?.theme = t
         voicePanel?.theme = t
         toolsPanel?.theme = t
+        aiToolsPanel?.theme = t
         clipPanel?.theme = t
         aiView?.theme = t
         aiPanelView?.theme = t
@@ -288,7 +297,6 @@ class KeyboardImeService : InputMethodService() {
             controller.commitComposition()
             tools.close()
             controller.emoji.close()
-            bar?.closeAi()
             closeAiPanels()
             closeTranslate()
         }
@@ -373,7 +381,7 @@ class KeyboardImeService : InputMethodService() {
         writingModes = controller.writingModeOptions.isNotEmpty(),
     )
 
-    private val toolHost = object : ToolHost {
+    private val toolHost: ToolHost = object : ToolHost {
         override fun openTranslate() {
             val tr = translate ?: return
             if (tr.isOpen) {
@@ -383,24 +391,13 @@ class KeyboardImeService : InputMethodService() {
             voice.cancel()
             controller.emoji.close()
             closeAiPanels()
-            bar?.closeAi()
             aiToolbar?.close()
             tr.open()
             refreshViews()
         }
-        override fun openAiActions() {
-            voice.cancel()
-            controller.emoji.close()
-            closeAiPanels()
-            closeTranslate()
-            bar?.setAiOpen(true)
-            refreshViews()
-        }
-        override fun openAssist() = openAiPanel(email = false)
-        override fun openEmail() = openAiPanel(email = true)
+        override fun runAiTool(tool: AiTool) = tool.runOn(aiToolHost)
         override fun openEmoji() {
             voice.cancel()
-            bar?.closeAi()
             closeAiPanels()
             closeTranslate()
             controller.emoji.open(controller.profile.allowsEmoji)
@@ -417,7 +414,6 @@ class KeyboardImeService : InputMethodService() {
             controller.emoji.openWordArt()
         }
         override fun openWritingModes() {
-            bar?.closeAi()
             translate?.closePicker()
             strip?.openModeChooser()
         }
@@ -428,14 +424,37 @@ class KeyboardImeService : InputMethodService() {
             controller.commitComposition()
             voice.cancel()
             controller.emoji.close()
-            bar?.closeAi()
             closeAiPanels()
             closeTranslate()
         }
     }
 
+    /** The AI tools grid's tiles (ADR 0041): the same flows as the retired AI row's chips and the AI panels. */
+    private val aiToolHost: AiToolHost = object : AiToolHost {
+        override fun openTranslate() = toolHost.openTranslate()
+        override fun runQuick(action: AiQuickAction) {
+            val ai = aiToolbar ?: return
+            voice.cancel()
+            controller.emoji.close()
+            closeAiPanels()
+            closeTranslate()
+            ai.run(action) // its working / review / error panel opens above the bar
+            refreshViews()
+        }
+        override fun openAssist(action: AiAssistAction?) = openAiPanel(email = false, action = action)
+        override fun openEmail() = openAiPanel(email = true)
+    }
+
+    /** The field looks like an e-mail body (a mail app's compose field): Write Email is the AI tools' first tile. */
+    private var aiEmailFirst = false
+
     private val tools: ToolsController by lazy {
-        ToolsController(toolHost, { bar?.toolContext() ?: fieldToolContext() }) {
+        ToolsController(
+            toolHost,
+            { bar?.toolContext() ?: fieldToolContext() },
+            // The cached plan state only: opening the grid makes no call of its own (ADR 0041).
+            aiTiles = { aiToolbar?.let { AiToolSet.tiles(it.availability, aiEmailFirst) } ?: emptyList() },
+        ) {
             if (tools.panel != ToolPanel.CLIPBOARD) clipCurrent = null
             refreshViews()
         }
@@ -502,9 +521,12 @@ class KeyboardImeService : InputMethodService() {
         override val preferredTarget: String? get() = snapshot.current.aiPreferredTarget
         override fun lastTarget(source: String): String? = snapshot.current.aiTranslatePairs[source]
         override fun rememberTarget(source: String, destinationId: String) {
-            if (snapshot.current.aiTranslatePairs[source] == destinationId) return
-            snapshot.launchUpdate { it.copy(aiTranslatePairs = it.aiTranslatePairs + (source to destinationId)) }
+            val pairs = snapshot.current.aiTranslatePairs
+            if (pairs[source] == destinationId && pairs.keys.lastOrNull() == source) return
+            // Moved to the end: the order is the recency of the language lists (ADR 0040).
+            snapshot.launchUpdate { it.copy(aiTranslatePairs = (it.aiTranslatePairs - source) + (source to destinationId)) }
         }
+        override fun recentLanguages(): List<String> = AiLanguagePrefs.recentFrom(snapshot.current.aiTranslatePairs)
         override val senderName: String get() = snapshot.current.emailSenderName
         override fun rememberSenderName(name: String) {
             snapshot.launchUpdate { it.copy(emailSenderName = name) }
@@ -523,12 +545,16 @@ class KeyboardImeService : InputMethodService() {
                 main.post {
                     if (aiToolbar != null) return@post
                     aiActions = actions
+                    TranslationLanguages.current = actions.translationCatalog() // ADR 0040: the names the views show
                     val toolbar = AiToolbarController(
                         actions = actions,
                         editor = EditorAiAccess(adapter) { controller.commitComposition() },
                         post = { block -> main.post(block) },
                         copyToClipboard = ::copyResult,
-                        onChanged = { aiView?.render() },
+                        onChanged = {
+                            aiView?.render()
+                            syncActiveTools() // the AI entry is active while the result panel is shown
+                        },
                     )
                     aiToolbar = toolbar
                     val tr = TranslateController(
@@ -552,8 +578,14 @@ class KeyboardImeService : InputMethodService() {
                     controller.fieldTyping = ::fieldTyping
                     aiPanelsHandle = actions.addAvailabilityListener {
                         main.post {
+                            val catalog = actions.translationCatalog()
+                            if (catalog != TranslationLanguages.current) {
+                                TranslationLanguages.current = catalog
+                                if (translate?.isOpen == true) translateDirty = true
+                            }
                             if (aiWorkspace?.isOpen == true) aiPanelDirty = true
                             if (translate?.isOpen == true) translateDirty = true
+                            if (tools.panel == ToolPanel.AI) aiToolsPanel?.render() // the notice line and the locks
                             if (aiPanelDirty || translateDirty) refreshViews()
                         }
                     }
@@ -638,18 +670,20 @@ class KeyboardImeService : InputMethodService() {
         aiPanelView = panel
     }
 
-    /** The Assist or Email chip: the panel takes the key area; voice, emoji and the toolbar's own panel close first. */
-    private fun openAiPanel(email: Boolean) {
+    /**
+     * An AI tools tile (Assist, Email, or Reply / Explain / Summarise in Assist): the panel takes the key area; voice, emoji
+     * and the quick actions' panel close first.
+     */
+    private fun openAiPanel(email: Boolean, action: AiAssistAction? = null) {
         val ws = workspace() ?: return
         voice.cancel()
         tools.close()
         closeTranslate()
         controller.emoji.close()
-        bar?.closeAi()
         aiToolbar?.close()
         aiToolbar?.onToolbarOpened() // the plan state behind the Premium marks (throttled, sends no text)
         ensureAiPanelViews(ws)
-        if (email) ws.openEmail() else ws.openAssist()
+        if (email) ws.openEmail() else ws.openAssist(action)
         aiPanelDirty = true
         refreshViews()
     }
@@ -865,9 +899,6 @@ class KeyboardImeService : InputMethodService() {
         val ai = AiToolbarView(ui).also {
             it.controller = aiToolbar
             it.onLink = ::openCompanion
-            it.onOpenAssist = { openAiPanel(email = false) }
-            it.onOpenEmail = { openAiPanel(email = true) }
-            it.onOpenTranslate = { toolHost.openTranslate() }
             aiView = it
         }
         val translateView = TranslatePanelView(ui).also {
@@ -881,19 +912,13 @@ class KeyboardImeService : InputMethodService() {
             it.clipboard = SystemAiClipboard(ui).forEditor()
             translatePanel = it
         }
-        // One bar above the keys: pill, AI entry (its actions open in the bar's middle), candidates, mic, gear.
+        // One bar above the keys: tools, pill, shortcuts (the "AI" entry opens the AI tools grid), candidates, mic.
         val b = KeyboardBar(ui, s, ai).also {
             it.fieldContext = ::fieldToolContext
             it.onTool = { t -> tools.activate(t) }
             bar = it
         }
         s.onMic = { onBarMic() }
-        val aiToggle = s.onAiToggle
-        s.onAiToggle = {
-            voice.cancel() // the AI actions and voice typing never run together
-            aiToggle()
-            if (bar?.aiOpen != true) closeAiPanels() // closing the AI entry also closes an open AI panel
-        }
         val overlay = PopupOverlay(ui).also { overlayView = it }
         val k = KeyboardSurface(ui).also {
             it.controller = controller
@@ -941,6 +966,16 @@ class KeyboardImeService : InputMethodService() {
             it.haptics = { controller.prefs.hapticsEnabled }
             toolsPanel = it
         }
+        val aiToolsView = AiToolsPanelView(ui).also {
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            it.tiles = { tools.aiTools() }
+            it.availability = { aiToolbar?.availability }
+            it.onTool = { t -> tools.activateAi(t) }
+            it.onLink = ::openCompanion
+            it.haptics = { controller.prefs.hapticsEnabled }
+            aiToolsPanel = it
+        }
         val languagesView = TranslateLanguagesView(ui).also {
             it.controller = translate
             it.heightProvider = { k.preferredHeightPx() }
@@ -973,13 +1008,15 @@ class KeyboardImeService : InputMethodService() {
             addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(search, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(wordArtStrip, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            // The translate language list sits where the keys are; above them while the keys type into its search (ADR 0040).
+            addView(languagesView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(wordArt, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(voiceView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(toolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(aiToolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(clipView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            addView(languagesView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val root = OverlayStack(ui).apply {
             addView(column)
@@ -1094,11 +1131,10 @@ class KeyboardImeService : InputMethodService() {
         )
         controller.startField(profile)
         voice.onFieldStarted(VoiceController.fieldAllowsVoice(profile, info.privateImeOptions), sameField = restarting)
-        bar?.closeAi()
-        tools.close() // a new field: the tools and clipboard panels start closed
+        tools.close() // a new field: the tools, clipboard and AI tools panels start closed
         // A new field: an open AI panel and its texts never carry over (and a running call is cancelled).
         if (aiWorkspace?.isOpen == true) closeAiPanels()
-        aiView?.emailFirst = profile.allowsAi && AiEmailHints.looksLikeEmailBody(info.packageName, info.inputType, info.hintText)
+        aiEmailFirst = profile.allowsAi && AiEmailHints.looksLikeEmailBody(info.packageName, info.inputType, info.hintText)
         aiToolbar?.onFieldStarted(profile, info.packageName)
         // A new field leaves translate mode; the direction starts again from Detect and the app's rule (ADR 0031).
         translate?.onFieldStarted(profile, info.packageName)
@@ -1137,7 +1173,7 @@ class KeyboardImeService : InputMethodService() {
             if (voice.pickerOpen) voice.closePicker() else voice.backToKeyboard()
             return true
         }
-        // The tools and clipboard panels: Back returns to the keys.
+        // The tools, clipboard and AI tools panels: Back returns to the keys.
         if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && tools.back()) return true
         // Translate mode: Back closes a language list, then the panel.
         val tr = translate
@@ -1169,7 +1205,6 @@ class KeyboardImeService : InputMethodService() {
         adapter.finishComposition()
         controller.emoji.close()
         controller.onCompositionAbandoned()
-        bar?.closeAi()
         tools.close()
         clipHistory.prune()
         aiToolbar?.onKeyboardHidden()
@@ -1225,15 +1260,24 @@ class KeyboardImeService : InputMethodService() {
         strip?.micActive = voiceOpen
         voicePanel?.visibility = if (voiceOpen) View.VISIBLE else View.GONE
         if (voiceOpen) voicePanel?.render()
-        // Tools and clipboard panels (ADR 0035): they take the key area too; the bar shows a back arrow and their title.
+        // Tools, clipboard and AI tools panels (ADR 0035, 0041): they take the key area too; the bar shows a back arrow and
+        // their title.
         val toolPanel = tools.panel
         toolsPanel?.visibility = if (toolPanel == ToolPanel.TOOLS) View.VISIBLE else View.GONE
         clipPanel?.visibility = if (toolPanel == ToolPanel.CLIPBOARD) View.VISIBLE else View.GONE
+        aiToolsPanel?.visibility = if (toolPanel == ToolPanel.AI) View.VISIBLE else View.GONE
         if (toolPanel != seenToolPanel) {
             seenToolPanel = toolPanel
             val rise = 8f * resources.displayMetrics.density
             when (toolPanel) {
                 ToolPanel.TOOLS -> toolsPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
+                ToolPanel.AI -> aiToolsPanel?.let {
+                    // The user opened the AI tools: the cached plan state is rendered at once; a throttled background
+                    // refresh may update it (ADR 0007 D40, as the AI row did). No text is read or sent.
+                    aiToolbar?.onToolbarOpened()
+                    it.render()
+                    Motion.reveal(it, fromYPx = rise)
+                }
                 ToolPanel.CLIPBOARD -> clipPanel?.let {
                     clipCurrent = clipSource.currentText() // the user opened the panel: the current clip is read now
                     it.render()
@@ -1247,6 +1291,8 @@ class KeyboardImeService : InputMethodService() {
         val translateOpen = tr != null && tr.isOpen
         val picker = if (tr != null && translateOpen) tr.picker else TranslatePicker.NONE
         val picking = picker != TranslatePicker.NONE
+        // ADR 0040: while the list's search is typed, the keys show again under a shorter list.
+        val searchingLanguages = picking && tr?.searching == true
         translatePanel?.let {
             val was = it.visibility == View.VISIBLE
             val show = translateOpen && !picking
@@ -1265,19 +1311,14 @@ class KeyboardImeService : InputMethodService() {
         strip?.panelTitle = when {
             toolPanel == ToolPanel.TOOLS -> ui.getString(R.string.tools_title)
             toolPanel == ToolPanel.CLIPBOARD -> ui.getString(R.string.tool_clipboard)
+            toolPanel == ToolPanel.AI -> ui.getString(R.string.top_bar_ai_open)
             picker == TranslatePicker.SOURCE -> ui.getString(R.string.translate_from_title)
             picker == TranslatePicker.DESTINATION -> ui.getString(R.string.translate_into_title)
             else -> null
         }
-        strip?.setActiveTools(
-            buildSet {
-                if (inPanel || inSearch || inWordArt || inWordArtTyping) add(Tool.EMOJI)
-                if (aiPanelShown) add(Tool.AI_ACTIONS)
-                if (translateOpen) add(Tool.TRANSLATE)
-            },
-        )
+        syncActiveTools()
         bar?.sync() // the field's shortcuts (clipboard, emoji, voice) follow the field and the settings
-        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE || picking) View.GONE else View.VISIBLE
+        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE || (picking && !searchingLanguages)) View.GONE else View.VISIBLE
         emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
         bar?.visibility = if (inSearch || inWordArtTyping || aiTyping) View.GONE else View.VISIBLE
         aiFieldBar?.let {
@@ -1317,6 +1358,19 @@ class KeyboardImeService : InputMethodService() {
             it.micActive = dictatingInto(controller.emoji.wordArt.buffer)
         }
         surface?.onLayoutChanged()
+    }
+
+    /** The shortcuts drawn active: their panel is open (emoji, an AI panel or the quick actions' result, translate). */
+    private fun syncActiveTools() {
+        val mode = controller.emoji.mode
+        val ws = aiWorkspace
+        strip?.setActiveTools(
+            buildSet {
+                if (mode == EmojiMode.PANEL || mode == EmojiMode.SEARCH || mode == EmojiMode.WORD_ART || mode == EmojiMode.WORD_ART_TYPING) add(Tool.EMOJI)
+                if (ws?.isOpen == true || aiView?.visibility == View.VISIBLE) add(Tool.AI)
+                if (translate?.isOpen == true) add(Tool.TRANSLATE)
+            },
+        )
     }
 
     companion object {

@@ -4,8 +4,7 @@ import com.qalsmartkeyboard.data.secure.AesGcmCipher
 import com.qalsmartkeyboard.data.secure.EncryptedFileStore
 import com.qalsmartkeyboard.ime.InputProfile
 import com.qalsmartkeyboard.ime.ai.AiEditor
-import com.qalsmartkeyboard.ime.ai.AiPicker
-import com.qalsmartkeyboard.ime.ai.AiTaskKind
+import com.qalsmartkeyboard.ime.ai.AiQuickAction
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
 import com.qalsmartkeyboard.ime.ai.TranslateController
 import java.io.File
@@ -86,12 +85,12 @@ class ToolbarFollowUpsTest {
         val toolbar = controller(actions())
         toolbar.onFieldStarted(InputProfile.DEFAULT, "com.example.app")
         assertEquals(0, server.requestCount)
-        toolbar.openPicker(AiPicker.TONE)
+        toolbar.onToolbarOpened() // the AI tools grid opened (ADR 0041)
         val afterFirst = server.requestCount
         assertTrue("plan state and token are fetched", afterFirst in 1..2)
         repeat(5) {
-            toolbar.openPicker(AiPicker.TONE)
-            toolbar.onTask(AiTaskKind.GRAMMAR) // no text in the editor: a local failure, no call
+            toolbar.onToolbarOpened() // the AI tools grid opened (ADR 0041)
+            toolbar.run(AiQuickAction.GRAMMAR) // no text in the editor: a local failure, no call
             toolbar.onKeyboardHidden()
             toolbar.onFieldStarted(InputProfile.DEFAULT, "com.example.app")
         }

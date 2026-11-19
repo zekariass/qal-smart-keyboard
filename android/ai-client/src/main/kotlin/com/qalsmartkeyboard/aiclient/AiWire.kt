@@ -206,6 +206,7 @@ internal object AiWire {
         is ApiError.UpdateRequired -> AiFailure.UpdateRequired
         is ApiError.SignedOut -> AiFailure.SignInRequired
         is ApiError.Timeout -> AiFailure.Timeout
+        is ApiError.Unreachable -> AiFailure.Unreachable
         is ApiError.Network -> AiFailure.Offline
         is ApiError.Unexpected -> AiFailure.Other
         is ApiError.Http -> http(e)

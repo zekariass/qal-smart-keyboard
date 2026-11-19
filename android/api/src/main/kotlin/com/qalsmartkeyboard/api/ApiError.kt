@@ -40,7 +40,14 @@ sealed class ApiError(message: String, cause: Throwable? = null) : RuntimeExcept
     class Timeout(cause: Throwable) : ApiError("request timed out", cause)
 
     /** No connectivity, DNS, TLS or other I/O failure, including a refresh that could not be completed. */
-    class Network(cause: Throwable) : ApiError("network failure", cause)
+    open class Network(cause: Throwable, message: String = "network failure") : ApiError(message, cause)
+
+    /**
+     * No connection to the server could be made at all: refused, unknown host, no route, or the connect timeout. Usually
+     * the wrong server address (a phone build with the emulator's `10.0.2.2`) or a server that is down; distinct from
+     * [Timeout], where the server accepted the request and answered too slowly.
+     */
+    class Unreachable(cause: Throwable) : Network(cause, "server unreachable")
 
     /** A non-Problem answer: unreadable success body, redirect, or an unsupported response type. */
     class Unexpected(override val status: Int?, cause: Throwable? = null) :

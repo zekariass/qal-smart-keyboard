@@ -136,6 +136,26 @@ class AiAssistControllerTest {
         assertEquals("am", h.c.outputLanguage(AiAssistAction.SUMMARIZE))
     }
 
+    /** ADR 0040: Translate's output picker is the translation catalogue: a short list first, then all of it. */
+    @Test fun translateOffersTheCatalogueDestinations() {
+        val h = H(selection = "text")
+        h.actions.catalog = TranslationCatalogTest.SERVER
+        h.c.open()
+        h.c.selectAction(AiAssistAction.TRANSLATE)
+        val short = h.c.outputChoices()
+        assertEquals(AiAssistController.SHORT_LIST, short.size)
+        assertTrue(h.c.hasMoreOutputs())
+        h.c.moreOutputs()
+        assertEquals(TranslationCatalogTest.SERVER.destinations.size, h.c.outputChoices().size)
+        assertFalse(h.c.hasMoreOutputs())
+        h.c.chooseOutput("he")
+        h.c.run()
+        assertEquals("he", (h.sent().task as AiTask.Translate).destination.language)
+        h.c.backToEdit()
+        h.c.chooseOutput("la") // a source-only language is no destination
+        assertEquals("he", h.c.outputLanguage())
+    }
+
     @Test fun replySendsTheUsersNote() {
         val h = H(selection = "Can we meet on Friday?")
         h.c.open()

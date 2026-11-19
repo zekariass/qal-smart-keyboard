@@ -5,6 +5,11 @@ patterns, not its colours or branding) · **Builds on:** ADR 0003 (custom-View s
 one bar), ADR 0028 (emoji panel), ADR 0029 (voice typing), ADR 0030 (Word Art), ADR 0031 (AI panels, translation
 direction), ADR 0032 (UI localisation), ADR 0034 (Arabic), ADR 0036 (settings) · **Contract:** none
 
+> **Amended by ADR 0041:** the AI entry is an "AI" mark (not the sparkle) that opens the AI tools grid in place of the
+> keys; the AI actions row in the bar's middle, its close (×) button and the tone chip are retired. The tools panel has
+> one AI tile ("AI tools") instead of AI Assist and Write Email, which are tiles of the AI grid. The tables below that
+> mention the AI row describe the state before ADR 0041.
+
 ## Context
 The bar above the keys (D45) had grown one feature at a time: the writing-mode pill, a text "✦ AI" chip, the middle,
 the microphone and a gear. Every other tool lived somewhere else: Word Art behind the emoji panel, the e-mail writer and

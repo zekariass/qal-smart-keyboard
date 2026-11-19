@@ -34,8 +34,9 @@ sealed interface TranslateStep {
     class Result(val task: AiTask.Translate, val result: AiResult, val selected: Int = -1) : TranslateStep {
         val shownText: String get() = if (selected in result.alternatives.indices) result.alternatives[selected].text else result.text
 
-        /** The language of the shown text: as the server reported it, else the destination's. */
-        val language: String get() = result.language?.takeIf { it in AiLanguages.ALL } ?: task.destination.language
+        /** The language of the shown text: as the server reported it (a catalogue language), else the destination's. */
+        val language: String get() = result.language?.takeIf { it == task.destination.language || TranslationLanguages.current.isKnown(it) }
+            ?: task.destination.language
     }
 
     /** [task] is null for a failure decided before a request was built (offline, signed out, nothing to translate). */
@@ -82,8 +83,21 @@ class TranslateController(
 ) {
     private val runner = AiRunner(actions, post, newKey)
 
+    /** The translation language catalogue (ADR 0040): the server's when fetched, else the five keyboard languages. */
+    val catalog: TranslationCatalog get() = actions.translationCatalog()
+
     /** The translation direction (ADR 0031): Detect or an explicit source, ⇄, the destination. */
-    val direction = TranslationDirection(prefs) { actions.destinations() }
+    val direction = TranslationDirection(prefs, { actions.translationCatalog() }) { actions.destinations() }
+
+    /**
+     * The language lists' search (ADR 0040): while [searching], the keys type into it (the list shrinks above them) and
+     * the lists show only the languages it matches. Kept while the list is open; cleared when it opens or closes.
+     */
+    val search = AiTextField(SEARCH_MAX) { onSearchTyped() }
+
+    /** The keys type into [search] (a language list is open and its search field was tapped). */
+    var searching: Boolean = false
+        private set
 
     private var lastText = ""
     val input = AiTextField(MAX_TEXT) { onTyped() }
@@ -179,6 +193,7 @@ class TranslateController(
         source = TranslateSource.NONE
         captured = null
         picker = TranslatePicker.NONE
+        endSearch()
         step = TranslateStep.Idle
         notice = AiNotice.NONE
         detected = null
@@ -265,30 +280,73 @@ class TranslateController(
     fun openPicker(p: TranslatePicker) {
         if (!isOpen) return
         refresh()
-        // The keys give way to the list: an open composition is finished into the box first.
-        if (picker == TranslatePicker.NONE) editor.commitComposition()
+        // The keys give way to the list: an open composition is finished into the box (or the search) first.
+        editor.commitComposition()
         picker = if (picker == p) TranslatePicker.NONE else p
+        endSearch()
         onChanged()
     }
 
     fun closePicker() {
         if (picker == TranslatePicker.NONE) return
+        editor.commitComposition()
         picker = TranslatePicker.NONE
+        endSearch()
         onChanged()
+    }
+
+    /** The source list for the current search: null is Detect (shown only without a query). */
+    fun sourceChoices(): List<String?> = sync().sourceChoices(search.text)
+
+    /** The destination list for the current search. */
+    fun destinationChoices(): List<AiDestination> = sync().destinationChoices(search.text)
+
+    /** The list's search field was tapped: the keys type into it (the service shows them under a shorter list). */
+    fun startSearch() {
+        if (picker == TranslatePicker.NONE || searching) return
+        searching = true
+        onChanged()
+    }
+
+    /** Enter or the emoji key in the search: the keys give way to the (filtered) list again; the query stays. */
+    fun stopSearchTyping() {
+        if (!searching) return
+        editor.commitComposition()
+        searching = false
+        onChanged()
+    }
+
+    /** The search field's ×: the query is emptied (typing goes on if it was on). */
+    fun clearSearch() {
+        if (search.text.isEmpty()) return
+        search.clear()
+    }
+
+    private fun endSearch() {
+        searching = false
+        if (search.text.isNotEmpty()) search.set("")
+    }
+
+    private fun onSearchTyped() {
+        if (picker != TranslatePicker.NONE) onChanged()
     }
 
     /** A language of the source list, or null for Detect. */
     fun chooseSource(language: String?) {
+        editor.commitComposition()
         sync().chooseSource(language)
         picker = TranslatePicker.NONE
+        endSearch()
         detected = null
         directionChanged()
     }
 
     /** A destination of the list (remembered for the source language, device-local). */
     fun chooseDestination(d: AiDestination) {
+        editor.commitComposition()
         sync().chooseDestination(d)
         picker = TranslatePicker.NONE
+        endSearch()
         directionChanged()
     }
 
@@ -354,7 +412,7 @@ class TranslateController(
         runner.start(request) { outcome ->
             step = when (outcome) {
                 is AiOutcome.Success -> {
-                    if (direction.isAuto) detected = outcome.result.sourceLanguage?.takeIf { it in AiLanguages.ALL }
+                    if (direction.isAuto) detected = outcome.result.sourceLanguage?.takeIf { catalog.isKnown(it) }
                     TranslateStep.Result(task, outcome.result)
                 }
                 is AiOutcome.Failure -> TranslateStep.Failed(task, outcome.failure)
@@ -462,8 +520,23 @@ class TranslateController(
         override fun done() = onLeaveByKey()
     }
 
-    /** For `KeyboardController.fieldTyping`: the box while the panel is open (not while a language list is shown). */
-    fun fieldTyping(): FieldTyping? = if (isOpen && picker == TranslatePicker.NONE) typingAdapter else null
+    private val searchAdapter = object : FieldTyping {
+        override val sink: TextSink get() = search.sink
+        override val newlineOnEnter: Boolean get() = false
+        override fun submit() = stopSearchTyping()
+        override fun done() = stopSearchTyping()
+    }
+
+    /**
+     * For `KeyboardController.fieldTyping`: the box while the panel is open, the list's search while it is being typed
+     * (ADR 0040); nothing while a language list is shown without its search.
+     */
+    fun fieldTyping(): FieldTyping? = when {
+        !isOpen -> null
+        picker == TranslatePicker.NONE -> typingAdapter
+        searching -> searchAdapter
+        else -> null
+    }
 
     /** The system Back: a language list closes first, then the panel. False when it was not open. */
     fun back(): Boolean {
@@ -475,5 +548,8 @@ class TranslateController(
     companion object {
         /** `TranslateRequest.text` (characters). */
         const val MAX_TEXT = AiTextTarget.MAX_CHARS
+
+        /** The language search's length (a language name is short). */
+        const val SEARCH_MAX = 40
     }
 }

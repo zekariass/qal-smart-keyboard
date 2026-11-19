@@ -878,20 +878,52 @@ paths:
     get:
       tags: [Config]
       operationId: getAiCapabilities
-      summary: List available AI tasks and language pairs
-      description: Drives client UI. A pair is listed only when an enabled capability exists; marketing must use `qualityTier`.
+      summary: List available AI tasks, language pairs and the translation language catalogue
+      description: |
+        Drives client UI. A pair is listed only when an enabled capability exists; marketing must use `qualityTier`.
+
+        **Translation language catalogue (ADR 0040).** `translationLanguages` lists every language the
+        active providers can translate from (`asSource`) or into (`asDestination`), with its English and
+        native name, script and writing direction. It is provider-driven: it is empty when no provider
+        is active or the caller may not use server translation, and a client then keeps its bundled
+        list. Translation languages are not typing languages (`isTypingLanguage`): the keyboard's typing
+        catalogue is `listLanguages`. A `TRANSLATE` item without `sourceLanguage` and
+        `destinationLanguage` means "any pair of `translationLanguages`" (source with `asSource`,
+        destination with `asDestination`, never the same language); a pair item names one pair. The
+        server still decides per request: a pair no single provider serves is refused with
+        `LANGUAGE_PAIR_UNAVAILABLE`.
+
+        **Caching.** The answer carries a strong `ETag` over everything except `generatedAt`. A client
+        that keeps the catalogue sends it back in `If-None-Match` and gets `304` without a body while
+        nothing changed. `Cache-Control: private, no-cache`: a client may keep its copy but revalidates
+        before trusting it.
       security:
         - {}
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ClientPlatform'
         - $ref: '#/components/parameters/AppVersion'
+        - name: If-None-Match
+          in: header
+          required: false
+          description: The `ETag` of a previous answer; `304` when it still matches.
+          schema: { type: string, maxLength: 100 }
       responses:
         '200':
-          description: Capability matrix.
+          description: Capability matrix and translation language catalogue.
+          headers:
+            ETag:
+              description: Strong validator of the body without `generatedAt`.
+              schema: { type: string, maxLength: 100 }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AiCapabilities' }
+        '304':
+          description: Not modified; the client's copy (named by `If-None-Match`) is current.
+          headers:
+            ETag:
+              description: The current validator (equal to the one sent).
+              schema: { type: string, maxLength: 100 }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
@@ -901,6 +933,10 @@ paths:
       tags: [Languages]
       operationId: listLanguages
       summary: List supported languages and scripts
+      description: |
+        The keyboard's language catalogue: the languages a user can type in (`/me/typing-languages`
+        accepts exactly these). Translation-only languages (ADR 0040) are not listed here; they are
+        in `getAiCapabilities.translationLanguages`.
       security:
         - {}
         - bearerAuth: []
@@ -4535,6 +4571,33 @@ components:
               supportsAutoDetection: { type: boolean }
               supportsStreaming: { type: boolean }
               maxInputCharacters: { type: integer, minimum: 1 }
+        translationLanguages:
+          type: array
+          description: |
+            ADR 0040: the languages server translation offers now, from the active providers' enabled
+            capabilities (pair rows and per-model language sets), in catalogue order. Absent or empty:
+            keep the client's bundled list.
+          items: { $ref: '#/components/schemas/TranslationLanguage' }
+    TranslationLanguage:
+      type: object
+      required: [code, englishName, writingDirection, asSource, asDestination]
+      properties:
+        code: { $ref: '#/components/schemas/LanguageCode' }
+        englishName: { type: string }
+        nativeName: { type: string, description: The language's name in itself (autonym). }
+        scriptCode: { type: string, description: "ISO 15924 (Latn, Ethi, Arab, Hans, Deva, ...)." }
+        writingDirection:
+          type: string
+          enum: [LTR, RTL]
+        asSource: { type: boolean, description: Text in this language can be translated. }
+        asDestination: { type: boolean, description: Text can be translated into this language. }
+        supportsAutoDetection:
+          type: boolean
+          description: The language can be detected when the request omits `sourceLanguage`.
+        qualityTier: { $ref: '#/components/schemas/QualityTier' }
+        isTypingLanguage:
+          type: boolean
+          description: Also a keyboard (typing) language listed by `listLanguages`.
 
     # ------------------------------------------------------------ languages
     InputMode:

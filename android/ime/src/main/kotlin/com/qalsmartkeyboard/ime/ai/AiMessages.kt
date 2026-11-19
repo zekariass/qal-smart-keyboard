@@ -6,11 +6,12 @@ import java.text.DateFormat
 import java.text.NumberFormat
 import java.util.Date
 
-/** The user-facing wording of the AI toolbar and panels (English UI; resources), in one place. */
+/** The user-facing wording of the AI tools, the result panel and the AI panels (UI language resources), in one place. */
 object AiMessages {
     fun failure(c: Context, f: AiFailure): String = when (f) {
         AiFailure.Offline -> c.getString(R.string.ai_err_offline)
         AiFailure.Timeout -> c.getString(R.string.ai_err_timeout)
+        AiFailure.Unreachable -> c.getString(R.string.ai_err_unreachable)
         AiFailure.Busy -> c.getString(R.string.ai_err_busy)
         is AiFailure.QuotaExceeded -> {
             val reset = f.resetAtMs?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it)) }
@@ -168,6 +169,54 @@ object AiMessages {
         AiNotice.COPY_FAILED -> c.getString(R.string.ai_copy_failed)
         AiNotice.CLIPBOARD_EMPTY -> c.getString(R.string.ai_clipboard_empty)
         AiNotice.INSERT_FAILED -> c.getString(R.string.ai_apply_failed)
+    }
+
+    /** A tile's short label in the AI tools grid (ADR 0041): at most two lines in every UI language. */
+    fun tool(c: Context, t: AiTool): String = when (t) {
+        AiTool.TRANSLATE -> c.getString(R.string.ai_translate)
+        AiTool.GRAMMAR -> action(c, AiAssistAction.GRAMMAR)
+        AiTool.REWRITE -> action(c, AiAssistAction.REWRITE)
+        AiTool.SIMPLIFY -> action(c, AiAssistAction.SIMPLIFY)
+        AiTool.REPLY -> action(c, AiAssistAction.REPLY)
+        AiTool.EXPLAIN -> action(c, AiAssistAction.EXPLAIN)
+        AiTool.SUMMARIZE -> action(c, AiAssistAction.SUMMARIZE)
+        AiTool.EMAIL -> c.getString(R.string.tool_email)
+        AiTool.ASSIST -> c.getString(R.string.tool_ai_assist)
+        else -> tone(c, t.tone!!)
+    }
+
+    /** A tile's TalkBack name: the label; a tone says it rewrites ("Rewrite, tone: Friendly"); Assist says what it does. */
+    fun toolDescription(c: Context, t: AiTool): String = when {
+        t.tone != null -> c.getString(R.string.ai_tile_tone_description, tool(c, t))
+        t == AiTool.ASSIST -> c.getString(R.string.ai_assist_chip_description)
+        else -> tool(c, t)
+    }
+
+    /** The name of a rewrite tone ("Friendly"). */
+    fun tone(c: Context, t: AiTone): String = c.getString(
+        when (t) {
+            AiTone.FRIENDLY -> R.string.ai_tone_friendly
+            AiTone.POLITE -> R.string.ai_tone_polite
+            AiTone.PROFESSIONAL -> R.string.ai_tone_professional
+            AiTone.CONCISE -> R.string.ai_tone_concise
+            AiTone.APOLOGETIC -> R.string.ai_tone_apologetic
+            AiTone.HONORIFIC -> R.string.ai_tone_honorific
+        },
+    )
+
+    /** The remaining allowance ("3 of 10 left this month"), or "" when the plan state does not say. */
+    fun quota(c: Context, q: AiQuotaHint?): String {
+        val left = q?.remaining ?: return ""
+        val limit = q.limit
+        val period = when (q.period) {
+            AiPeriod.DAILY -> R.string.ai_period_daily
+            AiPeriod.WEEKLY -> R.string.ai_period_weekly
+            AiPeriod.MONTHLY -> R.string.ai_period_monthly
+            AiPeriod.YEARLY -> R.string.ai_period_yearly
+            AiPeriod.NONE -> null
+        }?.let { c.getString(it) }
+        val base = if (limit != null) c.getString(R.string.ai_quota_of, left, limit) else c.getString(R.string.ai_quota_left, left)
+        return if (period != null) "$base $period" else base
     }
 
     /** "1,234 / 5,000". */

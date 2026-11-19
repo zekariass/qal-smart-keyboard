@@ -53,7 +53,7 @@ class AiTypingLatencyTest {
                 toolbar = AiToolbarController(actions, EditorAiAccess(adapter) { c.commitComposition() }, { it() }, {}).also {
                     it.onFieldStarted(profile, "com.example")
                     ed.commitText("Hello world")
-                    it.onTask(AiTaskKind.GRAMMAR) // a request stays in flight while the user types
+                    it.run(AiQuickAction.GRAMMAR) // a request stays in flight while the user types
                 }
                 ed.text.setLength(0)
                 ed.selStart = 0

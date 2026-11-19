@@ -156,8 +156,9 @@ data class KeyboardSettings(
     /** Voice typing: the one-time "your phone's speech service turns voice into text" note was shown. Device-local. */
     val voiceNoticeShown: Boolean = false,
     /**
-     * AI translation (ADR 0031): the preferred destination language (am, ti, om, en, ar), or null for the automatic default
-     * (English for am/ti/om text, Amharic for English text). Device-local, not synced.
+     * AI translation (ADR 0031): the preferred destination language (a translation language of the catalogue, ADR 0040:
+     * am, ti, om, en, ar or any other the server offers), or null for the automatic default (English for am/ti/om text,
+     * Amharic for English text). Device-local, not synced.
      */
     val aiPreferredTarget: String? = null,
     /** AI translation: the destination last picked per source language (source code to destination id). Device-local. */
@@ -233,8 +234,9 @@ data class KeyboardSettings(
             recentEmoji = recentEmoji.filter { emojiToken(it) }.distinct().take(EMOJI_RECENT_MAX),
             emojiTones = emojiTones.filter { (k, v) -> emojiToken(k) && emojiToken(v) }.entries.take(EMOJI_TONES_MAX).associate { it.key to it.value },
             voiceLanguages = voiceLanguages.filter { (k, v) -> LanguageRules.isKnown(k) && LANGUAGE_TAG.matches(v) },
-            aiPreferredTarget = aiPreferredTarget?.takeIf { LanguageRules.isKnown(it) },
-            aiTranslatePairs = aiTranslatePairs.filter { (k, v) -> LanguageRules.isKnown(k) && DESTINATION_ID.matches(v) },
+            // ADR 0040: translation languages are not typing languages; any well-formed tag the catalogue may offer is kept.
+            aiPreferredTarget = aiPreferredTarget?.takeIf { LANGUAGE_TAG.matches(it) },
+            aiTranslatePairs = aiTranslatePairs.filter { (k, v) -> LANGUAGE_TAG.matches(k) && DESTINATION_ID.matches(v) },
             emailSenderName = emailSenderName.map { if (it == '\n' || it == '\r' || it == '|') ' ' else it }.joinToString("").trim().take(SENDER_NAME_MAX),
         )
     }
