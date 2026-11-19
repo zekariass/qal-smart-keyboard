@@ -79,7 +79,9 @@
 
     <!-- Keyboard themes -->
     <string name="themes_title">ገጽታ ኪቦርድ</string>
-    <string name="themes_section_free">ናጻ ገጽታታት</string>
+    <string name="themes_section_light">ብሩህ</string>
+    <string name="themes_section_dark">ጸሊም</string>
+    <string name="themes_section_gradient">ቅልመት</string>
     <string name="themes_section_premium">ገጽታታት Premium</string>
     <string name="themes_system">ስርዓት</string>
     <string name="themes_system_hint">ክላሲክ ብሩህ ወይ ክላሲክ ጸሊም፣ ከም ስልክኹም።</string>

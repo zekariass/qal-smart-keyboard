@@ -79,7 +79,9 @@
 
     <!-- Keyboard themes -->
     <string name="themes_title">Keyboard theme</string>
-    <string name="themes_section_free">Free themes</string>
+    <string name="themes_section_light">Light</string>
+    <string name="themes_section_dark">Dark</string>
+    <string name="themes_section_gradient">Gradient</string>
     <string name="themes_section_premium">Premium themes</string>
     <string name="themes_system">System</string>
     <string name="themes_system_hint">Classic Light or Classic Dark, following your phone.</string>
