@@ -882,12 +882,46 @@ Fail closed: the `capture` provider and the endpoint both stop startup under `pr
 also stops startup unless the provider is `capture`. `DevSmsCaptureTest` covers the guards and `DevSmsCaptureAbsentIT` proves the
 endpoint does not exist by default.
 
+## E-mail and password sign-in (ADR 0033)
+
+Endpoints (contract `Auth`): `POST /api/v1/auth/email/register` (201 `AuthSession` when verification is off, 202
+`EmailVerificationChallenge` when it is on), `POST /api/v1/auth/email/login`, `POST /api/v1/auth/email/verify`
+(`{challengeId, code}`), `POST /api/v1/auth/email/verify/resend` (`{challengeId}`), `POST /api/v1/auth/password/forgot`
+(always 202), `POST /api/v1/auth/password/reset` (`{email, token, newPassword}`, 204). Error codes: `INVALID_CREDENTIALS`
+(401), `ACCOUNT_LOCKED` (429 + `Retry-After`), `EMAIL_NOT_VERIFIED` (403 with `challengeId`, `expiresAt`,
+`resendAvailableAt`, `codeLength`), `EMAIL_ALREADY_REGISTERED` (409), `RESET_CODE_INVALID` (400), `EMAIL_NOT_CONFIGURED`
+(503), the OTP code errors for verify, and `VALIDATION_FAILED` with `PASSWORD_TOO_SHORT|TOO_LONG|TOO_COMMON|MATCHES_EMAIL`
+or `INVALID_EMAIL`.
+
+| Env | Property | Default (base / `dev`) | |
+|---|---|---|---|
+| `QAL_EMAIL_ENABLED` | `qal.identity.email.enabled` | `true` / `true` | off: every e-mail endpoint answers 503 `EMAIL_NOT_CONFIGURED` |
+| `QAL_EMAIL_VERIFICATION_REQUIRED` | `qal.identity.email.verification-required` | `true` / `false` | on: no account until the e-mailed code is verified; off: sign-up signs in with an unverified address (loud WARN under prod/production/staging) |
+| `QAL_EMAIL_PROVIDER` | `qal.notifications.email.provider` | `none` / `capture` | `none`, `log`, `capture` (the mocks are refused under prod/production/staging); no real vendor yet |
+| | `qal.identity.email.code-ttl`, `resend-cooldown`, `max-attempts`, `max-sends`, `challenge-max-age` | `15m`, `60s`, `5`, `5`, `24h` | |
+| | `qal.identity.email.lockout.max-failures`, `.duration` | `10`, `15m` | wrong passwords in a row, lock length |
+| | `qal.identity.email.argon2.memory-kib`, `iterations`, `parallelism`, `max-concurrent`, `max-wait` | `19456`, `2`, `1`, `0` (= 2 x CPUs), `5s` | OWASP baseline; WARN below it |
+| | `qal.identity.email.limits.<name>.capacity` / `.period` | register-per-ip 10/h, login-per-ip 60/h, login-per-device 30/h, verify-per-ip 60/h, resend-per-ip 20/h, forgot-per-ip 20/h, reset-per-ip 30/h, send-per-address 5/h, send-per-address-daily 10/day | in memory, per instance |
+
+**Startup:** enabled + verification required + provider `none` stops the application (nobody could finish a sign-up).
+Until an e-mail vendor exists, production sets `QAL_EMAIL_VERIFICATION_REQUIRED=false` (password reset and resend then
+answer 503 `EMAIL_NOT_CONFIGURED`, logged as a WARN at startup) or `QAL_EMAIL_ENABLED=false`. The code keys derive from
+`QAL_OTP_SECRET_KEY` (no new secret). Passwords: Argon2id (Spring Security `Argon2PasswordEncoder`, Bouncy Castle), PHC
+string in `user_password_credentials.password_hash`; e-mail codes in `email_challenges` (V22) as keyed HMACs only.
+
+**Dev e-mail capture (DEV ONLY, same rules as `/dev/sms/last`).** `provider=capture` keeps the last e-mail per address in
+memory; with `qal.notifications.email.capture.endpoint-enabled=true` (default off; on in the `dev` profile) the app serves
+`GET /dev/email/last?to=user%40example.com` (`{to, subject, body, code, receivedAt}`, 404 when nothing was captured,
+address matched case-insensitively) to loopback callers only. Both refuse to start under `prod`/`production`/`staging`, and
+the endpoint needs the `capture` provider. With `provider=log`, `qal.notifications.email.log.include-message=true` (DEV
+ONLY) logs the body with the code. Try the verification flow locally with `QAL_EMAIL_VERIFICATION_REQUIRED=true`.
+
 ## Local development launcher
 
 `infra/scripts/run-backend-dev.sh` starts the backend with the `dev` profile (`src/main/resources/application-dev.yaml`, dev-safe
 switches only, no secrets): local KMS (KEK from `QAL_LOCAL_KMS_KEK`, else generated once into the git-ignored
 `infra/scripts/.dev-state/kek` so stored data stays readable), ephemeral OTP secret, access-token and entitlement-token keys,
-mock attestation, AI mock, SMS `capture` + `/dev/sms/last`, and the compose Postgres at `localhost:5434` (started if it is not
+mock attestation, AI mock, SMS `capture` + `/dev/sms/last`, e-mail `capture` + `/dev/email/last` with e-mail verification off, and the compose Postgres at `localhost:5434` (started if it is not
 up; `DB_URL`/`DB_USER`/`DB_PASSWORD` override). It refuses to run when `SPRING_PROFILES_ACTIVE` or `SPRING_PROFILES_INCLUDE`
 contains `prod`, `production` or `staging` (exit 2), and each switch is refused by its own component under those profiles
 anyway. Never deploy the `dev` profile. Ctrl-C stops the backend; `docker compose -f infra/compose/docker-compose.yml down` stops Postgres.
