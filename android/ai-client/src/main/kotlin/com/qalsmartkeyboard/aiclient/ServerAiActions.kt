@@ -40,19 +40,23 @@ fun interface DestinationSource {
 }
 
 /**
- * Client call timeouts per operation (ADR 0031). The quick keyboard actions keep the contract's 8 s (SD 17.1). The
- * long-form features have longer server budgets (ADR 0027 §6: SUMMARIZE, EXPLAIN_TEXT and SMART_REPLY 12 s per attempt /
+ * Client call timeouts per operation (ADR 0031). Quick actions that route to an LLM wait for the server's deadline plus
+ * [MARGIN_SECONDS] (ADR 0027 update: translate 8 s attempt / 12 s deadline, grammar, rewrite and tone 6 s / 10 s), so
+ * translate waits [TRANSLATE_SECONDS] and the others [QUICK_LLM_SECONDS]. The long-form features have longer server budgets (ADR 0027 §6: SUMMARIZE, EXPLAIN_TEXT and SMART_REPLY 12 s per attempt /
  * 20 s deadline, DRAFT_DOCUMENT 20 s / 30 s); the client waits for the server's deadline plus [MARGIN_SECONDS] for the
  * network and the server's own work around the provider call, so a slow answer arrives instead of a client timeout.
  */
 object AiTimeouts {
     const val FAST_SECONDS = 8L
+    const val TRANSLATE_SECONDS = 15L
+    const val QUICK_LLM_SECONDS = 12L
     const val MARGIN_SECONDS = 5L
     const val LONG_FORM_SECONDS = 20L + MARGIN_SECONDS
     const val EMAIL_SECONDS = 30L + MARGIN_SECONDS
 
     fun callTimeoutSeconds(kind: AiTaskKind): Long = when (kind) {
-        AiTaskKind.TRANSLATE, AiTaskKind.GRAMMAR, AiTaskKind.REWRITE, AiTaskKind.TONE -> FAST_SECONDS
+        AiTaskKind.TRANSLATE -> TRANSLATE_SECONDS
+        AiTaskKind.GRAMMAR, AiTaskKind.REWRITE, AiTaskKind.TONE -> QUICK_LLM_SECONDS
         AiTaskKind.EXPLAIN, AiTaskKind.SUMMARIZE, AiTaskKind.REPLY -> LONG_FORM_SECONDS
         AiTaskKind.EMAIL -> EMAIL_SECONDS
     }
@@ -80,6 +84,8 @@ class ServerAiActions(
     private val lastDestinations: LastDestinationStore? = null,
     /** True only while the user has history turned on (A2.6); read per request, must not block. Default: never. */
     private val saveToHistory: () -> Boolean = { false },
+    /** The call timeout in seconds per kind; tests shorten it. */
+    private val callTimeouts: (AiTaskKind) -> Long = AiTimeouts::callTimeoutSeconds,
 ) : AiActions {
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     @Volatile private var snapshot: Pair<List<DestinationProfile>, List<AppRule>> = emptyList<DestinationProfile>() to emptyList()
@@ -164,8 +170,7 @@ class ServerAiActions(
         }
     }
 
-    private val longFormClient: OkHttpClient by lazy { withTimeout(AiTimeouts.LONG_FORM_SECONDS) }
-    private val emailClient: OkHttpClient by lazy { withTimeout(AiTimeouts.EMAIL_SECONDS) }
+    private val clientsBySeconds = java.util.concurrent.ConcurrentHashMap<Long, OkHttpClient>()
 
     private fun withTimeout(seconds: Long): OkHttpClient {
         val b = aiClient.newBuilder().callTimeout(seconds, TimeUnit.SECONDS)
@@ -174,12 +179,9 @@ class ServerAiActions(
         return b.build()
     }
 
-    /** The client whose call timeout fits [kind] ([AiTimeouts]); the quick actions use [aiClient] as configured. */
-    internal fun clientFor(kind: AiTaskKind): OkHttpClient = when (AiTimeouts.callTimeoutSeconds(kind)) {
-        AiTimeouts.EMAIL_SECONDS -> emailClient
-        AiTimeouts.LONG_FORM_SECONDS -> longFormClient
-        else -> aiClient
-    }
+    /** The client whose call timeout fits [kind] ([AiTimeouts]): [aiClient] with that call timeout (same pool and dispatcher). */
+    internal fun clientFor(kind: AiTaskKind): OkHttpClient =
+        clientsBySeconds.getOrPut(callTimeouts(kind)) { withTimeout(callTimeouts(kind)) }
 
     private fun read(request: AiRequest, r: Response): AiOutcome {
         val body = r.body?.string()

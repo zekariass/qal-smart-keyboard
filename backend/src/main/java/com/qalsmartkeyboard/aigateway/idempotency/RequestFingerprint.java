@@ -73,6 +73,11 @@ final class RequestFingerprint {
 					e.add("outputLanguage");
 					e.add(t.outputLanguage());
 				}
+				if (t.variation() != null && t.variation() > 0) {
+					// appended only when asked for: keys of first answers keep their digest
+					e.add("variation");
+					e.add(t.variation());
+				}
 			}
 			case AiCommand.Reply r -> {
 				e.add(r.contextLanguage());

@@ -110,10 +110,18 @@ public sealed interface AiCommand
 	 * @param saveToHistory see {@link Translate}
 	 * @param outputLanguage the request's {@code outputLanguage} (or {@code options.explainIn} for EXPLAIN_TEXT); null =
 	 *                       the language of the text (ADR 0027)
+	 * @param variation      0..20, null = 0; a higher number asks for a different version (regenerate)
 	 */
 	record Transform(Caller caller, AiFeature task, UserText text, String language, String mode, String tone,
-			String targetLength, Addressee addressee, UUID glossaryId, boolean saveToHistory, String outputLanguage)
-			implements AiCommand {
+			String targetLength, Addressee addressee, UUID glossaryId, boolean saveToHistory, String outputLanguage,
+			Integer variation) implements AiCommand {
+
+		public Transform(Caller caller, AiFeature task, UserText text, String language, String mode, String tone,
+				String targetLength, Addressee addressee, UUID glossaryId, boolean saveToHistory,
+				String outputLanguage) {
+			this(caller, task, text, language, mode, tone, targetLength, addressee, glossaryId, saveToHistory,
+					outputLanguage, null);
+		}
 
 		public Transform(Caller caller, AiFeature task, UserText text, String language, String mode, String tone,
 				String targetLength, Addressee addressee, UUID glossaryId, boolean saveToHistory) {

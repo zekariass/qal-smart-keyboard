@@ -45,9 +45,12 @@ class ServerAiActionsTest {
 
     @After fun tearDown() = server.shutdown()
 
-    private fun actions(client: okhttp3.OkHttpClient = rig.clients.okHttpClient): ServerAiActions {
+    private fun actions(
+        client: okhttp3.OkHttpClient = rig.clients.okHttpClient,
+        callTimeouts: (AiTaskKind) -> Long = AiTimeouts::callTimeoutSeconds,
+    ): ServerAiActions {
         val entitlements = EntitlementManager(client, rig.baseUrl, session, EntitlementTokenVerifier(PinnedKeys.NONE), EntitlementTokenStore(rig.files))
-        return ServerAiActions(client, rig.baseUrl, session, conn, { profiles to rules }, entitlements, { updateRequired }, direct, saveToHistory = { saveToHistory })
+        return ServerAiActions(client, rig.baseUrl, session, conn, { profiles to rules }, entitlements, { updateRequired }, direct, saveToHistory = { saveToHistory }, callTimeouts = callTimeouts)
     }
 
     private fun json(code: Int, body: String, vararg headers: Pair<String, String>) =
@@ -188,8 +191,7 @@ class ServerAiActionsTest {
 
     @Test fun aSlowServerEndsInTimeoutAtTheClientLimit() {
         server.enqueue(json(200, "{}").setHeadersDelay(3, TimeUnit.SECONDS))
-        val fast = rig.clients.okHttpClient.newBuilder().callTimeout(300, TimeUnit.MILLISECONDS).build()
-        val out = run(actions(fast), AiTask.Grammar, key = "k")
+        val out = run(actions(callTimeouts = { 1L }), AiTask.Grammar, key = "k")
         assertEquals(AiFailure.Timeout, failure(out))
     }
 

@@ -128,7 +128,8 @@ data class AiDestination(
 /**
  * What to do with the request's text. An `outputLanguage` of null keeps the language of the text (the server's
  * default); a set one is the contract's `outputLanguage` (ADR 0027). Tasks that carry more user text than
- * [AiRequest.text] ([Reply], [Email]) never print it in `toString`.
+ * [AiRequest.text] ([Reply], [Email]) never print it in `toString`. A `variation` of 0 is the first answer; Regenerate
+ * sends a higher one (the contract's `variation`, 0..20) with a new key, for the transform tasks as well as replies.
  */
 sealed interface AiTask {
     /** [sourceLanguage] null: the server detects it (the "Auto" source of the direction control). */
@@ -138,16 +139,16 @@ sealed interface AiTask {
     data object Grammar : AiTask
 
     /** [tone] null: a natural rewrite (`REWRITE`); set: `TONE_ADJUST` ("make professional" is PROFESSIONAL). */
-    data class Rewrite(val tone: AiTone?, val outputLanguage: String? = null) : AiTask
+    data class Rewrite(val tone: AiTone?, val outputLanguage: String? = null, val variation: Int = 0) : AiTask
 
     /** `REWRITE` mode `SIMPLIFY`: short sentences, everyday words. */
-    data class Simplify(val outputLanguage: String? = null) : AiTask
+    data class Simplify(val outputLanguage: String? = null, val variation: Int = 0) : AiTask
 
     /** `EXPLAIN_TEXT`, written in [outputLanguage]. */
-    data class Explain(val outputLanguage: String) : AiTask
+    data class Explain(val outputLanguage: String, val variation: Int = 0) : AiTask
 
     /** `SUMMARIZE`, written in [outputLanguage]. */
-    data class Summarize(val outputLanguage: String, val length: AiLength = AiLength.MEDIUM) : AiTask
+    data class Summarize(val outputLanguage: String, val length: AiLength = AiLength.MEDIUM, val variation: Int = 0) : AiTask
 
     /**
      * `POST /ai/replies`: [count] replies to the request's text (the message received) in [replyLanguage]. [instructions]

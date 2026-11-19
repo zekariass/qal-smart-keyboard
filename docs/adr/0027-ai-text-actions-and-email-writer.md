@@ -206,6 +206,19 @@ word of the output language. Translation and the B5.1 transform outputs are unch
   `AiControllerTest`, `AiContractDeclarationsTest`, `OpenAiProviderTest`, `HttpJsonAiProviderTest`,
   `RequestFingerprintTest`, `AiRouterTest`, `PromptTemplatesTest`, `AiProviderSeedsIT`, `FlywayBaselineIT` (20 migrations).
 
+## Update (quick wins: LLM-backed quick actions, transform `variation`)
+- **Time budgets of the quick actions.** TRANSLATE, GRAMMAR_CORRECTION, REWRITE and TONE_ADJUST now reach an LLM as well
+  (a real gpt-6-luna translation took 4.1 s end to end, which the keyboard's 4 s attempt cut off). Built-in defaults in
+  `AiPipeline.DEFAULT_FEATURE_TIMEOUTS`: TRANSLATE 8 s attempt / 12 s deadline (Google Translate stays a fast fallback
+  inside the deadline); GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST 6 s / 10 s. DETECT_LANGUAGE and SCRIPT_CONVERSION keep
+  4 s / 8 s. The Android call timeouts follow (server deadline + margin): translate 15 s, grammar/rewrite/tone 12 s.
+  Overridable per feature as before (`qal.ai.pipeline.feature-timeouts.<FEATURE>`).
+- **`variation` on `POST /ai/transform`.** Optional integer 0-20 with the semantics of `/replies` and `/drafts`: part of
+  the request fingerprint (appended only when above 0, so first-answer keys keep their digest; the same key with another
+  variation is 409 `IDEMPOTENCY_KEY_REUSED`), passed as `TransformRequest.variation` to the provider (OpenAI adds a
+  `Variation: n` line) and as `{{variation}}` to prompt templates. Regenerate for Rewrite, Make professional, Simplify,
+  Summarise and Explain sends the next variation with a new `Idempotency-Key`.
+
 ## Open
 - **Streaming** (SSE `delta`/`done`/`error` for `/ai/drafts` and long transforms): the contract describes it; a follow-up
   (needs an async request path, settle on `done`, release on a dropped stream).

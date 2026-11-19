@@ -43,6 +43,9 @@ public final class OutputFormats {
 
 	private static final Pattern SEPARATOR = Pattern.compile("(?m)^[ \\t]*-{3,}[ \\t]*$");
 	private static final Pattern NUMBERED = Pattern.compile("(?m)^[ \\t]*\\d{1,2}[.)][ \\t]+");
+	private static final Pattern BLANK_LINES = Pattern.compile("\\R[ \\t]*\\R(?:[ \\t]*\\R)*");
+	/** A smart reply is one to three sentences; a longer paragraph means the text is one multi-paragraph reply. */
+	private static final int MAX_PARAGRAPH_REPLY_CHARS = 400;
 	private static final Pattern LEADING_MARKER = Pattern.compile("^(?:\\d{1,2}[.)]|[-*•])[ \\t]+");
 	private static final Pattern SUBJECT = Pattern.compile(
 			"^[ \\t]*(?:\\*\\*|__)?[ \\t]*(?:subject|subj|ርዕሰ ጉዳይ|ርእሰ ጉዳይ|ርዕስ|ጉዳይ|ኣርእስቲ|mata[ \\t]+duree)[ \\t]*"
@@ -64,6 +67,9 @@ public final class OutputFormats {
 			chunks = SEPARATOR.split(text);
 		} else if (max > 1 && countMatches(NUMBERED, text) >= 2) {
 			chunks = NUMBERED.split(text);
+		} else if (max > 1 && isParagraphList(text, max)) {
+			// Seen with real models that ignore the --- rule: the replies come as blank-line separated paragraphs.
+			chunks = BLANK_LINES.split(text.strip());
 		} else {
 			chunks = new String[] { text };
 		}
@@ -134,6 +140,20 @@ public final class OutputFormats {
 			}
 		}
 		return s;
+	}
+
+	/** Two to {@code max} short, blank-line separated paragraphs: read as that many replies. */
+	private static boolean isParagraphList(String text, int max) {
+		String[] paragraphs = BLANK_LINES.split(text.strip());
+		if (paragraphs.length < 2 || paragraphs.length > max) {
+			return false;
+		}
+		for (String p : paragraphs) {
+			if (p.isBlank() || p.strip().length() > MAX_PARAGRAPH_REPLY_CHARS) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static int countMatches(Pattern p, String s) {

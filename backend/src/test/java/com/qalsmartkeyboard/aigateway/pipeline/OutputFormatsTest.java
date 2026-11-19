@@ -33,6 +33,19 @@ class OutputFormatsTest {
 	}
 
 	@Test
+	void blankLineSeparatedRepliesAreSplitWhenSeveralWereAskedFor() {
+		// what gpt-6-luna returned for count=3 in the local smoke test (2026-11-19)
+		String out = "ቅዳሜ ለሰርጉ እመጣለሁ።\n\nሰርጉ ስንት ሰዓት ነው?\n\nይቅርታ፣ በዚያ ቀን መምጣት አልችልም።";
+		assertThat(OutputFormats.replies(out, 3)).containsExactly("ቅዳሜ ለሰርጉ እመጣለሁ።", "ሰርጉ ስንት ሰዓት ነው?",
+				"ይቅርታ፣ በዚያ ቀን መምጣት አልችልም።");
+		// one reply asked for, or more paragraphs than asked for, or a long paragraph: stays one text
+		assertThat(OutputFormats.replies(out, 1)).hasSize(1);
+		assertThat(OutputFormats.replies(out, 2)).hasSize(1);
+		String longParagraph = "x".repeat(450);
+		assertThat(OutputFormats.replies("Hello there.\n\n" + longParagraph, 3)).hasSize(1);
+	}
+
+	@Test
 	void emptyOrBlankOutputHasNoReplies() {
 		assertThat(OutputFormats.replies("", 3)).isEmpty();
 		assertThat(OutputFormats.replies("---\n \n---", 3)).isEmpty();
