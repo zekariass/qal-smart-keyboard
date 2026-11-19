@@ -159,13 +159,20 @@ public class AiPipeline {
 
 	/**
 	 * ADR 0027 defaults: the long-form features call an LLM that writes a whole summary, explanation, set of replies or
-	 * e-mail; the keyboard's 4 s attempt / 8 s deadline (every other feature) would cut them off.
+	 * e-mail; the keyboard's 4 s attempt / 8 s deadline (every other feature) would cut them off. The quick LLM-backed
+	 * actions (translate, grammar, rewrite, tone) get 8 s / 12 s and 6 s / 10 s.
 	 */
 	public static final Map<AiFeature, Timeouts> DEFAULT_FEATURE_TIMEOUTS = Map.of(
 			AiFeature.SUMMARIZE, new Timeouts(Duration.ofSeconds(12), Duration.ofSeconds(20)),
 			AiFeature.EXPLAIN_TEXT, new Timeouts(Duration.ofSeconds(12), Duration.ofSeconds(20)),
 			AiFeature.SMART_REPLY, new Timeouts(Duration.ofSeconds(12), Duration.ofSeconds(20)),
-			AiFeature.DRAFT_DOCUMENT, new Timeouts(Duration.ofSeconds(20), Duration.ofSeconds(30)));
+			AiFeature.DRAFT_DOCUMENT, new Timeouts(Duration.ofSeconds(20), Duration.ofSeconds(30)),
+			// Quick actions that also route to the LLM: a real gpt-6-luna translation took ~4 s end to end, so the 4 s
+			// attempt would time out; Google Translate stays a fast fallback inside the 12 s deadline.
+			AiFeature.TRANSLATE, new Timeouts(Duration.ofSeconds(8), Duration.ofSeconds(12)),
+			AiFeature.GRAMMAR_CORRECTION, new Timeouts(Duration.ofSeconds(6), Duration.ofSeconds(10)),
+			AiFeature.REWRITE, new Timeouts(Duration.ofSeconds(6), Duration.ofSeconds(10)),
+			AiFeature.TONE_ADJUST, new Timeouts(Duration.ofSeconds(6), Duration.ofSeconds(10)));
 
 	/**
 	 * @param deadline                   time budget for all provider calls of one request: route, guardrail retry and
@@ -505,14 +512,15 @@ public class AiPipeline {
 		// a change of language may convert numbers (Ethiopic numerals, Ethiopian calendar years)
 		boolean conversions = cross && (isEthiopic(out) || inputScript == UnicodeScript.ETHIOPIC);
 		LocalDate today = LocalDate.now(clock.withZone(defaults.timeZone()));
+		int variation = variation(t.variation());
 		Map<String, String> values = PromptValues.of(new PromptValues.Inputs(t.task(), t.mode(), t.tone(), null,
 				t.targetLength(), null, null, null, null, lang == null ? null : lang.code(),
 				lang == null ? null : lang.englishName(), addressee.formality(), addressee.gender(), null, null, null,
 				true, true, today, out == null ? null : out.code(), out == null ? null : out.englishName(), null,
-				null));
+				variation));
 		// a summary or an explanation need not repeat every number or link of the text
 		boolean keepsTokens = t.task() != AiFeature.SUMMARIZE && t.task() != AiFeature.EXPLAIN_TEXT;
-		Extras extras = new Extras(t.text(), keepsTokens ? t.text() : null, cross, List.of(), 0, 0, true);
+		Extras extras = new Extras(t.text(), keepsTokens ? t.text() : null, cross, List.of(), 0, variation, true);
 		return new Prepared(t, t.task(), t.text(), lang == null ? null : lang.code(), out == null ? null : out.code(),
 				lang == null ? null : lang.code(), script, expected, lang == null ? "*" : lang.code(), null, true,
 				addressee, t.mode(), t.tone(), t.targetLength(), conversions, values, extras);

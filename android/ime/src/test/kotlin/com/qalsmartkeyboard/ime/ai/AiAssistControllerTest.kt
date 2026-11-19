@@ -176,15 +176,18 @@ class AiAssistControllerTest {
         assertNotEquals(h.actions.submitted[0].request.requestId, h.sent().requestId)
     }
 
-    @Test fun regenerateOfARewriteIsTheSameBodyWithANewKey() {
+    @Test fun regenerateOfARewriteAsksForTheNextVariationWithANewKey() {
         val h = H(selection = "text")
         h.c.open()
         h.c.selectAction(AiAssistAction.SIMPLIFY)
         h.c.run()
         h.actions.answer(0, FakeAiActions.ok("simple"))
         h.c.regenerate()
-        assertEquals(h.actions.submitted[0].request.task, h.sent().task)
+        assertEquals(AiTask.Simplify(null, variation = 1), h.sent().task)
         assertEquals("key-2", h.sent().requestId)
+        h.actions.answer(1, FakeAiActions.ok("simpler"))
+        h.c.regenerate()
+        assertEquals(2, (h.sent().task as AiTask.Simplify).variation)
     }
 
     @Test fun translateAndExplainOfferNoRegenerate() {
