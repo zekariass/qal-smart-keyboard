@@ -1335,6 +1335,14 @@ paths:
         (`GRAMMAR_CORRECTION`, `REWRITE`, `TONE_ADJUST`, `SUMMARIZE`, `EXPLAIN_TEXT`,
         `SCRIPT_CONVERSION`). User text is treated strictly as data, never as instructions.
 
+        Text actions (ADR 0027): "Simplify" is `REWRITE` with `options.mode: SIMPLIFY`, "Make more
+        professional" is `TONE_ADJUST` with `options.tone: PROFESSIONAL`, "Explain" is `EXPLAIN_TEXT`,
+        "Summarise" is `SUMMARIZE`. `outputLanguage` writes the result in another language than the
+        text's (every task except `GRAMMAR_CORRECTION`, which keeps the text's language and answers 400
+        `VALIDATION_FAILED` on `outputLanguage` for a different one). `SUMMARIZE` and `EXPLAIN_TEXT` run
+        on a longer server time budget (about 12 s per provider attempt, 20 s in total) than the other
+        tasks (4 s / 8 s): clients should wait accordingly.
+
         `SCRIPT_CONVERSION` is AI-assisted whole-sentence conversion of romanised Amharic/Tigrinya
         to Ge'ez with context; it is distinct from local keystroke transliteration.
 
@@ -1344,7 +1352,7 @@ paths:
         releases the reservation. The keyboard uses JSON with an 8 s client timeout.
 
         403 codes are those of `/ai/translate`, including `ON_DEVICE_ONLY_PREFERRED`. Tasks the server
-        cannot serve yet answer 400 `VALIDATION_FAILED` on `task`.
+        cannot serve yet (`SCRIPT_CONVERSION`) answer 400 `VALIDATION_FAILED` on `task`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/ClientPlatform'
@@ -1389,6 +1397,14 @@ paths:
       description: |
         Feature `SMART_REPLY`. `contextText` must come from an explicit user action (paste,
         selection, share sheet). The keyboard never reads other apps' messages.
+
+        ADR 0027: the replies are written in `replyLanguage`, whatever the language of the message.
+        `instructions` are the user's own notes on what to answer, in any supported language; every
+        suggestion then says that. Missing details are never invented: a suggestion may hold a
+        bracketed placeholder such as `[time]`. To regenerate, send the same body with a higher
+        `variation` and a new `Idempotency-Key` (the same key replays the first answer). Server time
+        budget about 12 s per provider attempt, 20 s in total. 403 codes are those of
+        `/ai/translate`; 422 `OUTPUT_GUARDRAIL_FAILED` or `CONTENT_REJECTED` charge nothing.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/ClientSurface'
@@ -1397,15 +1413,28 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/RepliesRequest' }
+            example:
+              contextText: Hi Abebe, can we move tomorrow's meeting to Thursday?
+              contextLanguage: en
+              replyLanguage: en
+              count: 3
+              tone: POLITE
+              instructions: ሐሙስ ከሰዓት በኋላ ይመቸኛል
       responses:
         '200':
           description: Suggestions.
+          headers:
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimit-Limit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimit-Remaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimit-Reset' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RepliesResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/ai/drafts:
@@ -1413,7 +1442,24 @@ paths:
       tags: [AI]
       operationId: draftDocument
       summary: Draft a professional email, letter or similar document
-      description: Feature `DRAFT_DOCUMENT`. Supports SSE streaming as described for `/ai/transform`.
+      description: |
+        Feature `DRAFT_DOCUMENT`. Supports SSE streaming as described for `/ai/transform` (not
+        served yet: the server answers JSON; a follow-up of ADR 0027).
+
+        Write e-mail with AI (ADR 0027), `documentType: EMAIL` (the other types answer 400
+        `VALIDATION_FAILED` `NOT_AVAILABLE` on `documentType`), selected by `mode`:
+        - `NEW`: `instructions` describe what the e-mail must say, in the user's language; the server
+          writes a complete e-mail with a subject line in `language`.
+        - `REPLY`: `originalEmail` is the e-mail received, `instructions` what to answer; the subject
+          starts with `Re: `.
+        - `IMPROVE`: `draft` is the user's draft (grammar, clarity, tone); `instructions` optional.
+          The subject is returned only when the draft had one.
+        The input and output languages may differ. Names, dates, numbers and facts are kept; nothing
+        is invented: a detail the user did not give is a bracketed placeholder (`[date]`) listed in
+        `placeholders`. To regenerate, send the same body with a higher `variation` and a new
+        `Idempotency-Key` (the same key replays the first answer). Server time budget about 20 s per
+        provider attempt, 30 s in total. Charged one request (`DRAFT_DOCUMENT`, 3 credits when paid
+        by credits); nothing on any failure. 403 codes are those of `/ai/translate`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/ClientSurface'
@@ -1422,19 +1468,51 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/DraftRequest' }
+            example:
+              documentType: EMAIL
+              mode: NEW
+              language: en
+              tone: PROFESSIONAL
+              instructions: ለአለቃዬ ነገ ታምሜ ስለሆነ ወደ ስራ እንደማልመጣ እና ሪፖርቱን ሰኞ እንደምልክ ንገረው
+              recipient: { name: Ms. Sarah Johnson, formality: FORMAL }
+              senderName: Abebe Kebede
       responses:
         '200':
           description: Draft (JSON or SSE stream).
+          headers:
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimit-Limit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimit-Remaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimit-Reset' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DraftResponse' }
+              example:
+                requestId: 0193a5c2-6f1e-7c3a-9b2d-4e5f6a7b8c9d
+                mode: NEW
+                language: en
+                subject: Sick leave tomorrow
+                body: "Dear Ms. Johnson,\n\nI am unwell and will not be able to come to work tomorrow, [date]. I will send the report on Monday.\n\nBest regards,\nAbebe Kebede"
+                placeholders: ['[date]']
+                notes:
+                  - type: QUALITY
+                    message: 'Beta quality: please review the result before sending.'
+                qualityTier: BETA
+                replayed: false
+                usage:
+                  featureCode: DRAFT_DOCUMENT
+                  unitsCharged: 1
+                  unit: REQUEST
+                  usageSource: PLAN_ALLOWANCE
+                  remaining: 49
             text/event-stream:
               schema:
                 type: string
                 description: SSE stream with `delta`, `done` and `error` events.
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/ai/detect-language:
@@ -4602,6 +4680,14 @@ components:
         The database default `NATURAL` (no tone chosen) is deliberately not a value: a profile
         without a tone omits `defaultTone` in responses, and requests must omit it too.
       enum: [FRIENDLY, POLITE, PROFESSIONAL, CONCISE, APOLOGETIC, HONORIFIC]
+    EmailTone:
+      type: string
+      description: |
+        Tone of an AI-written e-mail (`DraftRequest.tone`, ADR 0027). FORMAL suits authorities and
+        senior people, CASUAL people the user knows well, PERSUASIVE makes a case with one call to
+        action.
+      enum: [PROFESSIONAL, FORMAL, FRIENDLY, CASUAL, POLITE, PERSUASIVE, APOLOGETIC, CONCISE]
+      default: PROFESSIONAL
     Preferences:
       type: object
       required: [revision]
@@ -4874,13 +4960,22 @@ components:
         language:
           $ref: '#/components/schemas/LanguageCode'
           description: Language of `text`; omit for detection.
+        outputLanguage:
+          $ref: '#/components/schemas/LanguageCode'
+          description: |
+            Language of the result (ADR 0027); omit to keep the language of `text`. For
+            `EXPLAIN_TEXT`, `options.explainIn` is the same option (a different value is 400). For
+            `GRAMMAR_CORRECTION` it may only name the language of `text`.
         options:
           type: object
           properties:
             mode:
               type: string
-              description: GRAMMAR_CORRECTION → GRAMMAR | SPELLING_ONLY. REWRITE → NATURAL | SHORTEN | EXPAND | CLARIFY.
-              enum: [GRAMMAR, SPELLING_ONLY, NATURAL, SHORTEN, EXPAND, CLARIFY]
+              description: |
+                GRAMMAR_CORRECTION → GRAMMAR | SPELLING_ONLY. REWRITE → NATURAL | SHORTEN | EXPAND |
+                CLARIFY | SIMPLIFY (short sentences and everyday words, jargon explained, every fact kept).
+                Other tasks take no mode.
+              enum: [GRAMMAR, SPELLING_ONLY, NATURAL, SHORTEN, EXPAND, CLARIFY, SIMPLIFY]
             tone:
               $ref: '#/components/schemas/Tone'
               description: Required for TONE_ADJUST.
@@ -4890,7 +4985,7 @@ components:
               description: SUMMARIZE / REWRITE.
             explainIn:
               $ref: '#/components/schemas/LanguageCode'
-              description: EXPLAIN_TEXT output language.
+              description: EXPLAIN_TEXT output language (same as `outputLanguage`).
             sourceRomanization:
               type: string
               enum: [AUTO, SERA, INFORMAL_CHAT]
@@ -4916,7 +5011,9 @@ components:
       properties:
         requestId: { type: string, format: uuid }
         task: { $ref: '#/components/schemas/TransformTask' }
-        language: { $ref: '#/components/schemas/LanguageCode' }
+        language:
+          $ref: '#/components/schemas/LanguageCode'
+          description: Language of `resultText` (the request's `outputLanguage`, else the language of the text when known).
         resultText: { type: string }
         edits:
           type: array
@@ -4937,18 +5034,32 @@ components:
       type: object
       required: [contextText, replyLanguage]
       properties:
-        contextText: { type: string, minLength: 1, maxLength: 2000, description: Message text the user explicitly pasted/selected/shared. }
+        contextText: { type: string, minLength: 1, maxLength: 5000, description: Message text the user explicitly pasted/selected/shared. }
         contextLanguage: { $ref: '#/components/schemas/LanguageCode' }
         replyLanguage: { $ref: '#/components/schemas/LanguageCode' }
         count: { type: integer, minimum: 1, maximum: 5, default: 3 }
         tone: { $ref: '#/components/schemas/Tone' }
         addressee: { $ref: '#/components/schemas/Addressee' }
+        instructions:
+          type: string
+          maxLength: 1000
+          description: The user's own notes on what to answer, in any supported language (ADR 0027).
+        variation:
+          type: integer
+          minimum: 0
+          maximum: 20
+          default: 0
+          description: 0 = first answer; a higher number asks for a different set (regenerate, with a new `Idempotency-Key`).
         applyStyleProfile: { type: boolean, default: false }
+        saveToHistory: { type: boolean, default: false, description: Honoured only when history is enabled. }
     RepliesResponse:
       type: object
       required: [requestId, suggestions, replayed]
       properties:
         requestId: { type: string, format: uuid }
+        language:
+          $ref: '#/components/schemas/LanguageCode'
+          description: The reply language.
         suggestions:
           type: array
           items:
@@ -4960,21 +5071,59 @@ components:
         notes:
           type: array
           items: { $ref: '#/components/schemas/AiNote' }
+        qualityTier: { $ref: '#/components/schemas/QualityTier' }
         replayed: { type: boolean }
+        historyItemId: { type: string, format: uuid }
         usage: { $ref: '#/components/schemas/UsageSummary' }
     DraftRequest:
       type: object
-      required: [documentType, language, purpose]
+      description: |
+        ADR 0027. `language` is the language of the e-mail; `instructions` (or the older `purpose`,
+        not both) may be in any supported language. Which texts a `mode` needs: NEW `instructions`;
+        REPLY `originalEmail` and `instructions`; IMPROVE `draft` (`instructions` optional).
+        `originalEmail` outside REPLY and `draft` outside IMPROVE are 400.
+      required: [language]
       properties:
         documentType:
           type: string
           enum: [EMAIL, LETTER, APPLICATION, ANNOUNCEMENT, OTHER]
+          default: EMAIL
+          description: Only EMAIL is served; the others answer 400 `NOT_AVAILABLE`.
+        mode:
+          type: string
+          enum: [NEW, REPLY, IMPROVE]
+          default: NEW
         language: { $ref: '#/components/schemas/LanguageCode' }
-        purpose: { type: string, minLength: 1, maxLength: 500 }
+        instructions:
+          type: string
+          maxLength: 2000
+          description: What the e-mail must say (NEW), what to answer (REPLY) or what to change (IMPROVE), in the user's words.
+        purpose:
+          type: string
+          minLength: 1
+          maxLength: 500
+          deprecated: true
+          description: Older name of `instructions`.
         keyPoints:
           type: array
           maxItems: 10
           items: { type: string, maxLength: 300 }
+          description: Appended to `instructions` as list lines.
+        originalEmail:
+          type: string
+          maxLength: 8000
+          description: REPLY only, the e-mail being answered.
+        draft:
+          type: string
+          maxLength: 8000
+          description: IMPROVE only, the user's draft.
+        tone: { $ref: '#/components/schemas/EmailTone' }
+        variation:
+          type: integer
+          minimum: 0
+          maximum: 20
+          default: 0
+          description: 0 = first answer; a higher number asks for a different version (regenerate, with a new `Idempotency-Key`).
         recipient:
           type: object
           properties:
@@ -4991,18 +5140,34 @@ components:
         culturalOptions: { $ref: '#/components/schemas/CulturalOptions' }
         applyStyleProfile: { type: boolean, default: false }
         glossaryId: { type: string, format: uuid }
+        saveToHistory: { type: boolean, default: false, description: Honoured only when history is enabled. }
     DraftResponse:
       type: object
       required: [requestId, body, replayed]
       properties:
         requestId: { type: string, format: uuid }
-        subject: { type: string }
+        mode:
+          type: string
+          enum: [NEW, REPLY, IMPROVE]
+        language:
+          $ref: '#/components/schemas/LanguageCode'
+          description: The language of the e-mail.
+        subject:
+          type: string
+          description: 'Absent when `includeSubject` was false or an improved draft had none; REPLY subjects start with `Re:`.'
         body: { type: string }
+        placeholders:
+          type: array
+          items: { type: string }
+          description: |
+            Bracketed items in `subject` or `body` the user must fill in before sending (`[date]`,
+            `[ቀን]`), brackets included, in order of appearance; empty when there are none.
         notes:
           type: array
           items: { $ref: '#/components/schemas/AiNote' }
         qualityTier: { $ref: '#/components/schemas/QualityTier' }
         replayed: { type: boolean }
+        historyItemId: { type: string, format: uuid }
         usage: { $ref: '#/components/schemas/UsageSummary' }
     DetectLanguageRequest:
       type: object

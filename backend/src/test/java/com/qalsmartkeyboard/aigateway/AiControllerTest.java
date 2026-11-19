@@ -277,8 +277,251 @@ class AiControllerTest {
 				List.of(new com.qalsmartkeyboard.platform.ApiFieldError("task", "NOT_AVAILABLE", "This task is not available.")),
 				Map.of()));
 		mvc.perform(post("/api/v1/ai/transform").header("Authorization", bearer()).header("Idempotency-Key", key())
-				.contentType(MediaType.APPLICATION_JSON).content("{\"task\":\"SUMMARIZE\",\"text\":\"abc\"}"))
+				.contentType(MediaType.APPLICATION_JSON).content("{\"task\":\"SCRIPT_CONVERSION\",\"text\":\"abc\"}"))
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].code").value("NOT_AVAILABLE"));
+	}
+
+	@Test
+	void transformCarriesTheOutputLanguageAndExplainInIsItsAlias() throws Exception {
+		when(pipeline.execute(any())).thenReturn(new AiResult.TransformResponse(REQUEST_ID, "EXPLAIN_TEXT", "en",
+				"Explanation", List.of(), List.of(), List.of(), QualityTier.BETA, false, null, usage()));
+		mvc.perform(post("/api/v1/ai/transform").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"task\":\"REWRITE\",\"text\":\"abc\",\"language\":\"am\",\"outputLanguage\":\"en\","
+						+ "\"options\":{\"mode\":\"SIMPLIFY\"}}"))
+				.andExpect(status().isOk());
+		mvc.perform(post("/api/v1/ai/transform").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"task\":\"EXPLAIN_TEXT\",\"text\":\"abc\",\"options\":{\"explainIn\":\"en\"}}"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.language").value("en"));
+		// explainIn of another task is ignored; a different outputLanguage next to it is a conflict
+		mvc.perform(post("/api/v1/ai/transform").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"task\":\"SUMMARIZE\",\"text\":\"abc\","
+						+ "\"options\":{\"explainIn\":\"en\"}}"))
+				.andExpect(status().isOk());
+		mvc.perform(post("/api/v1/ai/transform").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"task\":\"EXPLAIN_TEXT\",\"text\":\"abc\","
+						+ "\"outputLanguage\":\"am\",\"options\":{\"explainIn\":\"en\"}}"))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("options.explainIn"))
+				.andExpect(jsonPath("$.errors[0].code").value("CONFLICT"));
+
+		ArgumentCaptor<AiCommand> captor = ArgumentCaptor.forClass(AiCommand.class);
+		verify(pipeline, org.mockito.Mockito.times(3)).execute(captor.capture());
+		List<AiCommand.Transform> sent = captor.getAllValues().stream().map(c -> (AiCommand.Transform) c).toList();
+		assertThat(sent).extracting(AiCommand.Transform::task).containsExactly(AiFeature.REWRITE,
+				AiFeature.EXPLAIN_TEXT, AiFeature.SUMMARIZE);
+		assertThat(sent).extracting(AiCommand.Transform::outputLanguage).containsExactly("en", "en", null);
+		assertThat(sent.get(0).mode()).isEqualTo("SIMPLIFY");
+	}
+
+	// ============================================================================================= replies (ADR 0027)
+
+	static AiResult.RepliesResponse repliesResult() {
+		return new AiResult.RepliesResponse(REQUEST_ID, "am",
+				List.of(new AiResult.RepliesResponse.Suggestion("እሺ፣ ሐሙስ ይመቸኛል።", "POLITE"),
+						new AiResult.RepliesResponse.Suggestion("ሐሙስ [ሰዓት] ላይ እንገናኝ።", "POLITE")),
+				List.of(new AiResult.AiNote("QUALITY", "Beta quality: please review the result before sending.")),
+				QualityTier.BETA, false, null, new AiResult.UsageSummary("SMART_REPLY", 1, "REQUEST", "PLAN_ALLOWANCE",
+						149L, null, null, null, Instant.parse("2026-12-01T00:00:00Z")));
+	}
+
+	@Test
+	void repliesMapTheBodyToACommandAndReturnTheContractResponse() throws Exception {
+		when(pipeline.execute(any())).thenReturn(repliesResult());
+		String k = key();
+		mvc.perform(post("/api/v1/ai/replies").header("Authorization", bearer()).header("Idempotency-Key", k)
+				.header("X-Client-Surface", "COMPANION").contentType(MediaType.APPLICATION_JSON).content("""
+						{"contextText":"%s","contextLanguage":"en","replyLanguage":"am","count":2,"tone":"POLITE",
+						 "addressee":{"formality":"FORMAL","gender":"MASCULINE"},"instructions":"%s notes",
+						 "variation":3,"saveToHistory":true,"applyStyleProfile":false}
+						""".formatted(SECRET, SECRET)))
+				.andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+				.andExpect(header().string("RateLimit-Limit", "30")).andExpect(jsonPath("$.language").value("am"))
+				.andExpect(jsonPath("$.suggestions.length()").value(2))
+				.andExpect(jsonPath("$.suggestions[1].text").value("ሐሙስ [ሰዓት] ላይ እንገናኝ።"))
+				.andExpect(jsonPath("$.suggestions[1].tone").value("POLITE"))
+				.andExpect(jsonPath("$.usage.featureCode").value("SMART_REPLY"))
+				.andExpect(jsonPath("$.replayed").value(false));
+
+		ArgumentCaptor<AiCommand> captor = ArgumentCaptor.forClass(AiCommand.class);
+		verify(pipeline).execute(captor.capture());
+		AiCommand.Reply r = (AiCommand.Reply) captor.getValue();
+		assertThat(r.feature()).isEqualTo(AiFeature.SMART_REPLY);
+		assertThat(r.text().value()).isEqualTo(SECRET);
+		assertThat(r.instructions().value()).isEqualTo(SECRET + " notes");
+		assertThat(r.contextLanguage()).isEqualTo("en");
+		assertThat(r.replyLanguage()).isEqualTo("am");
+		assertThat(r.count()).isEqualTo(2);
+		assertThat(r.variation()).isEqualTo(3);
+		assertThat(r.tone()).isEqualTo("POLITE");
+		assertThat(r.saveToHistory()).isTrue();
+		assertThat(r.addressee()).isEqualTo(new Addressee(Addressee.Formality.FORMAL, Addressee.Gender.MASCULINE));
+		assertThat(r.caller().idempotencyKey()).isEqualTo(k);
+		assertThat(r.caller().surface()).isEqualTo(AiCommand.Surface.COMPANION);
+		assertThat(r.toString()).doesNotContain(SECRET);
+		assertThat(repliesResult().toString()).doesNotContain("ሐሙስ");
+	}
+
+	// ============================================================================================= drafts (ADR 0027)
+
+	static AiResult.DraftResponse draftResult() {
+		return new AiResult.DraftResponse(REQUEST_ID, "REPLY", "en", "Re: Meeting on Thursday",
+				"Dear Sarah,\n\nThursday afternoon works for me. Shall we meet at [time]?\n\nBest regards,\nAbebe",
+				List.of("[time]"),
+				List.of(new AiResult.AiNote("QUALITY", "Beta quality: please review the result before sending.")),
+				QualityTier.BETA, false, null, new AiResult.UsageSummary("DRAFT_DOCUMENT", 1, "REQUEST",
+						"AI_CREDITS", 0L, new BigDecimal("7"), new BigDecimal("3.000000"), null, null));
+	}
+
+	@Test
+	void draftsMapTheBodyToACommandAndReturnTheContractResponse() throws Exception {
+		when(pipeline.execute(any())).thenReturn(draftResult());
+		mvc.perform(post("/api/v1/ai/drafts").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"documentType":"EMAIL","mode":"REPLY","language":"en","instructions":"%s",
+						 "originalEmail":"Original %s","tone":"FRIENDLY","length":"SHORT","includeSubject":true,
+						 "recipient":{"name":"Sarah","role":"HR manager","formality":"FORMAL","gender":"FEMININE"},
+						 "senderName":"Abebe","culturalOptions":{"calendar":"GREGORIAN"},"variation":1,
+						 "saveToHistory":false,"glossaryId":"%s"}
+						""".formatted(SECRET, SECRET, UUID.randomUUID())))
+				.andExpect(status().isOk()).andExpect(header().string("RateLimit-Limit", "10"))
+				.andExpect(jsonPath("$.mode").value("REPLY")).andExpect(jsonPath("$.language").value("en"))
+				.andExpect(jsonPath("$.subject").value("Re: Meeting on Thursday"))
+				.andExpect(jsonPath("$.placeholders[0]").value("[time]"))
+				.andExpect(jsonPath("$.usage.featureCode").value("DRAFT_DOCUMENT"))
+				.andExpect(jsonPath("$.usage.creditsCharged").value(3.0));
+
+		ArgumentCaptor<AiCommand> captor = ArgumentCaptor.forClass(AiCommand.class);
+		verify(pipeline).execute(captor.capture());
+		AiCommand.Draft d = (AiCommand.Draft) captor.getValue();
+		assertThat(d.feature()).isEqualTo(AiFeature.DRAFT_DOCUMENT);
+		assertThat(d.mode()).isEqualTo("REPLY");
+		assertThat(d.text().value()).isEqualTo("Original " + SECRET); // REPLY: the e-mail answered is the main text
+		assertThat(d.instructions().value()).isEqualTo(SECRET);
+		assertThat(d.tone()).isEqualTo("FRIENDLY");
+		assertThat(d.length()).isEqualTo("SHORT");
+		assertThat(d.includeSubject()).isTrue();
+		assertThat(d.recipientName().value()).isEqualTo("Sarah");
+		assertThat(d.recipientRole().value()).isEqualTo("HR manager");
+		assertThat(d.senderName().value()).isEqualTo("Abebe");
+		assertThat(d.addressee()).isEqualTo(new Addressee(Addressee.Formality.FORMAL, Addressee.Gender.FEMININE));
+		assertThat(d.culturalOptions().calendar()).isEqualTo("GREGORIAN");
+		assertThat(d.variation()).isEqualTo(1);
+		assertThat(d.toString()).doesNotContain(SECRET);
+		assertThat(draftResult().toString()).doesNotContain("Thursday", "[time]");
+	}
+
+	@Test
+	void draftsAcceptTheOlderPurposeAndKeyPointsButNotBothNames() throws Exception {
+		when(pipeline.execute(any())).thenReturn(draftResult());
+		mvc.perform(post("/api/v1/ai/drafts").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"documentType":"EMAIL","language":"en","purpose":"Ask for leave",
+						 "keyPoints":["from Monday"," back on Friday ",""]}"""))
+				.andExpect(status().isOk());
+		ArgumentCaptor<AiCommand> captor = ArgumentCaptor.forClass(AiCommand.class);
+		verify(pipeline).execute(captor.capture());
+		AiCommand.Draft d = (AiCommand.Draft) captor.getValue();
+		assertThat(d.instructions().value()).isEqualTo("Ask for leave\n- from Monday\n- back on Friday");
+		assertThat(d.modeOrDefault()).isEqualTo("NEW");
+		assertThat(d.text()).isEqualTo(d.instructions());
+
+		for (String body : List.of("{\"language\":\"en\",\"purpose\":\"a\",\"instructions\":\"b\"}",
+				"{\"language\":\"en\",\"instructions\":\"b\",\"keyPoints\":\"" + SECRET + "\"}",
+				"{\"language\":\"en\",\"instructions\":\"b\",\"keyPoints\":[1]}",
+				"{\"language\":\"en\",\"instructions\":\"b\",\"keyPoints\":[\"" + "x".repeat(301) + "\"]}",
+				"{\"language\":\"en\",\"instructions\":\"b\",\"keyPoints\":" + "[\"k\",".repeat(10) + "\"k\"]}",
+				"{\"language\":\"en\",\"instructions\":\"" + SECRET + "\",\"variation\":\"" + SECRET + "\"}",
+				"{\"language\":\"en\",\"instructions\":\"" + SECRET + "\",\"variation\":1.5}",
+				"{\"language\":\"en\",\"instructions\":\"" + SECRET + "\",\"variation\":99999999999}",
+				"{\"language\":\"en\",\"instructions\":\"" + SECRET + "\",\"recipient\":\"" + SECRET + "\"}",
+				"{\"language\":\"en\",\"instructions\":\"" + SECRET + "\",\"recipient\":{\"gender\":\"" + SECRET + "\"}}",
+				"{\"language\":\"en\",\"instructions\":\"" + SECRET + "\",\"includeSubject\":\"" + SECRET + "\"}")) {
+			String response = mvc.perform(post("/api/v1/ai/drafts").header("Authorization", bearer())
+					.header("Idempotency-Key", key()).contentType(MediaType.APPLICATION_JSON).content(body))
+					.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+					.andReturn().getResponse().getContentAsString();
+			assertThat(response).doesNotContain(SECRET);
+		}
+		verify(pipeline, org.mockito.Mockito.times(1)).execute(any());
+	}
+
+	@Test
+	void malformedRepliesAre400WithoutEchoingTheText() throws Exception {
+		for (String body : List.of("{\"replyLanguage\":\"am\"}", "{\"contextText\":12}",
+				"{\"contextText\":\"" + SECRET + "\",\"count\":\"" + SECRET + "\"}",
+				"{\"contextText\":\"" + SECRET + "\",\"instructions\":[\"" + SECRET + "\"]}",
+				"{\"contextText\":\"" + SECRET + "\",\"addressee\":{\"formality\":\"" + SECRET + "\"}}")) {
+			String response = mvc.perform(post("/api/v1/ai/replies").header("Authorization", bearer())
+					.header("Idempotency-Key", key()).contentType(MediaType.APPLICATION_JSON).content(body))
+					.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+					.andReturn().getResponse().getContentAsString();
+			assertThat(response).doesNotContain(SECRET);
+		}
+		verifyNoInteractions(pipeline);
+	}
+
+	@Test
+	void repliesAndDraftsNeedATokenAndAUuidKeyAndAreRateLimitedOnTheirOwn() throws Exception {
+		for (String path : List.of("/api/v1/ai/replies", "/api/v1/ai/drafts")) {
+			mvc.perform(post(path).header("Idempotency-Key", key()).contentType(MediaType.APPLICATION_JSON)
+					.content("{\"contextText\":\"x\",\"language\":\"en\"}")).andExpect(status().isUnauthorized());
+			mvc.perform(post(path).header("Authorization", bearer()).header("Idempotency-Key", "nope")
+					.contentType(MediaType.APPLICATION_JSON).content("{\"contextText\":\"x\",\"language\":\"en\"}"))
+					.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("Idempotency-Key"));
+		}
+		verifyNoInteractions(pipeline);
+		org.mockito.Mockito.doAnswer(i -> new RateLimitDecision(i.getArgument(0), false, 0, Duration.ofSeconds(9),
+				Duration.ofSeconds(9))).when(limiter).tryConsume(any(), any());
+		for (String path : List.of("/api/v1/ai/replies", "/api/v1/ai/drafts")) {
+			mvc.perform(post(path).header("Authorization", bearer()).header("Idempotency-Key", key())
+					.contentType(MediaType.APPLICATION_JSON).content("{\"contextText\":\"x\",\"language\":\"en\"}"))
+					.andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+		}
+		ArgumentCaptor<RateLimitPolicy> policies = ArgumentCaptor.forClass(RateLimitPolicy.class);
+		verify(limiter, org.mockito.Mockito.times(4)).tryConsume(policies.capture(), eq(userId.toString()));
+		assertThat(policies.getAllValues()).extracting(RateLimitPolicy::name).containsSubsequence("ai.replies.user",
+				"ai.drafts.user");
+		assertThat(AiController.DRAFTS_PER_USER.capacity()).isEqualTo(10);
+		verifyNoInteractions(pipeline);
+	}
+
+	/** Every Problem the pipeline can raise for the ADR 0027 operations is a contract-valid response. */
+	static Stream<Arguments> textActionProblems() {
+		return Stream.of(ApiErrorCode.VALIDATION_FAILED, ApiErrorCode.INPUT_TOO_LONG, ApiErrorCode.LANGUAGE_NOT_SUPPORTED,
+				ApiErrorCode.ACCOUNT_SUSPENDED, ApiErrorCode.DELETION_PENDING, ApiErrorCode.FEATURE_NOT_ENTITLED,
+				ApiErrorCode.ON_DEVICE_ONLY_PREFERRED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED,
+				ApiErrorCode.REQUEST_IN_PROGRESS, ApiErrorCode.OUTPUT_GUARDRAIL_FAILED, ApiErrorCode.CONTENT_REJECTED,
+				ApiErrorCode.PROVIDER_UNAVAILABLE, ApiErrorCode.PROVIDER_TIMEOUT, ApiErrorCode.LANGUAGE_PAIR_UNAVAILABLE,
+				ApiErrorCode.GUEST_SESSION_INVALID)
+				.flatMap(code -> Stream.of("replies", "drafts").map(op -> Arguments.of(op, code)));
+	}
+
+	@ParameterizedTest(name = "{0} {1}")
+	@MethodSource("textActionProblems")
+	void everyTextActionProblemIsAContractValidProblem(String op, ApiErrorCode code) throws Exception {
+		ApiException problem = code == ApiErrorCode.REQUEST_IN_PROGRESS
+				? new ApiException(code, code.defaultStatus(), "Busy.", List.of(), Map.of(), Map.of("Retry-After", "2"))
+				: new ApiException(code, code.defaultStatus(), "Detail.");
+		when(pipeline.execute(any())).thenThrow(problem);
+		mvc.perform(post("/api/v1/ai/" + op).header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"contextText\":\"abc\",\"replyLanguage\":\"am\",\"language\":\"en\",\"instructions\":\"x\"}"))
+				.andExpect(status().is(code.defaultStatus().value())).andExpect(jsonPath("$.code").value(code.name()));
+	}
+
+	@Test
+	void aQuotaProblemOnADraftCarriesItsExtensionMembers() throws Exception {
+		when(pipeline.execute(any())).thenThrow(new QuotaExceededException("DRAFT_DOCUMENT",
+				Instant.parse("2026-12-01T00:00:00Z"), BigDecimal.ONE,
+				List.of(new QuotaExceededException.UpgradeOption("PLAN", "PREMIUM_PLUS"))));
+		String body = mvc.perform(post("/api/v1/ai/drafts").header("Authorization", bearer())
+				.header("Idempotency-Key", key()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"language\":\"en\",\"instructions\":\"" + SECRET + "\"}"))
+				.andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("QUOTA_EXCEEDED"))
+				.andExpect(jsonPath("$.featureCode").value("DRAFT_DOCUMENT")).andReturn().getResponse()
+				.getContentAsString();
+		assertThat(body).doesNotContain(SECRET);
 	}
 
 	// ============================================================================================= detect
@@ -399,16 +642,17 @@ class AiControllerTest {
 		providers();
 		mvc.perform(get("/api/v1/ai/capabilities")).andExpect(status().isOk())
 				.andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
-				.andExpect(jsonPath("$.generatedAt").exists()).andExpect(jsonPath("$.items.length()").value(3))
+				.andExpect(jsonPath("$.generatedAt").exists()).andExpect(jsonPath("$.items.length()").value(4))
 				.andExpect(jsonPath("$.items[0].featureCode").value("DETECT_LANGUAGE"))
 				.andExpect(jsonPath("$.items[0].maxInputCharacters").value(1000))
 				.andExpect(jsonPath("$.items[0].sourceLanguage").doesNotExist())
 				.andExpect(jsonPath("$.items[1].featureCode").value("REWRITE"))
-				.andExpect(jsonPath("$.items[2].featureCode").value("TRANSLATE"))
-				.andExpect(jsonPath("$.items[2].qualityTier").value("PRODUCTION")) // the better of the two providers
-				.andExpect(jsonPath("$.items[2].maxInputCharacters").value(5000)) // capped by the contract limit
-				.andExpect(jsonPath("$.items[2].execution").value("SERVER"))
-				.andExpect(jsonPath("$.items[2].supportsStreaming").value(false));
+				.andExpect(jsonPath("$.items[2].featureCode").value("SUMMARIZE")) // served since ADR 0027
+				.andExpect(jsonPath("$.items[3].featureCode").value("TRANSLATE"))
+				.andExpect(jsonPath("$.items[3].qualityTier").value("PRODUCTION")) // the better of the two providers
+				.andExpect(jsonPath("$.items[3].maxInputCharacters").value(5000)) // capped by the contract limit
+				.andExpect(jsonPath("$.items[3].execution").value("SERVER"))
+				.andExpect(jsonPath("$.items[3].supportsStreaming").value(false));
 		verifyNoInteractions(entitlements);
 	}
 

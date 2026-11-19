@@ -227,6 +227,8 @@ public final class EncryptedReplayCache implements AiIdempotency {
 		Class<? extends AiResult> type = switch (command) {
 			case AiCommand.Translate t -> AiResult.TranslateResponse.class;
 			case AiCommand.Transform t -> AiResult.TransformResponse.class;
+			case AiCommand.Reply r -> AiResult.RepliesResponse.class;
+			case AiCommand.Draft d -> AiResult.DraftResponse.class;
 			case AiCommand.Detect d -> null;
 		};
 		if (type == null) {
@@ -257,6 +259,11 @@ public final class EncryptedReplayCache implements AiIdempotency {
 			case AiResult.TransformResponse t -> new AiResult.TransformResponse(t.requestId(), t.task(), t.language(),
 					t.resultText(), t.edits(), t.alternatives(), t.notes(), t.qualityTier(), true, t.historyItemId(),
 					t.usage());
+			case AiResult.RepliesResponse x -> new AiResult.RepliesResponse(x.requestId(), x.language(),
+					x.suggestions(), x.notes(), x.qualityTier(), true, x.historyItemId(), x.usage());
+			case AiResult.DraftResponse d -> new AiResult.DraftResponse(d.requestId(), d.mode(), d.language(),
+					d.subject(), d.body(), d.placeholders(), d.notes(), d.qualityTier(), true, d.historyItemId(),
+					d.usage());
 			case AiResult.DetectLanguageResponse d -> d;
 		};
 	}

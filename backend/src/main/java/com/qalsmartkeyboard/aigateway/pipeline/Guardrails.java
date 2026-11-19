@@ -40,6 +40,14 @@ import com.qalsmartkeyboard.aigateway.spi.AiFeature;
  * from the output. Numbers are skipped when a calendar, clock or numeral conversion was requested.</li>
  * <li><b>PROMPT_LEAK</b>: the output repeats a line of the rendered instructions.</li>
  * </ul>
+ *
+ * <p><b>Text actions and e-mail (ADR 0027).</b> A transform with an explicit output language other than the input's
+ * ({@link Expectation#crossLanguage()}) is checked like a translation (strict script share, copied words not counted,
+ * an identical output is NO_OP, LANGUAGE_MISMATCH for Afaan Oromoo). SMART_REPLY and DRAFT_DOCUMENT compose new text:
+ * only the model's self-references count as REFUSAL ("I can't help with the move on Saturday" is a valid reply),
+ * bracketed placeholders such as {@code [date]} are not counted for the script, and the pipeline passes the user's own
+ * notes (not the message being answered) as the protected input. SUMMARIZE, EXPLAIN_TEXT and SMART_REPLY without notes
+ * skip PROTECTED_TOKEN_LOST (a summary may drop a number).
  */
 public final class Guardrails {
 
@@ -69,9 +77,26 @@ public final class Guardrails {
 	 * @param mode             transform mode (SHORTEN, EXPAND...) or null
 	 * @param numbersMayChange a calendar, clock or numeral conversion was requested
 	 * @param instructions     the rendered prompt (to detect it being echoed), or null
+	 * @param crossLanguage    the output language was chosen explicitly and differs from the input's (a transform
+	 *                         that also translates): checked like a translation
 	 */
 	public record Expectation(AiFeature feature, UnicodeScript expectedScript, String expectedLanguage, String mode,
-			boolean numbersMayChange, String instructions) {
+			boolean numbersMayChange, String instructions, boolean crossLanguage) {
+
+		public Expectation(AiFeature feature, UnicodeScript expectedScript, String expectedLanguage, String mode,
+				boolean numbersMayChange, String instructions) {
+			this(feature, expectedScript, expectedLanguage, mode, numbersMayChange, instructions, false);
+		}
+
+		/** Checked like a translation: strict script share, copied words not counted. */
+		boolean strict() {
+			return feature == AiFeature.TRANSLATE || crossLanguage;
+		}
+
+		/** The task writes new text (replies, e-mails) rather than transforming the input. */
+		boolean composes() {
+			return feature == AiFeature.SMART_REPLY || feature == AiFeature.DRAFT_DOCUMENT;
+		}
 	}
 
 	private static final Pattern URL = Pattern.compile("(?i)\\b(?:https?://|www\\.)[^\\s<>\"]+");
@@ -79,12 +104,16 @@ public final class Guardrails {
 	private static final Pattern HANDLE_OR_TAG = Pattern.compile("(?<![\\p{L}\\p{N}])[@#][\\p{L}\\p{N}_]+");
 	/** A number, allowing grouping separators between digits (1,000 / 1.000 / 1 000). */
 	private static final Pattern NUMBER = Pattern.compile("\\d(?:[\\d,.\\u00A0' ]*\\d)?");
+	/** A placeholder the user must fill in a composed text: {@code [date]}, {@code [ቀን]}. */
+	private static final Pattern PLACEHOLDER = Pattern.compile("\\[[^\\[\\]\\r\\n]{1,60}]");
 
 	/** Refusal phrases, in the normalised form {@link #refusalForm} produces (contractions, straight apostrophes). */
 	private static final List<String> REFUSALS = List.of("as an ai", "as a language model", "i can't assist",
 			"i can't help with", "i'm unable to help", "i can't comply", "i won't be able to help",
 			"i'm not able to help", "i can't fulfill", "i can't provide a translation", "i'm unable to translate",
 			"i can't translate this");
+	/** For composed text (replies, e-mails) only the model's self-references: declining is a normal reply. */
+	private static final List<String> SELF_REFERENCES = List.of("as an ai", "as a language model");
 
 	/** Very common English words that are not Afaan Oromoo words. */
 	private static final Set<String> ENGLISH_FUNCTION_WORDS = Set.of("the", "and", "is", "are", "was", "were", "be",
@@ -98,8 +127,20 @@ public final class Guardrails {
 		this.config = config == null ? Config.DEFAULT : config;
 	}
 
-	/** Every check that fails; empty = the output may be used. */
+	/** Every check that fails; empty = the output may be used. Protected tokens are taken from {@code input}. */
 	public Set<Flag> check(String input, String output, Expectation e) {
+		return check(input, input, output, e);
+	}
+
+	/**
+	 * Every check that fails; empty = the output may be used.
+	 *
+	 * @param input          all user content the output was produced from (lengths, script share, copied words,
+	 *                       refusal phrases)
+	 * @param protectedInput the user content whose URLs, e-mail addresses and numbers the output must keep; null skips
+	 *                       PROTECTED_TOKEN_LOST
+	 */
+	public Set<Flag> check(String input, String protectedInput, String output, Expectation e) {
 		Set<Flag> flags = EnumSet.noneOf(Flag.class);
 		if (output == null || output.isBlank()) {
 			flags.add(Flag.EMPTY_OUTPUT);
@@ -108,6 +149,9 @@ public final class Guardrails {
 		int in = codePoints(input);
 		int out = codePoints(output);
 		LengthBounds bounds = LengthBounds.of(e.feature(), e.mode());
+		if (e.crossLanguage()) {
+			bounds = bounds.acrossLanguages();
+		}
 		if (out > bounds.max(in)) {
 			flags.add(Flag.LENGTH_EXCEEDED);
 		}
@@ -115,23 +159,23 @@ public final class Guardrails {
 			flags.add(Flag.LENGTH_TOO_SHORT);
 		}
 
-		boolean translation = e.feature() == AiFeature.TRANSLATE;
-		List<String> countedWords = unprotectedWords(output, translation ? words(input) : Set.of());
-		if (e.expectedScript() != null && !scriptMatches(input, countedWords, e.expectedScript(), translation)) {
+		boolean strict = e.strict();
+		String counted = e.composes() ? PLACEHOLDER.matcher(output).replaceAll(" ") : output;
+		List<String> countedWords = unprotectedWords(counted, strict ? words(input) : Set.of());
+		if (e.expectedScript() != null && !scriptMatches(input, countedWords, e.expectedScript(), strict)) {
 			flags.add(Flag.SCRIPT_MISMATCH);
 		}
-		if (e.feature() == AiFeature.TRANSLATE && e.expectedScript() == UnicodeScript.LATIN
-				&& e.expectedLanguage() != null && !"en".equals(e.expectedLanguage())
-				&& mostlyEnglish(countedWords)) {
+		if ((strict || e.composes()) && e.expectedScript() == UnicodeScript.LATIN && e.expectedLanguage() != null
+				&& !"en".equals(e.expectedLanguage()) && mostlyEnglish(countedWords)) {
 			flags.add(Flag.LANGUAGE_MISMATCH);
 		}
 		if (changeExpected(e) && normalise(input).equals(normalise(output)) && wordCount(input) >= 3) {
 			flags.add(Flag.NO_OP);
 		}
-		if (refusal(input, output)) {
+		if (refusal(input, output, e.composes() ? SELF_REFERENCES : REFUSALS)) {
 			flags.add(Flag.REFUSAL);
 		}
-		if (lostProtected(input, output, e.numbersMayChange())) {
+		if (protectedInput != null && lostProtected(protectedInput, output, e.numbersMayChange())) {
 			flags.add(Flag.PROTECTED_TOKEN_LOST);
 		}
 		if (leaksPrompt(output, e.instructions())) {
@@ -193,14 +237,14 @@ public final class Guardrails {
 	}
 
 	private static boolean changeExpected(Expectation e) {
-		return e.feature() == AiFeature.TRANSLATE
+		return e.feature() == AiFeature.TRANSLATE || e.crossLanguage()
 				|| (e.feature() == AiFeature.REWRITE && ("SHORTEN".equals(e.mode()) || "EXPAND".equals(e.mode())));
 	}
 
-	private static boolean refusal(String input, String output) {
+	private static boolean refusal(String input, String output, List<String> phrases) {
 		String out = refusalForm(output);
 		String in = refusalForm(input);
-		for (String r : REFUSALS) {
+		for (String r : phrases) {
 			if (out.contains(r) && !in.contains(r)) {
 				return true;
 			}
@@ -346,6 +390,11 @@ public final class Guardrails {
 			return (int) Math.floor(minRatio * input);
 		}
 
+		/** A transform that also changes the language: at least the translation bounds (Ge'ez is denser). */
+		LengthBounds acrossLanguages() {
+			return new LengthBounds(Math.max(maxRatio, 4.0), Math.max(maxSlack, 40), Math.min(minRatio, 0.1));
+		}
+
 		static LengthBounds of(AiFeature feature, String mode) {
 			return switch (feature) {
 				case TRANSLATE -> new LengthBounds(4.0, 40, 0.15);
@@ -353,9 +402,20 @@ public final class Guardrails {
 				case REWRITE -> switch (mode == null ? "" : mode) {
 					case "EXPAND" -> new LengthBounds(4.0, 80, 0.5);
 					case "SHORTEN" -> new LengthBounds(1.2, 20, 0.05);
+					case "SIMPLIFY" -> new LengthBounds(2.5, 60, 0.15);
 					default -> new LengthBounds(2.5, 40, 0.25);
 				};
 				case TONE_ADJUST -> new LengthBounds(3.0, 60, 0.25);
+				// a summary may be one sentence, an explanation longer than a short text
+				case SUMMARIZE -> new LengthBounds(1.5, 300, 0.0);
+				case EXPLAIN_TEXT -> new LengthBounds(8.0, 2000, 0.0);
+				// input = the message plus the user's notes; up to five replies
+				case SMART_REPLY -> new LengthBounds(4.0, 2500, 0.0);
+				case DRAFT_DOCUMENT -> switch (mode == null ? "" : mode) {
+					case "REPLY" -> new LengthBounds(3.0, 5000, 0.0); // input = the e-mail answered plus the notes
+					case "IMPROVE" -> new LengthBounds(3.0, 2000, 0.3);
+					default -> new LengthBounds(30.0, 5000, 0.0); // a short description becomes a whole e-mail
+				};
 				default -> new LengthBounds(4.0, 80, 0.05);
 			};
 		}

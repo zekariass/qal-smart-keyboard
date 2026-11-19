@@ -99,8 +99,19 @@ public final class HttpJsonAiProvider implements AiProvider {
 		putIfPresent(body, "mode", request.mode());
 		putIfPresent(body, "tone", request.tone());
 		putIfPresent(body, "target_length", request.targetLength());
-		putIfPresent(body, "explain_in", request.explainIn());
+		putIfPresent(body, "output_language", request.outputLanguage());
 		putIfPresent(body, "instructions", request.instructions());
+		if (!request.context().isEmpty()) {
+			// ADR 0027: further user content as separate items, labelled by kind only
+			body.put("context", request.context().stream()
+					.map(p -> Map.of("kind", p.kind().name(), "text", p.text().value())).toList());
+		}
+		if (request.count() > 0) {
+			body.put("count", request.count());
+		}
+		if (request.variation() > 0) {
+			body.put("variation", request.variation());
+		}
 		Exchange x = post("/ai/v1/llm/chat", body, timeout);
 		String finish = string(x.json, "finish_reason");
 		if ("content_filter".equals(finish)) {

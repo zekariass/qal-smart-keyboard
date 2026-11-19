@@ -95,8 +95,9 @@ class AiProviderSeedsIT {
 				SELECT r.feature_code || ':' || p.provider_code || ':' || r.priority FROM ai_routing_policies r
 				  JOIN ai_models m ON m.id = r.model_id JOIN ai_providers p ON p.id = m.provider_id
 				 WHERE r.source_language_id IS NULL AND r.destination_language_id IS NULL AND NOT r.is_enabled
-				 ORDER BY 1""", String.class)).containsExactly("GRAMMAR_CORRECTION:openai:1", "REWRITE:openai:1",
-				"TONE_ADJUST:openai:1", "TRANSLATE:google-translate:2", "TRANSLATE:openai:1");
+				 ORDER BY 1""", String.class)).containsExactly("DRAFT_DOCUMENT:openai:1", "EXPLAIN_TEXT:openai:1",
+				"GRAMMAR_CORRECTION:openai:1", "REWRITE:openai:1", "SMART_REPLY:openai:1", "SUMMARIZE:openai:1",
+				"TONE_ADJUST:openai:1", "TRANSLATE:google-translate:2", "TRANSLATE:openai:1"); // V19 + V20
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_routing_policies WHERE is_enabled", Integer.class))
 				.isZero();
 
@@ -120,7 +121,7 @@ class AiProviderSeedsIT {
 			assertThat(d.dataPolicy().trainsOnCustomerData()).isFalse();
 			assertThat(d.dataPolicy().zeroDataRetention()).isTrue();
 			assertThat(d.dataPolicy().processingRegions()).containsExactly("local");
-			assertThat(d.capabilities()).hasSize(19);
+			assertThat(d.capabilities()).hasSize(35); // V10: 19, V20 (ADR 0027): 4 features x 4 languages
 		});
 		for (AiFeature feature : AiFeature.values()) {
 			assertThat(registry.resolve(RouteQuery.of(feature, "en", "am"))).isEmpty();
@@ -141,7 +142,9 @@ class AiProviderSeedsIT {
 			assertThat(registry.resolve(RouteQuery.of(AiFeature.GRAMMAR_CORRECTION, "am", null))).hasSize(1);
 			assertThat(registry.resolve(RouteQuery.of(AiFeature.TRANSLATE, null, "am"))).hasSize(1); // auto-detect
 			assertThat(registry.resolve(RouteQuery.of(AiFeature.TRANSLATE, "en", "fr"))).isEmpty();
-			assertThat(registry.resolve(RouteQuery.of(AiFeature.SUMMARIZE, "en", null))).isEmpty();
+			assertThat(registry.resolve(RouteQuery.of(AiFeature.SUMMARIZE, "en", null))).hasSize(1); // V20
+			assertThat(registry.resolve(RouteQuery.of(AiFeature.DRAFT_DOCUMENT, null, null))).hasSize(1);
+			assertThat(registry.resolve(RouteQuery.of(AiFeature.SCRIPT_CONVERSION, "am", null))).isEmpty();
 
 			jdbc.update("UPDATE ai_providers SET zero_data_retention = FALSE WHERE provider_code = 'mock'");
 			assertThat(registry.resolve(EN_AM.withDataPolicy(DataPolicyRequirement.ZERO_RETENTION))).isEmpty();

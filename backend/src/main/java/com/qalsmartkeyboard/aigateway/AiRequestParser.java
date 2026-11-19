@@ -18,8 +18,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads the AI request bodies (contract {@code TranslateRequest}, {@code TransformRequest},
- * {@code DetectLanguageRequest}) by hand instead of letting the framework bind them.
+ * Reads the AI request bodies (contract {@code TranslateRequest}, {@code TransformRequest}, {@code RepliesRequest},
+ * {@code DraftRequest}, {@code DetectLanguageRequest}) by hand instead of letting the framework bind them.
  *
  * <p>Why: a framework binding error carries the rejected value in its message ("Cannot deserialize value of type
  * Formality from String "<i>the user's text</i>""), and the framework logs resolved exceptions, so a bad enum, UUID or
@@ -27,14 +27,18 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code VALIDATION_FAILED} naming only the field, never the value, and the Jackson exception is dropped. Syntax errors
  * are {@code MALFORMED_REQUEST_BODY}. Unknown members are ignored (the contract may grow).
  *
- * <p>{@code saveToHistory} is read here (B5.7) and only offered to the history sink by the pipeline. Parsed but not
- * acted on yet: {@code applyStyleProfile}
- * (PERSONAL_STYLE is a later step), {@code options.explainIn} and {@code options.sourceRomanization} (their tasks are
- * not served).
+ * <p>{@code saveToHistory} is read here (B5.7) and only offered to the history sink by the pipeline. Not acted on yet:
+ * {@code applyStyleProfile} (PERSONAL_STYLE is a later step), {@code options.sourceRomanization} (SCRIPT_CONVERSION is
+ * not served) and a draft's {@code glossaryId}. {@code options.explainIn} is the EXPLAIN_TEXT name of
+ * {@code outputLanguage} (ADR 0027). A draft's older {@code purpose} is the same as {@code instructions}, and its
+ * {@code keyPoints} are appended to it as list lines (user text either way, sent as data).
  */
 final class AiRequestParser {
 
 	private static final int MAX_CANDIDATES = 10;
+	/** Contract {@code DraftRequest.keyPoints}. */
+	private static final int MAX_KEY_POINTS = 10;
+	private static final int MAX_KEY_POINT_CHARACTERS = 300;
 
 	private final JsonMapper mapper;
 
@@ -66,11 +70,62 @@ final class AiRequestParser {
 		}
 		String text = requiredText(n);
 		JsonNode options = object(n.get("options"), "options");
+		String output = string(n, "outputLanguage");
+		String explainIn = options == null ? null : string(options, "options.explainIn", "explainIn");
+		if (task == AiFeature.EXPLAIN_TEXT && explainIn != null) {
+			if (output != null && !output.equals(explainIn)) {
+				throw invalid("options.explainIn", "CONFLICT");
+			}
+			output = explainIn;
+		}
 		return new AiCommand.Transform(caller, task, UserText.of(text), string(n, "language"),
 				options == null ? null : string(options, "options.mode", "mode"),
 				options == null ? null : string(options, "options.tone", "tone"),
 				options == null ? null : string(options, "options.targetLength", "targetLength"),
 				addressee(n.get("addressee"), "addressee"), uuid(n, "glossaryId"),
+				Boolean.TRUE.equals(bool(n, "saveToHistory")), output);
+	}
+
+	/** Contract {@code RepliesRequest}. */
+	AiCommand.Reply replies(byte[] body, AiCommand.Caller caller) {
+		JsonNode n = root(body);
+		String context = string(n, "contextText");
+		if (context == null) {
+			throw invalid("contextText", "REQUIRED");
+		}
+		return new AiCommand.Reply(caller, UserText.of(context), string(n, "contextLanguage"),
+				string(n, "replyLanguage"), integer(n, "count"), string(n, "tone"),
+				addressee(n.get("addressee"), "addressee"), text(string(n, "instructions")), integer(n, "variation"),
+				Boolean.TRUE.equals(bool(n, "saveToHistory")));
+	}
+
+	/** Contract {@code DraftRequest}. */
+	AiCommand.Draft drafts(byte[] body, AiCommand.Caller caller) {
+		JsonNode n = root(body);
+		String instructions = string(n, "instructions");
+		String purpose = string(n, "purpose");
+		if (instructions != null && purpose != null) {
+			throw invalid("purpose", "CONFLICT");
+		}
+		String described = instructions != null ? instructions : purpose;
+		List<String> keyPoints = keyPoints(n.get("keyPoints"));
+		if (!keyPoints.isEmpty()) {
+			StringBuilder sb = new StringBuilder(described == null ? "" : described.strip());
+			for (String k : keyPoints) {
+				sb.append(sb.isEmpty() ? "" : "\n").append("- ").append(k.strip());
+			}
+			described = sb.toString();
+		}
+		JsonNode recipient = object(n.get("recipient"), "recipient");
+		Addressee addressee = recipient == null ? null
+				: new Addressee(enumValue(recipient, "recipient.formality", "formality", Addressee.Formality.class),
+						enumValue(recipient, "recipient.gender", "gender", Addressee.Gender.class));
+		return new AiCommand.Draft(caller, string(n, "documentType"), string(n, "mode"), string(n, "language"),
+				text(described), text(string(n, "originalEmail")), text(string(n, "draft")), string(n, "tone"),
+				string(n, "length"), bool(n, "includeSubject"),
+				recipient == null ? null : text(string(recipient, "recipient.name", "name")),
+				recipient == null ? null : text(string(recipient, "recipient.role", "role")), addressee,
+				text(string(n, "senderName")), cultural(n.get("culturalOptions")), integer(n, "variation"),
 				Boolean.TRUE.equals(bool(n, "saveToHistory")));
 	}
 
@@ -135,6 +190,50 @@ final class AiRequestParser {
 			throw invalid(path, "INVALID_TYPE");
 		}
 		return v.stringValue();
+	}
+
+	private static UserText text(String s) {
+		return s == null ? null : UserText.of(s);
+	}
+
+	private static List<String> keyPoints(JsonNode list) {
+		if (list == null || list.isNull()) {
+			return List.of();
+		}
+		if (!list.isArray()) {
+			throw invalid("keyPoints", "INVALID_TYPE");
+		}
+		if (list.size() > MAX_KEY_POINTS) {
+			throw invalid("keyPoints", "TOO_MANY");
+		}
+		List<String> out = new ArrayList<>();
+		for (JsonNode k : list) {
+			if (!k.isString()) {
+				throw invalid("keyPoints", "INVALID_TYPE");
+			}
+			String s = k.stringValue();
+			if (s.codePointCount(0, s.length()) > MAX_KEY_POINT_CHARACTERS) {
+				throw invalid("keyPoints", "TOO_LONG");
+			}
+			if (!s.isBlank()) {
+				out.add(s);
+			}
+		}
+		return out;
+	}
+
+	private static Integer integer(JsonNode n, String field) {
+		JsonNode v = n.get(field);
+		if (v == null || v.isNull()) {
+			return null;
+		}
+		if (!v.isIntegralNumber()) {
+			throw invalid(field, "INVALID_TYPE");
+		}
+		if (!v.canConvertToInt()) {
+			throw invalid(field, "INVALID_VALUE");
+		}
+		return v.intValue();
 	}
 
 	private static Boolean bool(JsonNode n, String field) {

@@ -240,8 +240,11 @@ class AiEndpointsIT {
 		send(user, "transform", key(), transformBody("TONE_ADJUST", IN_EN, "en", "{\"tone\":\"POLITE\"}"))
 				.andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FEATURE_NOT_ENTITLED"));
 		assertThat(used(user, "GRAMMAR_CORRECTION")).isEqualTo(1);
-		send(user, "transform", key(), transformBody("SUMMARIZE", IN_EN, "en", "{}")).andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.errors[0].code").value("NOT_AVAILABLE"));
+		send(user, "transform", key(), transformBody("SCRIPT_CONVERSION", IN_EN, "en", "{}"))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].code").value("NOT_AVAILABLE"));
+		// ADR 0027: SUMMARIZE is served now, but not on the FREE plan
+		send(user, "transform", key(), transformBody("SUMMARIZE", IN_EN, "en", "{}")).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("FEATURE_NOT_ENTITLED"));
 		send(user, "transform", key(), transformBody("TONE_ADJUST", IN_EN, "en", "{}"))
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("options.tone"));
 
@@ -256,7 +259,8 @@ class AiEndpointsIT {
 				.andExpect(jsonPath("$.items[?(@.featureCode=='TRANSLATE' && @.sourceLanguage=='en' "
 						+ "&& @.destinationLanguage=='am')].qualityTier").value("BETA"))
 				.andExpect(jsonPath("$.items[?(@.featureCode=='DETECT_LANGUAGE')]").isNotEmpty())
-				.andExpect(jsonPath("$.items[?(@.featureCode=='SUMMARIZE')]").isEmpty());
+				.andExpect(jsonPath("$.items[?(@.featureCode=='SUMMARIZE')]").isNotEmpty()) // V20 (ADR 0027)
+				.andExpect(jsonPath("$.items[?(@.featureCode=='SCRIPT_CONVERSION')]").isEmpty());
 		mvc.perform(get("/api/v1/ai/capabilities").header("Authorization", bearer(user))).andExpect(status().isOk())
 				.andExpect(jsonPath("$.items[?(@.featureCode=='REWRITE')]").isNotEmpty());
 		jdbc.update("UPDATE ai_providers SET provider_status = 'DISABLED', dpa_signed_at = NULL");
@@ -427,7 +431,7 @@ class AiEndpointsIT {
 			responses.add(body(send(user, "transform", key(), "{\"task\":\"" + IN_EN + "\",\"text\":" + json(IN_EN) + "}")));
 			responses.add(body(send(user, "transform", key(), transformBody("REWRITE", IN_EN, "en", "{\"mode\":\"" + IN_EN
 					+ "\"}"))));
-			responses.add(body(send(user, "transform", key(), transformBody("SUMMARIZE", IN_EN, "en", "{}"))));
+			responses.add(body(send(user, "transform", key(), transformBody("SCRIPT_CONVERSION", IN_EN, "en", "{}"))));
 			responses.add(body(send(user, "detect-language", null, "{\"text\":" + json(IN_AM) + ",\"candidates\":[\""
 					+ IN_EN + "\"]}")));
 			responses.add(body(send(deviceOnly, "translate", key(), translateBody(IN_EN, "en", "om"))));

@@ -101,7 +101,7 @@ public record RouteRequest<T>(RouteQuery query, ProviderCall<T> call, Function<T
 	public static RouteRequest<TransformResult> transform(TransformRequest request, QualityTier minimumTier,
 			DataPolicyRequirement dataPolicy) {
 		RouteQuery q = new RouteQuery(request.task(), request.language(), null, minimumTier, dataPolicy,
-				request.text().characters());
+				request.inputCharacters());
 		return new RouteRequest<>(q, (adapter, timeout) -> adapter.llmTransform(request, timeout),
 				TransformResult::usage, null, null, 0);
 	}
