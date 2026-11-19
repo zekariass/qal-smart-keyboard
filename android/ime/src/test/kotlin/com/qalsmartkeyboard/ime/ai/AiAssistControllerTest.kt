@@ -271,6 +271,18 @@ class AiAssistControllerTest {
         assertTrue(h.c.isLocked(AiAssistAction.REPLY))
     }
 
+    @Test fun aServerRefusalLockIsForgottenWhenTheAccountChanges() {
+        // ADR 0035: signing in to another account (in the app or the keyboard) must not keep the old account's locks.
+        val h = H(selection = "text")
+        h.c.open()
+        h.c.selectAction(AiAssistAction.REPLY)
+        h.c.run()
+        h.actions.answer(0, FakeAiActions.fail(AiFailure.NotEntitled))
+        assertTrue(h.c.isLocked(AiAssistAction.REPLY))
+        h.actions.availability = AiAvailability(accountGeneration = 1)
+        assertFalse(h.c.isLocked(AiAssistAction.REPLY))
+    }
+
     @Test fun offlineSendsNothing() {
         val h = H(selection = "text")
         h.actions.availability = AiAvailability(block = AiBlock.OFFLINE)

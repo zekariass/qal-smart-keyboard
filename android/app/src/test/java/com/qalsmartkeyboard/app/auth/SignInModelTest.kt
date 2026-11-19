@@ -87,7 +87,9 @@ class SignInModelTest {
             ),
             session,
         )
-        repo = AuthRepository(clients, AccountKindStore(files), { installId }, attestation, DeviceInfo("1.0", "Android 14 (API 34)"))
+        repo = AuthRepository(
+            clients, AccountKindStore(files), { installId }, attestation, DeviceInfo("1.0", "Android 14 (API 34)"), AccountLabelStore(files),
+        )
         model = SignInModel(repo, clock = { now }, nonces = { "nonce-${++nonceCounter}" })
     }
 
@@ -111,13 +113,13 @@ class SignInModelTest {
 
     private fun session(
         access: String = "acc-1", refresh: String = "ref-1", type: String = "REGISTERED", id: String = userId,
-        isNew: Boolean? = null, merged: String? = null,
+        isNew: Boolean? = null, merged: String? = null, user: String = "",
     ) = json(
         200,
         """{"tokenType":"Bearer","accessToken":"$access","accessTokenExpiresAt":"${iso(now + 600_000)}",""" +
             """"refreshToken":"$refresh","refreshTokenExpiresAt":"${iso(now + 86_400_000)}",""" +
             (isNew?.let { """"isNewUser":$it,""" } ?: "") + (merged?.let { """"mergedGuestUserId":"$it",""" } ?: "") +
-            """"user":{"id":"$id","accountType":"$type","accountStatus":"ACTIVE"}}""",
+            """"user":{"id":"$id","accountType":"$type","accountStatus":"ACTIVE"$user}}""",
     )
 
     private fun nonceResponse(nonce: String = "SERVER_NONCE_0123456789_abcdefghijklmnopqrs") =
@@ -546,21 +548,142 @@ class SignInModelTest {
     // --- session end and sign-out -------------------------------------------------------------
 
     @Test fun refreshTokenReuseSignsOutAndWipesTheTokens() = run {
-        session.signedIn(TokenPair("old-acc", "old-ref"))
+        becomeGuest()
         routes = { r ->
-            when (r.path) {
-                "/api/v1/auth/refresh" -> problem(401, "REFRESH_TOKEN_REUSED")
-                else -> problem(401, "TOKEN_EXPIRED")
+            when {
+                r.path == "/api/v1/auth/refresh" -> problem(401, "REFRESH_TOKEN_REUSED")
+                r.getHeader("Authorization") != null -> problem(401, "TOKEN_EXPIRED")
+                else -> challenge()
             }
         }
         model.setPhone("0911234567")
-        model.submitPhone() // a bearer-carrying call whose token expired; the refresh is rejected as reuse
-        assertEquals(AccountStatus.SignedOut(SignedOutReason.REFRESH_TOKEN_REUSED), status())
-        assertEquals(SignInMessage.SessionEnded, st().message)
+        model.submitPhone() // the guest bearer expired; the refresh is rejected as reuse: the session ends
         assertNull(session.tokens())
+        assertEquals(AccountStatus.SignedOut(SignedOutReason.REFRESH_TOKEN_REUSED), status())
+        // ... and the code is still sent, once more and without a bearer (ADR 0035).
+        val starts = requests.filter { it.path == "/api/v1/auth/otp/start" }
+        assertEquals(listOf("Bearer guest-acc", null), starts.map { it.getHeader("Authorization") })
+        assertEquals(SignInStep.CODE, st().step)
         build() // restarted: nothing resurrects
         assertEquals(AccountStatus.SignedOut(null), status())
         assertTrue(dir.listFiles()!!.none { it.name.startsWith("tokens") })
+    }
+
+    // --- ADR 0035: the bearer policy of sign-in calls -----------------------------------------
+
+    private val google = FakeGoogle { GoogleResult.Token("T", null) }
+
+    private fun invalidToken() = problem(401, "UNAUTHENTICATED", headers = mapOf("WWW-Authenticate" to "Bearer error=\"invalid_token\""))
+
+    private fun oauth() = requests.filter { it.path == "/api/v1/auth/oauth/GOOGLE" }
+
+    @Test fun aRegisteredSessionIsNeverSentOnSignInAndIsReplaced() = run {
+        routes = { session("first-acc", "first-ref") }
+        model.signInWithGoogle(google)
+        assertEquals(AccountStatus.Registered, status())
+        model.reset()
+        requests.clear()
+        routes = { r ->
+            if (r.getHeader("Authorization") != null) problem(401, "UNAUTHENTICATED") else session("second-acc", "second-ref", id = guestId)
+        }
+        model.signInWithGoogle(google)
+        assertNull(oauth().single().getHeader("Authorization"))
+        assertEquals(SignInStep.DONE, st().step)
+        assertEquals(TokenPair("second-acc", "second-ref"), session.tokens())
+        // OTP start goes out without it too.
+        routes = { challenge() }
+        model.reset()
+        model.setPhone("0911234567")
+        model.submitPhone()
+        assertNull(last("/api/v1/auth/otp/start").getHeader("Authorization"))
+    }
+
+    @Test fun aKindlessStoredSessionIsNotSentEither() = run {
+        session.signedIn(TokenPair("stale-acc", "stale-ref")) // e.g. tokens of a dev server that restarted
+        routes = { r -> if (r.getHeader("Authorization") != null) invalidToken() else session("g-acc", "g-ref") }
+        model.signInWithGoogle(google)
+        assertNull(oauth().single().getHeader("Authorization"))
+        assertEquals(SignInStep.DONE, st().step)
+        assertEquals(AccountStatus.Registered, status())
+    }
+
+    @Test fun aGuestTokenTheServerCannotVerifyIsRefreshedAndStillLinks() = run {
+        becomeGuest()
+        routes = { r ->
+            when {
+                r.path == "/api/v1/auth/refresh" -> session("guest-acc-2", "guest-ref-2", type = "GUEST", id = guestId)
+                r.getHeader("Authorization") == "Bearer guest-acc" -> invalidToken() // signed with a key the server lost
+                else -> session("g-acc", "g-ref", id = userId, merged = guestId)
+            }
+        }
+        model.signInWithGoogle(google)
+        assertEquals(listOf("Bearer guest-acc", "Bearer guest-acc-2"), oauth().map { it.getHeader("Authorization") })
+        assertEquals(GuestLink.MERGED, st().outcome!!.guestLink)
+        assertEquals(AccountStatus.Registered, status())
+    }
+
+    @Test fun aDeadGuestSessionIsClearedAndTheSignInRetriedOnceWithoutIt() = run {
+        becomeGuest()
+        routes = { r ->
+            when {
+                r.path == "/api/v1/auth/refresh" -> problem(401, "UNAUTHENTICATED") // the guest's refresh token is gone too
+                r.getHeader("Authorization") != null -> invalidToken()
+                else -> session("g-acc", "g-ref", id = userId, isNew = true)
+            }
+        }
+        model.signInWithGoogle(google)
+        assertEquals(listOf("Bearer guest-acc", null), oauth().map { it.getHeader("Authorization") })
+        assertEquals(body(oauth()[0]), body(oauth()[1])) // the same ID token and nonce
+        assertEquals(SignInStep.DONE, st().step)
+        assertEquals(GuestLink.NONE, st().outcome!!.guestLink)
+        assertEquals(AccountStatus.Registered, status())
+        assertEquals(TokenPair("g-acc", "g-ref"), session.tokens())
+    }
+
+    @Test fun theRetryWithoutBearerNeverLoops() = run {
+        becomeGuest()
+        routes = { r ->
+            when {
+                r.path == "/api/v1/auth/refresh" -> problem(401, "UNAUTHENTICATED")
+                r.getHeader("Authorization") != null -> invalidToken()
+                else -> problem(401, "UNAUTHENTICATED") // the ID token itself is refused
+            }
+        }
+        model.signInWithGoogle(google)
+        assertEquals(2, oauth().size)
+        assertEquals(1, requests.count { it.path == "/api/v1/auth/refresh" })
+        assertEquals(SignInMessage.GoogleRejected, st().message)
+        assertNull(session.tokens()) // the dead guest stays gone
+        assertNull(st().busy)
+    }
+
+    @Test fun aRefusedGoogleTokenDoesNotCostALiveGuestItsSession() = run {
+        becomeGuest()
+        routes = { problem(401, "UNAUTHENTICATED") } // no invalid_token: about the ID token, not the bearer
+        model.signInWithGoogle(google)
+        assertEquals(1, oauth().size)
+        assertEquals(SignInMessage.GoogleRejected, st().message)
+        assertEquals(AccountStatus.Guest, status())
+        assertEquals(TokenPair("guest-acc", "guest-ref"), session.tokens())
+    }
+
+    @Test fun signedInAsShowsTheMaskedPhoneOrEmailAndSignOutForgetsIt() = run {
+        routes = { session("g-acc", "g-ref", user = ""","phoneNumberMasked":"+251 9•• ••• 567"""") }
+        model.signInWithGoogle(google)
+        assertEquals("+251 9•• ••• 567", repo.accountLabel.value)
+        build() // survives a restart, like the tokens
+        assertEquals("+251 9•• ••• 567", repo.accountLabel.value)
+        routes = { MockResponse().setResponseCode(204) }
+        repo.signOut()
+        assertNull(repo.accountLabel.value)
+        build()
+        assertNull(repo.accountLabel.value)
+
+        routes = { session("g-acc", "g-ref", user = ""","email":"zemen@example.com"""") }
+        model.signInWithGoogle(google)
+        assertEquals("z•••@example.com", repo.accountLabel.value)
+        assertNull(AccountLabels.maskEmail("no-at-sign"))
+        assertNull(AccountLabels.maskEmail("@example.com"))
     }
 
     @Test fun signOutRevokesOnTheServerAndWipesLocally() = run {

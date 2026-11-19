@@ -31,8 +31,13 @@ data class SettingsHomeState(
     val accountSummary: String? = null,
     /** The App language row's summary. */
     val appLanguageSummary: String? = null,
-    /** Opened from the keyboard's gear: the bar's arrow (and Back) returns to typing. */
+    /**
+     * Opened from the keyboard's gear: the bar's arrow (and Back) returns to typing, and the account row comes first
+     * (ADR 0035).
+     */
     val fromKeyboard: Boolean = false,
+    /** Signed in with an account (not a guest): the keyboard-opened account row leads to the account page, else to sign-in. */
+    val signedIn: Boolean = false,
 )
 
 /** The home page's actions; [open] goes to a settings page, the rest leave settings for a screen the activity owns. */
@@ -45,6 +50,8 @@ data class SettingsHomeActions(
     val openWordArt: () -> Unit = {},
     val openPrivacy: () -> Unit = {},
     val backToTyping: () -> Unit = {},
+    /** Opens the sign-in screen (the keyboard-opened account row while nobody is signed in). */
+    val signIn: () -> Unit = {},
 )
 
 /**
@@ -65,6 +72,15 @@ fun SettingsHomePage(
         backDescription = stringResource(R.string.settings_back_to_typing),
         modifier = modifier,
     ) {
+        // ADR 0035: from the keyboard the account comes first: "Sign in" straight to the sign-in screen, or who is signed in.
+        if (state.fromKeyboard) {
+            SettingsRow(
+                stringResource(if (state.signedIn) R.string.acct_title else R.string.acct_sign_in),
+                if (state.signedIn) ({ actions.open(SettingsPage.ACCOUNT) }) else actions.signIn,
+                summary = state.accountSummary,
+                icon = R.drawable.ic_settings_account,
+            )
+        }
         ThemeStrip(settings.theme, state.themeAccess, state.systemDark, onSelect = actions.selectTheme, onMore = actions.moreThemes)
         if (!state.keyboardReady) SetupPrompt(actions.runSetup)
 
@@ -95,7 +111,9 @@ fun SettingsHomePage(
         SettingsRow(stringResource(R.string.settings_wordart_title), actions.openWordArt, icon = R.drawable.ic_settings_text_fields)
 
         SettingsHeader(stringResource(R.string.settings_group_account))
-        SettingsRow(stringResource(R.string.acct_title), { actions.open(SettingsPage.ACCOUNT) }, summary = state.accountSummary, icon = R.drawable.ic_settings_account)
+        if (!state.fromKeyboard) {
+            SettingsRow(stringResource(R.string.acct_title), { actions.open(SettingsPage.ACCOUNT) }, summary = state.accountSummary, icon = R.drawable.ic_settings_account)
+        }
         SettingsRow(stringResource(R.string.pv_entry_title), actions.openPrivacy, icon = R.drawable.ic_settings_shield)
 
         SettingsHeader(stringResource(R.string.settings_group_app))

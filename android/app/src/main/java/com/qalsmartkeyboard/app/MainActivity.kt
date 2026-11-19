@@ -166,6 +166,7 @@ class MainActivity : ComponentActivity() {
             val flow by onboarding.state.collectAsState()
             val accountStatus by remember { graph.repository.status() }
                 .collectAsState(initial = graph.repository.currentStatus())
+            val accountLabel by graph.repository.accountLabel.collectAsState()
             val signInState by signIn.state.collectAsState()
             val updateRequired by graph.updateRequired.collectAsState()
             var updateDismissed by rememberSaveable { mutableStateOf(false) }
@@ -193,9 +194,14 @@ class MainActivity : ComponentActivity() {
                 pendingLink = null
                 when (DeepLinks.route(link, graph.repository.currentStatus(), completed == true)) {
                     DeepLinkAction.NONE -> Unit
-                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false; settingsNav.reset() }
                     DeepLinkAction.SHOW_PRIVACY -> { showSignIn = false; showPlans = false; rerun = false; privacyRoute = PrivacyRoute.DASHBOARD.name }
-                    DeepLinkAction.SHOW_SIGN_IN -> { signIn.reset(); showPlans = false; privacyRoute = null; showSignIn = true }
+                    // ADR 0035: the keyboard's "Sign in to use AI": the sign-in pane over the keyboard settings ("Back to typing").
+                    DeepLinkAction.SHOW_SIGN_IN -> {
+                        signIn.reset(); showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        settingsNav.reset() // after the sign-in: the settings home, account first
+                        fromKeyboard = true
+                        showSignIn = true
+                    }
                     DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true }
                     DeepLinkAction.OPEN_STORE -> openStorePage(this@MainActivity)
                     DeepLinkAction.SHOW_KEYBOARD_SETTINGS -> {
@@ -259,6 +265,8 @@ class MainActivity : ComponentActivity() {
                         showSignIn && !showFlow -> Column(
                             Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
                         ) {
+                            // Back leaves the pane for the settings (from the keyboard: the ones with "Back to typing").
+                            BackHandler { signIn.reset(); showSignIn = false }
                             SignInPane(signInState, actions, googleSource.isConfigured, graph.repository.guestSupported, hasGuest)
                             if (signInState.step != SignInStep.DONE) {
                                 OutlinedButton(onClick = { signIn.reset(); showSignIn = false }) { Text(stringResource(R.string.onb_back)) }
@@ -339,6 +347,8 @@ class MainActivity : ComponentActivity() {
                             systemDark = systemDark,
                             keyboardReady = flow.ime.enabled && flow.ime.selected,
                             account = accountStatus,
+                            accountLabel = accountLabel,
+                            onSignIn = { signIn.reset(); showSignIn = true },
                             fromKeyboard = fromKeyboard,
                             onBackToTyping = { finishAndRemoveTask() },
                             onRunSetup = {
@@ -353,6 +363,7 @@ class MainActivity : ComponentActivity() {
                             accountContent = {
                                 AccountSection(
                                     status = accountStatus,
+                                    label = accountLabel,
                                     onSignIn = { signIn.reset(); showSignIn = true },
                                     onSignOut = { signIn.reset(); signIn.signOut() },
                                 )

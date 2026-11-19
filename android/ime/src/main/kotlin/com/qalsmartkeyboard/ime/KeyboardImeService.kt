@@ -284,6 +284,9 @@ class KeyboardImeService : InputMethodService() {
     private var aiToolbar: AiToolbarController? = null
     private var aiActions: AiActions? = null
 
+    /** Re-renders an open AI panel when the account or the plan state changes (ADR 0035: sign-in in the app). */
+    private var aiPanelsHandle: AutoCloseable? = null
+
     // AI panels (ADR 0031): AI Assist and Write Email take the key area. The state and the views are created on the first
     // open, never on the keyboard's start-up path.
     private var aiWorkspace: AiWorkspace? = null
@@ -329,6 +332,14 @@ class KeyboardImeService : InputMethodService() {
                         prefs = aiPrefs,
                     )
                     aiToolbar = toolbar
+                    aiPanelsHandle = actions.addAvailabilityListener {
+                        main.post {
+                            if (aiWorkspace?.isOpen == true) {
+                                aiPanelDirty = true
+                                refreshViews()
+                            }
+                        }
+                    }
                     aiView?.controller = toolbar
                     toolbar.onFieldStarted(controller.profile, currentInputEditorInfo?.packageName)
                     aiView?.render() // the bar shows the AI entry now (its height does not change)
@@ -551,6 +562,8 @@ class KeyboardImeService : InputMethodService() {
         themeAccessHandle = null
         snapshot.stop()
         aiToolbar?.release()
+        aiPanelsHandle?.close()
+        aiPanelsHandle = null
         aiWorkspace?.discard()
         engine?.let { userDictionary.detach(it) }
         userDictionary.flush()

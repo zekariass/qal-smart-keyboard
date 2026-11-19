@@ -63,13 +63,27 @@ class EmailSignInModelTest {
             }
         }
         server.start()
+        build()
+    }
+
+    /** (Re)builds the session, client and repository over the same files (a restart). */
+    private fun build() {
         session = SessionManager(EncryptedTokenStore(files))
         val clients = ApiClients(
             TransportConfig(baseUrl = "http://localhost:${server.port}", client = ClientInfo("1.0", ClientSurface.COMPANION), readTimeoutMs = 5_000),
             session,
         )
-        repo = AuthRepository(clients, AccountKindStore(files), { installId }, MockAttestationProvider, DeviceInfo("1.0", "Android 14 (API 34)"))
+        repo = AuthRepository(
+            clients, AccountKindStore(files), { installId }, MockAttestationProvider, DeviceInfo("1.0", "Android 14 (API 34)"), AccountLabelStore(files),
+        )
         model = SignInModel(repo, clock = { now })
+    }
+
+    /** A stored session of [kind] (as a guest creation or an earlier sign-in leaves it), then a restart. */
+    private fun storedSession(kind: AccountKind, access: String = "guest-acc") {
+        SessionManager(EncryptedTokenStore(files)).signedIn(TokenPair(access, "$access-ref"))
+        AccountKindStore(files).save(kind)
+        build()
     }
 
     @After fun tearDown() {
@@ -263,8 +277,7 @@ class EmailSignInModelTest {
     }
 
     @Test fun aGuestBearerRidesAlongAndIsMerged() = run {
-        session.signedIn(TokenPair("guest-acc", "guest-ref"))
-        AccountKindStore(files).save(AccountKind.GUEST)
+        storedSession(AccountKind.GUEST)
         routes = { session(isNew = false, merged = guestId) }
         fillSignIn()
         model.submitEmail()
@@ -273,7 +286,7 @@ class EmailSignInModelTest {
     }
 
     @Test fun staleGuestTokenIsDroppedAndTheSignUpRetried() = run {
-        session.signedIn(TokenPair("guest-acc", "guest-ref"))
+        storedSession(AccountKind.GUEST)
         routes = { r ->
             if (r.getHeader("Authorization") != null) problem(401, "GUEST_SESSION_INVALID") else session(201, isNew = true)
         }
@@ -283,6 +296,140 @@ class EmailSignInModelTest {
         assertEquals(2, registers.size)
         assertNull(registers[1].getHeader("Authorization"))
         assertEquals(SignInStep.DONE, st().step)
+    }
+
+    // --- ADR 0035: the bearer policy of the e-mail calls ---------------------------------------
+
+    private fun invalidToken() = problem(401, "UNAUTHENTICATED", headers = mapOf("WWW-Authenticate" to "Bearer error=\"invalid_token\""))
+
+    private fun calls(path: String) = requests.filter { it.path == path }
+
+    @Test fun aDeadGuestIsClearedAndTheLoginRetriedOnceWithoutABearer() = run {
+        storedSession(AccountKind.GUEST)
+        routes = { r ->
+            when {
+                r.path == "/api/v1/auth/refresh" -> problem(401, "UNAUTHENTICATED") // the guest's refresh token is gone too
+                r.getHeader("Authorization") != null -> invalidToken() // e.g. signed with a key the server lost
+                else -> session(isNew = false)
+            }
+        }
+        fillSignIn()
+        model.submitEmail()
+        assertEquals(listOf("Bearer guest-acc", null), calls("/api/v1/auth/email/login").map { it.getHeader("Authorization") })
+        assertEquals(SignInStep.DONE, st().step)
+        assertEquals(GuestLink.NONE, st().outcome!!.guestLink)
+        assertEquals(TokenPair("acc-1", "ref-1"), session.tokens())
+        assertEquals(AccountStatus.Registered, status())
+    }
+
+    @Test fun aDeadGuestIsClearedAndTheHandWrittenSignUpRetriedOnceWithoutABearer() = run {
+        storedSession(AccountKind.GUEST)
+        routes = { r ->
+            when {
+                r.path == "/api/v1/auth/refresh" -> problem(401, "UNAUTHENTICATED")
+                r.getHeader("Authorization") != null -> invalidToken()
+                else -> challenge()
+            }
+        }
+        fillCreate()
+        model.submitEmail()
+        assertEquals(listOf("Bearer guest-acc", null), calls("/api/v1/auth/email/register").map { it.getHeader("Authorization") })
+        assertEquals(1, calls("/api/v1/auth/refresh").size)
+        assertEquals(SignInStep.EMAIL_CODE, st().step)
+        assertNull(session.tokens())
+        // The code step goes on without a bearer too (the guest is gone).
+        routes = { session(isNew = true) }
+        model.setCode("482913")
+        model.submitCode()
+        assertNull(last("/api/v1/auth/email/verify").getHeader("Authorization"))
+        assertEquals(AccountStatus.Registered, status())
+    }
+
+    @Test fun theRetryWithoutABearerNeverLoops() = run {
+        storedSession(AccountKind.GUEST)
+        routes = { r ->
+            when {
+                r.path == "/api/v1/auth/refresh" -> problem(401, "UNAUTHENTICATED")
+                r.getHeader("Authorization") != null -> invalidToken()
+                else -> problem(401, "INVALID_CREDENTIALS")
+            }
+        }
+        fillSignIn()
+        model.submitEmail()
+        assertEquals(2, calls("/api/v1/auth/email/login").size)
+        assertNull(st().busy)
+        assertTrue(st().message != null)
+    }
+
+    @Test fun aLiveGuestLinksThroughTheEmailedCode() = run {
+        storedSession(AccountKind.GUEST)
+        routes = { r ->
+            when (r.path) {
+                "/api/v1/auth/email/register" -> challenge()
+                "/api/v1/auth/email/verify" -> session(id = guestId, isNew = true, merged = guestId)
+                "/api/v1/auth/email/verify/resend" -> challenge()
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        fillCreate()
+        model.submitEmail()
+        now += 60_000
+        model.resend()
+        model.setCode("482913")
+        model.submitCode()
+        assertEquals("Bearer guest-acc", last("/api/v1/auth/email/register").getHeader("Authorization"))
+        assertNull("resend links nothing", last("/api/v1/auth/email/verify/resend").getHeader("Authorization"))
+        assertEquals("Bearer guest-acc", last("/api/v1/auth/email/verify").getHeader("Authorization"))
+        assertEquals(GuestLink.UPGRADED_IN_PLACE, st().outcome!!.guestLink)
+    }
+
+    @Test fun aRegisteredTokenIsNeverSentOnAnyEmailCall() = run {
+        storedSession(AccountKind.REGISTERED, access = "old-account")
+        routes = { r ->
+            when {
+                r.getHeader("Authorization") != null -> problem(401, "UNAUTHENTICATED")
+                r.path == "/api/v1/auth/email/register" -> challenge()
+                r.path == "/api/v1/auth/email/verify/resend" -> challenge()
+                r.path == "/api/v1/auth/email/verify" -> session(isNew = true)
+                r.path == "/api/v1/auth/email/login" -> session(isNew = false)
+                r.path == "/api/v1/auth/password/forgot" -> MockResponse().setResponseCode(202)
+                r.path == "/api/v1/auth/password/reset" -> MockResponse().setResponseCode(204)
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        fillCreate()
+        model.submitEmail()
+        now += 60_000
+        model.resend()
+        model.setCode("482913")
+        model.submitCode()
+        assertEquals(SignInStep.DONE, st().step)
+
+        storedSession(AccountKind.REGISTERED, access = "old-account")
+        fillSignIn()
+        model.submitEmail()
+        assertEquals(SignInStep.DONE, st().step)
+
+        storedSession(AccountKind.REGISTERED, access = "old-account")
+        fillSignIn()
+        model.forgotPassword()
+        model.submitForgot()
+        model.setResetCode("123456")
+        model.setNewPassword("tej and tibs at noon")
+        model.submitReset()
+        assertEquals(SignInNotice.PASSWORD_CHANGED, st().notice)
+
+        val paths = listOf("register", "verify/resend", "verify", "login").map { "/api/v1/auth/email/$it" } +
+            listOf("/api/v1/auth/password/forgot", "/api/v1/auth/password/reset")
+        for (p in paths) assertTrue("$p was called", calls(p).isNotEmpty())
+        assertTrue(requests.all { it.getHeader("Authorization") == null })
+    }
+
+    @Test fun anEmailSignInIsShownAsTheMaskedAddress() = run {
+        routes = { session(isNew = false) }
+        fillSignIn()
+        model.submitEmail()
+        assertEquals("s\u2022\u2022\u2022@example.com", repo.accountLabel.value)
     }
 
     // --- forgot / reset ---------------------------------------------------------------------
