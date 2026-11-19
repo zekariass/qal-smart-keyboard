@@ -231,3 +231,16 @@ New short labels for the settings home and pages. Unsure drafts:
 | settings_group_tools | AI እና መሣሪያዎች | AIን መሳርሒታትን | AI fi meeshaalee | "Tools" as a group name (meeshaalee = instruments). |
 | settings_setup_prompt_button | ያዋቅሩ | ኣዳልዉ | Qopheessaa | "Set up" as a short button; must not read as "settings". |
 | pd_word_count (plural) | %1$d ቃል / ቃላት | %1$d ቃል / ቃላት | jecha / jechoota %1$d | Plural forms one/other; check the singular after a number. |
+
+### Translate panel (ADR 0037)
+
+New short labels of the keyboard's translate panel. Glossary terms: detect (a language) = ለይ / ፍለጥ / adda baasi;
+source language = መነሻ ቋንቋ / መበገሲ ቋንቋ / afaan madda; destination language = መድረሻ ቋንቋ / መዕለቢ ቋንቋ / afaan
+galmaa; sentence = ዓረፍተ ነገር / ሓረግ / hima. Unsure drafts:
+
+| key | am | ti | om | why |
+|---|---|---|---|---|
+| translate_detect | ለይ | ፍለጥ | Adda baasi | A one-word caption over the language ("Detect · Amharic"); a noun ("detection") may read better than the imperative. |
+| translate_from_title / translate_into_title | መነሻ ቋንቋ / መድረሻ ቋንቋ | መበገሲ ቋንቋ / መዕለቢ ቋንቋ | Afaan madda / Afaan galmaa | "Translate from / into" rendered as "source / destination language" (the English preposition forms do not stand alone as titles). |
+| translate_use_sentence | የመጨረሻ ዓረፍተ ነገር | ናይ መወዳእታ ሓረግ | Hima dhumaa | A chip: "Use last sentence" shortened to "Last sentence" for width; the same text as the box's label. |
+| translate_direction_spoken | ከ%1$s ወደ %2$s | ካብ %1$s ናብ %2$s | %1$s irraa gara %2$s tti | Spoken after a swap; check the case endings with every language name. |
