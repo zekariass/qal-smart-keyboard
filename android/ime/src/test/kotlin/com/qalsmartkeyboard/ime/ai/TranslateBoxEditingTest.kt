@@ -199,7 +199,7 @@ class TranslateBoxEditingTest {
         r.longPress(r.xOf(7))
         assertEquals("morning", r.buf.selectedText)
         assertTrue(r.box.actionsShown)
-        val labels = r.view.inputField0.actionViews.map { it.text.toString() }
+        val labels = r.view.inputField0.actionViews.map { it.contentDescription.toString() } // named in every style (labels or icons)
         assertTrue(labels.toString(), labels.containsAll(listOf("Cut", "Copy", "Select all")))
         assertFalse("no clipboard: no Paste offered", "Paste" in labels)
         r.type("evening")
