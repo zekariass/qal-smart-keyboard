@@ -50,6 +50,8 @@ import com.qalsmartkeyboard.ime.ai.TranslateController
 import com.qalsmartkeyboard.ime.ai.TranslateLanguagesView
 import com.qalsmartkeyboard.ime.ai.TranslatePanelView
 import com.qalsmartkeyboard.ime.ai.TranslatePicker
+import com.qalsmartkeyboard.ime.ai.forEditor
+import com.qalsmartkeyboard.ime.editor.EditorBuffer
 import com.qalsmartkeyboard.ime.theme.PremiumThemeAccess
 import com.qalsmartkeyboard.ime.theme.ResolvedTheme
 import com.qalsmartkeyboard.ime.theme.ThemeAccess
@@ -62,6 +64,8 @@ import com.qalsmartkeyboard.ime.voice.VoiceHost
 import com.qalsmartkeyboard.ime.voice.VoiceIntents
 import com.qalsmartkeyboard.ime.voice.VoicePanelView
 import com.qalsmartkeyboard.ime.voice.VoicePrefs
+import com.qalsmartkeyboard.ime.voice.RoutedVoiceHost
+import com.qalsmartkeyboard.ime.voice.VoiceTarget
 import com.qalsmartkeyboard.ime.packs.PackRuntime
 import com.qalsmartkeyboard.ime.toolbar.Clip
 import com.qalsmartkeyboard.ime.toolbar.ClipboardHistory
@@ -269,7 +273,7 @@ class KeyboardImeService : InputMethodService() {
             snapshot.launchUpdate { it.copy(voiceNoticeShown = true) }
         }
     }
-    private val voiceHost = object : VoiceHost {
+    private val fieldVoiceHost = object : VoiceHost {
         override val keyboardLanguage: String get() = controller.language
         override fun hasPermission(): Boolean =
             checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -292,7 +296,61 @@ class KeyboardImeService : InputMethodService() {
         override fun wantsCapital(): Boolean = controller.wantsCapitalAtCursor()
         override fun commitVoiceText(text: String) = controller.commitVoiceText(text)
     }
-    private val voice by lazy { VoiceController(voiceHost, voiceProvider, voicePrefs) { refreshViews() } }
+
+    // ADR 0038: dictation into the keyboard's own fields (the translate box, an AI panel field, Word Art's text) uses the
+    // same controller, recogniser and permission flow; only the target changes. Before listening, the composition is
+    // finished into that field and its panel stays open.
+    private val voiceHost = RoutedVoiceHost(fieldVoiceHost) {
+        controller.commitComposition()
+        tools.close()
+    }
+    private val voice: VoiceController by lazy {
+        VoiceController(voiceHost, voiceProvider, voicePrefs) {
+            if (!voice.isOpen) voiceHost.target = null
+            refreshViews()
+        }
+    }
+
+    /**
+     * The microphone of one of the keyboard's own fields: dictation into [buffer] at its cursor starts; tapped again while
+     * it listens for that field, it stops and inserts. Without the microphone permission the app's permission screen
+     * opens instead (ADR 0029), and nothing stays routed.
+     */
+    private fun startFieldVoice(buffer: EditorBuffer) {
+        if (voice.isOpen) {
+            if (voiceHost.target?.buffer === buffer) {
+                voice.onMicTapped()
+                return
+            }
+            voice.cancel()
+        }
+        voiceHost.target = VoiceTarget(buffer)
+        voice.onMicTapped()
+        if (!voice.isOpen) voiceHost.target = null
+        refreshViews()
+    }
+
+    /** The bar's microphone: in translate mode it dictates into the box (the keys type there too), else into the app's field. */
+    private fun onBarMic() {
+        val tr = translate
+        if (!voice.isOpen && tr != null && tr.isOpen && tr.picker == TranslatePicker.NONE) {
+            startFieldVoice(tr.input.buffer)
+            return
+        }
+        if (!voice.isOpen) voiceHost.target = null
+        voice.onMicTapped()
+    }
+
+    /** [b] is still a field on screen that the keys type into (else dictation into it is cancelled). */
+    private fun fieldOnScreen(b: EditorBuffer): Boolean {
+        val tr = translate
+        if (tr != null && tr.isOpen && tr.picker == TranslatePicker.NONE && tr.input.buffer === b) return true
+        if (aiWorkspace?.typingField?.buffer === b) return true
+        return controller.emoji.typingWordArt && controller.emoji.wordArt.buffer === b
+    }
+
+    /** Dictation is running into [b]. */
+    private fun dictatingInto(b: EditorBuffer?): Boolean = b != null && voice.isOpen && voiceHost.target?.buffer === b
 
     // Tools panel and clipboard panel (ADR 0035). The clipboard history lives in memory only and dies with the process.
     private val clipHistory = ClipboardHistory()
@@ -349,7 +407,10 @@ class KeyboardImeService : InputMethodService() {
             refreshViews()
         }
         override fun startVoice() {
-            if (!voice.isOpen) voice.onMicTapped()
+            if (!voice.isOpen) {
+                voiceHost.target = null
+                voice.onMicTapped()
+            }
         }
         override fun openWordArt() {
             openEmoji()
@@ -553,9 +614,13 @@ class KeyboardImeService : InputMethodService() {
             it.workspace = ws
             it.visibility = View.GONE
             it.onDone = {
-                controller.commitComposition() // still routed to the field: the open composition is appended to it
+                controller.commitComposition() // still routed to the field: the open composition goes in at its cursor
                 ws.endTyping()
             }
+            it.onMic = { ws.typingField?.buffer?.let(::startFieldVoice) }
+            it.field.editor.beforeEdit = { controller.commitComposition() }
+            it.field.editor.haptics = { controller.prefs.hapticsEnabled }
+            it.field.clipboard = SystemAiClipboard(ui).forEditor()
             it.theme = resolvedTheme.theme
         }
         col.addView(strip, col.indexOfChild(keys), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -811,6 +876,9 @@ class KeyboardImeService : InputMethodService() {
             it.onClose = { closeTranslate() }
             it.onApplied = ::onTranslateApplied
             it.haptics = { controller.prefs.hapticsEnabled }
+            // ADR 0038: a tap or a selection in the box first finishes the composition into it, at the old cursor.
+            it.beforeEdit = { controller.commitComposition() }
+            it.clipboard = SystemAiClipboard(ui).forEditor()
             translatePanel = it
         }
         // One bar above the keys: pill, AI entry (its actions open in the bar's middle), candidates, mic, gear.
@@ -819,7 +887,7 @@ class KeyboardImeService : InputMethodService() {
             it.onTool = { t -> tools.activate(t) }
             bar = it
         }
-        s.onMic = { voice.onMicTapped() }
+        s.onMic = { onBarMic() }
         val aiToggle = s.onAiToggle
         s.onAiToggle = {
             voice.cancel() // the AI actions and voice typing never run together
@@ -853,6 +921,10 @@ class KeyboardImeService : InputMethodService() {
         val wordArtStrip = WordArtBar(ui).also {
             it.controller = controller
             it.visibility = View.GONE
+            it.onMic = { startFieldVoice(controller.emoji.wordArt.buffer) }
+            it.field.editor.beforeEdit = { controller.commitComposition() }
+            it.field.editor.haptics = { controller.prefs.hapticsEnabled }
+            it.field.clipboard = SystemAiClipboard(ui).forEditor()
             wordArtBar = it
         }
         val voiceView = VoicePanelView(ui).also {
@@ -1060,6 +1132,11 @@ class KeyboardImeService : InputMethodService() {
      * it dismisses the keyboard.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // Voice typing is on top of everything (also while it dictates into a panel's field, which stays open).
+        if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && voice.isOpen) {
+            if (voice.pickerOpen) voice.closePicker() else voice.backToKeyboard()
+            return true
+        }
         // The tools and clipboard panels: Back returns to the keys.
         if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && tools.back()) return true
         // Translate mode: Back closes a language list, then the panel.
@@ -1080,10 +1157,6 @@ class KeyboardImeService : InputMethodService() {
             }
             if (!ws.isOpen) aiPanelView?.reset()
             refreshViews()
-            return true
-        }
-        if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && voice.isOpen) {
-            if (voice.pickerOpen) voice.closePicker() else voice.backToKeyboard()
             return true
         }
         if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && controller.emoji.back()) return true
@@ -1114,6 +1187,13 @@ class KeyboardImeService : InputMethodService() {
     }
 
     private fun refreshViews() {
+        // Dictation into a field that left the screen (Done, Back, the panel closed, a language list) stops (ADR 0038).
+        voiceHost.target?.let { t ->
+            if (voice.isOpen && !fieldOnScreen(t.buffer)) {
+                voice.cancel() // renders again
+                return
+            }
+        }
         // The one bar (mode pill, AI entry, candidates, settings gear) is always shown so the keyboard
         // keeps one height; candidates and the DRAFT tag only where the strip applies (phonetic, not passwords).
         // AI panels (ADR 0031): a panel takes the key area at the same height; while one of its fields is typed into, the
@@ -1202,7 +1282,11 @@ class KeyboardImeService : InputMethodService() {
         bar?.visibility = if (inSearch || inWordArtTyping || aiTyping) View.GONE else View.VISIBLE
         aiFieldBar?.let {
             it.visibility = if (aiTyping) View.VISIBLE else View.GONE
-            if (aiTyping) it.render()
+            if (aiTyping) {
+                it.render()
+                it.micShown = voice.micVisible
+                it.micActive = dictatingInto(ws?.typingField?.buffer)
+            }
         }
         aiPanelView?.let {
             val was = it.visibility == View.VISIBLE
@@ -1227,7 +1311,11 @@ class KeyboardImeService : InputMethodService() {
         if (inPanel) emojiPanel?.refresh()
         if (inSearch) emojiSearch?.render()
         if (inWordArt) wordArtPanel?.refresh()
-        if (inWordArtTyping) wordArtBar?.render()
+        if (inWordArtTyping) wordArtBar?.let {
+            it.render()
+            it.micShown = voice.micVisible
+            it.micActive = dictatingInto(controller.emoji.wordArt.buffer)
+        }
         surface?.onLayoutChanged()
     }
 

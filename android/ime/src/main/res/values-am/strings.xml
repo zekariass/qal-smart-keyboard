@@ -557,4 +557,12 @@
     <string name="clip_history_off">የቅንጥብ ሰሌዳ ታሪክ ጠፍቷል</string>
     <string name="clip_paste_item">ይለጥፉ፦ %1$s</string>
     <string name="clip_delete_item">ከቅንጥብ ሰሌዳ ታሪክ ይሰርዙ</string>
+    <!-- ADR 0038 (DRAFT) -->
+    <string name="editor_cut">ቁረጥ</string>
+    <string name="editor_paste">ለጥፍ</string>
+    <string name="editor_select_all">ሁሉንም ምረጥ</string>
+    <string name="editor_dictate">በዚህ መስክ በድምፅ ይተይቡ</string>
+    <string name="editor_dictate_stop">በድምፅ መተየብን አቁመው ጽሑፉን ያስገቡ</string>
+    <string name="wordart_open_preview">ትልቅ ቅድመ እይታ ይክፈቱ</string>
+    <string name="wordart_typing_label">የቃል ጥበብ ጽሑፍ</string>
 </resources>

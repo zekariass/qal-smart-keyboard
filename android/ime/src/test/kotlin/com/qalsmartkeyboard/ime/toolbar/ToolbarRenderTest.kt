@@ -31,6 +31,7 @@ import com.qalsmartkeyboard.ime.ai.FakeAiActions
 import com.qalsmartkeyboard.ime.ai.TranslateController
 import com.qalsmartkeyboard.ime.ai.TranslateLanguagesView
 import com.qalsmartkeyboard.ime.ai.TranslatePanelView
+import com.qalsmartkeyboard.ime.ai.forEditor
 import com.qalsmartkeyboard.ime.ai.TranslatePicker
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
@@ -136,6 +137,37 @@ class ToolbarRenderTest {
                 bar(theme, active),
             ),
             File(out, "translate-more-${theme.id}.png"),
+        )
+        // ADR 0038: the box as an editor: a caret mid-text, a selection with the action row, a composition, Arabic.
+        val clip = com.qalsmartkeyboard.ime.ai.FakeClipboard(com.qalsmartkeyboard.ime.ai.ClipAvailability.TEXT, "x").forEditor()
+        val selecting = translate(theme) { c, _ ->
+            type(c, "ሰላም ነህ? ነገ እንገናኝ")
+            c.input.buffer.setSelection(9, 11)
+        }.also {
+            it.clipboard = clip
+            it.inputEditor.setActions(true)
+        }
+        val strip = com.qalsmartkeyboard.ime.editor.EditorStrip(ctx).also {
+            it.theme = theme
+            it.micShown = true
+            it.field.label = "Your text · 42 / 5,000"
+            it.field.editor.buffer = com.qalsmartkeyboard.ime.editor.EditorBuffer().apply {
+                setText("Please send me the report before Friday so I can review it.")
+                setSelection(23)
+                apply(ComposerUpdate(composing = "fin"))
+            }
+        }
+        shoot(
+            listOf(
+                translate(theme) { c, _ -> type(c, "ሰላም ነህ? ነገ እንገናኝ"); c.input.buffer.setSelection(4) },
+                selecting,
+                translate(theme) { c, _ -> type(c, "Good "); c.input.buffer.apply(ComposerUpdate(composing = "ሰላ")) },
+                translate(theme) { c, _ -> type(c, "مرحبا بالعالم"); c.input.buffer.setSelection(5) },
+                bar(theme, active),
+                strip,
+                keys,
+            ),
+            File(out, "translate-editing-${theme.id}.png"),
         )
         val list = TranslateLanguagesView(ctx).also { it.theme = theme; it.visibility = View.VISIBLE; it.heightProvider = { keys.preferredHeightPx() } }
         translate(theme) { c, _ -> list.controller = c; c.openPicker(TranslatePicker.SOURCE) }

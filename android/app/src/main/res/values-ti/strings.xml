@@ -429,6 +429,7 @@
     <string name="wordart_app_draft_note">ቃላት ሰላምታ ብኣምሓርኛ፣ ትግርኛን ኣፋን ኦሮሞን ብተዛረብቲ ቋንቋ ኣደ ክሳብ ዝምርመሩ ንድፊ እዮም።</string>
     <string name="wordart_app_sample_note">ኣብነት ሽም ይርአ ኣሎ። ኣብ ላዕሊ ናትኩም ጽሑፍ ጽሓፉ።</string>
     <string name="wordart_app_copied">ተቐዲሑ</string>
+    <string name="wordart_app_tap_hint">ንምቕዳሕ ሓደ ቅዲ ጠውቑ።</string>
     <string name="wordart_app_share">ኣካፍሉ</string>
     <string name="wordart_app_share_title">ስነ-ጥበብ ቃላት ኣካፍሉ</string>
     <string name="wordart_app_copy_desc">%1$s ቅድሑ</string>

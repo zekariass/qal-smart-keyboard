@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,6 +45,9 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.qalsmartkeyboard.app.R
+import com.qalsmartkeyboard.app.voice.DictationModel
+import com.qalsmartkeyboard.app.voice.DictationPermission
+import com.qalsmartkeyboard.app.voice.VoiceTextField
 import com.qalsmartkeyboard.ime.R as ImeR
 import com.qalsmartkeyboard.ime.ai.AiEmailMode
 import com.qalsmartkeyboard.ime.ai.AiEmailRules
@@ -94,12 +98,20 @@ interface EmailWriterHost {
  * The companion app's "Write Email with AI" screen (ADR 0031): mode (New / Reply / Improve), what to say, the e-mail
  * received or the draft (with Paste), tone, length, language and names; then the preview with an editable subject and
  * body, highlighted `[placeholders]`, Regenerate, Copy subject, Copy body, Copy all and Share. One scrolling column that
- * works at 360 dp and in landscape.
+ * works at 360 dp and in landscape; it keeps clear of the keyboard (`imePadding`), so the focused field scrolls into
+ * view above it, and the text fields have a microphone that dictates at the cursor (ADR 0038).
  */
 @Composable
-fun EmailWriterScreen(model: EmailWriterModel, host: EmailWriterHost, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun EmailWriterScreen(
+    model: EmailWriterModel,
+    host: EmailWriterHost,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    dictation: DictationModel? = null,
+) {
     var copiedNote by remember { mutableStateOf<String?>(null) }
-    Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    if (dictation != null) DictationPermission(dictation)
+    Column(modifier.imePadding().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text(stringResource(R.string.onb_back)) }
             Text(
@@ -117,17 +129,19 @@ fun EmailWriterScreen(model: EmailWriterModel, host: EmailWriterHost, onBack: ()
         when (model.mode) {
             AiEmailMode.REPLY -> PasteField(
                 label = stringResource(ImeR.string.ai_email_original_label), value = model.originalEmail, limit = AiEmailRules.MAX_EMAIL,
-                host = host, onValue = { model.originalEmail = it; model.clearProblem() },
+                host = host, onValue = { model.originalEmail = it; model.clearProblem() }, fieldId = "original", dictation = dictation,
             )
             AiEmailMode.IMPROVE -> PasteField(
                 label = stringResource(ImeR.string.ai_email_draft_label), value = model.draft, limit = AiEmailRules.MAX_EMAIL,
-                host = host, onValue = { model.draft = it; model.clearProblem() },
+                host = host, onValue = { model.draft = it; model.clearProblem() }, fieldId = "draft", dictation = dictation,
             )
             AiEmailMode.NEW -> Unit
         }
-        OutlinedTextField(
+        VoiceTextField(
             value = model.instructions,
             onValueChange = { model.instructions = it; model.clearProblem() },
+            fieldId = "instructions",
+            dictation = dictation,
             label = {
                 Text(
                     stringResource(
@@ -199,24 +213,24 @@ fun EmailWriterScreen(model: EmailWriterModel, host: EmailWriterHost, onBack: ()
             }
         }
         if (model.hasResult && model.step != EmailStep.WORKING) {
-            Preview(model, host) { copiedNote = it }
+            Preview(model, host, dictation) { copiedNote = it }
         }
         copiedNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
     }
 }
 
 @Composable
-private fun Preview(model: EmailWriterModel, host: EmailWriterHost, onNote: (String?) -> Unit) {
+private fun Preview(model: EmailWriterModel, host: EmailWriterHost, dictation: DictationModel?, onNote: (String?) -> Unit) {
     val copied = stringResource(ImeR.string.ai_copied)
     val highlight = MaterialTheme.colorScheme.tertiaryContainer
     Text(stringResource(R.string.email_preview), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-    OutlinedTextField(
-        value = model.subject, onValueChange = { model.subject = it },
+    VoiceTextField(
+        value = model.subject, onValueChange = { model.subject = it }, fieldId = "subject", dictation = dictation,
         label = { Text(stringResource(ImeR.string.ai_email_subject)) },
         visualTransformation = PlaceholderHighlight(highlight), singleLine = true, modifier = Modifier.fillMaxWidth(),
     )
-    OutlinedTextField(
-        value = model.body, onValueChange = { model.body = it },
+    VoiceTextField(
+        value = model.body, onValueChange = { model.body = it }, fieldId = "body", dictation = dictation,
         label = { Text(stringResource(ImeR.string.ai_email_body)) },
         visualTransformation = PlaceholderHighlight(highlight), minLines = 8, modifier = Modifier.fillMaxWidth(),
     )
@@ -240,11 +254,21 @@ private fun Preview(model: EmailWriterModel, host: EmailWriterHost, onNote: (Str
 
 /** A multi-line field with a Paste button (the clipboard is read only on that tap; a sensitive clip is not offered). */
 @Composable
-private fun PasteField(label: String, value: String, limit: Int, host: EmailWriterHost, onValue: (String) -> Unit) {
+private fun PasteField(
+    label: String,
+    value: String,
+    limit: Int,
+    host: EmailWriterHost,
+    onValue: (String) -> Unit,
+    fieldId: String,
+    dictation: DictationModel?,
+) {
     val clip = host.clipboard()
-    OutlinedTextField(
+    VoiceTextField(
         value = value,
         onValueChange = onValue,
+        fieldId = fieldId,
+        dictation = dictation,
         label = { Text(label) },
         supportingText = { Text(AiMessages.count(value.length, limit)) },
         isError = value.length > limit,

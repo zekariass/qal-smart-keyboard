@@ -559,4 +559,12 @@
     <string name="clip_history_off">ታሪኽ ሰሌዳ ቅዳሕ ጠፊኡ ኣሎ</string>
     <string name="clip_paste_item">ለጥፉ: %1$s</string>
     <string name="clip_delete_item">ካብ ታሪኽ ሰሌዳ ቅዳሕ ደምስሱ</string>
+    <!-- ADR 0038 (DRAFT) -->
+    <string name="editor_cut">ቁረጹ</string>
+    <string name="editor_paste">ለጥፉ</string>
+    <string name="editor_select_all">ኩሉ ምረጹ</string>
+    <string name="editor_dictate">ኣብዚ መዐለቢ ብድምጺ ጽሓፉ</string>
+    <string name="editor_dictate_stop">ብድምጺ ምጽሓፍ ኣቋሪጽኩም ጽሑፍ ኣእትዉ</string>
+    <string name="wordart_open_preview">ዓቢ ቅድመ-ምርኣይ ክፈቱ</string>
+    <string name="wordart_typing_label">ጽሑፍ ስነ-ጥበብ ቃላት</string>
 </resources>

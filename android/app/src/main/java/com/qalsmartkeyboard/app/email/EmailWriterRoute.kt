@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.qalsmartkeyboard.app.ai.AiGraph
+import com.qalsmartkeyboard.app.voice.DictationModel
 import com.qalsmartkeyboard.ime.ai.AiEmailHandoff
 import com.qalsmartkeyboard.ime.ai.AiLink
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +18,14 @@ import kotlinx.coroutines.withContext
  * (an in-memory handoff, taken once).
  */
 @Composable
-fun EmailWriterRoute(model: EmailWriterModel, senderName: String, onLink: (AiLink) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun EmailWriterRoute(
+    model: EmailWriterModel,
+    senderName: String,
+    onLink: (AiLink) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    dictation: DictationModel? = null,
+) {
     val context = LocalContext.current.applicationContext
     LaunchedEffect(model) {
         // The AI client opens Keystore-backed files: built on a background thread, then handed to the model.
@@ -26,5 +34,5 @@ fun EmailWriterRoute(model: EmailWriterModel, senderName: String, onLink: (AiLin
         model.start(senderName, AiEmailHandoff.take())
     }
     val host = remember { EmailWriterHost.of(context, onLink) }
-    EmailWriterScreen(model, host, onBack, modifier)
+    EmailWriterScreen(model, host, onBack, modifier, dictation)
 }

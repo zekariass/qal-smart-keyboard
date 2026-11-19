@@ -569,4 +569,12 @@
     <string name="clip_history_off">Clipboard history is off</string>
     <string name="clip_paste_item">Paste %1$s</string>
     <string name="clip_delete_item">Delete from clipboard history</string>
+    <!-- ADR 0038: the keyboard’s own text fields (cursor, selection, action row, dictation). -->
+    <string name="editor_cut">Cut</string>
+    <string name="editor_paste">Paste</string>
+    <string name="editor_select_all">Select all</string>
+    <string name="editor_dictate">Dictate into this field</string>
+    <string name="editor_dictate_stop">Stop dictating and insert the text</string>
+    <string name="wordart_open_preview">Open large preview</string>
+    <string name="wordart_typing_label">Word Art text</string>
 </resources>

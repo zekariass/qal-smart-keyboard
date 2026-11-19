@@ -429,6 +429,7 @@
     <string name="wordart_app_draft_note">Jechoonni nagaa gaafachuu Afaan Amaaraa, Afaan Tigiraay fi Afaan Oromoo hanga dubbattoota afaan dhalootaatiin qoratamanitti wixinee dha.</string>
     <string name="wordart_app_sample_note">Maqaa fakkeenyaa agarsiisaa jira. Barreeffama mataa keessanii armaan olitti barreessaa.</string>
     <string name="wordart_app_copied">Garagalfameera</string>
+    <string name="wordart_app_tap_hint">Garagalchuuf akkaataa tokko tuqaa.</string>
     <string name="wordart_app_share">Qooddadhaa</string>
     <string name="wordart_app_share_title">Aartii Jechaa qooddadhaa</string>
     <string name="wordart_app_copy_desc">%1$s garagalchaa</string>

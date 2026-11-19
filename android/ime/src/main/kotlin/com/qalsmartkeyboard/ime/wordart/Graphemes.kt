@@ -3,9 +3,11 @@ package com.qalsmartkeyboard.ime.wordart
 /**
  * A small extended-grapheme-cluster splitter, pure Kotlin so the result does not depend on the JDK or ICU version
  * (`java.text.BreakIterator` only learned emoji ZWJ sequences recently). A cluster is a base code point plus its
- * combining marks (Mn, Me, Mc: this keeps an Ethiopic letter with U+135D-U+135F, Indic vowel signs and keycaps together),
- * variation selectors, emoji modifiers (skin tones), tag characters and ZWJ joined parts; two regional indicators form
- * one flag. Spacing styles insert their separator only between clusters, so nothing is ever torn apart.
+ * combining marks (Mn, Me, Mc: this keeps an Ethiopic letter with U+135D-U+135F, an Arabic letter with its harakat,
+ * Indic vowel signs and keycaps together), variation selectors, emoji modifiers (skin tones), tag characters and ZWJ
+ * joined parts; two regional indicators form one flag. A line break or another control character is always a cluster
+ * of its own (UAX 29 GB4/GB5). Spacing styles insert their separator only between clusters, so nothing is ever torn
+ * apart; the in-keyboard text editor (ADR 0038) moves its cursor and deletes by these clusters.
  */
 object Graphemes {
     private const val ZWJ = 0x200D
@@ -13,25 +15,37 @@ object Graphemes {
     fun split(text: String): List<String> {
         val out = ArrayList<String>()
         var i = 0
-        val n = text.length
-        while (i < n) {
-            val start = i
-            val cp = text.codePointAt(i)
-            i += Character.charCount(cp)
-            if (isRegionalIndicator(cp) && i < n && isRegionalIndicator(text.codePointAt(i))) i += Character.charCount(text.codePointAt(i))
-            while (i < n) {
-                val next = text.codePointAt(i)
-                if (next == ZWJ) {
-                    i += 1
-                    if (i < n) i += Character.charCount(text.codePointAt(i))
-                } else if (isExtender(next)) {
-                    i += Character.charCount(next)
-                } else break
-            }
-            out += text.substring(start, i)
+        while (i < text.length) {
+            val end = clusterEnd(text, i)
+            out += text.substring(i, end)
+            i = end
         }
         return out
     }
+
+    /** The end (exclusive) of the cluster that starts at [start] (which must be a cluster start). */
+    fun clusterEnd(text: CharSequence, start: Int): Int {
+        val n = text.length
+        if (start >= n) return n
+        var i = start
+        val cp = Character.codePointAt(text, i)
+        i += Character.charCount(cp)
+        if (cp == '\r'.code && i < n && text[i] == '\n') return i + 1
+        if (isControl(cp)) return i
+        if (isRegionalIndicator(cp) && i < n && isRegionalIndicator(Character.codePointAt(text, i))) i += Character.charCount(Character.codePointAt(text, i))
+        while (i < n) {
+            val next = Character.codePointAt(text, i)
+            if (next == ZWJ) {
+                i += 1
+                if (i < n && !isControl(Character.codePointAt(text, i))) i += Character.charCount(Character.codePointAt(text, i))
+            } else if (isExtender(next)) {
+                i += Character.charCount(next)
+            } else break
+        }
+        return i
+    }
+
+    private fun isControl(cp: Int) = Character.getType(cp).toByte() == Character.CONTROL
 
     private fun isRegionalIndicator(cp: Int) = cp in 0x1F1E6..0x1F1FF
 
