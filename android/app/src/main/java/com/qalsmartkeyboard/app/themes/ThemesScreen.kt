@@ -1,6 +1,7 @@
 package com.qalsmartkeyboard.app.themes
 
-import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,8 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -36,6 +37,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.qalsmartkeyboard.app.R
+import com.qalsmartkeyboard.app.settings.SettingsScaffold
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.PremiumThemeAccess
 import com.qalsmartkeyboard.ime.theme.ThemeAccessHolder
@@ -84,10 +86,12 @@ fun ThemesHost(
     onUnlock: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** A theme to open in the large preview (a locked premium theme tapped on the settings home). */
+    initialPreview: String? = null,
 ) {
     val access by rememberPremiumThemeAccess()
     val model = rememberSaveable(saver = Saver<ThemePickerModel, String>(save = { it.previewId ?: "" }, restore = { ThemePickerModel(store, it.ifEmpty { null }) })) {
-        ThemePickerModel(store)
+        ThemePickerModel(store, initialPreview)
     }
     val scope = rememberCoroutineScope()
     ThemesScreen(
@@ -104,7 +108,10 @@ fun ThemesHost(
     )
 }
 
-/** The picker: Free and Premium sections of preview cards, a large preview with Apply or Unlock. */
+/**
+ * The picker: Free and Premium sections of preview cards, a large preview with Apply or Unlock. The system Back (and
+ * the bar's arrow) closes the preview first, then the picker.
+ */
 @Composable
 fun ThemesScreen(
     appliedId: String,
@@ -118,30 +125,34 @@ fun ThemesScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    BackHandler { if (previewId != null) onClosePreview() else onBack() }
     if (previewId != null) {
         ThemeDetail(previewId, appliedId, access, systemDark, onApply, onUnlock, onClosePreview, modifier)
         return
     }
     val applied = ThemeCatalog.find(appliedId)
-    Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(R.string.themes_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-        Text(stringResource(R.string.themes_intro))
-        if (applied != null && applied.isPremium && access != PremiumThemeAccess.ALLOWED) {
-            LockedBanner(themeName(applied), applied.isLight, access, onUnlock)
+    SettingsScaffold(stringResource(R.string.themes_title), onBack, modifier) {
+        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (applied != null && applied.isPremium && access != PremiumThemeAccess.ALLOWED) {
+                LockedBanner(themeName(applied), applied.isLight, access, onUnlock)
+            }
+            SectionTitle(stringResource(R.string.themes_section_free))
+            val free = listOf(ThemeCatalog.SYSTEM_ID) + ThemeCatalog.free.map { it.id }
+            CardGrid(free) { id -> ThemeCard(id, appliedId, access, systemDark, onPreview) }
+            SectionTitle(stringResource(R.string.themes_section_premium))
+            CardGrid(ThemeCatalog.premium.map { it.id }) { id -> ThemeCard(id, appliedId, access, systemDark, onPreview) }
         }
-        SectionTitle(stringResource(R.string.themes_section_free))
-        val free = listOf(ThemeCatalog.SYSTEM_ID) + ThemeCatalog.free.map { it.id }
-        CardGrid(free) { id -> ThemeCard(id, appliedId, access, systemDark, onPreview) }
-        SectionTitle(stringResource(R.string.themes_section_premium))
-        Text(stringResource(R.string.themes_premium_note), style = MaterialTheme.typography.bodyMedium)
-        CardGrid(ThemeCatalog.premium.map { it.id }) { id -> ThemeCard(id, appliedId, access, systemDark, onPreview) }
-        OutlinedButton(onClick = onBack) { Text(stringResource(R.string.onb_back)) }
     }
 }
 
 @Composable
 private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 8.dp).semantics { heading() },
+    )
 }
 
 /** Two cards per row; the last odd card keeps half the width. */
@@ -166,28 +177,32 @@ private fun ThemeCard(id: String, appliedId: String, access: PremiumThemeAccess,
     val isApplied = id == normalizedApplied(appliedId)
     val locked = premium && access != PremiumThemeAccess.ALLOWED
     val description = themeDescription(name, premium, locked, isApplied)
-    Card(
-        Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.themes_open_preview)) { onPreview(id) }
+    val shape = RoundedCornerShape(10.dp)
+    val colors = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClickLabel = stringResource(R.string.themes_open_preview)) { onPreview(id) }
             .semantics(mergeDescendants = true) {
                 contentDescription = description
-            },
-        border = if (isApplied) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
-        colors = CardDefaults.cardColors(),
-    ) {
-        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            KeyboardThemePreview(theme, Modifier.fillMaxWidth(), showStrip = false)
-            Text(name, style = MaterialTheme.typography.titleMedium)
-            if (system) Text(stringResource(R.string.themes_system_hint), style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (premium) PremiumBadge(locked)
-                if (isApplied) Text(stringResource(R.string.themes_applied), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
+            .padding(2.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        KeyboardThemePreview(
+            theme,
+            Modifier.fillMaxWidth().clip(shape).border(if (isApplied) 2.dp else 1.dp, if (isApplied) colors.primary else colors.outlineVariant, shape),
+            showStrip = false,
+        )
+        Text(name, style = MaterialTheme.typography.titleSmall, color = if (isApplied) colors.primary else colors.onSurface)
+        if (system) Text(stringResource(R.string.themes_system_hint), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (premium) PremiumBadge(locked)
+            if (isApplied) Text(stringResource(R.string.themes_applied), style = MaterialTheme.typography.labelLarge, color = colors.primary)
         }
     }
 }
 
 /** An unknown or legacy stored id counts as "system" (the keyboard does the same). */
-private fun normalizedApplied(appliedId: String) = if (ThemeCatalog.find(appliedId) != null) appliedId else ThemeCatalog.SYSTEM_ID
+internal fun normalizedApplied(appliedId: String) = if (ThemeCatalog.find(appliedId) != null) appliedId else ThemeCatalog.SYSTEM_ID
 
 @Composable
 private fun themeDescription(name: String, premium: Boolean, locked: Boolean, applied: Boolean): String = buildString {
@@ -244,20 +259,25 @@ private fun ThemeDetail(
     val premium = !system && theme.isPremium
     val locked = premium && access != PremiumThemeAccess.ALLOWED
     val isApplied = previewId == normalizedApplied(appliedId)
-    Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-        if (premium) PremiumBadge(locked)
-        if (system) Text(stringResource(R.string.themes_system_hint))
-        KeyboardThemePreview(theme, Modifier.fillMaxWidth(), showStrip = true, description = stringResource(R.string.themes_preview_description, name))
-        Text(stringResource(R.string.themes_preview_note), style = MaterialTheme.typography.bodySmall)
-        if (locked) Text(accessReason(access))
-        Spacer(Modifier.height(4.dp))
-        when {
-            isApplied -> Button(onClick = {}, enabled = false) { Text(stringResource(R.string.themes_applied)) }
-            locked -> Button(onClick = onUnlock) { Text(stringResource(R.string.themes_unlock)) }
-            else -> Button(onClick = { onApply(previewId); onClose() }) { Text(stringResource(R.string.themes_apply)) }
+    SettingsScaffold(name, onClose, modifier) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (premium) PremiumBadge(locked)
+            if (system) Text(stringResource(R.string.themes_system_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            KeyboardThemePreview(
+                theme,
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)),
+                showStrip = true,
+                description = stringResource(R.string.themes_preview_description, name),
+            )
+            Text(stringResource(R.string.themes_preview_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (locked) Text(accessReason(access))
+            Spacer(Modifier.height(4.dp))
+            when {
+                isApplied -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.themes_applied)) }
+                locked -> Button(onClick = onUnlock, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.themes_unlock)) }
+                else -> Button(onClick = { onApply(previewId); onClose() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.themes_apply)) }
+            }
         }
-        OutlinedButton(onClick = onClose) { Text(stringResource(R.string.themes_back_to_list)) }
     }
 }
 

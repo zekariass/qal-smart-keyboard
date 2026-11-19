@@ -74,18 +74,13 @@
 
     <!-- Settings entry point -->
     <string name="settings_setup_title">Keyboard setup</string>
-    <string name="settings_setup_body">Turn on and choose the keyboard, pick languages and try it out.</string>
-    <string name="settings_setup_button">Run setup again</string>
     <!-- Shown when the settings screen was opened from the keyboard gear: returns to the app the user was typing in. -->
     <string name="settings_back_to_typing">Back to typing</string>
-    <string name="settings_opened_from_keyboard">Changes apply to the keyboard right away.</string>
 
     <!-- Keyboard themes -->
     <string name="themes_title">Keyboard theme</string>
-    <string name="themes_intro">Choose how the keyboard looks. Tap a theme to see a larger preview; nothing changes until you tap Apply.</string>
     <string name="themes_section_free">Free themes</string>
     <string name="themes_section_premium">Premium themes</string>
-    <string name="themes_premium_note">Premium themes are included with Premium. You can preview all of them.</string>
     <string name="themes_system">System</string>
     <string name="themes_system_hint">Classic Light or Classic Dark, following your phone.</string>
     <string name="themes_applied">Applied</string>
@@ -97,7 +92,6 @@
     <string name="themes_preview_note">This is only a preview. Your keyboard keeps its current theme until you apply this one.</string>
     <string name="themes_apply">Apply theme</string>
     <string name="themes_unlock">Unlock with Premium</string>
-    <string name="themes_back_to_list">Back to all themes</string>
     <string name="themes_locked_title">%1$s is a Premium theme</string>
     <string name="themes_locked_body">Your keyboard shows %1$s for now. %2$s</string>
     <string name="themes_reason_allowed">Premium themes are available.</string>
@@ -105,19 +99,15 @@
     <string name="themes_reason_not_on_plan">Your plan does not include Premium themes.</string>
     <string name="themes_reason_needs_check">Connect to the internet once so we can check your plan.</string>
     <string name="settings_theme_title">Theme</string>
-    <string name="settings_theme_current">Current: %1$s</string>
-    <string name="settings_theme_button">Choose theme</string>
 
     <!-- Personal dictionary (A1.8) -->
     <string name="pd_title">Personal dictionary</string>
-    <string name="pd_body">Words you add or the keyboard learns as you type. They stay on this device, encrypted, and are never uploaded. Nothing is learned in password fields or when a field asks for no personalised learning.</string>
+    <string name="pd_body">Words you add or the keyboard learns, stored encrypted on this phone. Nothing is learned in password fields.</string>
     <string name="pd_empty">No words yet.</string>
     <string name="pd_loading">Loading…</string>
-    <string name="pd_language_count">%1$s: %2$d words</string>
     <string name="pd_show">Show words</string>
     <string name="pd_hide">Hide words</string>
     <string name="pd_show_more">Show more</string>
-    <string name="pd_delete">Delete</string>
     <string name="pd_delete_description">Delete %1$s from the dictionary</string>
     <string name="pd_clear_all">Clear all</string>
     <string name="pd_clear_title">Clear your personal dictionary?</string>
@@ -207,8 +197,6 @@
     <!-- Privacy dashboard, consents, AI history, data export, account deletion (A2.6). -->
     <string name="terms_url" translatable="false">https://qalsmartkeyboard.example/terms</string>
     <string name="pv_entry_title">Privacy</string>
-    <string name="pv_entry_body">See what stays on your phone and what is sent, and manage your consents, saved AI history, data export and account deletion.</string>
-    <string name="pv_entry_button">Open privacy</string>
     <string name="pv_title">Privacy</string>
     <string name="pv_loading">Please wait…</string>
     <string name="pv_ok">OK</string>
@@ -224,7 +212,7 @@
     <string name="pv_voice_title">Voice typing</string>
     <string name="pv_voice_body">When you tap the keyboard\'s microphone, your phone\'s speech service (for example Google) turns your voice into text. That service may send the audio to its own servers, under its own privacy terms. Qal doesn\'t record, store or send your voice, and the text is treated like anything you type: it stays on your phone and is never learned into your dictionary. You can turn voice typing off in the keyboard settings.</string>
     <string name="settings_voice_typing">Voice typing</string>
-    <string name="settings_voice_typing_body">Shows a microphone in the keyboard bar. Your phone\'s speech service turns speech into text; which languages work depends on that service.</string>
+    <string name="settings_voice_typing_body">Your phone\'s speech service turns your voice into text and may send the audio to its own servers. Qal doesn\'t record or keep your voice.</string>
     <string name="voice_perm_title">Microphone for voice typing</string>
     <string name="voice_perm_why">To type with your voice, Qal Keyboard needs permission to use the microphone. It listens only after you tap the microphone on the keyboard, and only while the keyboard is open.</string>
     <string name="voice_perm_privacy">Your phone\'s speech service (for example Google) turns your voice into text and may use the internet to do it. Qal doesn\'t record or store your voice.</string>
@@ -386,15 +374,11 @@
 
     <!-- Word Art (ADR 0030) -->
     <string name="settings_wordart_title">Word Art</string>
-    <string name="settings_wordart_body">Decorative text for greetings, names and captions. Copy it or share it from here, or use the Aa tab of the emoji panel in the keyboard.</string>
-    <string name="settings_wordart_button">Open Word Art</string>
     <!-- Write Email with AI and the translation destination (ADR 0031) -->
     <string name="settings_email_title">Write Email with AI</string>
-    <string name="settings_email_body">Describe what you want to say in any language and get a ready e-mail with a subject, or reply to or improve one. Also in the keyboard: AI, then Email.</string>
-    <string name="settings_email_button">Write an e-mail</string>
     <string name="settings_translate_title">Translate into</string>
-    <string name="settings_translate_body">The language the keyboard translates into by default. You can change it each time with the language buttons next to Translate.</string>
-    <string name="settings_translate_auto">Automatic (English, or Amharic for English text)</string>
+    <string name="settings_translate_body">The default language for Translate in the keyboard.</string>
+    <string name="settings_translate_auto">Automatic</string>
     <string name="email_title">Write Email with AI</string>
     <string name="email_from_keyboard">Your inputs from the keyboard are filled in. When the e-mail is ready, copy it and paste it in your mail app.</string>
     <string name="email_preview">Your e-mail</string>
@@ -418,12 +402,11 @@
     <string name="wordart_app_lang_en">English</string>
 
     <!-- Settings screen (A1.5), moved out of code for localisation (ADR 0032). -->
-    <string name="settings_title">Keyboard settings</string>
-    <string name="settings_languages_title">Languages (top = first on the globe key)</string>
+    <string name="settings_languages_title">Languages</string>
     <string name="settings_mode_phonetic">Phonetic QWERTY</string>
     <string name="settings_mode_latin">Latin</string>
     <string name="settings_translit_profile">Transliteration profile: newest active (automatic)</string>
-    <string name="settings_show_candidates">Show candidates</string>
+    <string name="settings_show_candidates">Show suggestions</string>
     <string name="settings_numerals_title">Numerals</string>
     <string name="settings_numerals_ethiopic">Ethiopic offered</string>
     <string name="settings_numerals_western">Western</string>
@@ -436,6 +419,48 @@
     <!-- App language (ADR 0032): the UI language of this app and the keyboard. The options are named in their own
          language in code (AppLanguage.selfName); only "System default" is translated. -->
     <string name="settings_app_language_title">App language</string>
-    <string name="settings_app_language_body">The language of this app and of the keyboard\'s buttons and menus. It does not change the languages you type in.</string>
+    <string name="settings_app_language_body">Doesn\'t change the languages you type in.</string>
     <string name="settings_app_language_system">System default</string>
+
+    <!-- Settings redesign (ADR 0036): home groups, pages, languages, theme strip. Keep labels short. -->
+    <string name="settings_theme_more">View more</string>
+    <string name="settings_theme_selected">Selected</string>
+    <string name="settings_setup_prompt">Finish setting up the keyboard</string>
+    <string name="settings_setup_prompt_button">Set up</string>
+    <string name="settings_group_keyboard">Keyboard</string>
+    <string name="settings_group_tools">AI and tools</string>
+    <string name="settings_group_account">Account and privacy</string>
+    <string name="settings_group_app">App</string>
+    <string name="settings_preferences">Preferences</string>
+    <string name="settings_prefs_keys">Keys</string>
+    <string name="settings_dictionary">Dictionary</string>
+    <string name="settings_advanced">Advanced</string>
+    <string name="settings_about">About</string>
+    <string name="settings_about_version">App version</string>
+    <string name="settings_about_core">Core engine</string>
+    <string name="settings_about_privacy_notice">Privacy notice</string>
+    <string name="settings_account_signed_in">Signed in</string>
+    <string name="settings_account_guest">Guest</string>
+    <string name="settings_account_signed_out">Not signed in</string>
+    <string name="settings_languages_order">The globe key switches between them in this order.</string>
+    <string name="settings_languages_manage">Add or remove languages</string>
+    <string name="settings_languages_all">All languages</string>
+    <string name="settings_languages_search">Search languages</string>
+    <string name="settings_languages_search_clear">Clear search</string>
+    <string name="settings_languages_no_match">No languages found</string>
+    <string name="settings_languages_last">At least one language stays on</string>
+    <string name="settings_layout_title">Layout</string>
+    <string name="settings_phonetic_title">Phonetic typing</string>
+    <string name="settings_mode_latin_hint">Plain Latin letters (QWERTY).</string>
+    <string name="settings_voice_typing_switch">Use voice typing</string>
+    <string name="settings_translate_auto_hint">English, or Amharic for English text</string>
+    <string name="settings_reset_title">Reset keyboard settings?</string>
+    <string name="settings_reset_message">Languages, layouts, theme and preferences go back to their defaults.</string>
+    <string name="settings_reset_confirm">Reset</string>
+    <plurals name="pd_word_count">
+        <item quantity="one">%1$d word</item>
+        <item quantity="other">%1$d words</item>
+    </plurals>
+    <string name="settings_numerals_western_sample" translatable="false">1 2 3</string>
+    <string name="settings_numerals_ethiopic_sample" translatable="false">፩ ፪ ፫</string>
 </resources>

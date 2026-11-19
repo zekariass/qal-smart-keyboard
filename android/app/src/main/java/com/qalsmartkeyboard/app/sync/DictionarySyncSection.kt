@@ -26,63 +26,93 @@ import androidx.compose.ui.unit.dp
 import com.qalsmartkeyboard.api.ApiError
 import com.qalsmartkeyboard.app.R
 import com.qalsmartkeyboard.app.auth.AccountStatus
+import com.qalsmartkeyboard.app.settings.SettingsNote
+import com.qalsmartkeyboard.app.settings.SettingsSwitchRow
+import com.qalsmartkeyboard.sync.DictionaryConsent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * Settings card for personal-dictionary sync (A2.4). The switch records the `DICTIONARY_SYNC`
- * consent (`PUT /me/consents/DICTIONARY_SYNC`, surface `settings`) and only then does the
- * dictionary sync run. Registered accounts only: guests can record consents but the server refuses
- * their dictionaries, so the switch is not offered to them. Nothing here shows or logs a word.
+ * The dictionary-sync switch (A2.4). The switch records the `DICTIONARY_SYNC` consent (`PUT /me/consents/DICTIONARY_SYNC`,
+ * surface `settings`) and only then does the dictionary sync run. Registered accounts only: guests can record consents
+ * but the server refuses their dictionaries, so the switch is not offered to them. Nothing here shows or logs a word.
  */
-@Composable
-fun DictionarySyncSection(status: AccountStatus, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val engine = remember { SyncGraph.get(context).engine }
-    var enabled by remember { mutableStateOf(engine.consent.enabled) }
-    var busy by remember { mutableStateOf(false) }
-    var failed by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val registered = status == AccountStatus.Registered
+private class DictionarySync(private val consent: DictionaryConsent, val registered: Boolean) {
+    var enabled by mutableStateOf(consent.enabled)
+    var busy by mutableStateOf(false)
+    var failed by mutableStateOf(false)
+    val checked: Boolean get() = enabled && registered
+    val usable: Boolean get() = registered && !busy
 
-    // A new device whose account already granted it: adopt the server's decision.
-    LaunchedEffect(registered) {
-        if (registered) {
+    fun set(on: Boolean, scope: CoroutineScope, onEnabled: () -> Unit) {
+        busy = true
+        failed = false
+        scope.launch {
             try {
-                enabled = engine.consent.refresh()
+                consent.set(on)
+                enabled = on
+                if (on) onEnabled()
             } catch (_: ApiError) {
-                enabled = engine.consent.enabled
+                failed = true
+            } finally {
+                busy = false
             }
         }
     }
 
+    suspend fun refresh() {
+        if (!registered) return
+        enabled = try {
+            consent.refresh()
+        } catch (_: ApiError) {
+            consent.enabled
+        }
+    }
+}
+
+@Composable
+private fun rememberDictionarySync(status: AccountStatus): Pair<DictionarySync, () -> Unit> {
+    val context = LocalContext.current
+    val engine = remember { SyncGraph.get(context).engine }
+    val registered = status == AccountStatus.Registered
+    val sync = remember(registered) { DictionarySync(engine.consent, registered) }
+    // A new device whose account already granted it: adopt the server's decision.
+    LaunchedEffect(sync) { sync.refresh() }
+    return sync to { SyncScheduler.requestSoon(context, delaySeconds = 0) }
+}
+
+/** The privacy area's card (consents screen): title, what sync does, the switch. */
+@Composable
+fun DictionarySyncSection(status: AccountStatus, modifier: Modifier = Modifier) {
+    val (sync, requestNow) = rememberDictionarySync(status)
+    val scope = rememberCoroutineScope()
     Card(modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(stringResource(R.string.sync_dict_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
             Text(stringResource(R.string.sync_dict_body), style = MaterialTheme.typography.bodySmall)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.sync_dict_switch), Modifier.weight(1f))
-                Switch(
-                    checked = enabled && registered,
-                    enabled = registered && !busy,
-                    onCheckedChange = { on ->
-                        busy = true
-                        failed = false
-                        scope.launch {
-                            try {
-                                engine.consent.set(on)
-                                enabled = on
-                                if (on) SyncScheduler.requestSoon(context, delaySeconds = 0)
-                            } catch (_: ApiError) {
-                                failed = true
-                            } finally {
-                                busy = false
-                            }
-                        }
-                    },
-                )
+                Switch(checked = sync.checked, enabled = sync.usable, onCheckedChange = { on -> sync.set(on, scope, requestNow) })
             }
-            if (!registered) Text(stringResource(R.string.sync_dict_needs_account), style = MaterialTheme.typography.bodySmall)
-            if (failed) Text(stringResource(R.string.sync_dict_error), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            if (!sync.registered) Text(stringResource(R.string.sync_dict_needs_account), style = MaterialTheme.typography.bodySmall)
+            if (sync.failed) Text(stringResource(R.string.sync_dict_error), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+/** The settings Dictionary page's row (ADR 0036): the switch as a list row, with a note only when it cannot be used. */
+@Composable
+fun DictionarySyncRow(status: AccountStatus, modifier: Modifier = Modifier) {
+    val (sync, requestNow) = rememberDictionarySync(status)
+    val scope = rememberCoroutineScope()
+    Column(modifier) {
+        SettingsSwitchRow(
+            stringResource(R.string.sync_dict_switch),
+            checked = sync.checked,
+            enabled = sync.usable,
+            onCheckedChange = { on -> sync.set(on, scope, requestNow) },
+        )
+        if (!sync.registered) SettingsNote(stringResource(R.string.sync_dict_needs_account))
+        if (sync.failed) SettingsNote(stringResource(R.string.sync_dict_error))
     }
 }

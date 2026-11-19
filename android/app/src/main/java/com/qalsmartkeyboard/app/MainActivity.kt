@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -27,7 +28,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.lifecycleScope
@@ -47,11 +47,12 @@ import com.qalsmartkeyboard.app.onboarding.ImeStatusReader
 import com.qalsmartkeyboard.app.link.DeepLinkAction
 import com.qalsmartkeyboard.app.link.DeepLinks
 import com.qalsmartkeyboard.app.packs.PackUpdateScheduler
-import com.qalsmartkeyboard.app.privacy.PrivacyEntryCard
 import com.qalsmartkeyboard.app.privacy.PrivacyGraph
 import com.qalsmartkeyboard.app.privacy.PrivacyHost
 import com.qalsmartkeyboard.app.privacy.PrivacyRoute
 import com.qalsmartkeyboard.app.privacy.PrivacyViewModel
+import com.qalsmartkeyboard.app.settings.rememberSettingsNavigator
+import com.qalsmartkeyboard.app.sync.DictionarySyncRow
 import com.qalsmartkeyboard.app.sync.DictionarySyncSection
 import com.qalsmartkeyboard.app.sync.SyncGraph
 import com.qalsmartkeyboard.app.sync.SyncScheduler
@@ -63,6 +64,7 @@ import com.qalsmartkeyboard.core.CoreSmoke
 import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.app.themes.ThemesHost
+import com.qalsmartkeyboard.app.themes.rememberPremiumThemeAccess
 import com.qalsmartkeyboard.app.wordart.WordArtHost
 import com.qalsmartkeyboard.app.email.EmailWriterModel
 import com.qalsmartkeyboard.app.email.EmailWriterRoute
@@ -173,8 +175,13 @@ class MainActivity : ComponentActivity() {
             var privacyRoute by rememberSaveable { mutableStateOf<String?>(null) }
             // Opened from the keyboard's gear: settings offer "Back to typing" (and Back) to return to the app.
             var fromKeyboard by rememberSaveable { mutableStateOf(false) }
-            // The theme picker (themes package).
+            // The theme picker (themes package); themesPreview: a theme to open it on (a locked one tapped on the settings home).
             var themesOpen by rememberSaveable { mutableStateOf(false) }
+            var themesPreview by rememberSaveable { mutableStateOf<String?>(null) }
+            // The settings pages' back stack (ADR 0036); empty = the settings home.
+            val settingsNav = rememberSettingsNavigator()
+            val themeAccess by rememberPremiumThemeAccess()
+            val coreVersion = remember { runCatching { CoreSmoke.coreVersion() }.getOrNull() } // A1.1: proves the UniFFI binding
             // Word Art (ADR 0030).
             var wordArtOpen by rememberSaveable { mutableStateOf(false) }
             // Write Email with AI (ADR 0031); opened from the keyboard, Back returns to the app the user was writing in.
@@ -186,12 +193,16 @@ class MainActivity : ComponentActivity() {
                 pendingLink = null
                 when (DeepLinks.route(link, graph.repository.currentStatus(), completed == true)) {
                     DeepLinkAction.NONE -> Unit
-                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false }
+                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false; settingsNav.reset() }
                     DeepLinkAction.SHOW_PRIVACY -> { showSignIn = false; showPlans = false; rerun = false; privacyRoute = PrivacyRoute.DASHBOARD.name }
                     DeepLinkAction.SHOW_SIGN_IN -> { signIn.reset(); showPlans = false; privacyRoute = null; showSignIn = true }
                     DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true }
                     DeepLinkAction.OPEN_STORE -> openStorePage(this@MainActivity)
-                    DeepLinkAction.SHOW_KEYBOARD_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; rerun = false; fromKeyboard = true }
+                    DeepLinkAction.SHOW_KEYBOARD_SETTINGS -> {
+                        showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        settingsNav.reset()
+                        fromKeyboard = true
+                    }
                     DeepLinkAction.SHOW_EMAIL_WRITER -> {
                         showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; rerun = false
                         emailOpen = true
@@ -230,7 +241,10 @@ class MainActivity : ComponentActivity() {
                             onDismiss = { updateDismissed = true },
                             modifier = Modifier.padding(innerPadding),
                         )
-                        showPlans && !showFlow -> PlansScreen(onBack = { showPlans = false }, modifier = Modifier.padding(innerPadding))
+                        showPlans && !showFlow -> {
+                            BackHandler { showPlans = false }
+                            PlansScreen(onBack = { showPlans = false }, modifier = Modifier.padding(innerPadding))
+                        }
                         showSignIn && !showFlow -> Column(
                             Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
                         ) {
@@ -252,33 +266,41 @@ class MainActivity : ComponentActivity() {
                             crashReportsOn = settings.crashReports,
                             onCrashReports = { on -> lifecycleScope.launch { repository.update { it.copy(crashReports = on) } } },
                         )
+                        // Draws its own top app bar, which takes the status-bar inset (no innerPadding).
                         themesOpen && !showFlow -> ThemesHost(
                             appliedId = settings.theme,
                             store = repository.themeStore(),
                             systemDark = systemDark,
                             onUnlock = { showPlans = true },
-                            onBack = { themesOpen = false },
-                            modifier = Modifier.padding(innerPadding),
+                            onBack = { themesOpen = false; themesPreview = null },
+                            initialPreview = themesPreview,
                         )
-                        wordArtOpen && !showFlow -> WordArtHost(onBack = { wordArtOpen = false }, modifier = Modifier.padding(innerPadding))
-                        emailOpen && !showFlow -> EmailWriterRoute(
-                            model = email,
-                            senderName = settings.emailSenderName,
-                            onLink = { l ->
-                                when (l) {
-                                    AiLink.UPGRADE -> showPlans = true
-                                    AiLink.SIGN_IN -> { signIn.reset(); showSignIn = true }
-                                    AiLink.UPDATE_APP -> openStorePage(this@MainActivity)
-                                    else -> privacyRoute = PrivacyRoute.DASHBOARD.name
-                                }
-                            },
-                            onBack = {
+                        wordArtOpen && !showFlow -> {
+                            BackHandler { wordArtOpen = false }
+                            WordArtHost(onBack = { wordArtOpen = false }, modifier = Modifier.padding(innerPadding))
+                        }
+                        emailOpen && !showFlow -> {
+                            val closeEmail = {
                                 if (emailFromKeyboard) finishAndRemoveTask()
                                 emailOpen = false
                                 emailFromKeyboard = false
-                            },
-                            modifier = Modifier.padding(innerPadding),
-                        )
+                            }
+                            BackHandler(onBack = closeEmail)
+                            EmailWriterRoute(
+                                model = email,
+                                senderName = settings.emailSenderName,
+                                onLink = { l ->
+                                    when (l) {
+                                        AiLink.UPGRADE -> showPlans = true
+                                        AiLink.SIGN_IN -> { signIn.reset(); showSignIn = true }
+                                        AiLink.UPDATE_APP -> openStorePage(this@MainActivity)
+                                        else -> privacyRoute = PrivacyRoute.DASHBOARD.name
+                                    }
+                                },
+                                onBack = closeEmail,
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
                         showFlow -> OnboardingScreen(
                             state = flow,
                             onNext = onboarding::next,
@@ -298,25 +320,34 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                         )
-                        else -> Column(Modifier.padding(innerPadding)) {
-                            if (fromKeyboard) KeyboardReturnBar(onDone = { finishAndRemoveTask() })
-                            Greeting(
-                                name = "core " + CoreSmoke.coreVersion(), // A1.1: proves the UniFFI binding
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                            )
-                            SettingsScreen(settings, repository, onRunSetup = {
+                        // Settings draw their own top app bar and handle the system-bar insets (no innerPadding).
+                        else -> SettingsScreen(
+                            settings, repository,
+                            navigator = settingsNav,
+                            themeAccess = themeAccess,
+                            systemDark = systemDark,
+                            keyboardReady = flow.ime.enabled && flow.ime.selected,
+                            account = accountStatus,
+                            fromKeyboard = fromKeyboard,
+                            onBackToTyping = { finishAndRemoveTask() },
+                            onRunSetup = {
                                 onboarding.restart()
                                 rerun = true
-                            }, onOpenThemes = { themesOpen = true }, onOpenWordArt = { wordArtOpen = true }, onOpenEmail = { emailOpen = true }, syncContent = {
-                                PrivacyEntryCard(onOpen = { privacyRoute = PrivacyRoute.DASHBOARD.name })
-                            }, accountContent = {
+                            },
+                            onOpenThemes = { id -> themesPreview = id; themesOpen = true },
+                            onOpenWordArt = { wordArtOpen = true },
+                            onOpenEmail = { emailOpen = true },
+                            onOpenPrivacy = { privacyRoute = PrivacyRoute.DASHBOARD.name },
+                            syncContent = { DictionarySyncRow(accountStatus) },
+                            accountContent = {
                                 AccountSection(
                                     status = accountStatus,
                                     onSignIn = { signIn.reset(); showSignIn = true },
                                     onSignOut = { signIn.reset(); signIn.signOut() },
                                 )
-                            })
-                        }
+                            },
+                            coreVersion = coreVersion,
+                        )
                     }
                 }
             }
@@ -353,21 +384,5 @@ fun PlansScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         Text(stringResource(R.string.plans_title), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.plans_body))
         OutlinedButton(onClick = onBack) { Text(stringResource(R.string.onb_back)) }
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    QalSmartKeyboardTheme {
-        Greeting("Android")
     }
 }
