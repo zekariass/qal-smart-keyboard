@@ -110,14 +110,41 @@ def pack_table():
     return rows
 
 
+# Rule artifacts shipped as their JSON source text (layouts, phonetic profiles).
+TEXT_ARTIFACTS = {"KEYBOARD_LAYOUT", "TRANSLITERATION_RULES"}
+
+
+def normalized_text(path):
+    """The bytes a JSON source is shipped with: UTF-8 with LF line ends, whatever the checkout uses (a Windows
+    checkout with core.autocrlf has CRLF files; the packs must not depend on that)."""
+    return Path(path).read_bytes().replace(b"\r\n", b"\n")
+
+
+def pack_artifact(data):
+    """The artifact bytes of a signed pack container (docs/specs/pack-format-v1.md; see build_packs.assemble)."""
+    if not data.startswith(bp.MAGIC):
+        raise bp.BuildError("not a pack")
+    i = len(bp.MAGIC) + 2
+    i += 1 + data[i] + 64  # key id length + key id, then the Ed25519 signature
+    i += 4 + int.from_bytes(data[i:i + 4], "big")
+    n = int.from_bytes(data[i:i + 8], "big")
+    return data[i + 8:i + 8 + n]
+
+
 def write_sources(dir_):
     dir_ = Path(dir_)
     dir_.mkdir(parents=True, exist_ok=True)
+    text_dir = dir_ / "text"
+    text_dir.mkdir(exist_ok=True)
     layout_ids = {}
     for f in (LD / "sources").glob("*-keyboard-layout.source.json"):
         d = json.loads(f.read_text("utf-8"))
         layout_ids[d["languageCode"]] = d["resourceId"]
     for name, lang, rtype, art, inputs in pack_table():
+        if rtype in TEXT_ARTIFACTS:
+            copy = text_dir / Path(art).name
+            copy.write_bytes(normalized_text(art))
+            art = copy
         doc = {
             "format": "qal-pack-source", "formatVersion": 1,
             "resourceId": layout_ids[lang] if rtype == "KEYBOARD_LAYOUT" else IDS[name],
@@ -226,6 +253,13 @@ def check():
     if len(set(texts)) != 1:
         raise bp.BuildError("shipped index files differ between platforms")
     index = json.loads(texts[0])
+    # A shipped layout or profile must be the current source: a rule change without a pack rebuild would leave the
+    # keyboard typing with the old rules while every test of the source passes.
+    sources = {name + ".pack": art for name, _, rtype, art, _ in pack_table() if rtype in TEXT_ARTIFACTS}
+    for t in targets():
+        for f, src in sources.items():
+            if pack_artifact((t / f).read_bytes()) != normalized_text(src):
+                raise bp.BuildError("%s in %s is stale (%s changed); rerun build_seed_packs.py" % (f, t, Path(src).name))
     sizes = {}
     for p in index["packs"]:
         for t in targets():

@@ -156,7 +156,9 @@ impl Orthography {
         self.draft
     }
 
-    fn is_letter(&self, c: char) -> bool {
+    /// True for a letter of a word: any alphabetic character or one of `letters`, never an
+    /// apostrophe.
+    pub fn is_letter(&self, c: char) -> bool {
         !self.apostrophes.contains(&c) && (c.is_alphabetic() || self.letters.contains(&lower(c)))
     }
 

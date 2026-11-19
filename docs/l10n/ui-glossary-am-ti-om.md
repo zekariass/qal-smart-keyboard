@@ -24,6 +24,7 @@ strings. Keep the format arguments (`%1$s`, `%2$d`, `%%`) and the escaped apostr
 | Digits | Western (1, 2, 3) as in the source; Ethiopic numerals only where the source means them | same | Western |
 | Brand and product names | Qal, Qal Smart Keyboard, Google, Ethio telecom, Safaricom, Android, JSON, SMS, QWERTY, ABC, AI, Premium: unchanged, Latin | same | same |
 | Language self-names | አማርኛ, ትግርኛ, Afaan Oromoo, English (the App language picker shows each in its own language, not translated) | same | same |
+| Afaan Oromoo named in Ge'ez | አፋን ኦሮሞ (never the exonym ኦሮምኛ) | ኣፋን ኦሮሞ | Afaan Oromoo |
 
 Tigrinya: the drafts aim at vocabulary understood in both Ethiopia (Tigray) and Eritrea. Where usage differs, the
 more international or technical term was chosen (ኢንተርነት, ሰርቨር, ኢመይል) and the choice is listed below.
@@ -140,7 +141,7 @@ Filled per language below. "Why" is the doubt; the panel decides.
 | app: consent_payment_* | የክፍያ ፈቃድ | "Payment mandate" (recurring authorisation) has no fixed Amharic term. |
 
 Deviations from the glossary:
-- language_name_om = ኦሮምኛ (the common Amharic name) in the keyboard/AI language lists; app strings that name the language in prose (onb_welcome_intro, wordart_app_*) use አፋን ኦሮሞ, matching the source's use of the self-name. Panel may want one form everywhere.
+- language_name_om = አፋን ኦሮሞ (the self-name, as in every other am string since the language audit of 2026-11-19; it was ኦሮምኛ, the Amharic exonym, in the keyboard/AI lists only). Panel to confirm.
 - Short chip/key labels (kb_enter_*, ai_rewrite, emoji_delete, kb_key_delete, ai_source_clear, pd_show/hide, pv_delete_item, pv_retention_save, pv_load_more) use the short masculine imperative or a noun instead of the polite form, for width; dialog/screen buttons use the polite form.
 - ai_cancel/pd_cancel = ይቅር (glossary); ai_retry chip = እንደገና (short), voice_retry = እንደገና ይሞክሩ.
 - crash reports switch, export/delete buttons in first person (መረጃዬን አውጣ, መለያዬን ሰርዝ) to mirror the source's "my".
@@ -169,7 +170,7 @@ Ethiopia / Eritrea choices:
 - ኢንተርነት, ሰርቨር, ኢመይል, ኣፕ, ኪቦርድ, ፕሮፋይል: international loanwords used in both countries.
 - ኣካውንት (not ሕሳብ) for account; ጥቕሊ for plan (follows the glossary; Eritrean users may expect ፓኬጅ).
 - ቁጽሪ (number), ስልኪ (phone): shared. ፍቱው (favourite), ጋሻ (guest): shared.
-- language_name_om = ኦሮምኛ (the usual Tigrinya name); the Oromo self-name Afaan Oromoo appears in brackets in lang_om.
+- language_name_om, lang_om, wordart_app_lang_om and the prose strings = ኣፋን ኦሮሞ (the self-name with Tigrinya's initial ኣ; was ኦሮምኛ until the language audit of 2026-11-19). lang_om keeps "(Afaan Oromoo)" in brackets. Panel to confirm the spelling.
 - language_name_am = ኣምሓርኛ (Tigrinya spelling with ኣ); lang_am adds the Amharic self-name (አማርኛ).
 
 Deviations from the glossary:
@@ -207,7 +208,7 @@ Deviations from the glossary:
 
 - Short keyboard labels (Enter key, Delete key, a few chips) use a short imperative or a noun instead of the polite form, for width. Dialog and screen buttons use the polite form. Confirm the exception, or give shorter polite forms.
 - Buttons that say "my" in English (Export my data, Delete my account) stay in the first person.
-- Oromo's name in Amharic and Tigrinya lists is ኦሮምኛ; prose in the app uses the self-name (Afaan Oromoo / አፋን ኦሮሞ). Pick one form.
+- Decided (DRAFT, language audit 2026-11-19): Afaan Oromoo is named by its self-name everywhere, am አፋን ኦሮሞ, ti ኣፋን ኦሮሞ, om/en Afaan Oromoo; never ኦሮምኛ or "Oromiffa" (checked by `LanguageNamesTest`).
 - Theme and Word Art style names are loose, descriptive translations. The panel may prefer to keep some in English.
 - Arabic as a typing language (ADR 0034, DRAFT like the rest): language_name_ar = ዓረብኛ (am), ዓረብኛ (ti), Afaan Arabaa (om),
   following each language's pattern for language names (-ኛ in am and ti, *Afaan X* in om); lang_ar adds the self-name

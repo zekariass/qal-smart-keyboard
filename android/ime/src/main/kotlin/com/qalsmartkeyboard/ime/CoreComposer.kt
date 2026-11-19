@@ -7,6 +7,8 @@ import uniffi.qal_keyboard_core.FidelLayout
 import uniffi.qal_keyboard_core.InputMode
 import uniffi.qal_keyboard_core.KeyEvent
 import uniffi.qal_keyboard_core.KeyboardEngine
+import uniffi.qal_keyboard_core.ReleaseChannel
+import uniffi.qal_keyboard_core.ResourceType
 import uniffi.qal_keyboard_core.TranslitProfileStatus
 
 /**
@@ -27,6 +29,10 @@ class CoreComposer(
     private val phoneticOk = HashSet<String>()
 
     init {
+        // Qubee suggestions come from the om DICTIONARY pack: DRAFT unless that pack was released on the STABLE channel (N9).
+        draft[TypingMode("om", LayoutKind.QUBEE)] = engine.loadedPacks().none {
+            it.languageCode == "om" && it.resourceType == ResourceType.DICTIONARY && it.releaseChannel == ReleaseChannel.STABLE
+        }
         for (lang in languages) {
             try {
                 grids[lang] = engine.fidelLayout(lang).toGrid()

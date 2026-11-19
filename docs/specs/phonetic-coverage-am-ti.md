@@ -1,7 +1,7 @@
 # Phonetic (Latin to Ge'ez) coverage, Amharic and Tigrinya
 
 Status: **DRAFT** for the native-speaker panel (gate G0, rule N9). Describes profiles
-`am-phonetic` and `ti-phonetic` **0.2.0** (`language-data/profiles/*-phonetic-draft.json`), engine
+`am-phonetic` **0.2.0** and `ti-phonetic` **0.3.0** (`language-data/profiles/*-phonetic-draft.json`), engine
 `core/src/translit/`. Everything here is provisional: the panel may change any mapping, and every
 change is a data edit plus a new golden/coverage version, not code.
 
@@ -11,7 +11,7 @@ Machine-checked sources (this page mirrors them):
   (signed test pack, `KeyboardEngine`, no dictionary, `max_candidates` 5) by
   `core/tests/phonetic_coverage.rs`, which also derives checks from every rule of the profile
   (input alone, input + each vowel, input + `W` + each vowel), so a dropped or broken rule fails CI.
-- `core/tests/golden/{am,ti}-phonetic-0.2.0.json`: behaviour vectors (live composition,
+- `core/tests/golden/am-phonetic-0.2.0.json`, `core/tests/golden/ti-phonetic-0.3.0.json`: behaviour vectors (live composition,
   alternatives, commits, backspace).
 
 ## 1. The report: "ሽ and ኽ are missing"
@@ -50,9 +50,20 @@ Tigrinya adds the ቐ series and the labiovelar series ዀ and ቘ.
 | am 0.2.0 | 282 | 280 | 2 (ኣ ኧ) | 0 |
 | ti 0.1.0 | 299 | 263 | 29 | 7 (ዓ ኧ ኈ ኊ ኋ ኌ ኍ) |
 | ti 0.2.0 | 299 | 297 | 2 (ኣ ኧ) | 0 |
+| ti 0.3.0 | 299 | 297 | 2 (አ ኧ) | 0 |
 
 "Default" = some sequence gives exactly that letter as the composition; "alternative only" = it is
 offered in the candidate strip (the lexicon ranks known words first, ADR 0004 U6).
+
+**Fidel grid** (audit 2026-11-19, `core/tests/fidel_coverage.rs`): every required form of both matrices is
+reachable on the language's own Fidel grid (`language-data/layouts/{am,ti}-fidel-draft.json`), by two keys
+(consonant, then vowel order) or long-press; ዓ, ኧ and ኋ by two keys. The Tigrinya grid has its own ቐ key (ቐ…ቖ,
+ቘ ቚ ቛ ቜ ቝ), and ኸ with ዀ…ዅ; the Amharic grid has no ቐ key. Both carry ። ፣ ፤ ፥ ፦ ፧ ፨ ፡ and Ethiopic numerals.
+
+**ti 0.3.0** (language audit 2026-11-19, `docs/specs/language-audit-om-ti.md`): a vowel-initial `a` gives **ኣ**,
+the Tigrinya spelling of initial /a/ (ኣብ, ኣነ, ኣደ, ኣስመራ; the ti seed lexicon and the UI glossary use it), with
+አ as the first alternative. 0.2.0 typed Amharic's አ (አብ) and offered ኣ only in the strip, so every such
+Tigrinya word needed a correction. Amharic is unchanged (`a` አ, alt ኣ). Every other input keeps its output.
 
 Out of scope (not required, not mapped): the ninth-order "oa" forms (ሇ, ⶀ...), ፘ ፙ ፚ, the
 Sebatbeit/Gurage/Bench letters (ᎀ..., ⶠ..., ꬁ..., 𞟠...), ዸ and ጘ series.
@@ -71,7 +82,7 @@ All 0.1.0 inputs keep their default output; 0.2.0 only adds inputs and alternati
 | Labialised (capital `W`) | consonant + `W` + vowel: labiovelar series or the "wa" form | `gWa` ጓ, `lWa` ሏ, **`hWa` ኋ** |
 | **Labialised (lowercase `w`)** | default unchanged (`gwa` ግዋ); the labialised letter is the **first alternative** | `kwas` ክዋስ, alt ኳስ |
 | **Capitals** | default unchanged (ት ቸ ፕ ስ ክ ን ዝ); SERA reading as **alternative**: `T` ጥ, `C` ጭ, `P` ጵ, `S` ሥ/ጽ, `K` ኽ, `N` ኝ, `Z` ዥ | `Tena` ተና, alt ጠና |
-| Vowel without consonant | glottal series: `a` አ (alt ኣ, ዐ, **ዓ**), `e` እ (alt አ, ዕ, ዐ, **ኧ**), `u` ኡ, `i` ኢ, `ee` ኤ, `o` ኦ | `amet` አመት, alt ዓመት |
+| Vowel without consonant | glottal series: `a` አ (alt ኣ, ዐ, **ዓ**; **ti 0.3.0: `a` ኣ**, alt አ, ዓ, ዐ), `e` እ (alt አ, ዕ, ዐ, **ኧ**), `u` ኡ, `i` ኢ, `ee` ኤ, `o` ኦ | `amet` አመት, alt ዓመት; ti `ab` ኣብ |
 | Gemination | doubled consonants collapse (Fidel does not mark it); `_` separates | `messeret` መሰረት, `s_h` ስህ |
 | Punctuation | `..` ። `,,` ፣ `;;` ፤ `::` ፥ `??` ፧; all eight marks (፡ ። ፣ ፤ ፥ ፦ ፧ ፨) are also keys on the symbols page in Phonetic mode | |
 | Numerals | not in the profile: typed digits stay ASCII; Ethiopic numerals ፩–፼ are on the digit keys' long-press (C1.9 data) | |
@@ -93,7 +104,7 @@ noise on the dev box).
 | Lowercase `w` after a consonant: ወ or labialisation | Default stays ወ (`gwa` ግዋ); labialised letter first alternative | `w` is also the consonant ወ and 0.1.0 output must not change; the lexicon promotes known words such as ኳስ, ኋላ. |
 | Homophones ሰ/ሠ, ሀ/ሐ/ኀ, ጸ/ፀ, አ/ዐ | Common letter by default, others as alternatives, plus deterministic backtick sequences | Backtick is rare in text; on the phone it is on the symbols page (slow but certain). |
 | ኋ: labialised ሀ or ኀ | `hWa` gives ኋ (the ኀ-series labiovelar; `h` now maps to it), `hwa` offers it first; ሗ as alternative | ኋ is the standard spelling (ኋላ). |
-| ኣ vs አ word-initially | Unchanged: አ default, ኣ alternative (also for ti) | Existing behaviour; **ti spelling convention usually prefers ኣ** — panel decision. |
+| ኣ vs አ word-initially | am: አ default, ኣ alternative. **ti 0.3.0: ኣ default, አ alternative** | Amharic writes initial /a/ አ; Tigrinya writes it ኣ (its lexicon and glossary do). Panel to confirm the ti default. |
 | ኧ | Alternative of standalone `e` (after አ ዕ ዐ) | Rare letter (ኧረ); no deterministic key without breaking `W`/apostrophe uses. |
 | Apostrophe as a glottal-stop marker (SERA `ma'ed`) | Not added | Would eat quote marks (`'selam'`). |
 | `shsh`, `chch` | Collapse to one letter like any geminate | Use `sh_sh` for two. |
@@ -103,9 +114,10 @@ noise on the dev box).
 
 1. The `x` split (am ሸ, ti ኸ), and whether ti `x` should offer ሸ as an alternative.
 2. Capitals as SERA letters by default (fast for SERA typists) vs as alternatives (safe for names).
-3. Word-initial ኣ vs አ default, especially for Tigrinya.
+3. Word-initial ኣ vs አ: confirm the ti 0.3.0 default ኣ (and whether Amharic should offer ኣ at all).
 4. Backtick sequences for ሠ ኀ ፀ ዐ: acceptable, or a different marker?
-5. A deterministic key for ኧ (and ኣ), if wanted.
+5. A deterministic key for ኧ (both languages), for ኣ in Amharic and for አ in Tigrinya, if wanted (no
+   conventional Latin spelling exists that does not collide with `e`, `a`, `W` or the apostrophe).
 6. Earlier items still open: `ie` vs i + e, `e` as 1st order, punctuation by doubling, the `_`
    separator (see `language-data/profiles/README.md`).
 
@@ -165,9 +177,9 @@ Labialised "wa" forms (8th order): ሏ `lWa` · alt `lwa`; ሗ `hhWa` · alt `hw
 | `KW` | ኰ `kWe` · alt `kwe` `Kwe` | ኲ `kWi` · alt `kwi` `Kwi` | ኳ `kWa` · alt `kwa` `Kwa` | ኴ `kWee` · alt `kwee` `kwie` | ኵ `kW` · alt `kw` `Kw` |
 | `GW` | ጐ `gWe` · alt `gwe` | ጒ `gWi` · alt `gwi` | ጓ `gWa` · alt `gwa` | ጔ `gWee` · alt `gwee` `gwie` | ጕ `gW` · alt `gw` |
 
-### Tigrinya (`ti-phonetic` 0.2.0)
+### Tigrinya (`ti-phonetic` 0.3.0)
 
-299 required forms: 297 reachable as the default composition, 2 only as a strip alternative, 0 unreachable.
+299 required forms: 297 reachable as the default composition, 2 only as a strip alternative (አ ኧ), 0 unreachable.
 
 | Series | 1st (e) | 2nd (u) | 3rd (i) | 4th (a) | 5th (ee) | 6th (bare / I) | 7th (o) |
 |---|---|---|---|---|---|---|---|
@@ -187,7 +199,7 @@ Labialised "wa" forms (8th order): ሏ `lWa` · alt `lwa`; ሗ `hhWa` · alt `hw
 | `X` | ኀ `` `he `` · alt `he` | ኁ `` `hu `` · alt `hu` | ኂ `` `hi `` · alt `hi` | ኃ `` `ha `` · alt `ha` | ኄ `` `hee `` | ኅ `` `h `` · alt `h` | ኆ `` `ho `` · alt `ho` |
 | `N` | ነ `ne` | ኑ `nu` | ኒ `ni` | ና `na` | ኔ `nee` | ን `n` | ኖ `no` |
 | `NY` | ኘ `nye` · alt `Ne` | ኙ `nyu` · alt `Nu` | ኚ `nyi` · alt `Ni` | ኛ `nya` · alt `Na` | ኜ `nyee` · alt `Nee` | ኝ `ny` · alt `N` | ኞ `nyo` · alt `No` |
-| `GLOTTAL` | አ `a` · alt `e` | ኡ `u` | ኢ `i` | ኣ alt `a` | ኤ `ee` | እ `e` `I` | ኦ `o` |
+| `GLOTTAL` | አ alt `a` `e` | ኡ `u` | ኢ `i` | ኣ `a` | ኤ `ee` | እ `e` `I` | ኦ `o` |
 | `K` | ከ `ke` | ኩ `ku` | ኪ `ki` | ካ `ka` | ኬ `kee` | ክ `k` | ኮ `ko` |
 | `KX` | ኸ `khe` `xe` · alt `Ke` | ኹ `khu` `xu` · alt `Ku` | ኺ `khi` `xi` · alt `Ki` | ኻ `kha` `xa` · alt `Ka` | ኼ `khee` `xee` · alt `Kee` | ኽ `kh` `x` · alt `K` | ኾ `kho` `xo` · alt `Ko` |
 | `W` | ወ `we` | ዉ `wu` | ዊ `wi` | ዋ `wa` | ዌ `wee` | ው `w` | ዎ `wo` |

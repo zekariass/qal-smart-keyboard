@@ -3,7 +3,7 @@
  "formatVersion": 1,
  "language": "ti",
  "profileId": "ti-phonetic",
- "profileVersion": "0.2.0",
+ "profileVersion": "0.3.0",
  "status": "DRAFT",
  "foldCase": true,
  "collapseGemination": true,
@@ -15,7 +15,7 @@
   "series": "GLOTTAL",
   "altSeries": ["PHARYNGEAL"],
   "overrides": [
-   {"in": "a", "order": 1, "altOrders": [4]},
+   {"in": "a", "order": 4, "altOrders": [1]},
    {"in": "e", "order": 6, "altOrders": [1, 8]}
   ]
  },

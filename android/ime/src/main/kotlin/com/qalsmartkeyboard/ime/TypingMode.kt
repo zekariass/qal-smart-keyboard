@@ -8,7 +8,7 @@ enum class LayoutKind(val phonetic: Boolean, val latin: Boolean) {
     /** Latin QWERTY feeding the phonetic engine with the candidate strip: am, ti. */
     PHONETIC(phonetic = true, latin = true),
 
-    /** Latin with the hudhaa key, passthrough (core `Qubee`): om. */
+    /** Latin with the hudhaa key (core `Qubee`): om. Typed text is committed as typed; the word being typed gets dictionary suggestions. */
     QUBEE(phonetic = false, latin = true),
 
     /** Latin passthrough (core `English`): en. */
@@ -60,6 +60,12 @@ object LanguageCatalog {
 
     /** Languages whose words the personal dictionary learns: those with a core dictionary (A1.8). Arabic has none (N10). */
     fun learnsWords(language: String) = language in com.qalsmartkeyboard.ime.userdict.UserDictionary.LANGUAGES
+
+    /**
+     * Modes with a candidate strip: am/ti Phonetic (transliteration alternatives and dictionary words) and Afaan Oromoo
+     * Qubee (dictionary words for the word being typed, from the `om` packs). Fidel, English, ABC and Arabic have none.
+     */
+    fun offersSuggestions(mode: TypingMode) = mode.phonetic || mode.kind == LayoutKind.QUBEE
 
     /** Languages written in Ge'ez script: Ethiopic punctuation and numerals apply (SD 7.2). */
     fun isEthiopic(language: String) = language == "am" || language == "ti"
