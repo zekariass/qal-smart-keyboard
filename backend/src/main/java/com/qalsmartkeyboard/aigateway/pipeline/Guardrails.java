@@ -21,7 +21,7 @@ import com.qalsmartkeyboard.aigateway.spi.AiFeature;
  * <ul>
  * <li><b>EMPTY_OUTPUT</b>: nothing but whitespace.</li>
  * <li><b>SCRIPT_MISMATCH</b>: fewer than {@code minScriptRatio} (default 90 %) of the output's letters are in the
- * expected script (Ethiopic for {@code am}/{@code ti}, Latin for {@code om}/{@code en}; from
+ * expected script (Ethiopic for {@code am}/{@code ti}, Latin for {@code om}/{@code en}, Arabic for {@code ar}; from
  * {@code supported_languages.script_code}). Protected tokens are not counted: URLs, e-mail addresses, {@code @handles},
  * {@code #tags} and, for translations, words copied verbatim from the input (names, brand words) unless the output
  * consists only of copied words. Transforms keep the input's language, often mixed, so they only have to keep about

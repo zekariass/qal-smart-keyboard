@@ -78,13 +78,13 @@ class LanguagesControllerTest {
 	void languagesAnonymousAndWithAValidToken() throws Exception {
 		when(service.languages()).thenReturn(List.of(
 				new LanguageDto("am", "Amharic", "አማርኛ", "Ethi", "LTR", "BETA", true, List.of("DIRECT_SCRIPT_LAYOUT")),
-				new LanguageDto("ar", "Arabic", null, "Arab", "RTL", "PLANNED", false, null)));
+				new LanguageDto("ar", "Arabic", "العربية", "Arab", "RTL", "BETA", false, List.of("LATIN_PASSTHROUGH"))));
 		mvc.perform(get("/api/v1/languages")).andExpect(status().isOk())
 				.andExpect(jsonPath("$.items[0].code").value("am")).andExpect(jsonPath("$.items[0].isLaunchLanguage").value(true))
 				.andExpect(jsonPath("$.items[0].inputModes[0]").value("DIRECT_SCRIPT_LAYOUT"))
 				.andExpect(jsonPath("$.items[1].writingDirection").value("RTL"))
-				.andExpect(jsonPath("$.items[1].nativeName").doesNotExist())
-				.andExpect(jsonPath("$.items[1].inputModes").doesNotExist());
+				.andExpect(jsonPath("$.items[1].code").value("ar")).andExpect(jsonPath("$.items[1].supportLevel").value("BETA"))
+				.andExpect(jsonPath("$.items[1].isLaunchLanguage").value(false));
 		mvc.perform(get("/api/v1/languages").header("Authorization", bearer())).andExpect(status().isOk());
 	}
 
