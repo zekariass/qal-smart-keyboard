@@ -12,8 +12,14 @@ package com.qalsmartkeyboard.ime.emoji
 object EmojiSearch {
     const val MAX_RESULTS = 60
 
+    /**
+     * The form terms and queries are compared in: lower case, every apostrophe variant as `'`. CLDR spells the Afaan
+     * Oromoo hudhaa `’` (`boo’uu`) while the Qubee key types `'`, so without this `boo'uu` would never find its emoji.
+     */
+    fun fold(s: String): String = s.lowercase().replace('’', '\'').replace('ʼ', '\'')
+
     fun search(catalog: EmojiCatalog, query: String, language: String?, limit: Int = MAX_RESULTS): List<EmojiEntry> {
-        val words = query.trim().lowercase().split(' ', '\t').filter { it.isNotEmpty() }
+        val words = fold(query.trim()).split(' ', '\t').filter { it.isNotEmpty() }
         if (words.isEmpty()) return emptyList()
         val local = language?.takeIf { it != "en" }?.let { catalog.language(it) }
         val scored = ArrayList<Pair<EmojiEntry, Int>>()
