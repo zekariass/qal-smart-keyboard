@@ -37,6 +37,12 @@ enum class DeepLinkAction {
      * they were writing in (to paste the copied e-mail).
      */
     SHOW_EMAIL_WRITER,
+
+    /** The settings' Languages page, opened from the keyboard's tools panel (ADR 0035); Back returns to typing. */
+    SHOW_KEYBOARD_LANGUAGES,
+
+    /** The theme picker, opened from the keyboard's Theme shortcut or tile (ADR 0035); Back returns to typing. */
+    SHOW_KEYBOARD_THEMES,
 }
 
 /**
@@ -51,6 +57,8 @@ enum class DeepLinkAction {
  * | `UPDATE_APP` | store page (even during first-run setup) |
  * | `SETTINGS` | keyboard settings, opened from the keyboard's gear (with a way back to typing) |
  * | `EMAIL_WRITER` | the e-mail writer with the keyboard's inputs (ADR 0031) |
+ * | `LANGUAGES` | the settings' Languages page (the keyboard's tools panel, ADR 0035) |
+ * | `THEMES` | the theme picker (the keyboard's Theme shortcut or tile, ADR 0035) |
  *
  * While first-run setup has not finished, every link except `UPDATE_APP` is ignored: the setup flow
  * has its own account step and is not interrupted. An unknown or missing extra does nothing.
@@ -68,6 +76,8 @@ object DeepLinks {
         link == AiLink.AI_SETTINGS -> DeepLinkAction.SHOW_PRIVACY
         link == AiLink.SETTINGS -> DeepLinkAction.SHOW_KEYBOARD_SETTINGS
         link == AiLink.EMAIL_WRITER -> DeepLinkAction.SHOW_EMAIL_WRITER
+        link == AiLink.LANGUAGES -> DeepLinkAction.SHOW_KEYBOARD_LANGUAGES
+        link == AiLink.THEMES -> DeepLinkAction.SHOW_KEYBOARD_THEMES
         else -> DeepLinkAction.SHOW_PLANS
     }
 }

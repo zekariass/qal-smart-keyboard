@@ -225,6 +225,12 @@ enum class AiLink {
 
     /** The keyboard settings screen, opened by the top bar's gear (not an AI failure link). */
     SETTINGS,
+
+    /** The settings' Languages page, opened by the tools panel's Languages tile (ADR 0035). */
+    LANGUAGES,
+
+    /** The theme picker, opened by the bar's Theme shortcut or the tools panel's Theme tile (ADR 0035). */
+    THEMES,
 }
 
 /**

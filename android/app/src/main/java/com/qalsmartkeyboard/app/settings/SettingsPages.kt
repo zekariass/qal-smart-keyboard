@@ -32,7 +32,7 @@ import kotlin.math.roundToInt
 /** Applies a change to the stored settings (the host launches `SettingsRepository.update`). */
 typealias SettingsUpdate = ((KeyboardSettings) -> KeyboardSettings) -> Unit
 
-/** "Preferences": key feedback, key height and numerals. */
+/** "Preferences": key feedback, key height, clipboard history and numerals. */
 @Composable
 fun PreferencesPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: SettingsUpdate, modifier: Modifier = Modifier) {
     SettingsScaffold(stringResource(R.string.settings_preferences), onBack, modifier) {
@@ -52,6 +52,12 @@ fun PreferencesPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: Se
                 modifier = Modifier.semantics { contentDescription = heightLabel },
             )
         }
+        // ADR 0035: the keyboard's clipboard panel keeps recent copies in memory only.
+        SettingsSwitchRow(
+            stringResource(R.string.settings_clipboard_history), settings.clipboardHistoryEnabled,
+            { on -> onUpdate { it.copy(clipboardHistoryEnabled = on) } },
+            summary = stringResource(R.string.settings_clipboard_history_summary),
+        )
         SettingsHeader(stringResource(R.string.settings_numerals_title))
         Column(Modifier.selectableGroup()) {
             NumeralStyle.entries.forEach { n ->

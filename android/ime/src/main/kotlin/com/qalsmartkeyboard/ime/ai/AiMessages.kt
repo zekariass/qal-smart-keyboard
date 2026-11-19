@@ -49,7 +49,7 @@ object AiMessages {
     fun link(c: Context, l: AiLink): String = c.getString(
         when (l) {
             AiLink.SIGN_IN -> R.string.ai_link_sign_in
-            AiLink.AI_SETTINGS, AiLink.SETTINGS -> R.string.ai_link_settings
+            AiLink.AI_SETTINGS, AiLink.SETTINGS, AiLink.LANGUAGES, AiLink.THEMES -> R.string.ai_link_settings
             AiLink.UPGRADE -> R.string.ai_link_upgrade
             AiLink.UPDATE_APP -> R.string.ai_link_update
             AiLink.EMAIL_WRITER -> R.string.ai_email_open_full

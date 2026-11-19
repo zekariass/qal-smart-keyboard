@@ -458,4 +458,7 @@
         <item quantity="one">jecha %1$d</item>
         <item quantity="other">jechoota %1$d</item>
     </plurals>
+    <!-- ADR 0035: the keyboard's clipboard panel. DRAFT (N9). -->
+    <string name="settings_clipboard_history">Seenaa kuusaa garagalchaa</string>
+    <string name="settings_clipboard_history_summary">Kan dhiyeenya garagalfame, yaadannoo keessa qofa sa\'aatii 1 tura</string>
 </resources>

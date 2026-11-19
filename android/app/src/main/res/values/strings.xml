@@ -464,4 +464,7 @@
     </plurals>
     <string name="settings_numerals_western_sample" translatable="false">1 2 3</string>
     <string name="settings_numerals_ethiopic_sample" translatable="false">፩ ፪ ፫</string>
+    <!-- ADR 0035: the keyboard's clipboard panel. -->
+    <string name="settings_clipboard_history">Clipboard history</string>
+    <string name="settings_clipboard_history_summary">Recent copies, kept for 1 hour in memory only</string>
 </resources>
