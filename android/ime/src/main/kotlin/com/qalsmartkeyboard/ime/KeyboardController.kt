@@ -236,7 +236,11 @@ class KeyboardController(
     /** Spoken form of the current language and layout, announced to accessibility services on a switch. */
     val modeDescription: String
         get() = effectiveMode.let {
-            val kindName = if (LanguageCatalog.isEthiopic(it.language)) LanguageCatalog.spokenWritingMode(it.kind) else LanguageCatalog.spokenKind(it.kind)
+            val kindName = when {
+                LanguageCatalog.isEthiopic(it.language) -> LanguageCatalog.spokenWritingMode(it.kind)
+                it.kind == LayoutKind.ENGLISH -> prefs.latinLayout(it.language).label // ADR 0043: QWERTY, Dvorak, ...
+                else -> LanguageCatalog.spokenKind(it.kind)
+            }
             KeyboardLabels.current.modeDescription.format(LanguageCatalog.spokenName(it.language), kindName)
         }
 
@@ -260,7 +264,7 @@ class KeyboardController(
     val indicator: String
         get() {
             val m = effectiveMode
-            return LanguageCatalog.indicator(m, if (m.isAbc) nativeToReturnTo() else null)
+            return LanguageCatalog.indicator(m, if (m.isAbc) nativeToReturnTo() else null, prefs.latinLayout(m.language))
         }
 
     /**
@@ -311,6 +315,7 @@ class KeyboardController(
     private data class LayoutKey(
         val page: Page, val profile: InputProfile, val mode: TypingMode, val langs: List<String>,
         val ethiopicNumerals: Boolean, val heightScale: Float,
+        val latin: LatinLayout, val fidel: FidelVariant, val numberRow: Boolean,
     )
 
     private var cachedLayout: Pair<LayoutKey, KeyboardLayout>? = null
@@ -318,10 +323,16 @@ class KeyboardController(
     val layout: KeyboardLayout
         get() {
             val m = effectiveMode
-            val key = LayoutKey(page, profile, m, availableLanguages(), prefs.ethiopicNumerals, prefs.keyHeightScale)
+            val latin = prefs.latinLayout(m.language)
+            val fidel = prefs.fidelVariant(m.language)
+            val key = LayoutKey(page, profile, m, availableLanguages(), prefs.ethiopicNumerals, prefs.keyHeightScale, latin, fidel, prefs.numberRow)
             cachedLayout?.takeIf { it.first == key }?.let { return it.second }
             val hints = if (m.kind == LayoutKind.PHONETIC) composer.phoneticHints(m.language) else null
-            val ctx = LayoutContext(m, grid(m.language), indicator, languagePicker(), composer.isDraft(m), prefs.ethiopicNumerals, hints)
+            val grid = grid(m.language)?.let { KeyLayouts.apply(it, fidel) }
+            val ctx = LayoutContext(
+                m, grid, indicator, languagePicker(), composer.isDraft(m), prefs.ethiopicNumerals, hints,
+                latinLayout = latin, numberRow = prefs.numberRow,
+            )
             val base = Layouts.forPage(page, profile, ctx)
             val scaled = KeyboardLayout(base.page, base.rows, base.rowHeightDp * prefs.keyHeightScale)
             return scaled.also { cachedLayout = key to it }
@@ -553,6 +564,47 @@ class KeyboardController(
             setKind(LayoutKind.ABC)
         }
         afterSwitch()
+        onChanged()
+    }
+
+    /**
+     * The key layouts the Layout panel offers for the current language and writing mode (ADR 0043): the Fidel grid's
+     * variants while Fidel is typed (when the layout pack allows both), else the Latin arrangements (every Latin
+     * layout: Phonetic, Qubee, English, ABC). Empty for Arabic: it has one layout.
+     */
+    fun layoutOptions(): List<LayoutOption> {
+        val m = effectiveMode
+        return when {
+            m.kind == LayoutKind.FIDEL -> {
+                val current = prefs.fidelVariant(m.language)
+                KeyLayouts.fidelVariants(grid(m.language)).map { LayoutOption(KeyLayoutChoice.Fidel(it), it == current) }
+            }
+            m.kind.latin && KeyLayouts.hasLatinLayouts(m.language) -> {
+                val current = prefs.latinLayout(m.language)
+                LatinLayout.entries.map { LayoutOption(KeyLayoutChoice.Latin(it), it == current) }
+            }
+            else -> emptyList()
+        }
+    }
+
+    /**
+     * The Layout panel picked [choice] (ADR 0043): it is saved for the language and the keys are rebuilt at once. An open
+     * composition is committed as it stands first (as on a writing-mode switch), so the field text is never lost or
+     * typed twice. A choice the panel does not offer now (a stale tap) is ignored; the current one changes nothing.
+     */
+    fun selectLayout(choice: KeyLayoutChoice) {
+        val option = layoutOptions().firstOrNull { it.choice == choice } ?: return
+        if (option.selected) return
+        finishComposition()
+        when (choice) {
+            is KeyLayoutChoice.Latin -> prefs.setLatinLayout(language, choice.layout)
+            is KeyLayoutChoice.Fidel -> prefs.setFidelVariant(language, choice.variant)
+        }
+        cachedLayout = null
+        page = Page.LETTERS
+        shift = ShiftState.OFF
+        applyMode()
+        refreshAutoCapital()
         onChanged()
     }
 

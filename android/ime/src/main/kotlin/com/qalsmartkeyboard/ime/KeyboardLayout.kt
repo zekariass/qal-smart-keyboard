@@ -73,10 +73,14 @@ data class LayoutContext(
     /** The enabled languages for the space-bar picker. */
     val picker: List<PopupItem> = emptyList(),
     val draft: Boolean = false,
-    /** numeralStyle ETHIOPIC: Ethiopic numerals are offered as alternatives for typed digits (SD 7.2). */
+    /** numeralStyle ETHIOPIC (ADR 0043): the digit keys of am/ti typed natively type Ethiopic numerals ([ethiopicDigits]). */
     val ethiopicNumerals: Boolean = false,
     /** Phonetic mode: the native output of each letter key (secondary key labels). */
     val hints: PhoneticHints? = null,
+    /** ADR 0043: the arrangement of the Latin letter keys (the language's choice). */
+    val latinLayout: LatinLayout = LatinLayout.DEFAULT,
+    /** ADR 0043: the digit row above the letters; off = the digits on long-press of the top letter row. */
+    val numberRow: Boolean = true,
 ) {
     /** Ethiopic punctuation and numerals are offered while an Ethiopic language is typed natively. */
     val ethiopic: Boolean get() = LanguageCatalog.isEthiopic(mode.language) && !mode.isAbc && grid != null
@@ -97,6 +101,14 @@ data class LayoutContext(
      */
     val ethiopicPunctuation: Boolean
         get() = LanguageCatalog.isEthiopic(mode.language) && (mode.kind == LayoutKind.FIDEL && grid != null || mode.kind == LayoutKind.PHONETIC)
+
+    /**
+     * ADR 0043: the digit keys type Ethiopic numerals (፩…፱, ፲ on the 0 key), the Western digit on long-press. Only while
+     * Amharic or Tigrinya is typed natively (Fidel or Phonetic) with numeralStyle ETHIOPIC: never in the English (ABC)
+     * writing mode, other languages or the number pad of number, phone and date fields.
+     */
+    val ethiopicDigits: Boolean
+        get() = ethiopicNumerals && LanguageCatalog.isEthiopic(mode.language) && (mode.kind == LayoutKind.FIDEL || mode.kind == LayoutKind.PHONETIC)
 
     /** The Arabic letter layout is in force (ADR 0034): Arabic punctuation, Arabic-Indic digits and the marks. */
     val arabic: Boolean get() = mode.kind == LayoutKind.ARABIC
@@ -165,6 +177,33 @@ object ArabicKeys {
     val SYMBOLS: Map<Char, String> = mapOf(',' to COMMA, ';' to SEMICOLON, '?' to QUESTION, '%' to PERCENT)
 }
 
+/**
+ * Ethiopic numerals (U+1369..U+137C, ADR 0043). Ethiopic has no zero and no place value: 1-9 are ፩…፱, the tens ፲…፺, then
+ * ፻ (100) and ፼ (10 000); 2017 is ፳፻፲፯. The digit row puts ፩…፱ on 1-9 and ፲ on the 0 key (its place in the row,
+ * and the next numeral after ፱), so every numeral is a tap or a long-press away.
+ */
+object EthiopicNumerals {
+    /** What digit key [d] types: ፩…፱ for 1-9, ፲ (ten) for 0. */
+    fun primary(d: Char): String = when (d) {
+        '0' -> "፲"
+        in '1'..'9' -> (0x1369 + (d - '1')).toChar().toString()
+        else -> d.toString()
+    }
+
+    /**
+     * The long-press numerals when no layout pack is loaded (the packs' `digits` list the same): the ten of each digit
+     * (፳ on 2, ...), ፲ on 1, ፻ and ፼ on 0.
+     */
+    fun alternatives(d: Char): List<String> = when (d) {
+        '0' -> listOf("፻", "፼")
+        in '1'..'9' -> listOf(primary(d), (0x1372 + (d - '1')).toChar().toString())
+        else -> emptyList()
+    }
+
+    /** Whether [c] is an Ethiopic number (digit, ten, hundred or ten thousand). */
+    fun isNumeral(c: Char): Boolean = c in '፩'..'፼'
+}
+
 /** Layouts: ASCII QWERTY (A1.2), Qubee, phonetic, the Fidel grid from core data (A1.4) and Arabic (ADR 0034). */
 object Layouts {
     /** Key descriptions in the UI language (ADR 0032); read when a layout is built. */
@@ -183,10 +222,6 @@ object Layouts {
     private fun ch(c: String, w: Float = 1f) = Key(KeyKind.CHAR, c, c, w)
     private fun chars(s: String) = s.map { ch(it.toString()) }
 
-    /** A row of letter keys; in Phonetic mode each carries the engine's output for it as a hint. */
-    private fun letterKeys(s: String, hints: PhoneticHints?) = if (hints == null) chars(s) else s.map { c ->
-        Key(KeyKind.CHAR, c.toString(), c.toString(), hint = hints.lower(c), shiftHint = hints.upper(c))
-    }
     private fun spacer(w: Float) = Key(KeyKind.CHAR, "", "", w)
     private fun backspace(w: Float = 1.5f) = Key(KeyKind.BACKSPACE, "⌫", weight = w, description = L.keyDelete)
     private fun enter(w: Float = 1.5f) = Key(KeyKind.ENTER, "", weight = w)
@@ -208,22 +243,33 @@ object Layouts {
         else -> Page.LETTERS
     }
 
-    private fun digitRow(ctx: LayoutContext): List<Key> = "1234567890".map { d ->
+    private const val DIGITS = "1234567890"
+
+    private fun digitRow(ctx: LayoutContext): List<Key> = DIGITS.map { digitKey(it, ctx) }
+
+    /** The key of ASCII digit [d] in the digit row (letters and symbols pages). */
+    private fun digitKey(d: Char, ctx: LayoutContext): Key {
         if (ctx.arabic) {
             // Western digits type by default (what most Arabic-script phones send); the Arabic-Indic digit is on long-press.
             val indic = ArabicKeys.indicDigit(d)
-            return@map Key(
+            return Key(
                 KeyKind.CHAR, d.toString(), d.toString(),
                 popup = listOf(PopupItem(indic, description = L.keyArabicNumeral.format(indic))),
                 hint = indic,
             )
         }
-        val alts = if (ctx.ethiopicNumerals && ctx.ethiopic) ctx.grid?.digits?.get(d.toString()).orEmpty() else emptyList()
-        Key(
-            KeyKind.CHAR, d.toString(), d.toString(),
-            popup = alts.map { PopupItem(it, description = L.keyEthiopicNumeral.format(it)) },
-            hint = alts.firstOrNull().orEmpty(),
-        )
+        if (ctx.ethiopicDigits) {
+            // ADR 0043: the Ethiopic numeral types; long-press offers the Western digit first (the hint), then the rest of
+            // the layout pack's alternatives (the tens on 1-9, hundred and ten thousand on the ፲ key).
+            val primary = EthiopicNumerals.primary(d)
+            val others = (ctx.grid?.digits?.get(d.toString()) ?: EthiopicNumerals.alternatives(d)).filter { it != primary }
+            return Key(
+                KeyKind.CHAR, primary, primary,
+                popup = listOf(PopupItem(d.toString())) + others.map { PopupItem(it, description = L.keyEthiopicNumeral.format(it)) },
+                popupColumns = 3, hint = d.toString(), description = L.keyEthiopicNumeral.format(primary),
+            )
+        }
+        return ch(d.toString())
     }
 
     /** One Arabic mark as a popup choice. */
@@ -258,7 +304,10 @@ object Layouts {
     private fun spaceKey(w: Float, ctx: LayoutContext) = Key(
         KeyKind.SPACE, ctx.indicator, " ", w,
         popup = ctx.picker, popupColumns = 1,
-        description = L.keySpaceMode.format(LanguageCatalog.spokenName(ctx.mode.language), LanguageCatalog.spokenKind(ctx.mode.kind)),
+        description = L.keySpaceMode.format(
+            LanguageCatalog.spokenName(ctx.mode.language),
+            if (ctx.mode.kind == LayoutKind.ENGLISH) ctx.latinLayout.label else LanguageCatalog.spokenKind(ctx.mode.kind),
+        ),
         draftBadge = ctx.draft,
     )
 
@@ -340,23 +389,57 @@ object Layouts {
             return fidel(ctx.grid, bottom)
         }
         if (ctx.arabic && profile.kind == FieldKind.TEXT) return arabic(ctx, bottom)
-        val shiftRow = if (ctx.mode.kind == LayoutKind.QUBEE) {
-            // The apostrophe (hudhaa) is part of Oromo words, so it lives on the primary layer (SD 7.3).
-            listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.25f, description = L.keyShift)) + chars("zxcvbnm") +
-                Key(KeyKind.CHAR, "'", "'", description = L.keyApostrophe) + backspace(1.25f)
-        } else {
-            listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.5f, description = L.keyShift)) + letterKeys("zxcvbnm", ctx.hints) + backspace()
+        val arrangement = ctx.latinLayout
+        val qubee = ctx.mode.kind == LayoutKind.QUBEE
+        // Qubee: no phonetic hints; the apostrophe (hudhaa) is part of Oromo words, so it lives on the primary layer (SD 7.3),
+        // after the bottom letters unless the arrangement already has one (Dvorak's top row).
+        val hints = if (qubee) null else ctx.hints
+        val shiftLetters = arrangementKeys(arrangement.rows[2], hints) +
+            if (qubee && !arrangement.hasApostrophe) listOf(Key(KeyKind.CHAR, "'", "'", description = L.keyApostrophe)) else emptyList()
+        // Shift and Delete share what the letters leave of the ten units (QWERTY: 1.5 each; never narrower than 1.25).
+        val side = maxOf(1.25f, (ROW_UNITS - shiftLetters.size) / 2)
+        val shiftRow = listOf(Key(KeyKind.SHIFT, "⇧", weight = side, description = L.keyShift)) + shiftLetters + backspace(side)
+        val top = padded(arrangementKeys(arrangement.rows[0], hints))
+        val rows = buildList {
+            if (ctx.numberRow) add(digitRow(ctx))
+            add(if (ctx.numberRow) top else withDigits(top, ctx))
+            add(padded(arrangementKeys(arrangement.rows[1], hints)))
+            add(shiftRow)
+            add(bottom)
         }
-        return KeyboardLayout(
-            Page.LETTERS,
-            listOf(
-                digitRow(ctx),
-                letterKeys("qwertyuiop", ctx.hints),
-                listOf(spacer(0.5f)) + letterKeys("asdfghjkl", ctx.hints) + listOf(spacer(0.5f)),
-                shiftRow,
-                bottom,
-            ),
-        )
+        return KeyboardLayout(Page.LETTERS, rows)
+    }
+
+    /** Letter keys of an arrangement row; its punctuation keys (Dvorak's `'` `,` `.`) carry their spoken names. */
+    private fun arrangementKeys(s: String, hints: PhoneticHints?): List<Key> = s.map { c ->
+        val t = c.toString()
+        when (c) {
+            '\'' -> Key(KeyKind.CHAR, t, t, description = L.keyApostrophe)
+            ',' -> Key(KeyKind.CHAR, t, t, description = L.keyComma)
+            '.' -> Key(KeyKind.CHAR, t, t, description = L.keyPeriod)
+            else -> if (hints == null) ch(t) else Key(KeyKind.CHAR, t, t, hint = hints.lower(c), shiftHint = hints.upper(c))
+        }
+    }
+
+    /** A letter row shorter than ten keys is centred between spacers, as QWERTY's middle row is. */
+    private fun padded(keys: List<Key>): List<Key> {
+        if (keys.size >= ROW_UNITS.toInt()) return keys
+        val pad = (ROW_UNITS - keys.size) / 2
+        return listOf(spacer(pad)) + keys + spacer(pad)
+    }
+
+    /**
+     * ADR 0043, number row off: the top letter row's first ten keys also offer the digits 1…0 (the digit key's choices
+     * first in the long-press popup, as Gboard does); the digit is the corner hint unless the key shows a phonetic hint.
+     */
+    private fun withDigits(row: List<Key>, ctx: LayoutContext): List<Key> {
+        var i = 0
+        return row.map { k ->
+            if (k.isSpacer || i >= DIGITS.length) return@map k
+            val dk = digitKey(DIGITS[i++], ctx)
+            val items = listOf(PopupItem(dk.label, dk.text, description = dk.spoken)) + dk.popup
+            k.copy(popup = items + k.popup, popupColumns = maxOf(k.popupColumns, items.size).coerceAtMost(5), hint = k.hint.ifEmpty { dk.label })
+        }
     }
 
     /**
@@ -371,7 +454,8 @@ object Layouts {
                 if (grid.twoKey) {
                     Key(KeyKind.FIDEL_CONSONANT, k.label, k.seriesId, popup = popup, description = k.label)
                 } else {
-                    Key(KeyKind.CHAR, k.label, k.tapText, popup = popup, description = k.label)
+                    // Long-press only (ADR 0043): the key shows what a tap types (the default form, ስ), its family in TalkBack.
+                    Key(KeyKind.CHAR, k.tapText, k.tapText, popup = popup, description = k.label)
                 }
             }
         }.toMutableList()
@@ -379,8 +463,10 @@ object Layouts {
         if (grid.twoKey && grid.vowelKeys.isNotEmpty()) {
             rows += listOf(grid.vowelKeys.map { Key(KeyKind.FIDEL_VOWEL, it.label, order = it.order, description = L.keyVowelOrder.format(it.order, it.label)) })
         }
+        val vowelRow = grid.twoKey && grid.vowelKeys.isNotEmpty()
         rows += listOf(bottom)
-        return KeyboardLayout(Page.LETTERS, rows, rowHeightDp = 42f)
+        // Without the vowel-order row the keys take its height (7 x 42 = 6 x 49: the keyboard keeps its size).
+        return KeyboardLayout(Page.LETTERS, rows, rowHeightDp = if (vowelRow) 42f else 49f)
     }
 
     /**
@@ -391,7 +477,8 @@ object Layouts {
         val rows = ArabicKeys.ROWS.map { row ->
             row.map { c -> Key(KeyKind.CHAR, c, c, popup = ArabicKeys.ALTERNATIVES[c].orEmpty().map { PopupItem(it) }) }
         }
-        return KeyboardLayout(Page.LETTERS, listOf(digitRow(ctx), rows[0], rows[1], rows[2] + backspace(1f), bottom))
+        val top = if (ctx.numberRow) listOf(digitRow(ctx), rows[0]) else listOf(withDigits(rows[0], ctx))
+        return KeyboardLayout(Page.LETTERS, top + listOf(rows[1], rows[2] + backspace(1f), bottom))
     }
 
     private fun bottomSymbols(profile: InputProfile, ctx: LayoutContext) = listOfNotNull(

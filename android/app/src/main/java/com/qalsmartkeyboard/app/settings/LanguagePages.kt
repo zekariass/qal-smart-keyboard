@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -32,6 +33,12 @@ import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.LanguageRules
 import com.qalsmartkeyboard.data.TypingLanguageSetting
 import com.qalsmartkeyboard.ime.AppLanguage
+import com.qalsmartkeyboard.ime.FidelVariant
+import com.qalsmartkeyboard.ime.KeyLayoutChoice
+import com.qalsmartkeyboard.ime.KeyLayouts
+import com.qalsmartkeyboard.ime.LatinLayout
+import com.qalsmartkeyboard.ime.toolbar.layoutDescription
+import com.qalsmartkeyboard.ime.toolbar.layoutName
 import java.util.Locale
 
 /*
@@ -70,10 +77,10 @@ internal fun languageMatches(query: String, code: String, native: String, uiName
  * takes for them), which must not be shown as "Latin": Afaan Oromoo types on Qubee, Arabic on its own Arabic keys.
  */
 @Composable
-internal fun layoutLabel(code: String, m: InputMode): String = when {
+internal fun layoutLabel(code: String, m: InputMode, latin: LatinLayout = LatinLayout.DEFAULT): String = when {
     LanguageRules.allowedModes(code).size > 1 -> modeLabel(m)
     code == "om" -> "Qubee"
-    code == "en" -> "QWERTY"
+    code == "en" -> latin.label // ADR 0043: the chosen arrangement
     code == "ar" -> stringResource(R.string.settings_layout_arabic)
     else -> modeLabel(m)
 }
@@ -121,7 +128,7 @@ fun LanguagesPage(
             val downTo = if (pos < enabled.lastIndex) settings.languages.indexOfFirst { it.languageCode == enabled[pos + 1].languageCode } else -1
             ListItem(
                 headlineContent = { Text(native) },
-                supportingContent = languageLine(native, uiName, layoutLabel(code, l.inputMode))?.let { { Text(it) } },
+                supportingContent = languageLine(native, uiName, layoutLabel(code, l.inputMode, LatinLayout.fromName(settings.latinLayouts[code]) ?: LatinLayout.DEFAULT))?.let { { Text(it) } },
                 trailingContent = {
                     Row {
                         IconButton(onClick = { onMove(code, upTo) }, enabled = upTo >= 0) {
@@ -190,7 +197,11 @@ fun AllLanguagesPage(
     }
 }
 
-/** One language: its layout (radio rows with a one-line description) and, for phonetic typing and Qubee, the suggestion strip. */
+/**
+ * One language: its layout (radio rows with a one-line description), its key layouts (ADR 0043: the Latin arrangement
+ * and, for am/ti, how the Fidel grid is typed; the same choices as the keyboard's Layout panel) and, for phonetic
+ * typing and Qubee, the suggestion strip.
+ */
 @Composable
 fun LanguagePage(
     language: TypingLanguageSetting,
@@ -198,6 +209,10 @@ fun LanguagePage(
     onMode: (InputMode) -> Unit,
     onShowSuggestions: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    latinLayout: LatinLayout = LatinLayout.DEFAULT,
+    onLatinLayout: (LatinLayout) -> Unit = {},
+    fidelVariant: FidelVariant = FidelVariant.DEFAULT,
+    onFidelVariant: (FidelVariant) -> Unit = {},
 ) {
     val code = language.languageCode
     SettingsScaffold(nativeLanguageName(code), onBack, modifier) {
@@ -207,7 +222,7 @@ fun LanguagePage(
         if (modes.size == 1) {
             // One layout (Qubee, QWERTY, Arabic): name it; a single radio button would offer no choice.
             SettingsHeader(stringResource(R.string.settings_layout_title))
-            SettingsNote(layoutLabel(code, modes[0]))
+            SettingsNote(layoutLabel(code, modes[0], latinLayout))
         } else if (modes.isNotEmpty()) {
             SettingsHeader(stringResource(R.string.settings_layout_title))
             Column(Modifier.selectableGroup()) {
@@ -216,6 +231,7 @@ fun LanguagePage(
                 }
             }
         }
+        KeyLayoutSection(code, latinLayout, onLatinLayout, fidelVariant, onFidelVariant)
         if (language.inputMode == InputMode.PHONETIC_LATIN_TO_NATIVE) {
             SettingsHeader(stringResource(R.string.settings_phonetic_title))
             SettingsSwitchRow(stringResource(R.string.settings_show_candidates), language.showTransliterationCandidates, onShowSuggestions)
@@ -233,6 +249,37 @@ fun LanguagePage(
                     },
                 ),
             )
+        }
+    }
+}
+
+/** ADR 0043: the language's key layouts, named and described as in the keyboard's Layout panel. */
+@Composable
+private fun KeyLayoutSection(
+    code: String,
+    latin: LatinLayout,
+    onLatin: (LatinLayout) -> Unit,
+    fidel: FidelVariant,
+    onFidel: (FidelVariant) -> Unit,
+) {
+    val context = LocalContext.current
+    if (KeyLayouts.hasFidel(code)) {
+        SettingsHeader(stringResource(R.string.settings_fidel_layout_title))
+        Column(Modifier.selectableGroup()) {
+            FidelVariant.entries.forEach { v ->
+                val choice = KeyLayoutChoice.Fidel(v)
+                SettingsRadioRow(layoutName(context, choice), selected = fidel == v, onSelect = { onFidel(v) }, summary = layoutDescription(context, choice))
+            }
+        }
+    }
+    if (KeyLayouts.hasLatinLayouts(code)) {
+        SettingsHeader(stringResource(R.string.settings_key_layout_title))
+        if (LanguageRules.allowedModes(code).size > 1) SettingsNote(stringResource(R.string.settings_key_layout_note))
+        Column(Modifier.selectableGroup()) {
+            LatinLayout.entries.forEach { l ->
+                val choice = KeyLayoutChoice.Latin(l)
+                SettingsRadioRow(l.label, selected = latin == l, onSelect = { onLatin(l) }, summary = layoutDescription(context, choice))
+            }
         }
     }
 }

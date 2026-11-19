@@ -3,6 +3,8 @@ package com.qalsmartkeyboard.ime.toolbar
 import android.text.InputType as T
 import android.view.inputmethod.EditorInfo as E
 import com.qalsmartkeyboard.ime.InputProfile
+import com.qalsmartkeyboard.ime.KeyLayoutChoice
+import com.qalsmartkeyboard.ime.LatinLayout
 import com.qalsmartkeyboard.ime.ai.AiAvailability
 import com.qalsmartkeyboard.ime.ai.AiTool
 import com.qalsmartkeyboard.ime.ai.AiToolEntry
@@ -113,6 +115,7 @@ class ToolsTest {
         override fun openTheme() { calls += "theme" }
         override fun openSettings() { calls += "settings" }
         override fun closeOtherPanels() { calls += "closeOthers" }
+        override fun applyLayout(choice: KeyLayoutChoice) { calls += "layout $choice" }
     }
 
     private class Rig(var context: ToolContext, var ai: List<AiToolEntry> = AiToolSet.tiles(AiAvailability())) {
@@ -130,6 +133,45 @@ class ToolsTest {
         assertEquals(ToolPanel.NONE, r.c.panel)
         assertEquals(2, r.changes)
         assertFalse(r.c.back())
+    }
+
+    // ---------------------------------------------------------------- the Layout panel (ADR 0043)
+
+    @Test fun theLayoutTileFollowsWritingModeWhereTheLanguageHasLayouts() {
+        val c = full.copy(layouts = true)
+        assertEquals(
+            listOf(
+                Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.EMOJI, Tool.VOICE, Tool.WORD_ART,
+                Tool.WRITING_MODE, Tool.LAYOUT, Tool.LANGUAGES, Tool.THEME, Tool.SETTINGS,
+            ),
+            tools(c),
+        )
+        assertFalse(Tool.LAYOUT in tools(full)) // Arabic: one layout, no tile
+        assertFalse(Tool.LAYOUT in ToolSet.shortcutCandidates(c).map { it.tool }) // a tile, not a bar shortcut
+    }
+
+    @Test fun theLayoutTileOpensItsPanelAChoiceAppliesAndClosesBackChangesNothing() {
+        val r = Rig(full.copy(layouts = true))
+        r.c.toggleTools()
+        r.c.activate(Tool.LAYOUT)
+        assertEquals(ToolPanel.LAYOUT, r.c.panel)
+        val dvorak = KeyLayoutChoice.Latin(LatinLayout.DVORAK)
+        r.c.chooseLayout(dvorak)
+        assertEquals(ToolPanel.NONE, r.c.panel)
+        assertEquals("layout $dvorak", r.host.calls.last())
+        // A stale choice after the panel closed does nothing.
+        r.c.chooseLayout(dvorak)
+        assertEquals(1, r.host.calls.count { it.startsWith("layout") })
+        // Back from the panel: the keys, nothing applied.
+        r.c.toggleTools()
+        r.c.activate(Tool.LAYOUT)
+        assertTrue(r.c.back())
+        assertEquals(ToolPanel.NONE, r.c.panel)
+        assertEquals(1, r.host.calls.count { it.startsWith("layout") })
+        // Not offered (Arabic): the tile does nothing.
+        val ar = Rig(full)
+        ar.c.activate(Tool.LAYOUT)
+        assertEquals(ToolPanel.NONE, ar.c.panel)
     }
 
     @Test fun backClosesAnOpenPanel() {

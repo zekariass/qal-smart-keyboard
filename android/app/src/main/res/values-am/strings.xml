@@ -450,8 +450,9 @@
     <string name="settings_suggestions_title">ጥቆማዎች</string>
     <string name="settings_word_suggestions_note">እየተየቡት ላለው ቃል ከአፋን ኦሮሞ መዝገበ ቃላት (ረቂቅ) የሚመጡ ቃላት። ጽሑፍዎ የሚቀየረው ጥቆማ ሲነኩ ብቻ ነው።</string>
     <string name="settings_numerals_title">ቁጥሮች</string>
-    <string name="settings_numerals_ethiopic">የግዕዝ ቁጥሮችም ይቅረቡ</string>
+    <string name="settings_numerals_ethiopic">ግዕዝ</string>
     <string name="settings_numerals_western">ምዕራባዊ</string>
+    <string name="settings_numerals_note">በአማርኛና በትግርኛ (ፊደል እና ፎነቲክ) የግዕዝ ቁጥሮች ይጻፋሉ፤ 1 2 3 ለማግኘት የቁጥር ቁልፉን ተጭነው ይያዙ። የቁጥር፣ የስልክና የቀን መስኮች፣ እንግሊዝኛና ሌሎች ቋንቋዎች ሁልጊዜ 1 2 3 ይጠቀማሉ።</string>
     <string name="settings_haptics">የንዝረት ግብረ መልስ</string>
     <string name="settings_key_preview">የቁልፍ ሲጫን ቅድመ እይታ</string>
     <string name="settings_pack_mobile_data">የቋንቋ ጥቅሎችን በሞባይል ዳታ አዘምን</string>
@@ -517,4 +518,10 @@
     <string name="settings_translate_search">ቋንቋዎችን ይፈልጉ</string>
     <string name="settings_translate_none_found">ምንም ቋንቋ አልተገኘም</string>
     <string name="settings_translate_offline_note">መተግበሪያው አንዴ በመስመር ላይ ከሆነ በኋላ ተጨማሪ ቋንቋዎች እዚህ ይታያሉ።</string>
+    <!-- Key layouts and the number row (ADR 0043). DRAFT (N9). -->
+    <string name="settings_key_layout_title">የቁልፍ አቀማመጥ</string>
+    <string name="settings_key_layout_note">ለዚህ ቋንቋ የላቲን ቁልፎች ሁሉ፣ ፎነቲክና እንግሊዝኛን ጨምሮ።</string>
+    <string name="settings_fidel_layout_title">የፊደል ቁልፎች</string>
+    <string name="settings_number_row">የቁጥር ረድፍ</string>
+    <string name="settings_number_row_summary">ከፊደላቱ በላይ ቁጥሮች። ሲጠፋ ቁጥሩን ለማግኘት የላይኛውን ረድፍ ቁልፍ ይያዙ።</string>
 </resources>

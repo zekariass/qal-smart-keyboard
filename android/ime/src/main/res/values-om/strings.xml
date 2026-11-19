@@ -589,4 +589,16 @@
     <string name="translate_search_clear">Barbaacha haqaa</string>
     <string name="translate_no_languages">Afaan tokkollee hin argamne</string>
     <string name="ai_output_more_languages">Afaanota dabalataa</string>
+    <!-- Key layouts and the Layout panel (ADR 0043). DRAFT (N9). -->
+    <string name="tool_layout">Tartiiba furtuu</string>
+    <string name="layout_panel_title">Tartiiba furtuu · %1$s</string>
+    <string name="layout_fidel_two_key">Furtuu lamaan</string>
+    <string name="layout_fidel_long_press">Dheeressee tuquun</string>
+    <string name="layout_desc_qwerty">Tartiiba baramaa</string>
+    <string name="layout_desc_azerty">Akkaataa Faransaayii: A fi Z gubbaa bitaa, M sarara gidduu irra</string>
+    <string name="layout_desc_qwertz">Akkaataa Jarmanii: Z fi Y bakka wal jijjiiran</string>
+    <string name="layout_desc_dvorak">Dubbachiiftuu fi qubeewwan baay\'ee fayyadan sarara gidduu irra, quba xiqqoo socho\'uuf</string>
+    <string name="layout_desc_colemak">Akka QWERTY, qubeewwan baay\'ee fayyadan gara sarara gidduutti ce\'an</string>
+    <string name="layout_desc_fidel_two_key">Dubbifamaa tuqaa, itti aansuun sagalee isaa; unka hundaaf dubbifamaa qabadhaa</string>
+    <string name="layout_desc_fidel_long_press">Tuquun unka dubbifamaa (ስ) barreessa; unkaalee biroof qabadhaa; sararri dubbachiiftuu hin jiru, furtuuleen dheeratu</string>
 </resources>

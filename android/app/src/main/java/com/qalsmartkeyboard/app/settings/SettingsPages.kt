@@ -42,6 +42,11 @@ fun PreferencesPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: Se
         SettingsHeader(stringResource(R.string.settings_prefs_keys))
         SettingsSwitchRow(stringResource(R.string.settings_haptics), settings.hapticsEnabled, { on -> onUpdate { it.copy(hapticsEnabled = on) } })
         SettingsSwitchRow(stringResource(R.string.settings_key_preview), settings.keyPreviewEnabled, { on -> onUpdate { it.copy(keyPreviewEnabled = on) } })
+        // ADR 0043: Gboard's "Number row".
+        SettingsSwitchRow(
+            stringResource(R.string.settings_number_row), settings.numberRow, { on -> onUpdate { it.copy(numberRow = on) } },
+            summary = stringResource(R.string.settings_number_row_summary),
+        )
         // The slider moves freely and is saved when let go, so a drag is one write (and one sync), not dozens.
         var height by remember(settings.keyHeightPercent) { mutableFloatStateOf(settings.keyHeightPercent.toFloat()) }
         val heightLabel = stringResource(R.string.settings_key_height, height.roundToInt())
@@ -88,12 +93,14 @@ fun PreferencesPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: Se
                 val ethiopic = n == NumeralStyle.ETHIOPIC
                 SettingsRadioRow(
                     title = stringResource(if (ethiopic) R.string.settings_numerals_ethiopic else R.string.settings_numerals_western),
-                    selected = settings.numeralStyle == n,
-                    onSelect = { onUpdate { it.copy(numeralStyle = n) } },
+                    // ADR 0043: the style in force (Ethiopic until one is picked); picking one records the choice.
+                    selected = settings.effectiveNumeralStyle == n,
+                    onSelect = { onUpdate { it.copy(numeralStyle = n, numeralStyleChosen = true) } },
                     summary = stringResource(if (ethiopic) R.string.settings_numerals_ethiopic_sample else R.string.settings_numerals_western_sample),
                 )
             }
         }
+        SettingsNote(stringResource(R.string.settings_numerals_note))
     }
 }
 

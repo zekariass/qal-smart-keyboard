@@ -453,8 +453,9 @@
     <string name="settings_suggestions_title">Suggestions</string>
     <string name="settings_word_suggestions_note">Words from the Afaan Oromoo dictionary (draft) for the word you are typing. Your text changes only when you tap a suggestion.</string>
     <string name="settings_numerals_title">Numerals</string>
-    <string name="settings_numerals_ethiopic">Ethiopic offered</string>
+    <string name="settings_numerals_ethiopic">Ethiopic</string>
     <string name="settings_numerals_western">Western</string>
+    <string name="settings_numerals_note">Ethiopic numerals type in Amharic and Tigrinya (Fidel and Phonetic); hold a number key for 1 2 3. Number, phone and date fields, English and the other languages always use 1 2 3.</string>
     <string name="settings_haptics">Haptic feedback</string>
     <string name="settings_key_preview">Key press preview</string>
     <string name="settings_pack_mobile_data">Update language packs on mobile data</string>
@@ -525,4 +526,10 @@
     <string name="settings_translate_search">Search languages</string>
     <string name="settings_translate_none_found">No language found</string>
     <string name="settings_translate_offline_note">More languages appear here once the app has been online.</string>
+    <!-- Key layouts and the number row (ADR 0043). -->
+    <string name="settings_key_layout_title">Key layout</string>
+    <string name="settings_key_layout_note">For all of this language\'s Latin keys, Phonetic and English included.</string>
+    <string name="settings_fidel_layout_title">Fidel keys</string>
+    <string name="settings_number_row">Number row</string>
+    <string name="settings_number_row_summary">Digits above the letters. When off, hold a key of the top row for its digit.</string>
 </resources>

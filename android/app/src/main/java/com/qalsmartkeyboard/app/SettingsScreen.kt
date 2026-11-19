@@ -38,6 +38,8 @@ import com.qalsmartkeyboard.ime.AppLanguage
 import com.qalsmartkeyboard.ime.ai.AiLanguages
 import com.qalsmartkeyboard.ime.ai.TranslationCatalog
 import com.qalsmartkeyboard.ime.theme.PremiumThemeAccess
+import com.qalsmartkeyboard.ime.FidelVariant
+import com.qalsmartkeyboard.ime.LatinLayout
 import com.qalsmartkeyboard.ime.R as ImeR
 import kotlinx.coroutines.launch
 
@@ -166,6 +168,10 @@ fun SettingsScreen(
                     onMode = { m -> scope.launch { repository.updateLanguage(code) { it.copy(inputMode = m) } } },
                     onShowSuggestions = { on -> scope.launch { repository.updateLanguage(code) { it.copy(showTransliterationCandidates = on) } } },
                     modifier = modifier,
+                    latinLayout = LatinLayout.fromName(settings.latinLayouts[code]) ?: LatinLayout.DEFAULT,
+                    onLatinLayout = { l -> scope.launch { repository.update { it.copy(latinLayouts = it.latinLayouts + (code to l.name)) } } },
+                    fidelVariant = FidelVariant.fromName(settings.fidelLayouts[code]) ?: FidelVariant.DEFAULT,
+                    onFidelVariant = { v -> scope.launch { repository.update { it.copy(fidelLayouts = it.fidelLayouts + (code to v.name)) } } },
                 )
             }
         }

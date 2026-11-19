@@ -122,6 +122,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val VERSION = intPreferencesKey("schema_version")
         private val LANGUAGES = stringPreferencesKey("languages")
         private val NUMERALS = stringPreferencesKey("numeral_style")
+        private val NUMERALS_CHOSEN = booleanPreferencesKey("numeral_style_chosen")
         private val THEME = stringPreferencesKey("theme")
         private val HAPTICS = booleanPreferencesKey("haptics_enabled")
         private val KEY_PREVIEW = booleanPreferencesKey("key_preview_enabled")
@@ -145,6 +146,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val AUTOCORRECT_EN = booleanPreferencesKey("autocorrect_en")
         private val AUTOCORRECT_OM = booleanPreferencesKey("autocorrect_om")
         private val LEARN_WORDS = booleanPreferencesKey("learn_words")
+        private val NUMBER_ROW = booleanPreferencesKey("number_row")
+        private val LATIN_LAYOUTS = stringPreferencesKey("latin_layouts")
+        private val FIDEL_LAYOUTS = stringPreferencesKey("fidel_layouts")
 
         private const val FIELD = "|"
         private const val LINE = "\n"
@@ -158,6 +162,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 ).joinToString(FIELD)
             }
             p[NUMERALS] = s.numeralStyle.name
+            p[NUMERALS_CHOSEN] = s.numeralStyleChosen
             p[THEME] = s.theme
             p[HAPTICS] = s.hapticsEnabled
             p[KEY_PREVIEW] = s.keyPreviewEnabled
@@ -180,6 +185,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[AUTOCORRECT_EN] = s.autocorrectEnglish
             p[AUTOCORRECT_OM] = s.autocorrectOromo
             p[LEARN_WORDS] = s.learnWords
+            p[NUMBER_ROW] = s.numberRow
+            p[LATIN_LAYOUTS] = encodeMap(s.latinLayouts)
+            p[FIDEL_LAYOUTS] = encodeMap(s.fidelLayouts)
         }
 
         /** Lenient decode: anything missing or unrecognised takes its default; the result is sanitised. */
@@ -203,6 +211,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             return KeyboardSettings(
                 languages = languages,
                 numeralStyle = enumOrNull<NumeralStyle>(p[NUMERALS]) ?: d.numeralStyle,
+                // Additive key (schema stays 1, ADR 0043). Older files stored the style on every write, so a stored WESTERN
+                // (the old default) is not a choice; ETHIOPIC was never a default, so it is one.
+                numeralStyleChosen = p[NUMERALS_CHOSEN] ?: (p[NUMERALS] == NumeralStyle.ETHIOPIC.name),
                 theme = ThemeIds.normalize(p[THEME]),
                 hapticsEnabled = p[HAPTICS] ?: d.hapticsEnabled,
                 keyPreviewEnabled = p[KEY_PREVIEW] ?: d.keyPreviewEnabled,
@@ -232,6 +243,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 autocorrectEnglish = p[AUTOCORRECT_EN] ?: d.autocorrectEnglish,
                 autocorrectOromo = p[AUTOCORRECT_OM] ?: d.autocorrectOromo,
                 learnWords = p[LEARN_WORDS] ?: d.learnWords,
+                // Additive keys (schema stays 1, ADR 0043): absent before them = number row on, QWERTY, two-key Fidel.
+                numberRow = p[NUMBER_ROW] ?: d.numberRow,
+                latinLayouts = decodeMap(p[LATIN_LAYOUTS]),
+                fidelLayouts = decodeMap(p[FIDEL_LAYOUTS]),
             ).sanitized()
         }
 

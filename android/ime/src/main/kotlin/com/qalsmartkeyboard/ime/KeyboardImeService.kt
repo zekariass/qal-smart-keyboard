@@ -76,6 +76,7 @@ import com.qalsmartkeyboard.ime.toolbar.SystemClipboardSource
 import com.qalsmartkeyboard.ime.toolbar.Tool
 import com.qalsmartkeyboard.ime.toolbar.ToolContext
 import com.qalsmartkeyboard.ime.toolbar.ToolHost
+import com.qalsmartkeyboard.ime.toolbar.LayoutPanelView
 import com.qalsmartkeyboard.ime.toolbar.ToolPanel
 import com.qalsmartkeyboard.ime.toolbar.ToolsController
 import com.qalsmartkeyboard.ime.toolbar.ToolsPanelView
@@ -110,6 +111,7 @@ class KeyboardImeService : InputMethodService() {
     private var wordArtBar: WordArtBar? = null
     private var voicePanel: VoicePanelView? = null
     private var toolsPanel: ToolsPanelView? = null
+    private var layoutPanel: LayoutPanelView? = null
     private var aiToolsPanel: AiToolsPanelView? = null
     private var clipPanel: ClipboardPanelView? = null
     private var seenToolPanel = ToolPanel.NONE
@@ -180,6 +182,7 @@ class KeyboardImeService : InputMethodService() {
         wordArtBar?.theme = t
         voicePanel?.theme = t
         toolsPanel?.theme = t
+        layoutPanel?.theme = t
         aiToolsPanel?.theme = t
         clipPanel?.theme = t
         aiView?.theme = t
@@ -221,6 +224,7 @@ class KeyboardImeService : InputMethodService() {
             { snapshot.current },
             saveLastMode = { lang, mode -> snapshot.launchUpdate { it.copy(lastModes = it.lastModes + (lang to mode)) } },
             saveWritingMode = { lang, mode -> snapshot.launchUpdate { it.copy(writingModes = it.writingModes + (lang to mode)) } },
+            saveSettings = { transform -> snapshot.launchUpdate(transform) },
         )
     }
     private val userDictionary by lazy { UserDictionary.get(applicationContext) }
@@ -379,6 +383,7 @@ class KeyboardImeService : InputMethodService() {
         profile = controller.profile,
         voiceOffered = voice.micVisible,
         writingModes = controller.writingModeOptions.isNotEmpty(),
+        layouts = controller.layoutOptions().size >= 2,
     )
 
     private val toolHost: ToolHost = object : ToolHost {
@@ -420,6 +425,10 @@ class KeyboardImeService : InputMethodService() {
         override fun openLanguages() = openCompanion(AiLink.LANGUAGES)
         override fun openTheme() = openCompanion(AiLink.THEMES)
         override fun openSettings() = openCompanion(AiLink.SETTINGS)
+        override fun applyLayout(choice: KeyLayoutChoice) {
+            controller.selectLayout(choice)
+            refreshViews()
+        }
         override fun closeOtherPanels() {
             controller.commitComposition()
             voice.cancel()
@@ -966,6 +975,14 @@ class KeyboardImeService : InputMethodService() {
             it.haptics = { controller.prefs.hapticsEnabled }
             toolsPanel = it
         }
+        val layoutView = LayoutPanelView(ui).also {
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            it.options = { controller.layoutOptions() }
+            it.onChoose = { c -> tools.chooseLayout(c) }
+            it.haptics = { controller.prefs.hapticsEnabled }
+            layoutPanel = it
+        }
         val aiToolsView = AiToolsPanelView(ui).also {
             it.visibility = View.GONE
             it.heightProvider = { k.preferredHeightPx() }
@@ -1015,6 +1032,7 @@ class KeyboardImeService : InputMethodService() {
             addView(wordArt, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(voiceView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(toolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(layoutView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(aiToolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(clipView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
@@ -1266,11 +1284,13 @@ class KeyboardImeService : InputMethodService() {
         toolsPanel?.visibility = if (toolPanel == ToolPanel.TOOLS) View.VISIBLE else View.GONE
         clipPanel?.visibility = if (toolPanel == ToolPanel.CLIPBOARD) View.VISIBLE else View.GONE
         aiToolsPanel?.visibility = if (toolPanel == ToolPanel.AI) View.VISIBLE else View.GONE
+        layoutPanel?.visibility = if (toolPanel == ToolPanel.LAYOUT) View.VISIBLE else View.GONE
         if (toolPanel != seenToolPanel) {
             seenToolPanel = toolPanel
             val rise = 8f * resources.displayMetrics.density
             when (toolPanel) {
                 ToolPanel.TOOLS -> toolsPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
+                ToolPanel.LAYOUT -> layoutPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
                 ToolPanel.AI -> aiToolsPanel?.let {
                     // The user opened the AI tools: the cached plan state is rendered at once; a throttled background
                     // refresh may update it (ADR 0007 D40, as the AI row did). No text is read or sent.
@@ -1312,6 +1332,7 @@ class KeyboardImeService : InputMethodService() {
             toolPanel == ToolPanel.TOOLS -> ui.getString(R.string.tools_title)
             toolPanel == ToolPanel.CLIPBOARD -> ui.getString(R.string.tool_clipboard)
             toolPanel == ToolPanel.AI -> ui.getString(R.string.top_bar_ai_open)
+            toolPanel == ToolPanel.LAYOUT -> ui.getString(R.string.layout_panel_title, LanguageCatalog.displayName(controller.language))
             picker == TranslatePicker.SOURCE -> ui.getString(R.string.translate_from_title)
             picker == TranslatePicker.DESTINATION -> ui.getString(R.string.translate_into_title)
             else -> null
