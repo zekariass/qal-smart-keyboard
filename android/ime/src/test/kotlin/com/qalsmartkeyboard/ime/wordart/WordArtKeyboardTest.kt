@@ -343,7 +343,8 @@ class WordArtKeyboardTest {
         val bar = WordArtBar(ctx).also { it.controller = r.controller }
         layout(bar)
         bar.render()
-        assertTrue(bar.fieldView.text.toString().startsWith("Abe"))
+        assertEquals("Abe", bar.fieldView.buffer!!.text)
+        assertEquals(3, bar.fieldView.buffer!!.cursor)
         assertEquals("Word Art text: Abe", bar.fieldView.contentDescription.toString())
         bar.doneView.performClick()
         assertEquals(EmojiMode.WORD_ART, r.controller.emoji.mode)
@@ -368,5 +369,141 @@ class WordArtKeyboardTest {
         assertEquals(WordArtCategory.BIRTHDAY, r.w.category)
         p.refresh()
         assertEquals(WordArt.stylesIn(WordArtCategory.BIRTHDAY).size, p.listView.adapter.count)
+    }
+
+    // ------------------------------------------------------------------ ADR 0038: a tap on a result inserts it
+
+    private fun rowFor(p: WordArtPanelView, styleLabel: String): View {
+        val i = (0 until p.listView.adapter.count).first { p.listView.adapter.getView(it, null, p.listView).contentDescription.toString().startsWith("$styleLabel:") }
+        return p.listView.adapter.getView(i, null, p.listView)
+    }
+
+    @Test fun tappingAStyleInsertsTheCompleteStyledTextAndThePanelStays() {
+        val r = Rig("hi ")
+        r.openWordArt()
+        r.typeInField("Selam")
+        r.controller.onKey(Key(KeyKind.ENTER, ""))
+        val p = panelFor(r)
+        val row = rowFor(p, "Sparkles")
+        assertTrue(row.isClickable)
+        row.performClick()
+        assertEquals("hi ✨ Selam ✨", r.editor.text.toString())
+        assertEquals(EmojiMode.WORD_ART, r.controller.emoji.mode) // Gboard-like: the panel stays for another one
+        p.refresh()
+        assertEquals(View.VISIBLE, p.toastView.visibility)
+        assertEquals("Inserted", p.toastView.text.toString())
+        // The same notice is not shown again on the next refresh after it hid.
+        p.toastView.visibility = View.GONE
+        p.refresh()
+        assertEquals(View.GONE, p.toastView.visibility)
+    }
+
+    @Test fun aRealTouchOnARowInsertsIt() {
+        // The bug: a focusable row in a ListView never got the item click on a touch, so nothing happened.
+        val r = Rig()
+        r.openWordArt()
+        r.typeInField("Abebe")
+        r.controller.onKey(Key(KeyKind.ENTER, ""))
+        val p = WordArtPanelView(ctx).also { it.controller = r.controller; it.heightProvider = { heightPx } }
+        // Attached to a window, like in the keyboard: the row's click is posted, as on a phone.
+        val activity = org.robolectric.Robolectric.buildActivity(android.app.Activity::class.java).setup().get()
+        activity.setContentView(p)
+        p.refresh()
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        val list = p.listView
+        val child = list.getChildAt(0)
+        assertNotNull("rows are laid out", child)
+        val loc = IntArray(2).also { child.getLocationInWindow(it) }
+        val listLoc = IntArray(2).also { list.getLocationInWindow(it) }
+        val x = (loc[0] - listLoc[0] + child.width / 2).toFloat()
+        val y = (loc[1] - listLoc[1] + child.height / 2).toFloat()
+        val t = android.os.SystemClock.uptimeMillis()
+        list.dispatchTouchEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0))
+        list.dispatchTouchEvent(MotionEvent.obtain(t, t + 50, MotionEvent.ACTION_UP, x, y, 0))
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertTrue("inserted: ${r.editor.text}", r.editor.text.isNotEmpty())
+        assertEquals(WordArtNotice.INSERTED, r.w.notice)
+    }
+
+    @Test fun aLongPressOpensTheLargePreviewInstead() {
+        val r = Rig()
+        r.openWordArt()
+        r.typeInField("Abebe")
+        r.controller.onKey(Key(KeyKind.ENTER, ""))
+        val p = panelFor(r)
+        assertTrue(rowFor(p, "Sparkles").performLongClick())
+        assertEquals("sparkles", r.w.selected?.id)
+        assertEquals("", r.editor.text.toString())
+    }
+
+    @Test fun aTapWithOnlyTheSampleShownInsertsNothingAndSaysWhy() {
+        val r = Rig()
+        r.openWordArt()
+        val p = panelFor(r)
+        rowFor(p, "Sparkles").performClick()
+        assertEquals("", r.editor.text.toString())
+        p.refresh()
+        assertEquals("Type your text first", p.toastView.text.toString())
+    }
+
+    @Test fun unavailableRowsAreNotClickable() {
+        val r = Rig()
+        r.openWordArt()
+        r.typeInField("ሰላም")
+        r.controller.onKey(Key(KeyKind.ENTER, ""))
+        r.w.selectCategory(WordArtCategory.LETTERS)
+        val p = panelFor(r)
+        val bold = rowFor(p, "Bold")
+        assertFalse(bold.isClickable)
+        bold.performClick()
+        assertEquals("", r.editor.text.toString())
+    }
+
+    @Test fun everyLaunchLanguageInsertsTheWholeResultWithItsMarks() {
+        val texts = mapOf(
+            "en" to "Abebe",
+            "am" to "ሰላም ሰ፟ው",
+            "ti" to "ከመይ ኣለኹም",
+            "om" to "Akkam ba'aa",
+            "ar" to "بِسْمِ الله",
+        )
+        for ((lang, text) in texts) {
+            for (id in listOf("sparkles", "spaced")) {
+                val r = Rig("> ")
+                r.openWordArt()
+                r.w.buffer.setText(text)
+                val style = WordArt.style(id)!!
+                val rendered = WordArt.render(style, text, r.w.options)
+                if (rendered.support == Support.NONE) {
+                    // A style that cannot serve this script (spacing would break Arabic joining) is never inserted.
+                    assertFalse("$lang $id", r.w.insert(style))
+                    continue
+                }
+                val expected = rendered.text
+                assertTrue("$lang $id", r.w.insert(style))
+                assertEquals("$lang $id", "> $expected", r.editor.text.toString())
+                // No combining mark was separated from its letter (a spacing style puts spaces between clusters only).
+                val inserted = r.editor.text.toString().removePrefix("> ")
+                for (i in 1 until inserted.length) {
+                    val t = Character.getType(inserted[i]).toByte()
+                    if (t == Character.NON_SPACING_MARK) assertFalse("$lang $id mark at $i follows a space", inserted[i - 1] == ' ' || inserted[i - 1] == ' ' || inserted[i - 1] == '·')
+                }
+                // Every mark of the text is still there, in order.
+                val marks = text.filter { Character.getType(it).toByte() == Character.NON_SPACING_MARK }
+                assertEquals("$lang $id", marks, inserted.filter { Character.getType(it).toByte() == Character.NON_SPACING_MARK })
+            }
+        }
+    }
+
+    @Test fun theTextCanBeEditedInTheMiddle() {
+        val r = Rig()
+        r.openWordArt()
+        r.typeInField("Abbe")
+        r.w.buffer.setSelection(2)
+        r.typeInField("e")
+        assertEquals("Abebe", r.w.text)
+        r.w.buffer.setSelection(1)
+        r.controller.onKey(Key(KeyKind.BACKSPACE, ""))
+        assertEquals("bebe", r.w.text)
     }
 }

@@ -555,4 +555,12 @@
     <string name="clip_history_off">Seenaan kuusaa garagalchaa cufameera</string>
     <string name="clip_paste_item">Maxxansaa: %1$s</string>
     <string name="clip_delete_item">Seenaa kuusaa garagalchaa irraa haqaa</string>
+    <!-- ADR 0038 (DRAFT) -->
+    <string name="editor_cut">Muraa</string>
+    <string name="editor_paste">Maxxansaa</string>
+    <string name="editor_select_all">Hunda filadhaa</string>
+    <string name="editor_dictate">Iddoo kana keessatti sagaleedhaan barreessaa</string>
+    <string name="editor_dictate_stop">Sagaleedhaan barreessuu dhaabaatii barreeffama galchaa</string>
+    <string name="wordart_open_preview">Agarsiisa guddaa banaa</string>
+    <string name="wordart_typing_label">Barreeffama Aartii Jechaa</string>
 </resources>

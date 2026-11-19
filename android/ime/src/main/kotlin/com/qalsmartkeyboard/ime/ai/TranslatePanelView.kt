@@ -22,6 +22,9 @@ import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.qalsmartkeyboard.ime.R
+import com.qalsmartkeyboard.ime.editor.EditorClipboard
+import com.qalsmartkeyboard.ime.editor.EditorView
+import com.qalsmartkeyboard.ime.editor.KeyboardTextField
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 import com.qalsmartkeyboard.ime.toolbar.Motion
@@ -38,6 +41,9 @@ import com.qalsmartkeyboard.ime.toolbar.ToolIcons
  *   "Translate into" page; × leaves translate mode.
  * - **Box:** the text to translate ("Type to translate"), what it came from (the selection, the last sentence), a clear ×
  *   or "Use last sentence" while empty, and the Translate button (the only thing that sends; Enter on the keys too).
+ *   The box is the keyboard's own text field (ADR 0038, [KeyboardTextField]): a tap anywhere in it moves the cursor
+ *   (bidi-aware for Arabic), a long press or double tap selects a word with handles and the Cut/Copy/Paste/Select all
+ *   row, and the keys insert and delete at the cursor.
  * - **Output:** nothing; a one-line reason with its link (signed out, update, plan, offline); the spinner with Cancel;
  *   the translation (in the destination's direction: right-to-left for Arabic) with its direction line, alternatives,
  *   Copy and Insert (Replace when it came from the field); or an error with its link and Retry where it helps.
@@ -64,6 +70,25 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
 
     /** Whether a tap gives haptic feedback (the keys' setting). */
     var haptics: () -> Boolean = { true }
+        set(value) {
+            field = value
+            inputField.haptics = value
+            inputField.editor.haptics = value
+        }
+
+    /** Before the user moves the cursor or edits in the box: the service finishes the open composition into it. */
+    var beforeEdit: () -> Unit
+        get() = inputField.editor.beforeEdit
+        set(value) {
+            inputField.editor.beforeEdit = value
+        }
+
+    /** The clipboard of the box's action row (sensitive clips are never offered or read). */
+    var clipboard: EditorClipboard
+        get() = inputField.clipboard
+        set(value) {
+            inputField.clipboard = value
+        }
 
     var theme: KeyboardTheme = ThemeCatalog.classic(
         (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) != android.content.res.Configuration.UI_MODE_NIGHT_YES,
@@ -90,10 +115,12 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
     private val closeButton = IconView(context, ToolIcon.CLOSE, 20f).also { button(it, R.string.translate_close) { onClose() } }
 
     // ---------------------------------------------------------------- box
-    private val inputLabel = text(11f).apply { visibility = GONE }
-    private val inputText = text(16f).apply {
-        maxLines = 3
-        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    /** The text to translate: an editable field with a cursor and a selection (ADR 0038). */
+    private val inputField = KeyboardTextField(context).apply {
+        editor.textSizeSp = 16f
+        editor.minLines = 1
+        editor.maxLines = 3
+        editor.setPadding(dp(4f), dp(8f), dp(4f), dp(8f))
     }
     private val clearButton = IconView(context, ToolIcon.CLOSE, 18f).also { button(it, R.string.ai_source_clear) { tap { controller?.clearInput() } } }
     private val sentenceChip = text(13f).apply {
@@ -107,19 +134,12 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
         setOnClickListener { tap { controller?.useLastSentence() } }
         asButton(this)
     }
-    private val inputColumn = LinearLayout(context).apply {
-        orientation = VERTICAL
-        gravity = Gravity.CENTER_VERTICAL
-        addView(inputLabel)
-        addView(inputText)
-        isFocusable = true
-    }
     private val inputBox = LinearLayout(context).apply {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         minimumHeight = dp(48f)
-        setPadding(dp(12f), dp(4f), dp(4f), dp(4f))
-        addView(inputColumn, LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        setPadding(dp(8f), dp(2f), dp(4f), dp(2f))
+        addView(inputField, LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(sentenceChip, LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         addView(clearButton, LayoutParams(dp(40f), dp(40f)))
     }
@@ -224,14 +244,16 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
             TranslateSource.SENTENCE -> if (c.replacesFieldText) context.getString(R.string.translate_source_sentence) else null
             else -> null
         }
-        inputLabel.visibility = if (label != null) VISIBLE else GONE
-        inputLabel.text = label.orEmpty()
-        inputLabel.setTextColor(theme.hintText)
-        // Typing happens at the end: the end of a long text stays visible, with a cursor mark.
-        val tail = if (t.length > TAIL_CHARS) "…" + t.substring(t.length - TAIL_CHARS) else t
-        inputText.text = if (empty) context.getString(R.string.translate_hint) else tail + CURSOR
-        inputText.setTextColor(if (empty) theme.hintText else theme.keyText)
-        inputColumn.contentDescription = if (empty) context.getString(R.string.translate_hint) else context.getString(R.string.translate_input_spoken, t)
+        // The box edits the controller's buffer in place: its cursor and selection survive every re-render, a language
+        // change, a swap and the language lists.
+        val hint = context.getString(R.string.translate_hint)
+        if (inputField.theme !== theme) inputField.theme = theme
+        inputField.label = label.orEmpty()
+        val e = inputField.editor
+        e.buffer = c.input.buffer
+        e.hint = hint
+        e.describe = { s -> if (s.isEmpty()) hint else context.getString(R.string.translate_input_spoken, s) }
+        e.contentDescription = if (empty) hint else context.getString(R.string.translate_input_spoken, t)
         inputBox.background = GradientDrawable().apply {
             cornerRadius = 16f * d
             setColor(theme.key)
@@ -568,14 +590,13 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
     internal val closeButtonView: View get() = closeButton
     internal val clearButtonView: View get() = clearButton
     internal val sentenceChipView: View get() = sentenceChip
-    internal val inputTextView: TextView get() = inputText
-    internal val inputLabelView: TextView get() = inputLabel
+    internal val inputField0: KeyboardTextField get() = inputField
+    internal val inputEditor: EditorView get() = inputField.editor
+    internal val inputLabelView: TextView get() = inputField.labelTextView
     internal val outputView: LinearLayout get() = output
 
     companion object {
         /** The translation scrolls past this height (dp), so the panel stays compact above the keys. */
         const val RESULT_MAX_DP = 104f
-        private const val TAIL_CHARS = 160
-        private const val CURSOR = "▏"
     }
 }

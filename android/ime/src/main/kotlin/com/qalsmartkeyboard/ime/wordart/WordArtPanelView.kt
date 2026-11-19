@@ -17,18 +17,23 @@ import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.qalsmartkeyboard.ime.KeyboardController
 import com.qalsmartkeyboard.ime.R
+import com.qalsmartkeyboard.ime.editor.EditorView
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 
 /**
  * The Word Art panel (ADR 0030): replaces the key area at the same height, like the emoji panel it is a tab of.
  *
- * Top: ABC (back to the keys), the text field (a tap brings the keys back to type into it) and the Greeting switch.
- * Then the category chips, and the list of style previews (a plain [ListView]: rows are built only when scrolled to, and
- * recycled). A tap on a style opens a large preview card with Insert and Copy. Built from ordinary views so TalkBack,
+ * Top: ABC (back to the keys), the text field (a tap puts the cursor there and brings the keys back to type into it,
+ * ADR 0038) and the Greeting switch. Then the category chips, and the list of style previews (a plain [ListView]: rows
+ * are built only when scrolled to, and recycled). A tap on a style inserts its complete styled text into the app's field
+ * and shows "Inserted" (the panel stays, like Gboard's emoji); a long press opens a large preview card with Insert and
+ * Copy. Built from ordinary views so TalkBack,
  * font scaling and RTL come for free; every colour is a [KeyboardTheme] token. Every preview carries a content
  * description of the plain text and the style name, because screen readers read the Unicode "bold" and "script" letters badly.
  */
@@ -56,15 +61,14 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
         it.contentDescription = context.getString(R.string.wordart_back_to_keys)
         it.setOnClickListener { controller?.emoji?.close() }
     }
-    private val textField = TextView(context).apply {
-        gravity = Gravity.CENTER_VERTICAL
-        textSize = 15f
-        setSingleLine()
-        ellipsize = TextUtils.TruncateAt.START
-        setPadding(dp(12f), 0, dp(12f), 0)
-        isFocusable = true
-        isClickable = true
-        setOnClickListener { controller?.emoji?.startWordArtTyping() }
+    /** The text, shown (not edited) while the panel is up: a tap puts the cursor there and starts typing (ADR 0038). */
+    private val textField = EditorView(context).apply {
+        textSizeSp = 15f
+        minLines = 1
+        maxLines = 1
+        editable = false
+        setPadding(dp(12f), dp(10f), dp(12f), dp(4f))
+        onTap = { controller?.emoji?.startWordArtTyping() }
     }
     private val greetingChip = chip(context.getString(R.string.wordart_greeting)).also {
         it.contentDescription = context.getString(R.string.wordart_greeting_desc)
@@ -127,6 +131,17 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
         )
     }
 
+    /** The short confirmation after a tap on a style ("Inserted"), over the bottom of the list. */
+    private val toast = TextView(context).apply {
+        textSize = 14f
+        gravity = Gravity.CENTER
+        setPadding(dp(16f), dp(8f), dp(16f), dp(8f))
+        visibility = GONE
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO // announced instead
+    }
+    private val hideToast = Runnable { toast.visibility = GONE }
+    private var shownNotice = 0
+
     private val adapter = StyleAdapter()
     private var entries: List<Entry> = emptyList()
     private var signature = ""
@@ -158,14 +173,17 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
             FrameLayout(context).apply {
                 addView(list, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
                 addView(card, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+                addView(
+                    toast,
+                    FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+                        .apply { bottomMargin = dp(10f) },
+                )
             },
             LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
         )
         list.adapter = adapter
-        list.setOnItemClickListener { _, _, position, _ ->
-            val e = entries.getOrNull(position) ?: return@setOnItemClickListener
-            controller?.emoji?.wordArt?.select(e.style)
-        }
+        // Rows handle their own taps: a focusable row never got the ListView's item click on a touch (ADR 0038).
+        list.itemsCanFocus = true
         restyle()
     }
 
@@ -208,8 +226,9 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
         setBackgroundColor(Color.TRANSPARENT)
         abc.background = rounded(t.special); abc.setTextColor(t.specialText)
         textField.background = rounded(t.key)
-        textField.setHintTextColor(t.hintText)
-        textField.setTextColor(t.keyText)
+        textField.applyTheme(t)
+        toast.background = rounded(t.popupBg, 20f, t.popupBorder)
+        toast.setTextColor(t.popupText)
         card.background = null
         cardTitle.setTextColor(t.hintText)
         cardPreview.setTextColor(t.keyText)
@@ -257,14 +276,36 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
         }
         paintChips()
         val text = w.text
-        textField.text = text
+        textField.buffer = w.buffer
         textField.hint = context.getString(R.string.wordart_field_hint)
+        textField.describe = { t -> if (t.isBlank()) context.getString(R.string.wordart_field_empty) else context.getString(R.string.wordart_field, t) }
         textField.contentDescription = if (text.isBlank()) context.getString(R.string.wordart_field_empty) else context.getString(R.string.wordart_field, text)
+        textField.invalidate()
+        showNotice(w)
         card.visibility = if (sel != null) VISIBLE else GONE
         list.visibility = if (sel != null) INVISIBLE else VISIBLE
         // Hide the (hidden) list from TalkBack while the card is up, and the card while the list is.
         list.importantForAccessibility = if (sel != null) IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else IMPORTANT_FOR_ACCESSIBILITY_AUTO
         if (sel != null) showCard(w, sel)
+    }
+
+    /** A tap on a style: its styled text goes into the app's field at once; the panel stays for another one. */
+    private fun insert(e: Entry) {
+        val w = controller?.emoji?.wordArt ?: return
+        if (e.rendered.support == Support.NONE) return
+        w.insert(e.style)
+    }
+
+    /** "Inserted" / "Type your text first" after a tap on the list, for a moment; announced once. */
+    private fun showNotice(w: WordArtController) {
+        if (w.selected != null || w.noticeSerial == shownNotice) return
+        shownNotice = w.noticeSerial
+        val msg = w.notice.messageRes()?.let { context.getString(it) } ?: return
+        toast.text = msg
+        toast.visibility = VISIBLE
+        removeCallbacks(hideToast)
+        postDelayed(hideToast, TOAST_MS)
+        announceForAccessibility(msg)
     }
 
     private fun showCard(w: WordArtController, style: WordArtStyle) {
@@ -309,6 +350,8 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
         private val name = TextView(context).apply { textSize = 11f; setSingleLine(); ellipsize = TextUtils.TruncateAt.END; importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
         private val preview = TextView(context).apply { textSize = 17f; maxLines = 3; ellipsize = TextUtils.TruncateAt.END; importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
 
+        private var entry: Entry? = null
+
         init {
             orientation = VERTICAL
             minimumHeight = dp(52f)
@@ -318,19 +361,45 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
             addView(preview, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             isFocusable = true
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
+            // Tap inserts; long press opens the large preview (Insert, Copy).
+            setOnClickListener { entry?.let { insert(it) } }
+            setOnLongClickListener {
+                val e = entry ?: return@setOnLongClickListener false
+                controller?.emoji?.wordArt?.select(e.style) == true
+            }
+            ViewCompat.setAccessibilityDelegate(
+                this,
+                object : AccessibilityDelegateCompat() {
+                    override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                        super.onInitializeAccessibilityNodeInfo(host, info)
+                        info.className = Button::class.java.name
+                        if (host.isEnabled) {
+                            info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat(AccessibilityNodeInfoCompat.ACTION_CLICK, context.getString(R.string.wordart_insert)))
+                            info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat(AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, context.getString(R.string.wordart_open_preview)))
+                        }
+                    }
+                },
+            )
         }
 
         fun bind(e: Entry) {
+            entry = e
             val ok = e.rendered.support != Support.NONE
             val latinOnly = context.getString(R.string.wordart_latin_only)
             val reason = if (e.style.kind == StyleKind.SPACING) context.getString(R.string.wordart_unavailable) else latinOnly
-            background = rounded(theme.key)
+            background = android.graphics.drawable.StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_pressed), rounded(theme.pressed))
+                addState(intArrayOf(), rounded(theme.key))
+            }
             name.setTextColor(theme.hintText)
             preview.setTextColor(theme.keyText)
             val label = WordArtStyleNames.label(context, e.style)
             name.text = if (ok) label else "$label · $reason"
             preview.text = if (ok) e.rendered.text else e.rendered.plain
             alpha = if (ok) 1f else 0.55f
+            isEnabled = ok
+            isClickable = ok
+            isLongClickable = ok
             contentDescription = if (ok) context.getString(R.string.wordart_row, label, e.rendered.plain)
             else context.getString(R.string.wordart_row_disabled, label, e.rendered.plain, reason)
         }
@@ -341,7 +410,8 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
     }
 
     /** The text field, for tests. */
-    internal val fieldView: TextView get() = textField
+    internal val fieldView: EditorView get() = textField
+    internal val toastView: TextView get() = toast
     internal val listView: ListView get() = list
     internal val cardView: View get() = card
     internal val previewView: TextView get() = cardPreview
@@ -351,4 +421,8 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
     internal val greetingView: TextView get() = greetingChip
     internal val abcView: TextView get() = abc
     internal fun chipFor(c: WordArtCategory): TextView = chips.getValue(c)
+
+    private companion object {
+        const val TOAST_MS = 1_500L
+    }
 }

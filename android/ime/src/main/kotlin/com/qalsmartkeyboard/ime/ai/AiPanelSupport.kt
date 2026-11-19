@@ -1,26 +1,27 @@
 package com.qalsmartkeyboard.ime.ai
 
-import com.qalsmartkeyboard.ime.ComposerUpdate
 import com.qalsmartkeyboard.ime.TextSink
-import java.text.BreakIterator
+import com.qalsmartkeyboard.ime.editor.EditorBuffer
+import com.qalsmartkeyboard.ime.editor.EditorClipboard
 import java.util.UUID
 
 /**
  * A text field inside an AI panel (ADR 0031): the text to work on, the user's notes, an e-mail being answered, a draft,
- * a name, or a result being edited. The keys type into it through [sink] (the same redirect the emoji search and Word
- * Art use), so every layout (Fidel, phonetic, Qubee, English) works. Typing appends at the end and backspace deletes the
- * last grapheme: an in-keyboard field has no cursor of its own.
+ * a name, or a result being edited. Since ADR 0038 it is an [EditorBuffer]: the keys type into it through [sink] (the
+ * same redirect the emoji search and Word Art use) **at its cursor**, so every layout (Fidel, phonetic, Qubee, English)
+ * works mid-text; the typing strip's [com.qalsmartkeyboard.ime.editor.EditorView] moves the cursor, selects, cuts, copies
+ * and pastes, and voice typing dictates at the cursor.
  *
  * The text is user content: it lives only here, in memory, while the panel is open; it is never logged or stored.
  * [limit] is the contract's limit in characters (code points, like the server); the field holds more (a pasted e-mail
  * may be longer) up to [HARD_CAP], and the panel shows the count and refuses to send while it is over the limit.
  */
 class AiTextField(val limit: Int, private val onChanged: () -> Unit = {}) {
-    private val buffer = StringBuilder()
-    private var composing = ""
+    /** The text, the cursor and the selection (ADR 0038). */
+    val buffer = EditorBuffer(HARD_CAP).also { it.onTextChanged = { onChanged() } }
 
     /** The committed text plus the composition in progress. */
-    val text: String get() = if (composing.isEmpty()) buffer.toString() else buffer.toString() + composing
+    val text: String get() = buffer.text
 
     val isBlank: Boolean get() = text.isBlank()
 
@@ -29,38 +30,17 @@ class AiTextField(val limit: Int, private val onChanged: () -> Unit = {}) {
 
     val overLimit: Boolean get() = length > limit
 
-    /** Replaces the whole text (a paste, the selection, a result to edit). Longer text is cut at [HARD_CAP]. */
+    /** Replaces the whole text (a paste, the selection, a result to edit); the cursor goes to the end. Cut at [HARD_CAP]. */
     fun set(value: String) {
-        buffer.setLength(0)
-        buffer.append(if (value.length > HARD_CAP) value.substring(0, HARD_CAP) else value)
-        composing = ""
-        onChanged()
+        val was = buffer.version
+        buffer.setText(value)
+        if (buffer.version == was) onChanged() // the same text again still counts as a change for the panels
     }
 
     fun clear() = set("")
 
-    val sink: TextSink = object : TextSink {
-        override fun apply(update: ComposerUpdate) {
-            if (update.deleteBefore > 0) deleteGraphemes(update.deleteBefore)
-            if (update.commit.isNotEmpty() && buffer.length + update.commit.length <= HARD_CAP) buffer.append(update.commit)
-            composing = update.composing
-            onChanged()
-        }
-
-        override fun sendEnterKey() {}
-        override fun performEditorAction(actionId: Int) {}
-        override fun wantsAutoCapital(capsFlags: Int) = false
-    }
-
-    private fun deleteGraphemes(n: Int) {
-        repeat(n) {
-            if (buffer.isEmpty()) return
-            val it = BreakIterator.getCharacterInstance()
-            it.setText(buffer.toString())
-            val start = it.preceding(buffer.length)
-            buffer.setLength(if (start == BreakIterator.DONE) 0 else start)
-        }
-    }
+    /** Where the keys write (at the cursor, replacing a selection). */
+    val sink: TextSink get() = buffer.sink
 
     override fun toString() = "AiTextField(length=$length, limit=$limit)"
 
@@ -68,6 +48,13 @@ class AiTextField(val limit: Int, private val onChanged: () -> Unit = {}) {
         /** Upper bound of what a field holds (a long paste is kept so the user sees it is too long, not silently cut). */
         const val HARD_CAP = 20_000
     }
+}
+
+/** The AI panels' clipboard for the keyboard's text fields' action row (the same rules: sensitive clips never read). */
+fun AiClipboard.forEditor(): EditorClipboard = object : EditorClipboard {
+    override fun canPaste() = availability() == ClipAvailability.TEXT
+    override fun paste(): String? = if (availability() == ClipAvailability.TEXT) readText() else null
+    override fun copy(text: String) = this@forEditor.copy(text)
 }
 
 /** What the clipboard holds, read from its description only (no content, no "pasted" notice). */

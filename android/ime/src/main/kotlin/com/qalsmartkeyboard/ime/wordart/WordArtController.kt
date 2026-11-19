@@ -1,7 +1,7 @@
 package com.qalsmartkeyboard.ime.wordart
 
-import com.qalsmartkeyboard.ime.ComposerUpdate
 import com.qalsmartkeyboard.ime.TextSink
+import com.qalsmartkeyboard.ime.editor.EditorBuffer
 
 /** What the Word Art state needs from the keyboard. */
 interface WordArtHost {
@@ -25,16 +25,27 @@ enum class WordArtNotice { NONE, COPIED, COPY_FAILED, INSERTED, NOTHING_TO_USE }
  * The Word Art panel's state and logic; no View code. The user's text lives here, not in the host field: while the text
  * field is being edited the keyboard controller routes the composer's output to [sink] (the same mechanism as the emoji
  * search), so every layout (Fidel, phonetic, Qubee, English) can type it, and nothing typed here is learned, logged or stored.
+ * The text is an [EditorBuffer] (ADR 0038): the keys write at its cursor, and the field can be tapped, selected and edited
+ * in the middle.
+ *
+ * A tap on a style ([insert]) commits the complete styled Unicode text into the host field through its InputConnection
+ * (the field's selection is replaced, like any commit) and the panel stays open with a short "Inserted", as Gboard does
+ * for emoji; Word Art only opens where emoji are allowed (plain text fields, never passwords).
  */
 class WordArtController(
     private val host: WordArtHost,
     private val onChanged: () -> Unit,
 ) {
-    private val buffer = StringBuilder()
-    private var composing = ""
+    /** The text, its cursor and selection (the keys write at the cursor). */
+    val buffer = EditorBuffer(MAX_LENGTH).also {
+        it.onTextChanged = {
+            notice = WordArtNotice.NONE
+            onChanged()
+        }
+    }
 
     /** The text as typed (the committed text plus the composition in progress). */
-    val text: String get() = buffer.toString() + composing
+    val text: String get() = buffer.text
 
     var category: WordArtCategory = WordArtCategory.POPULAR
         private set
@@ -47,6 +58,13 @@ class WordArtController(
         private set
 
     var notice: WordArtNotice = WordArtNotice.NONE
+        private set(value) {
+            field = value
+            if (value != WordArtNotice.NONE) noticeSerial++
+        }
+
+    /** Counts the notices given, so the panel shows (and announces) each one once. */
+    var noticeSerial: Int = 0
         private set
 
     private fun language(): String = host.language.takeIf { it in Greetings.LANGUAGES } ?: "en"
@@ -58,44 +76,21 @@ class WordArtController(
 
     /** Opens Word Art: the text starts as the host field's selection (if any), else empty. */
     fun begin() {
-        buffer.setLength(0)
-        composing = ""
         category = WordArtCategory.POPULAR
         selected = null
+        buffer.setText(host.selectedText()?.takeIf { it.isNotBlank() }.orEmpty())
         notice = WordArtNotice.NONE
-        host.selectedText()?.takeIf { it.isNotBlank() }?.let { buffer.append(it.take(MAX_LENGTH)) }
     }
 
     /** Leaves Word Art: nothing is kept. */
     fun end() {
-        buffer.setLength(0)
-        composing = ""
         selected = null
+        buffer.clear()
         notice = WordArtNotice.NONE
     }
 
-    /** The composer's output goes here while the text field is being typed into (see `KeyboardController`). */
-    val sink: TextSink = object : TextSink {
-        override fun apply(update: ComposerUpdate) {
-            if (update.deleteBefore > 0) deleteGraphemes(update.deleteBefore)
-            if (update.commit.isNotEmpty() && buffer.length + update.commit.length <= MAX_LENGTH) buffer.append(update.commit)
-            composing = update.composing
-            notice = WordArtNotice.NONE
-            onChanged()
-        }
-
-        override fun sendEnterKey() {}
-        override fun performEditorAction(actionId: Int) {}
-        override fun wantsAutoCapital(capsFlags: Int) = false
-    }
-
-    private fun deleteGraphemes(n: Int) {
-        repeat(n) {
-            if (buffer.isEmpty()) return
-            val parts = Graphemes.split(buffer.toString())
-            buffer.setLength(buffer.length - parts.last().length)
-        }
-    }
+    /** The composer's output goes here while the text field is being typed into (see `KeyboardController`): at the cursor. */
+    val sink: TextSink get() = buffer.sink
 
     fun selectCategory(c: WordArtCategory) {
         if (c == category) return
@@ -135,7 +130,10 @@ class WordArtController(
         return if (r.support == Support.NONE) null else r.text
     }
 
-    /** Inserts the styled text into the host field (replacing its selection) and closes the card. */
+    /**
+     * Inserts the complete styled text of [style] into the host field (replacing its selection): a tap on a style in the
+     * list, or Insert on the large card (which closes). Combining marks and clusters are kept as rendered.
+     */
     fun insert(style: WordArtStyle): Boolean {
         val out = output(style)
         if (out == null) {
