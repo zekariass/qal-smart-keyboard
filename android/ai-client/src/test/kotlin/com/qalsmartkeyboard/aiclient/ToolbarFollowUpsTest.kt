@@ -7,6 +7,7 @@ import com.qalsmartkeyboard.ime.ai.AiEditor
 import com.qalsmartkeyboard.ime.ai.AiPicker
 import com.qalsmartkeyboard.ime.ai.AiTaskKind
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
+import com.qalsmartkeyboard.ime.ai.TranslateController
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.Executor
@@ -85,7 +86,7 @@ class ToolbarFollowUpsTest {
         val toolbar = controller(actions())
         toolbar.onFieldStarted(InputProfile.DEFAULT, "com.example.app")
         assertEquals(0, server.requestCount)
-        toolbar.openPicker(AiPicker.DESTINATION)
+        toolbar.openPicker(AiPicker.TONE)
         val afterFirst = server.requestCount
         assertTrue("plan state and token are fetched", afterFirst in 1..2)
         repeat(5) {
@@ -181,17 +182,16 @@ class ToolbarFollowUpsTest {
         assertEquals("p1", last.lastFor("com.app${LastDestinationStore.MAX_APPS + 4}"))
     }
 
-    @Test fun choosingADestinationInTheToolbarIsRememberedForTheSourceLanguage() {
-        // ADR 0031: the direction control remembers the pair per source language (device-local settings), in every app;
-        // an enabled app rule still comes first.
+    @Test fun choosingADestinationInTheTranslatePanelIsRememberedForTheSourceLanguage() {
+        // ADR 0031 / 0037: the translation direction remembers the pair per source language (device-local settings), in
+        // every app; an enabled app rule still comes first.
         val (_, files) = store()
         val a = actions(rules = listOf(rule("com.mail", lang = "ti")), last = LastDestinationStore(files))
         val prefs = com.qalsmartkeyboard.ime.ai.AiLanguagePrefs.InMemory()
-        val toolbar = AiToolbarController(a, NoEditor(), { it() }, {}, keyboardLanguage = { "en" }, prefs = prefs)
+        val toolbar = TranslateController(a, NoEditor(), { it() }, {}, keyboardLanguage = { "en" }, prefs = prefs)
         toolbar.onFieldStarted(InputProfile.DEFAULT, "com.chat")
         assertEquals("English text goes into Amharic by default", "lang:am", toolbar.destination.id)
         toolbar.chooseDestination(a.destinations().first { it.id == "p1" })
-        toolbar.onKeyboardHidden()
         toolbar.onFieldStarted(InputProfile.DEFAULT, "com.chat")
         assertEquals("p1", toolbar.destination.id)
         toolbar.onFieldStarted(InputProfile.DEFAULT, "com.other")

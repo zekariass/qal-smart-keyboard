@@ -20,8 +20,8 @@ sealed interface AiPanel {
     class Failed(val task: AiTask?, val failure: AiFailure) : AiPanel
 }
 
-/** The toolbar's choosers: the direction control's two sides (ADR 0031) and the rewrite tone. */
-enum class AiPicker { NONE, SOURCE, DESTINATION, TONE }
+/** The toolbar's chooser: the rewrite tone. (Translation languages live in the translate panel, ADR 0037.) */
+enum class AiPicker { NONE, TONE }
 
 /** What a Replace or Insert did, for the user's feedback. */
 enum class AiApplied { REPLACED, INSERTED, INSERTED_ORIGINAL_CHANGED, FAILED }
@@ -51,7 +51,9 @@ interface AiEditor {
 }
 
 /**
- * The AI toolbar's state machine (A2.5), free of Views so it runs on the JVM. Rules:
+ * The AI toolbar's state machine (A2.5), free of Views so it runs on the JVM: the AI row's quick Grammar and Rewrite on
+ * the sentence or selection, and their review panel above the bar. Translation has its own panel and state
+ * ([TranslateController], ADR 0037); the row's Translate chip opens it. Rules:
  *
  * - **Explicit action only:** the only code that calls [AiActions.submit] is [onTask] (a tap) and
  *   [retry] (a tap). Typing, selection changes and focus never send text.
@@ -77,10 +79,6 @@ class AiToolbarController(
     private val newKey: () -> String = { UUID.randomUUID().toString() },
     private val onChanged: () -> Unit = {},
     private val clock: () -> Long = System::currentTimeMillis,
-    /** The keyboard language (the Auto source's likely language). */
-    private val keyboardLanguage: () -> String = { "en" },
-    /** The device-local direction memory and the preferred destination (settings). */
-    prefs: AiLanguagePrefs = AiLanguagePrefs.InMemory(),
 ) {
     var visible: Boolean = false
         private set
@@ -89,18 +87,10 @@ class AiToolbarController(
     var picker: AiPicker = AiPicker.NONE
         private set
 
-    /** The translation direction control (ADR 0031): source (Auto or explicit), ⇄, destination. */
-    val direction = TranslationDirection(prefs) { actions.destinations() }
-
-    /** The translation destination (the direction control's right side). */
-    val destination: AiDestination get() = direction.also { it.keyboardLanguage = keyboardLanguage() }.destination
-
     var tone: AiTone? = null
         private set
 
     val availability: AiAvailability get() = actions.availability
-
-    fun destinations(): List<AiDestination> = actions.destinations()
 
     private class Flight(val id: Long, val request: AiRequest, var call: AiCall? = null)
 
@@ -124,15 +114,7 @@ class AiToolbarController(
         discard()
         val was = visible
         visible = profile.allowsAi
-        if (visible) direction.start(keyboardLanguage(), actions.appRuleDestination(packageName))
         if (was != visible || panel !is AiPanel.Closed) onChanged()
-    }
-
-    /** The keyboard language changed: the Auto source follows it (and the default destination with it). */
-    fun onKeyboardLanguageChanged() {
-        if (!visible) return
-        direction.keyboardLanguage = keyboardLanguage()
-        onChanged()
     }
 
     /**
@@ -179,32 +161,6 @@ class AiToolbarController(
         onChanged()
     }
 
-    /** The destination side of the direction control; remembered for the current source language (device-local). */
-    fun chooseDestination(d: AiDestination) {
-        direction.keyboardLanguage = keyboardLanguage()
-        direction.chooseDestination(d)
-        picker = AiPicker.NONE
-        onChanged()
-    }
-
-    /** The source side: a language, or null for Auto (the server detects it). */
-    fun chooseSource(language: String?) {
-        direction.keyboardLanguage = keyboardLanguage()
-        direction.chooseSource(language)
-        picker = AiPicker.NONE
-        onChanged()
-    }
-
-    /** ⇄ of the direction control. */
-    fun swapDirection() {
-        if (!visible) return
-        onToolbarOpened()
-        direction.keyboardLanguage = keyboardLanguage()
-        direction.swap()
-        picker = AiPicker.NONE
-        onChanged()
-    }
-
     fun chooseTone(t: AiTone?) {
         tone = t
         picker = AiPicker.NONE
@@ -213,11 +169,12 @@ class AiToolbarController(
 
     // ---------------------------------------------------------------- actions (explicit taps)
 
-    /** A tap on Translate, Grammar or Rewrite. */
+    /** A tap on Grammar or Rewrite. */
     fun onTask(kind: AiTaskKind) {
         if (!visible) return
         onToolbarOpened()
         if (flight != null) return // one request at a time; Cancel aborts it
+        val task = taskFor(kind) ?: return
         picker = AiPicker.NONE
         lastKind = kind
         lastRequest = null
@@ -228,7 +185,6 @@ class AiToolbarController(
             onChanged()
             return
         }
-        val task = taskFor(kind) ?: return
         if (actions.availability.locks(task.kind)) {
             // The cached plan state says the plan does not include it: the upgrade link, and nothing is sent.
             panel = AiPanel.Failed(task, AiFailure.NotEntitled)
@@ -247,9 +203,11 @@ class AiToolbarController(
         }
     }
 
-    /** The toolbar's quick actions on the sentence or selection; the other kinds live in the Assist and Email panels. */
+    /**
+     * The toolbar's quick actions on the sentence or selection; translation is the translate panel's (ADR 0037), the other
+     * kinds live in the Assist and Email panels.
+     */
     private fun taskFor(kind: AiTaskKind): AiTask? = when (kind) {
-        AiTaskKind.TRANSLATE -> AiTask.Translate(destination, direction.manualSource)
         AiTaskKind.GRAMMAR -> AiTask.Grammar
         AiTaskKind.REWRITE, AiTaskKind.TONE -> AiTask.Rewrite(tone)
         else -> null

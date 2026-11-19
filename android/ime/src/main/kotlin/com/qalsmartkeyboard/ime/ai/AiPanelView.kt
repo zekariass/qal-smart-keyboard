@@ -312,7 +312,7 @@ class AiPanelView(context: Context) : LinearLayout(context) {
         val name = AiMessages.action(context, s.action)
         val direction = when (s.action) {
             AiAssistAction.TRANSLATE -> {
-                val from = s.result.sourceLanguage?.takeIf { it in AiLanguages.ALL }?.let(AiLanguages::name) ?: context.getString(R.string.ai_auto)
+                val from = s.result.sourceLanguage?.takeIf { it in AiLanguages.ALL }?.let(AiLanguages::name) ?: context.getString(R.string.translate_detect)
                 "$from → ${AiLanguages.name(s.output ?: "en")}"
             }
             else -> if (s.output == null) context.getString(R.string.ai_same_language) else context.getString(R.string.ai_in_language, AiLanguages.name(s.output))

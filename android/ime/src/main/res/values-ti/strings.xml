@@ -106,15 +106,21 @@
     <string name="ai_link_update">ኣሐድሱ</string>
 
     <!-- AI panels, direction control and e-mail writer -->
-    <string name="ai_auto">ባዕሉ</string>
-    <string name="ai_auto_detect">ባዕሉ ይፈልጥ</string>
     <string name="ai_translate_to">ናብ %1$s ተርጉሙ</string>
-    <string name="ai_translate_from">ካብ</string>
-    <string name="ai_translate_into">ናብ</string>
     <string name="ai_direction_source">ካብ %1$s ተርጉሙ። ቀይሩ</string>
     <string name="ai_direction_destination">ናብ %1$s ተርጉሙ። ቀይሩ</string>
     <string name="ai_direction_swap">ቋንቋታት ቀያይሩ</string>
-    <string name="ai_working_direction">%1$s ይትርጐም ኣሎ</string>
+    <string name="translate_detect">ፍለጥ</string>
+    <string name="translate_detect_language">ቋንቋ ፍለጥ</string>
+    <string name="translate_hint">ንምትርጓም ጽሓፉ</string>
+    <string name="translate_use_sentence">ናይ መወዳእታ ሓረግ</string>
+    <string name="translate_source_sentence">ናይ መወዳእታ ሓረግ</string>
+    <string name="translate_settings">ቅጥዕታት ትርጉም</string>
+    <string name="translate_close">ትርጉም ዕጸዉ</string>
+    <string name="translate_from_title">መበገሲ ቋንቋ</string>
+    <string name="translate_into_title">መዕለቢ ቋንቋ</string>
+    <string name="translate_input_spoken">ዝትርጎም ጽሑፍ፡ %1$s</string>
+    <string name="translate_direction_spoken">ካብ %1$s ናብ %2$s</string>
     <string name="ai_assist_chip">ሓገዝ</string>
     <string name="ai_assist_chip_description">ሓገዝ AI: ኣብ ዝተመረጸ ወይ ዝተቐድሐ ጽሑፍ ምብራህ፣ ምጥቕላል፣ ምምላስን ካልእን</string>
     <string name="ai_email_chip">ኢመይል</string>

@@ -23,6 +23,9 @@ enum class ToolIcon {
     TOOLS, BACK, CLOSE, TRANSLATE, AI, CLIPBOARD, EMOJI, MIC, SETTINGS, THEME, LANGUAGES, EMAIL, WORD_ART, WRITING_MODE,
     LOCK, CHECK, GRAMMAR, REWRITE,
 
+    // The translate panel (ADR 0037): swap languages, a list's caret, copy.
+    SWAP, EXPAND, COPY,
+
     // Special keys.
     SHIFT, SHIFT_ON, SHIFT_LOCKED, BACKSPACE, ENTER, SEARCH, SEND, GO, NEXT, PREVIOUS,
 }
@@ -211,6 +214,22 @@ object ToolIcons {
             Path().apply {
                 poly(4f, 20f, 4f, 16.5f, 15.5f, 5f, 19f, 8.5f, 7.5f, 20f, close = true)
                 poly(13f, 7.5f, 16.5f, 11f)
+            },
+        )
+        ToolIcon.SWAP -> Glyph(
+            Path().apply {
+                poly(4f, 8f, 19.5f, 8f); poly(15.5f, 4f, 19.5f, 8f, 15.5f, 12f)
+                poly(20f, 16f, 4.5f, 16f); poly(8.5f, 12f, 4.5f, 16f, 8.5f, 20f)
+            },
+        )
+        ToolIcon.EXPAND -> Glyph(Path().apply { poly(6.5f, 9.5f, 12f, 15f, 17.5f, 9.5f) })
+        ToolIcon.COPY -> Glyph(
+            Path().apply {
+                rect(8.5f, 8.5f, 20f, 20f, 2f)
+                moveTo(15.5f, 4f)
+                lineTo(6f, 4f)
+                quadTo(4f, 4f, 4f, 6f)
+                lineTo(4f, 15.5f)
             },
         )
         ToolIcon.SHIFT -> Glyph(shiftArrow(20f))

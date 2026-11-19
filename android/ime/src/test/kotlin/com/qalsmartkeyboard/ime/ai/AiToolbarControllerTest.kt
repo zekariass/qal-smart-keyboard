@@ -14,7 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiToolbarControllerTest {
-    private class H(initial: String = "", val actions: FakeAiActions = FakeAiActions(), prefs: AiLanguagePrefs = AiLanguagePrefs.InMemory()) {
+    private class H(initial: String = "", val actions: FakeAiActions = FakeAiActions()) {
         val ed = FakeEditor(initial)
         val adapter = InputConnectionAdapter { ed }.also { it.startSession(false, initial.length, initial.length) }
         var changes = 0
@@ -29,7 +29,6 @@ class AiToolbarControllerTest {
             newKey = { "key-${++n}" },
             onChanged = { changes++ },
             clock = { now },
-            prefs = prefs,
         ).also { it.onFieldStarted(InputProfile.DEFAULT, "com.example.chat") }
 
         val panel get() = c.panel
@@ -37,18 +36,15 @@ class AiToolbarControllerTest {
         fun failed() = (c.panel as AiPanel.Failed).failure
     }
 
-    private val mum = AiDestination("p1", "Mum", "am", isProfile = true, formality = "HONORIFIC")
-
     // ------------------------------------------------------------ flow
 
-    @Test fun translateSentenceThenReplace() {
+    @Test fun rewriteTheSentenceThenReplace() {
         val h = H("Hello. How are you")
-        h.c.chooseDestination(mum)
-        h.c.onTask(AiTaskKind.TRANSLATE)
+        h.c.onTask(AiTaskKind.REWRITE)
         assertTrue(h.panel is AiPanel.Working)
         val sent = h.actions.submitted.single().request
         assertEquals("How are you", sent.text)
-        assertEquals(AiTask.Translate(mum), sent.task)
+        assertEquals(AiTask.Rewrite(null), sent.task)
         assertEquals("key-1", sent.requestId)
         // Typing continues while the request is in flight: nothing blocks, no second call.
         h.ed.commitText("?")
@@ -87,7 +83,7 @@ class AiToolbarControllerTest {
 
     @Test fun insertKeepsTheOriginalAndAddsASpace() {
         val h = H("Good morning")
-        h.c.onTask(AiTaskKind.TRANSLATE)
+        h.c.onTask(AiTaskKind.REWRITE)
         h.actions.answer(0, FakeAiActions.ok("እንደምን አደርክ"))
         assertEquals(AiApplied.INSERTED, h.c.insert())
         assertEquals("Good morning እንደምን አደርክ", h.ed.text.toString())
@@ -106,7 +102,7 @@ class AiToolbarControllerTest {
 
     @Test fun alternativesCanBePickedAndCopied() {
         val h = H("Send it")
-        h.c.onTask(AiTaskKind.TRANSLATE)
+        h.c.onTask(AiTaskKind.REWRITE)
         h.actions.answer(0, FakeAiActions.ok("main", AiAlternative("to a woman", "alt-f")))
         h.c.selectAlternative(0)
         assertEquals("alt-f", h.review().shownText)
@@ -136,7 +132,7 @@ class AiToolbarControllerTest {
         val h = H("")
         h.ed.setComposingText("selam")
         h.adapter.onSelectionUpdate(5, 5, 0, 5)
-        h.c.onTask(AiTaskKind.TRANSLATE)
+        h.c.onTask(AiTaskKind.GRAMMAR)
         assertEquals("selam", h.actions.submitted.single().request.text)
     }
 
@@ -145,7 +141,6 @@ class AiToolbarControllerTest {
     @Test fun aSecondTapWhileInFlightIsIgnored() {
         val h = H("Hello")
         h.c.onTask(AiTaskKind.GRAMMAR)
-        h.c.onTask(AiTaskKind.TRANSLATE)
         h.c.onTask(AiTaskKind.REWRITE)
         assertEquals(1, h.actions.submitted.size)
         assertTrue(h.c.inFlight)
@@ -164,7 +159,7 @@ class AiToolbarControllerTest {
 
     @Test fun retryAfterANetworkErrorReusesTheKeyAndText() {
         val h = H("Hello")
-        h.c.onTask(AiTaskKind.TRANSLATE)
+        h.c.onTask(AiTaskKind.GRAMMAR)
         h.actions.answer(0, FakeAiActions.fail(AiFailure.Timeout))
         assertEquals(AiFailure.Timeout, h.failed())
         h.ed.commitText(" changed") // the editor moved on; the retry still sends the original
@@ -245,7 +240,7 @@ class AiToolbarControllerTest {
     @Test fun aHiddenToolbarNeverCallsAnything() {
         val h = H("secret")
         h.c.onFieldStarted(InputProfile.from(T.TYPE_CLASS_TEXT or T.TYPE_TEXT_VARIATION_PASSWORD, 0, false, 0), "x")
-        h.c.onTask(AiTaskKind.TRANSLATE)
+        h.c.onTask(AiTaskKind.GRAMMAR)
         h.c.openPicker(AiPicker.TONE)
         assertTrue(h.actions.submitted.isEmpty())
         assertEquals(0, h.actions.refreshCount)
@@ -255,19 +250,19 @@ class AiToolbarControllerTest {
     @Test fun nothingReadsTheEditorUntilATap() {
         val h = H("Some text")
         h.c.onFieldStarted(InputProfile.DEFAULT, "x")
-        h.c.openPicker(AiPicker.DESTINATION)
-        h.c.chooseDestination(mum)
+        h.c.openPicker(AiPicker.TONE)
+        h.c.chooseTone(AiTone.FRIENDLY)
         assertFalse(h.ed.calls.any { it == "getTextBeforeCursor" || it == "getSelectedText" })
         assertTrue(h.actions.submitted.isEmpty())
     }
 
-    @Test fun destinationDefaultsFromTheAppRule() {
-        // ADR 0031: an enabled app rule comes first; elsewhere the default for the source (English text: Amharic).
-        val a = FakeAiActions().apply { appRule = { pkg -> if (pkg == "com.example.chat") AiDestination("p1", "Mum", "am", true) else null } }
-        val h = H("x", a)
-        assertEquals("Mum", h.c.destination.label)
-        h.c.onFieldStarted(InputProfile.DEFAULT, "com.other")
-        assertEquals("Amharic", h.c.destination.label)
+    @Test fun translateIsNotAToolbarActionAnyMore() {
+        // ADR 0037: the row's Translate chip opens the translate panel; the toolbar itself neither reads nor sends for it.
+        val h = H("Hello there")
+        h.c.onTask(AiTaskKind.TRANSLATE)
+        assertTrue(h.panel is AiPanel.Closed)
+        assertTrue(h.actions.submitted.isEmpty())
+        assertFalse(h.ed.calls.any { it == "getTextBeforeCursor" || it == "getSelectedText" })
     }
 
     // ------------------------------------------------------------ graceful states
@@ -281,7 +276,7 @@ class AiToolbarControllerTest {
         for ((block, failure) in cases) {
             val a = FakeAiActions().apply { availability = AiAvailability(block = block) }
             val h = H("Hello", a)
-            h.c.onTask(AiTaskKind.TRANSLATE)
+            h.c.onTask(AiTaskKind.GRAMMAR)
             assertEquals(failure, h.failed())
             assertTrue(a.submitted.isEmpty())
             assertFalse(h.ed.calls.any { it == "getTextBeforeCursor" }) // nothing even read
@@ -306,7 +301,7 @@ class AiToolbarControllerTest {
         )
         for (f in failures) {
             val h = H("Hello")
-            h.c.onTask(AiTaskKind.TRANSLATE)
+            h.c.onTask(AiTaskKind.REWRITE)
             h.actions.answer(0, FakeAiActions.fail(f))
             assertSame(f, h.failed())
             assertEquals("Hello", h.ed.text.toString())
@@ -355,37 +350,15 @@ class AiToolbarControllerTest {
 
     @Test fun openingTheToolbarRefreshesOncePerCacheWindow() {
         val h = H("secret words")
-        h.c.openPicker(AiPicker.DESTINATION)
+        h.c.openPicker(AiPicker.TONE)
         h.c.openPicker(AiPicker.TONE)
         h.c.onTask(AiTaskKind.GRAMMAR)
         h.c.onFieldStarted(InputProfile.DEFAULT, "com.other") // another field: still inside the window
-        h.c.openPicker(AiPicker.DESTINATION)
+        h.c.openPicker(AiPicker.TONE)
         assertEquals(1, h.actions.refreshCount)
         h.now += AiToolbarController.REFRESH_WINDOW_MS
         h.c.openPicker(AiPicker.TONE)
         assertEquals(2, h.actions.refreshCount)
-    }
-
-    @Test fun choosingADestinationIsRememberedForTheSourceLanguage() {
-        // ADR 0031: the pair is remembered per source language (device-local), not per app.
-        val prefs = AiLanguagePrefs.InMemory()
-        val h = H("x", prefs = prefs)
-        h.c.openPicker(AiPicker.DESTINATION)
-        h.c.chooseDestination(mum)
-        assertEquals(mapOf("en" to "p1"), prefs.pairs)
-        h.c.onFieldStarted(InputProfile.DEFAULT, "com.other")
-        assertEquals("the remembered pair applies in every app", "Mum", h.c.destination.label)
-        assertTrue(h.actions.remembered.isEmpty())
-    }
-
-    @Test fun anExplicitSourceIsSentAndSwapTurnsTheDirectionAround() {
-        val h = H("Hello there")
-        assertTrue(h.c.direction.isAuto)
-        h.c.swapDirection()
-        assertEquals("am", h.c.direction.source)
-        assertEquals("en", h.c.destination.language)
-        h.c.onTask(AiTaskKind.TRANSLATE)
-        assertEquals(AiTask.Translate(AiLanguages.plain("en"), "am"), h.actions.submitted.single().request.task)
     }
 
     @Test fun aLockedActionShowsTheUpgradeLinkAndSendsNothing() {

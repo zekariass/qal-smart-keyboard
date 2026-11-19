@@ -22,6 +22,12 @@ interface FieldTyping {
 
     /** Typing ends (Enter on a one-line field, the emoji key): the open composition was already committed into [sink]. */
     fun done()
+
+    /**
+     * Enter on a one-line field ([newlineOnEnter] false), after the open composition was committed into [sink]. Ends the
+     * typing by default; the translate box (ADR 0037) translates instead.
+     */
+    fun submit() = done()
 }
 
 /**
@@ -348,7 +354,7 @@ class KeyboardController(
             KeyKind.BACKSPACE -> { send(ComposerKey.Backspace); refreshAutoCapital() }
             KeyKind.ENTER -> if (fieldTyping() != null) {
                 val f = fieldTyping()
-                if (f != null && f.newlineOnEnter) send(ComposerKey.Enter) else { send(ComposerKey.Commit); f?.done() }
+                if (f != null && f.newlineOnEnter) send(ComposerKey.Enter) else { send(ComposerKey.Commit); f?.submit() }
             } else if (emoji.typingWordArt) { send(ComposerKey.Commit); emoji.endWordArtTyping() } else if (emoji.searching) send(ComposerKey.Commit) else {
                 when (val a = profile.enterAction) {
                     EnterAction.Newline -> send(ComposerKey.Enter)

@@ -59,8 +59,16 @@ class DeepLinksTest {
         assertEquals(AiLink.LANGUAGES, DeepLinks.parse("LANGUAGES"))
     }
 
+    @Test fun theTranslatePanelsSettingsButtonOpensTranslateInto() {
+        // ADR 0037: the translate panel's settings button opens the settings' "Translate into" page.
+        for (account in listOf(out, AccountStatus.Guest, AccountStatus.Registered)) {
+            assertEquals(DeepLinkAction.SHOW_KEYBOARD_TRANSLATION, DeepLinks.route(AiLink.TRANSLATION, account, true))
+        }
+        assertEquals(AiLink.TRANSLATION, DeepLinks.parse("TRANSLATION"))
+    }
+
     @Test fun firstRunSetupIsNotInterruptedExceptByAnUpdate() {
-        for (l in listOf(AiLink.SIGN_IN, AiLink.AI_SETTINGS, AiLink.UPGRADE, AiLink.SETTINGS, AiLink.EMAIL_WRITER, AiLink.LANGUAGES, AiLink.THEMES)) {
+        for (l in listOf(AiLink.SIGN_IN, AiLink.AI_SETTINGS, AiLink.UPGRADE, AiLink.SETTINGS, AiLink.EMAIL_WRITER, AiLink.LANGUAGES, AiLink.THEMES, AiLink.TRANSLATION)) {
             assertEquals(DeepLinkAction.NONE, DeepLinks.route(l, out, false))
         }
         assertEquals(DeepLinkAction.OPEN_STORE, DeepLinks.route(AiLink.UPDATE_APP, out, false))

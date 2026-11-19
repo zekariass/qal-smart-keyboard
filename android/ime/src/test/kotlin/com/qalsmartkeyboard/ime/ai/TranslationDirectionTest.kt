@@ -84,4 +84,51 @@ class TranslationDirectionTest {
         assertTrue(d.isAuto)
         assertEquals("en", d.destination.language)
     }
+
+    // ------------------------------------------------------------ ADR 0037: the translate panel's lists and the detected source
+
+    @Test fun theSourceListStartsWithDetectThenTheCurrentAndKeyboardLanguages() {
+        val d = dir(keyboard = "ti")
+        assertEquals(listOf(null, "ti", "am", "om", "en", "ar"), d.sourceChoices())
+        d.chooseSource("ar")
+        assertEquals(listOf(null, "ar", "ti", "am", "om", "en"), d.sourceChoices())
+    }
+
+    @Test fun theDestinationListHasTheCurrentFirstThenLanguagesThenProfiles() {
+        val d = dir(keyboard = "am")
+        // The source language is left out; the profile (Amharic) too, since the source is Amharic.
+        assertEquals(listOf("lang:en", "lang:ti", "lang:om", "lang:ar"), d.destinationChoices().map { it.id })
+        val e = dir(keyboard = "en")
+        assertEquals(listOf("lang:am", "lang:ti", "lang:om", "lang:ar", "p1"), e.destinationChoices().map { it.id })
+        e.chooseDestination(mum)
+        assertEquals(listOf("p1", "lang:am", "lang:ti", "lang:om", "lang:ar"), e.destinationChoices().map { it.id })
+    }
+
+    @Test fun theDetectedSourceIsShownWhileAutoOnly() {
+        val d = dir(keyboard = "en")
+        assertEquals("en", d.likelySource(null))
+        assertEquals("om", d.likelySource("om"))
+        assertEquals("Detect · Afaan Oromoo", d.sourceLabel("Detect", "om"))
+        assertEquals("an unknown code is ignored", "Detect · English", d.sourceLabel("Detect", "xx"))
+        d.chooseSource("am")
+        assertEquals("an explicit source wins", "Amharic", d.sourceLabel("Detect", "om"))
+    }
+
+    @Test fun swapUsesTheDetectedSourceWhileAuto() {
+        val prefs = AiLanguagePrefs.InMemory()
+        val d = dir(prefs, keyboard = "en")
+        assertEquals("am", d.destination.language)
+        d.swap(detected = "ti")
+        assertEquals("am", d.source)
+        assertEquals("ti", d.destination.language)
+        assertEquals("lang:ti", prefs.pairs["am"])
+    }
+
+    @Test fun selfNamesAndDirection() {
+        assertEquals("አማርኛ", AiLanguages.selfName("am"))
+        assertEquals("العربية", AiLanguages.selfName("ar"))
+        assertTrue(AiLanguages.isRtl("ar"))
+        assertFalse(AiLanguages.isRtl("am"))
+        assertFalse(AiLanguages.isRtl(null))
+    }
 }

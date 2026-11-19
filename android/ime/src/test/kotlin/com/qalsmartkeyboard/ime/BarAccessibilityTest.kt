@@ -116,21 +116,16 @@ class BarAccessibilityTest {
         // The action chips are real views with the Button role and their names.
         h.layout()
         val chips = h.ai.actionsRow.getChildAt(0) as ViewGroup
-        // ADR 0031: the direction control comes first: its source side, the swap and the destination side are buttons.
-        val direction = chips.getChildAt(0) as ViewGroup
-        val names = (0 until direction.childCount).map { i ->
-            val v = direction.getChildAt(i) as TextView
+        // ADR 0037: Translate comes first (it opens the translate panel); every chip is a Button with its name.
+        val names = (0 until chips.childCount).map { i ->
+            val v = chips.getChildAt(i) as TextView
             val info = v.createAccessibilityNodeInfo()
             assertEquals(button, info.className)
             assertTrue(v.isClickable && v.hasOnClickListeners())
-            (v.contentDescription ?: v.text).toString()
+            v.contentDescription.toString()
         }
-        assertEquals(listOf("Translate from Auto · English. Change", "Swap languages", "Translate into Amharic. Change"), names)
-        val translate = chips.getChildAt(1) as TextView
-        val info = translate.createAccessibilityNodeInfo()
-        assertEquals(button, info.className)
-        assertEquals("the action names its result", "Translate to Amharic", translate.contentDescription.toString())
-        assertTrue(translate.isClickable && translate.hasOnClickListeners())
+        assertEquals("Translate", names.first())
+        assertTrue(names.containsAll(listOf("Email", "Grammar", "Rewrite")))
         assertTrue(h.click(Target.AiClose))
         assertFalse(h.bar.aiOpen)
     }
@@ -167,6 +162,15 @@ class BarAccessibilityTest {
         assertEquals("Translate", h.node(Target.Shortcut(Tool.TRANSLATE)).contentDescription.toString())
         assertEquals("Clipboard", h.node(Target.Shortcut(Tool.CLIPBOARD)).contentDescription.toString())
         assertEquals(listOf("tools", "tool SETTINGS"), h.events)
+    }
+
+    @Test fun theTranslateShortcutIsSelectedWhileTranslateModeIsOn() {
+        // ADR 0037: the active state (accent circle) tells TalkBack the shortcut's mode is on.
+        val h = H()
+        assertFalse(h.node(Target.Shortcut(Tool.TRANSLATE)).isSelected)
+        h.strip.setActiveTools(setOf(Tool.TRANSLATE))
+        h.layout()
+        assertTrue(h.node(Target.Shortcut(Tool.TRANSLATE)).isSelected)
     }
 
     @Test fun lockedShortcutsSayTheyAreLocked() {

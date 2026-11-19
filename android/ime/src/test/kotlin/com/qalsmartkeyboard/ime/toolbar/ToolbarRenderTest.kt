@@ -17,10 +17,21 @@ import com.qalsmartkeyboard.ime.LayoutKind
 import com.qalsmartkeyboard.ime.Suggestion
 import com.qalsmartkeyboard.ime.SuggestionKind
 import com.qalsmartkeyboard.ime.TextSink
+import com.qalsmartkeyboard.ime.ai.AiAlternative
+import com.qalsmartkeyboard.ime.ai.AiAvailability
+import com.qalsmartkeyboard.ime.ai.AiBlock
+import com.qalsmartkeyboard.ime.ai.AiFailure
+import com.qalsmartkeyboard.ime.ai.AiLanguages
+import com.qalsmartkeyboard.ime.ai.AiOutcome
+import com.qalsmartkeyboard.ime.ai.AiResult
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
 import com.qalsmartkeyboard.ime.ai.AiToolbarView
 import com.qalsmartkeyboard.ime.ai.EditorAiAccess
 import com.qalsmartkeyboard.ime.ai.FakeAiActions
+import com.qalsmartkeyboard.ime.ai.TranslateController
+import com.qalsmartkeyboard.ime.ai.TranslateLanguagesView
+import com.qalsmartkeyboard.ime.ai.TranslatePanelView
+import com.qalsmartkeyboard.ime.ai.TranslatePicker
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 import org.junit.Assume.assumeTrue
@@ -33,8 +44,9 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 /**
- * A developer aid, not a check: renders the bar in its states, the tools and clipboard panels and the keys to PNG files
- * for a visual review (ADR 0035). Runs only when `QAL_RENDER_DIR` names an output directory.
+ * A developer aid, not a check: renders the bar in its states, the tools and clipboard panels, the translate panel and
+ * its language list (ADR 0037) and the keys to PNG files for a visual review (ADR 0035). Runs only when
+ * `QAL_RENDER_DIR` names an output directory.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
@@ -53,6 +65,7 @@ class ToolbarRenderTest {
 
     private fun shoot(views: List<View>, out: File) {
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        views.forEach { (it.parent as? android.view.ViewGroup)?.removeView(it) }
         views.forEach { col.addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)) }
         col.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         col.layout(0, 0, col.measuredWidth, col.measuredHeight)
@@ -75,6 +88,59 @@ class ToolbarRenderTest {
         strip.micShown = true
         setup(strip, bar)
         return bar
+    }
+
+    /** The translate panel (ADR 0037): empty, typed, working, a result (Arabic too), an error, signed out, and a list. */
+    private fun translate(theme: KeyboardTheme, initial: String = "Hello there. How are you", setup: (TranslateController, FakeAiActions) -> Unit): TranslatePanelView {
+        val actions = FakeAiActions()
+        val ed = FakeEditor(initial)
+        val adapter = InputConnectionAdapter { ed }.also { it.startSession(false, initial.length, initial.length) }
+        val view = TranslatePanelView(ctx).also { it.theme = theme; it.visibility = View.VISIBLE }
+        val c = TranslateController(actions, EditorAiAccess(adapter) {}, { it() }, {}, { "am" }, onChanged = { view.render() }, onInputChanged = { view.renderInput() })
+        view.controller = c
+        c.onFieldStarted(InputProfile.DEFAULT, "x")
+        c.open()
+        setup(c, actions)
+        view.render()
+        return view
+    }
+
+    private fun type(c: TranslateController, t: String) = c.input.sink.apply(ComposerUpdate(commit = t))
+
+    private fun renderTranslate(theme: KeyboardTheme, keys: KeyboardSurface, out: File) {
+        val active = { s: CandidateStripView, _: KeyboardBar -> s.setActiveTools(setOf(Tool.TRANSLATE)) }
+        shoot(listOf(translate(theme) { _, _ -> }, bar(theme, active), keys), File(out, "translate-empty-${theme.id}.png"))
+        shoot(
+            listOf(
+                translate(theme) { c, _ -> type(c, "ሰላም ነህ? ነገ እንገናኝ") },
+                translate(theme) { c, _ -> type(c, "ሰላም ነህ?"); c.translate() },
+                translate(theme) { c, a ->
+                    type(c, "ሰላም ነህ? ነገ እንገናኝ")
+                    c.translate()
+                    a.answer(0, AiOutcome.Success(AiResult("Hi, how are you? See you tomorrow.", listOf(AiAlternative("formal", "Hello, how are you? I will see you tomorrow.")), sourceLanguage = "am")))
+                },
+                bar(theme, active),
+            ),
+            File(out, "translate-states-${theme.id}.png"),
+        )
+        shoot(
+            listOf(
+                translate(theme, initial = "") { c, a ->
+                    c.chooseDestination(AiLanguages.plain("ar"))
+                    type(c, "Good morning, my friend")
+                    c.translate()
+                    a.answer(0, AiOutcome.Success(AiResult("صباح الخير يا صديقي", language = "ar")))
+                },
+                translate(theme) { c, a -> type(c, "Hello"); c.translate(); a.answer(0, AiOutcome.Failure(AiFailure.Timeout)) },
+                translate(theme) { _, a -> a.availability = AiAvailability(block = AiBlock.SIGNED_OUT) },
+                bar(theme, active),
+            ),
+            File(out, "translate-more-${theme.id}.png"),
+        )
+        val list = TranslateLanguagesView(ctx).also { it.theme = theme; it.visibility = View.VISIBLE; it.heightProvider = { keys.preferredHeightPx() } }
+        translate(theme) { c, _ -> list.controller = c; c.openPicker(TranslatePicker.SOURCE) }
+        list.render()
+        shoot(listOf(bar(theme) { s, _ -> s.panelTitle = "Translate from" }, list), File(out, "translate-list-${theme.id}.png"))
     }
 
     @Test fun render() {
@@ -109,6 +175,7 @@ class ToolbarRenderTest {
                 File(out, "keys-${theme.id}.png"),
             )
             shoot(listOf(bar(theme) { s, _ -> s.panelTitle = "Tools" }, tools), File(out, "tools-${theme.id}.png"))
+            renderTranslate(theme, keys, out)
             shoot(listOf(bar(theme) { s, _ -> s.panelTitle = "Clipboard" }, clips), File(out, "clipboard-${theme.id}.png"))
         }
     }

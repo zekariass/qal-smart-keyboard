@@ -106,15 +106,22 @@
     <string name="ai_link_update">Update</string>
 
     <!-- AI panels, direction control and e-mail writer (ADR 0031) -->
-    <string name="ai_auto">Auto</string>
-    <string name="ai_auto_detect">Auto-detect</string>
     <string name="ai_translate_to">Translate to %1$s</string>
-    <string name="ai_translate_from">From</string>
-    <string name="ai_translate_into">Into</string>
     <string name="ai_direction_source">Translate from %1$s. Change</string>
     <string name="ai_direction_destination">Translate into %1$s. Change</string>
     <string name="ai_direction_swap">Swap languages</string>
-    <string name="ai_working_direction">Translating %1$s</string>
+    <!-- Translate panel (ADR 0037). -->
+    <string name="translate_detect">Detect</string>
+    <string name="translate_detect_language">Detect language</string>
+    <string name="translate_hint">Type to translate</string>
+    <string name="translate_use_sentence">Use last sentence</string>
+    <string name="translate_source_sentence">Last sentence</string>
+    <string name="translate_settings">Translation settings</string>
+    <string name="translate_close">Close translation</string>
+    <string name="translate_from_title">Translate from</string>
+    <string name="translate_into_title">Translate into</string>
+    <string name="translate_input_spoken">Text to translate: %1$s</string>
+    <string name="translate_direction_spoken">%1$s to %2$s</string>
     <string name="ai_assist_chip">Assist</string>
     <string name="ai_assist_chip_description">AI Assist: explain, summarise, reply and more on selected or copied text</string>
     <string name="ai_email_chip">Email</string>

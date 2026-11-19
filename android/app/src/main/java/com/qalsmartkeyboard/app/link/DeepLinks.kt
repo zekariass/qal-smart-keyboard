@@ -44,6 +44,9 @@ enum class DeepLinkAction {
 
     /** The theme picker, opened from the keyboard's Theme shortcut or tile (ADR 0035); Back returns to typing. */
     SHOW_KEYBOARD_THEMES,
+
+    /** The settings' "Translate into" page, opened from the translate panel's settings button (ADR 0037); Back returns to typing. */
+    SHOW_KEYBOARD_TRANSLATION,
 }
 
 /**
@@ -60,6 +63,7 @@ enum class DeepLinkAction {
  * | `EMAIL_WRITER` | the e-mail writer with the keyboard's inputs (ADR 0031) |
  * | `LANGUAGES` | the settings' Languages page (the keyboard's tools panel, ADR 0035) |
  * | `THEMES` | the theme picker (the keyboard's Theme shortcut or tile, ADR 0035) |
+ * | `TRANSLATION` | the settings' "Translate into" page (the translate panel's settings button, ADR 0037) |
  *
  * While first-run setup has not finished, every link except `UPDATE_APP` is ignored: the setup flow
  * has its own account step and is not interrupted. An unknown or missing extra does nothing.
@@ -79,6 +83,7 @@ object DeepLinks {
         link == AiLink.EMAIL_WRITER -> DeepLinkAction.SHOW_EMAIL_WRITER
         link == AiLink.LANGUAGES -> DeepLinkAction.SHOW_KEYBOARD_LANGUAGES
         link == AiLink.THEMES -> DeepLinkAction.SHOW_KEYBOARD_THEMES
+        link == AiLink.TRANSLATION -> DeepLinkAction.SHOW_KEYBOARD_TRANSLATION
         else -> DeepLinkAction.SHOW_PLANS
     }
 }
