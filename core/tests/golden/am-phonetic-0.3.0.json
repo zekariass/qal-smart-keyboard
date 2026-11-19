@@ -1,6 +1,6 @@
 {
   "profile": "am-phonetic",
-  "profile_version": "0.2.0",
+  "profile_version": "0.3.0",
   "status": "DRAFT",
   "profile_source": "language-data/profiles/am-phonetic-draft.json",
   "notation": "keystrokes: one character = Char key; Backspace / Space / Enter / Commit; Select:<n> = select_candidate(n). steps[].after = number of keystrokes applied; composing/commit/delete_before(default 0)/alternatives (candidates without the default) are checked after that keystroke. Per vector: composing, alternatives and committed are checked after the last keystroke; committed is the text left after applying all commits and deletions.",
@@ -429,14 +429,26 @@
       "committed": "ሸ "
     },
     {
-      "name": "capital-k-offers-kx",
+      "name": "capital-k-is-kx",
       "keystrokes": ["K", "Space", "K", "e"],
       "steps": [
-        {"after": 1, "composing": "ክ", "commit": "", "alternatives": ["ኽ"]}
+        {"after": 1, "composing": "ኽ", "commit": "", "alternatives": ["ክ"]}
       ],
-      "composing": "ከ",
-      "alternatives": ["ኸ"],
-      "committed": "ክ "
+      "composing": "ኸ",
+      "alternatives": ["ከ"],
+      "committed": "ኽ "
+    },
+    {
+      "name": "capitals-are-their-own-letters-and-digraphs-still-work",
+      "keystrokes": ["N", "a", "Space", "T", "e", "Space", "K", "Space", "P", "a", "Space", "n", "y", "a", "Space", "t", "'", "e", "Space", "k", "h", "Space", "n", "a", "Space", "p", "'", "a"],
+      "steps": [
+        {"after": 2, "composing": "ኛ", "commit": "", "alternatives": ["ና"]},
+        {"after": 5, "composing": "ጠ", "commit": "", "alternatives": ["ተ"]},
+        {"after": 10, "composing": "ጳ", "commit": "", "alternatives": ["ፓ"]}
+      ],
+      "composing": "ጳ",
+      "alternatives": [],
+      "committed": "ኛ ጠ ኽ ጳ ኛ ጠ ኽ ና "
     },
     {
       "name": "c-gives-the-ch-series",
@@ -446,10 +458,10 @@
       "committed": ""
     },
     {
-      "name": "capital-ejective-alternatives",
+      "name": "capital-t-is-the-ejective",
       "keystrokes": ["T", "e", "n", "a"],
-      "composing": "ተና",
-      "alternatives": ["ጠና"],
+      "composing": "ጠና",
+      "alternatives": ["ተና"],
       "committed": ""
     },
     {

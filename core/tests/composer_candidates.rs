@@ -18,7 +18,7 @@ const AM_PROFILE: &[u8] = include_bytes!("../../language-data/profiles/am-phonet
 const AM_LEXICON: &[u8] = include_bytes!("../../language-data/seed/artifacts/am.lexicon.qlx");
 const AM_BIGRAMS: &[u8] = include_bytes!("../../language-data/seed/artifacts/am.bigrams.qbg");
 const TI_LEXICON: &[u8] = include_bytes!("../../language-data/seed/artifacts/ti.lexicon.qlx");
-const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.2.0.json");
+const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.3.0.json");
 
 fn pack_of(lang: &str, rt: ResourceType, version: &str, artifact: &[u8]) -> Vec<u8> {
     let mut f = fields(version);

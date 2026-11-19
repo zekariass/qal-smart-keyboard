@@ -1,6 +1,6 @@
 {
   "profile": "ti-phonetic",
-  "profile_version": "0.3.0",
+  "profile_version": "0.4.0",
   "status": "DRAFT",
   "profile_source": "language-data/profiles/ti-phonetic-draft.json",
   "notation": "same as am-phonetic-0.2.0.json (see tests/golden/README.md); 0.3.0: a word-initial `a` gives ኣ (Tigrinya spelling), አ is its first alternative",
@@ -162,11 +162,18 @@
       "committed": ""
     },
     {
-      "name": "capital-k-offers-kx",
+      "name": "capital-k-is-kx",
       "keystrokes": ["K", "e"],
-      "composing": "ከ",
-      "alternatives": ["ኸ"],
+      "composing": "ኸ",
+      "alternatives": ["ከ"],
       "committed": ""
+    },
+    {
+      "name": "capitals-are-their-own-letters",
+      "keystrokes": ["N", "a", "Space", "T", "e", "Space", "K", "Space", "P", "a", "Space", "n", "a"],
+      "composing": "ና",
+      "alternatives": [],
+      "committed": "ኛ ጠ ኽ ጳ "
     },
     {
       "name": "word-initial-a-is-a-not-ae",

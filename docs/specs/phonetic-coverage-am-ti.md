@@ -1,7 +1,7 @@
 # Phonetic (Latin to Ge'ez) coverage, Amharic and Tigrinya
 
 Status: **DRAFT** for the native-speaker panel (gate G0, rule N9). Describes profiles
-`am-phonetic` **0.2.0** and `ti-phonetic` **0.3.0** (`language-data/profiles/*-phonetic-draft.json`), engine
+`am-phonetic` **0.3.0** and `ti-phonetic` **0.4.0** (`language-data/profiles/*-phonetic-draft.json`), engine
 `core/src/translit/`. Everything here is provisional: the panel may change any mapping, and every
 change is a data edit plus a new golden/coverage version, not code.
 
@@ -11,7 +11,7 @@ Machine-checked sources (this page mirrors them):
   (signed test pack, `KeyboardEngine`, no dictionary, `max_candidates` 5) by
   `core/tests/phonetic_coverage.rs`, which also derives checks from every rule of the profile
   (input alone, input + each vowel, input + `W` + each vowel), so a dropped or broken rule fails CI.
-- `core/tests/golden/am-phonetic-0.2.0.json`, `core/tests/golden/ti-phonetic-0.3.0.json`: behaviour vectors (live composition,
+- `core/tests/golden/am-phonetic-0.3.0.json`, `core/tests/golden/ti-phonetic-0.4.0.json`: behaviour vectors (live composition,
   alternatives, commits, backspace).
 
 ## 1. The report: "ሽ and ኽ are missing"
@@ -51,6 +51,8 @@ Tigrinya adds the ቐ series and the labiovelar series ዀ and ቘ.
 | ti 0.1.0 | 299 | 263 | 29 | 7 (ዓ ኧ ኈ ኊ ኋ ኌ ኍ) |
 | ti 0.2.0 | 299 | 297 | 2 (ኣ ኧ) | 0 |
 | ti 0.3.0 | 299 | 297 | 2 (አ ኧ) | 0 |
+| am 0.3.0 | 282 | 280 | 2 (ኣ ኧ) | 0 |
+| ti 0.4.0 | 299 | 297 | 2 (አ ኧ) | 0 |
 
 "Default" = some sequence gives exactly that letter as the composition; "alternative only" = it is
 offered in the candidate strip (the lexicon ranks known words first, ADR 0004 U6).
@@ -64,6 +66,12 @@ reachable on the language's own Fidel grid (`language-data/layouts/{am,ti}-fidel
 the Tigrinya spelling of initial /a/ (ኣብ, ኣነ, ኣደ, ኣስመራ; the ti seed lexicon and the UI glossary use it), with
 አ as the first alternative. 0.2.0 typed Amharic's አ (አብ) and offered ኣ only in the strip, so every such
 Tigrinya word needed a correction. Amharic is unchanged (`a` አ, alt ኣ). Every other input keeps its output.
+
+**am 0.3.0 / ti 0.4.0** (product owner, 2026-11-19): capitals are their own letters. `N` → ኝ series, `T` → ጥ
+series, `K` → ኽ series, `P` → ጵ series as the default (the plain ን/ት/ክ/ፕ is the alternative). `C`, `S`, `Z` stay folded
+(SERA reading as alternative) so names typed with a capital keep their letter; for the panel. Lowercase digraphs
+(`ny t' kh x p'`) are unchanged, so the coverage counts are the same. The keyboard never auto-capitalises in
+Phonetic mode; Shift shows each capital's letter as the key's hint. Golden vectors `capital-*` in both corpora.
 
 Out of scope (not required, not mapped): the ninth-order "oa" forms (ሇ, ⶀ...), ፘ ፙ ፚ, the
 Sebatbeit/Gurage/Bench letters (ᎀ..., ⶠ..., ꬁ..., 𞟠...), ዸ and ጘ series.
@@ -100,7 +108,7 @@ noise on the dev box).
 |---|---|---|
 | `x`: ሸ (am convention) or ኸ (ti profile 0.1.0) | am `x` = ሸ (was unmapped); ti keeps `x` = ኸ | No existing am output changes; ti ኸ is frequent and `x` was a deliberate ti choice. Panel to confirm the split. |
 | `c`: ቸ or ክ (English "cat") | `c` = ቸ | SERA and common keyboards; `c` was unmapped. |
-| Capitals: SERA meanings vs names typed with a capital (`Tesfaye`, `Selam`) | Default stays the folded lowercase; SERA reading offered as an alternative | Changing the default would break names and sentence-initial capitals. |
+| Capitals: SERA meanings vs names typed with a capital (`Tesfaye`, `Selam`) | 0.2.0: default stayed the folded lowercase. **am 0.3.0 / ti 0.4.0: `N T K P` are their own letters by default**; `C S Z` still folded | Owner's request; no auto-capitalisation in Phonetic, so only a deliberate Shift gives the capital letter. |
 | Lowercase `w` after a consonant: ወ or labialisation | Default stays ወ (`gwa` ግዋ); labialised letter first alternative | `w` is also the consonant ወ and 0.1.0 output must not change; the lexicon promotes known words such as ኳስ, ኋላ. |
 | Homophones ሰ/ሠ, ሀ/ሐ/ኀ, ጸ/ፀ, አ/ዐ | Common letter by default, others as alternatives, plus deterministic backtick sequences | Backtick is rare in text; on the phone it is on the symbols page (slow but certain). |
 | ኋ: labialised ሀ or ኀ | `hWa` gives ኋ (the ኀ-series labiovelar; `h` now maps to it), `hwa` offers it first; ሗ as alternative | ኋ is the standard spelling (ኋላ). |
