@@ -12,7 +12,7 @@
     <string name="onb_continue">ቀጽሉ</string>
 
     <string name="onb_welcome_title">እንቋዕ ናብ Qal Smart Keyboard ብደሓን መጻእኩም</string>
-    <string name="onb_welcome_intro">ኪቦርድ ንኣምሓርኛ፣ ትግርኛ፣ ኦሮምኛን እንግሊዝኛን። ምድላው ኣስታት ሓደ ደቒቕ ይወስድ።</string>
+    <string name="onb_welcome_intro">ኪቦርድ ንኣምሓርኛ፣ ትግርኛ፣ ኣፋን ኦሮሞን እንግሊዝኛን። ምድላው ኣስታት ሓደ ደቒቕ ይወስድ።</string>
     <string name="onb_privacy_title">ብሕታውነትኩም</string>
     <string name="onb_privacy_offline">ምጽሓፍ ብዘይ ኢንተርነት ምሉእ ብምሉእ ይሰርሕ። ንምጽሓፍ ኣካውንት ኣየድልየኩምን።</string>
     <string name="onb_privacy_keystrokes">ዝጸሓፍኩምዎ ኣብ መሳርሒኹም ይጸንሕ። እቲ ኪቦርድ ነቲ እትጽሕፉሉ ዘለኹም ኣፕ ጥራይ የሕልፎ፤ ኣይዕቅቦን ናብ ዝኾነ ቦታ ኣይሰዶን።</string>
@@ -52,7 +52,7 @@
 
     <string name="lang_am">ኣምሓርኛ (አማርኛ)</string>
     <string name="lang_ti">ትግርኛ</string>
-    <string name="lang_om">ኦሮምኛ (Afaan Oromoo)</string>
+    <string name="lang_om">ኣፋን ኦሮሞ (Afaan Oromoo)</string>
     <string name="lang_en">እንግሊዝኛ (English)</string>
     <string name="lang_ar">ዓረብኛ (العربية)</string>
     <string name="lang_am_short">ኣምሓርኛ</string>
@@ -385,9 +385,9 @@
     <string name="email_share">ኣካፍሉ</string>
     <string name="email_paste_hint">ቅድሚ ምልኣኽ ነቶም ዝጎልሑ ክፍልታት ምልኡ። ድሕሪ ምቕዳሕ፣ ናብ ኣፕ ኢመይልኩም ተመሊስኩም ለጥፉ።</string>
     <string name="wordart_app_title">ስነ-ጥበብ ቃላት</string>
-    <string name="wordart_app_intro">ሽም ወይ መልእኽቲ ጽሓፉ፣ ቅዲ ምረጹ፣ ድሕሪኡ ቅድሕዎ ወይ ኣካፍልዎ። ምስ ኣምሓርኛ፣ ትግርኛ፣ ኦሮምኛን እንግሊዝኛን ይሰርሕ።</string>
+    <string name="wordart_app_intro">ሽም ወይ መልእኽቲ ጽሓፉ፣ ቅዲ ምረጹ፣ ድሕሪኡ ቅድሕዎ ወይ ኣካፍልዎ። ምስ ኣምሓርኛ፣ ትግርኛ፣ ኣፋን ኦሮሞን እንግሊዝኛን ይሰርሕ።</string>
     <string name="wordart_app_field_label">ጽሑፍኩም</string>
-    <string name="wordart_app_draft_note">ቃላት ሰላምታ ብኣምሓርኛ፣ ትግርኛን ኦሮምኛን ብተዛረብቲ ቋንቋ ኣደ ክሳብ ዝምርመሩ ንድፊ እዮም።</string>
+    <string name="wordart_app_draft_note">ቃላት ሰላምታ ብኣምሓርኛ፣ ትግርኛን ኣፋን ኦሮሞን ብተዛረብቲ ቋንቋ ኣደ ክሳብ ዝምርመሩ ንድፊ እዮም።</string>
     <string name="wordart_app_sample_note">ኣብነት ሽም ይርአ ኣሎ። ኣብ ላዕሊ ናትኩም ጽሑፍ ጽሓፉ።</string>
     <string name="wordart_app_copied">ተቐዲሑ</string>
     <string name="wordart_app_share">ኣካፍሉ</string>
@@ -396,7 +396,7 @@
     <string name="wordart_app_share_desc">%1$s ኣካፍሉ</string>
     <string name="wordart_app_lang_am">ኣምሓርኛ</string>
     <string name="wordart_app_lang_ti">ትግርኛ</string>
-    <string name="wordart_app_lang_om">ኦሮምኛ</string>
+    <string name="wordart_app_lang_om">ኣፋን ኦሮሞ</string>
     <string name="wordart_app_lang_en">እንግሊዝኛ</string>
 
     <!-- Settings screen -->
