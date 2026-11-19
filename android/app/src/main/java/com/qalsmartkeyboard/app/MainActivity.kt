@@ -86,6 +86,8 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.qalsmartkeyboard.ime.ai.TranslationCatalog
+import com.qalsmartkeyboard.ime.ai.TranslationLanguages
 
 @OptIn(FlowPreview::class)
 class MainActivity : ComponentActivity() {
@@ -116,6 +118,20 @@ class MainActivity : ComponentActivity() {
 
     // The keyboard toolbar's link (ADR 0007 D40), consumed once the screen state is known.
     private var pendingLink by mutableStateOf<AiLink?>(null)
+
+    /**
+     * ADR 0040: the translation catalogue for "Translate into": the device's copy, refreshed when online (throttled, ETag),
+     * on a background thread. The keyboard's names of these languages read [TranslationLanguages.current].
+     */
+    private suspend fun loadTranslationCatalog(): TranslationCatalog = withContext(Dispatchers.IO) {
+        try {
+            val actions = com.qalsmartkeyboard.app.ai.AiGraph.get(applicationContext).actions
+            actions.refreshCatalog()
+            actions.translationCatalog().also { TranslationLanguages.current = it }
+        } catch (e: Exception) {
+            TranslationCatalog.BUNDLED // the AI client could not start (Keystore): the keyboard languages only
+        }
+    }
 
     // ADR 0032: the app's UI language below Android 13 (13+: the platform applies it and recreates the activity).
     override fun attachBaseContext(newBase: Context) {
@@ -417,6 +433,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             },
                             coreVersion = coreVersion,
+                            translationCatalog = ::loadTranslationCatalog,
                         )
                     }
                 }
