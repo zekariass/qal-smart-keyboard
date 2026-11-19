@@ -580,4 +580,16 @@
     <string name="translate_search_clear">Clear search</string>
     <string name="translate_no_languages">No language found</string>
     <string name="ai_output_more_languages">More languages</string>
+    <!-- Key layouts and the Layout panel (ADR 0043). -->
+    <string name="tool_layout">Layout</string>
+    <string name="layout_panel_title">Layout · %1$s</string>
+    <string name="layout_fidel_two_key">Two-key grid</string>
+    <string name="layout_fidel_long_press">Long-press grid</string>
+    <string name="layout_desc_qwerty">The usual layout</string>
+    <string name="layout_desc_azerty">French style: A and Z top left, M on the middle row</string>
+    <string name="layout_desc_qwertz">German style: Z and Y swapped</string>
+    <string name="layout_desc_dvorak">Vowels and common letters on the middle row, for less finger travel</string>
+    <string name="layout_desc_colemak">Like QWERTY, with the most used letters moved to the middle row</string>
+    <string name="layout_desc_fidel_two_key">Tap a consonant, then its vowel order; hold a consonant for all its forms</string>
+    <string name="layout_desc_fidel_long_press">A tap types the consonant form (ስ), hold for the other orders; no vowel row, taller keys</string>
 </resources>

@@ -21,6 +21,9 @@ import kotlin.math.sin
  */
 enum class ToolIcon {
     TOOLS, BACK, CLOSE, TRANSLATE, CLIPBOARD, EMOJI, MIC, SETTINGS, THEME, LANGUAGES, EMAIL, WORD_ART, WRITING_MODE,
+
+    /** ADR 0043: the key layouts: three rows of key outlines, offset like a keyboard's. */
+    LAYOUT,
     LOCK, CHECK, GRAMMAR, REWRITE,
 
     /** The AI entry (ADR 0041): an "AI" wordmark in a rounded outline, drawn as paths so it never scales with the font. */
@@ -348,6 +351,14 @@ object ToolIcons {
                 for (x in floatArrayOf(6.5f, 9.75f, 13f, 16.25f)) circle(x + 0.75f, 9.25f, 0.95f)
                 for (x in floatArrayOf(6.5f, 17.5f)) circle(x, 12.25f, 0.95f)
                 for (x in floatArrayOf(9.75f, 12f, 14.25f)) circle(x, 12.25f, 0.95f)
+            },
+        )
+        ToolIcon.LAYOUT -> Glyph(
+            Path().apply { poly(7f, 20f, 17f, 20f) },
+            // Filled keys (outlines would merge at icon size): three, then two offset like a keyboard's rows.
+            Path().apply {
+                for (x in floatArrayOf(2.75f, 9.75f, 16.75f)) rect(x, 4.5f, x + 4.5f, 9.5f, 1.2f)
+                for (x in floatArrayOf(6.25f, 13.25f)) rect(x, 11.5f, x + 4.5f, 16.5f, 1.2f)
             },
         )
         ToolIcon.LOCK -> Glyph(

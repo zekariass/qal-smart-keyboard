@@ -5,7 +5,13 @@ import android.graphics.Canvas
 import android.text.InputType
 import android.view.View
 import android.widget.LinearLayout
+import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.ime.CandidateStripView
+import com.qalsmartkeyboard.ime.CoreTestEnv
+import com.qalsmartkeyboard.ime.KeyKind
+import com.qalsmartkeyboard.ime.LatinLayout
+import com.qalsmartkeyboard.ime.SettingsPreferences
+import com.qalsmartkeyboard.ime.TypingMode
 import com.qalsmartkeyboard.ime.ComposerUpdate
 import com.qalsmartkeyboard.ime.FakeEditor
 import com.qalsmartkeyboard.ime.InputConnectionAdapter
@@ -253,6 +259,48 @@ class ToolbarRenderTest {
         shoot(listOf(view, strip), File(out, "editor-row-om-360-${theme.id}.png"), narrow)
     }
 
+    /**
+     * ADR 0043: keys with Ethiopic numerals (am Phonetic letters and ?123, Fidel ?123), the Latin arrangements, the number
+     * row off, the long-press Fidel grid, and the Layout panel (Latin and Fidel) under the bar with its title.
+     */
+    private fun renderLayouts(theme: KeyboardTheme, out: File) {
+        fun session(s: KeyboardSettings, mode: TypingMode? = null): CoreTestEnv.Session {
+            val p = SettingsPreferences({ s })
+            return CoreTestEnv.Session(languages = p, prefs = p).also { if (mode != null) it.mode(mode) }
+        }
+        fun keys(sess: CoreTestEnv.Session) = KeyboardSurface(ctx).also { it.controller = sess.c; it.theme = theme }
+        val base = KeyboardSettings.DEFAULT
+        val am = session(base)
+        val amSym = session(base).also { it.tap(it.key(KeyKind.TO_SYMBOLS)) }
+        val fidelSym = session(base, TypingMode("am", LayoutKind.FIDEL)).also { it.tap(it.key(KeyKind.TO_SYMBOLS)) }
+        shoot(listOf(bar(theme) { _, _ -> }, keys(am), keys(amSym), keys(fidelSym)), File(out, "numerals-${theme.id}.png"))
+        val latin = LatinLayout.entries.filter { it != LatinLayout.QWERTY }.map { l ->
+            keys(session(base.copy(latinLayouts = mapOf("en" to l.name, "om" to l.name)), TypingMode(if (l == LatinLayout.DVORAK) "om" else "en", if (l == LatinLayout.DVORAK) LayoutKind.QUBEE else LayoutKind.ENGLISH)))
+        }
+        shoot(latin, File(out, "arrangements-${theme.id}.png"))
+        val noRow = session(base.copy(numberRow = false, latinLayouts = mapOf("am" to "AZERTY")))
+        val longPress = session(base.copy(fidelLayouts = mapOf("am" to "LONG_PRESS")), TypingMode("am", LayoutKind.FIDEL))
+        shoot(listOf(keys(noRow), keys(longPress)), File(out, "numberrow-longpress-${theme.id}.png"))
+        val panels = listOf(am, session(base, TypingMode("am", LayoutKind.FIDEL))).flatMap { sess ->
+            val sizer = keys(sess)
+            val panel = LayoutPanelView(ctx).also {
+                it.theme = theme
+                it.heightProvider = { sizer.preferredHeightPx() }
+                it.options = { sess.c.layoutOptions() }
+                it.render()
+            }
+            listOf(bar(theme) { st, _ -> st.panelTitle = "Layout · አማርኛ" }, panel)
+        }
+        shoot(panels, File(out, "layout-panel-${theme.id}.png"))
+        val tools = ToolsPanelView(ctx).also {
+            it.theme = theme
+            it.heightProvider = { keys(am).preferredHeightPx() }
+            it.tiles = { ToolSet.tiles(ToolContext(InputProfile.DEFAULT, aiReady = true, voiceOffered = true, writingModes = true, layouts = true)) }
+            it.render()
+        }
+        shoot(listOf(bar(theme) { st, _ -> st.panelTitle = "Tools" }, tools), File(out, "tools-layout-${theme.id}.png"))
+    }
+
     @Test fun render() {
         val dir = System.getenv("QAL_RENDER_DIR")
         assumeTrue("set QAL_RENDER_DIR to render", !dir.isNullOrEmpty())
@@ -290,6 +338,7 @@ class ToolbarRenderTest {
             renderEditorRow(theme, out)
             renderTranslate(theme, keys, out)
             shoot(listOf(bar(theme) { s, _ -> s.panelTitle = "Clipboard" }, clips), File(out, "clipboard-${theme.id}.png"))
+            if (theme === ThemeCatalog.classicLight || theme === ThemeCatalog.classicDark) renderLayouts(theme, out)
         }
     }
 }

@@ -570,4 +570,16 @@
     <string name="translate_search_clear">ምድላይ ኣጽርዩ</string>
     <string name="translate_no_languages">ዝኾነ ቋንቋ ኣይተረኽበን</string>
     <string name="ai_output_more_languages">ተወሰኽቲ ቋንቋታት</string>
+    <!-- Key layouts and the Layout panel (ADR 0043). DRAFT (N9). -->
+    <string name="tool_layout">ኣቀማምጣ</string>
+    <string name="layout_panel_title">ኣቀማምጣ · %1$s</string>
+    <string name="layout_fidel_two_key">ብኽልተ መጠወቂ</string>
+    <string name="layout_fidel_long_press">ብነዊሕ ምጽቃጥ</string>
+    <string name="layout_desc_qwerty">ልሙድ ኣቀማምጣ</string>
+    <string name="layout_desc_azerty">ናይ ፈረንሳ ዓይነት፦ A ን Z ን ኣብ ላዕሊ ጸጋም፣ M ኣብ ማእከላይ መስርዕ</string>
+    <string name="layout_desc_qwertz">ናይ ጀርመን ዓይነት፦ Z ን Y ን ቦታ ተቐያዪሮም</string>
+    <string name="layout_desc_dvorak">ኣናበብትን ልሙዳት ፊደላትን ኣብ ማእከላይ መስርዕ፣ ኣጻብዕ ውሑድ ንክንቀሳቐሳ</string>
+    <string name="layout_desc_colemak">ከም QWERTY፣ ብብዝሒ ዝጥቀሙ ፊደላት ናብ ማእከላይ መስርዕ ተሰጋጊሮም</string>
+    <string name="layout_desc_fidel_two_key">ተናባቢ ጠውቑ፣ ቀጺሉ ቅርጹ፤ ኩሎም ቅርጽታት ንምርካብ ተናባቢ ሓዙ</string>
+    <string name="layout_desc_fidel_long_press">ምጥዋቕ ሳድስ (ስ) ይጽሕፍ፤ ካልኦት ቅርጽታት ንምርካብ ሓዙ፤ መስርዕ ኣናበብቲ የለን፣ መጠወቅታት ይነውሑ</string>
 </resources>

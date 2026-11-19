@@ -141,6 +141,25 @@ class SettingsRepositoryTest {
         assertEquals(NumeralStyle.WESTERN, s.effectiveNumeralStyle)
     }
 
+    /** ADR 0043: layout choices and the number row persist; bad entries are dropped; old files decode to the defaults. */
+    @Test fun layoutChoicesPersistAndAreSanitised() = runBlocking {
+        val first = open()
+        assertTrue(first.current().numberRow)
+        assertTrue(first.current().latinLayouts.isEmpty())
+        first.update {
+            it.copy(
+                numberRow = false,
+                latinLayouts = mapOf("en" to "DVORAK", "am" to "AZERTY", "xx" to "QWERTZ", "om" to "bad value"),
+                fidelLayouts = mapOf("ti" to "LONG_PRESS"),
+            )
+        }
+        closeAll()
+        val s = open().current()
+        assertFalse(s.numberRow)
+        assertEquals(mapOf("en" to "DVORAK", "am" to "AZERTY"), s.latinLayouts)
+        assertEquals(mapOf("ti" to "LONG_PRESS"), s.fidelLayouts)
+    }
+
     @Test fun persistedAcrossRestart() = runBlocking {
         val first = open()
         first.update {

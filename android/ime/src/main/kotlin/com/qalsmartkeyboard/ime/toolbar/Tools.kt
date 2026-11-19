@@ -2,6 +2,7 @@ package com.qalsmartkeyboard.ime.toolbar
 
 import com.qalsmartkeyboard.ime.FieldKind
 import com.qalsmartkeyboard.ime.InputProfile
+import com.qalsmartkeyboard.ime.KeyLayoutChoice
 import com.qalsmartkeyboard.ime.ai.AiTool
 import com.qalsmartkeyboard.ime.ai.AiToolEntry
 
@@ -21,6 +22,9 @@ enum class Tool(val icon: ToolIcon) {
     VOICE(ToolIcon.MIC),
     WORD_ART(ToolIcon.WORD_ART),
     WRITING_MODE(ToolIcon.WRITING_MODE),
+
+    /** ADR 0043: the key layouts of the current language ([ToolPanel.LAYOUT]). */
+    LAYOUT(ToolIcon.LAYOUT),
     LANGUAGES(ToolIcon.LANGUAGES),
     THEME(ToolIcon.THEME),
     SETTINGS(ToolIcon.SETTINGS),
@@ -49,6 +53,8 @@ data class ToolContext(
     val writingModes: Boolean = false,
     /** The emoji panel can open (its data is bundled; false only before the service wired it). */
     val emojiReady: Boolean = true,
+    /** ADR 0043: the current language offers at least two key layouts here (Latin arrangements, Fidel variants). */
+    val layouts: Boolean = false,
 ) {
     /**
      * Clipboard: every field except passwords, fields that ask for no personalised learning (incognito) and raw
@@ -71,6 +77,7 @@ object ToolSet {
         if (c.voiceOffered) add(ToolEntry(Tool.VOICE))
         if (c.profile.allowsEmoji && c.emojiReady) add(ToolEntry(Tool.WORD_ART))
         if (c.writingModes) add(ToolEntry(Tool.WRITING_MODE))
+        if (c.layouts) add(ToolEntry(Tool.LAYOUT))
         add(ToolEntry(Tool.LANGUAGES))
         add(ToolEntry(Tool.THEME))
         add(ToolEntry(Tool.SETTINGS))
@@ -113,12 +120,21 @@ interface ToolHost {
     fun openTheme()
     fun openSettings()
 
+    /**
+     * ADR 0043: the Layout panel picked [choice]: apply and save it for the current language (the panel has closed; any
+     * open composition was committed when the tools panel opened).
+     */
+    fun applyLayout(choice: KeyLayoutChoice) {}
+
     /** A tool panel (tools, clipboard, AI tools) is about to open: voice, emoji, translate and the AI panels close first. */
     fun closeOtherPanels()
 }
 
-/** Which tool panel replaces the key area: the tools grid, the clipboard, or the AI tools grid (ADR 0041). */
-enum class ToolPanel { NONE, TOOLS, CLIPBOARD, AI }
+/**
+ * Which tool panel replaces the key area: the tools grid, the clipboard, the AI tools grid (ADR 0041), or the current
+ * language's key layouts (ADR 0043).
+ */
+enum class ToolPanel { NONE, TOOLS, CLIPBOARD, AI, LAYOUT }
 
 /**
  * The tools, clipboard and AI tools panels' open state, free of Views (JVM-tested). Only one is open at a time; any
@@ -191,6 +207,10 @@ class ToolsController(
                 open(ToolPanel.AI)
                 return
             }
+            Tool.LAYOUT -> {
+                open(ToolPanel.LAYOUT)
+                return
+            }
             else -> Unit
         }
         close()
@@ -203,8 +223,18 @@ class ToolsController(
             Tool.LANGUAGES -> host.openLanguages()
             Tool.THEME -> host.openTheme()
             Tool.SETTINGS -> host.openSettings()
-            Tool.CLIPBOARD, Tool.AI -> Unit
+            Tool.CLIPBOARD, Tool.AI, Tool.LAYOUT -> Unit
         }
+    }
+
+    /**
+     * ADR 0043: a layout of the Layout panel was chosen: the panel closes (back to the keys, now in that layout) and the
+     * host applies it. A stale tap (the panel has closed) does nothing; Back leaves the layout as it was.
+     */
+    fun chooseLayout(choice: KeyLayoutChoice) {
+        if (panel != ToolPanel.LAYOUT) return
+        close()
+        host.applyLayout(choice)
     }
 
     /**

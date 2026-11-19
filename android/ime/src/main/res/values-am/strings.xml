@@ -568,4 +568,16 @@
     <string name="translate_search_clear">ፍለጋውን ያጽዱ</string>
     <string name="translate_no_languages">ምንም ቋንቋ አልተገኘም</string>
     <string name="ai_output_more_languages">ተጨማሪ ቋንቋዎች</string>
+    <!-- Key layouts and the Layout panel (ADR 0043). DRAFT (N9). -->
+    <string name="tool_layout">አቀማመጥ</string>
+    <string name="layout_panel_title">አቀማመጥ · %1$s</string>
+    <string name="layout_fidel_two_key">ባለ ሁለት ቁልፍ ሰሌዳ</string>
+    <string name="layout_fidel_long_press">በረጅም መጫን</string>
+    <string name="layout_desc_qwerty">የተለመደው አቀማመጥ</string>
+    <string name="layout_desc_azerty">የፈረንሳይኛ ዓይነት፦ A እና Z ከላይ በግራ፣ M በመካከለኛው ረድፍ</string>
+    <string name="layout_desc_qwertz">የጀርመንኛ ዓይነት፦ Z እና Y ቦታ ተለዋውጠዋል</string>
+    <string name="layout_desc_dvorak">አናባቢዎችና የተለመዱ ፊደላት በመካከለኛው ረድፍ፣ ጣት ያነሰ እንዲንቀሳቀስ</string>
+    <string name="layout_desc_colemak">እንደ QWERTY፣ በብዛት የሚጠቀሙ ፊደላት ወደ መካከለኛው ረድፍ ተዛውረዋል</string>
+    <string name="layout_desc_fidel_two_key">ተነባቢ ይንኩ፣ ቀጥሎ ቅጹን፤ ሁሉንም ቅጾች ለማግኘት ተነባቢውን ይያዙ</string>
+    <string name="layout_desc_fidel_long_press">መንካት ሳድሱን (ስ) ይጽፋል፤ ሌሎቹን ቅጾች ለማግኘት ይያዙ፤ የአናባቢ ረድፍ የለም፣ ቁልፎቹ ይረዝማሉ</string>
 </resources>
