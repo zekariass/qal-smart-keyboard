@@ -240,7 +240,10 @@ class ServerAiActions(
     private fun plain(language: String) = AiDestination("lang:$language", LanguageCatalog.displayName(language), language)
 
     companion object {
-        /** Destinations listed besides the user's profiles: the languages the keyboard types. */
-        val PLAIN_LANGUAGES = listOf("en", "am", "ti", "om")
+        /**
+         * Destinations listed besides the user's profiles: the languages the keyboard types, Arabic included (ADR 0034).
+         * A pair the server cannot translate yet fails as LanguageUnsupported, so nothing is faked.
+         */
+        val PLAIN_LANGUAGES = listOf("en", "am", "ti", "om", "ar")
     }
 }
