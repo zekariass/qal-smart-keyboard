@@ -282,6 +282,22 @@ class AiControllerTest {
 	}
 
 	@Test
+	void transformCarriesTheVariationAndRejectsANonInteger() throws Exception {
+		when(pipeline.execute(any())).thenReturn(new AiResult.TransformResponse(REQUEST_ID, "REWRITE", "en", "x",
+				List.of(), List.of(), List.of(), QualityTier.BETA, false, null, usage()));
+		mvc.perform(post("/api/v1/ai/transform").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"task\":\"REWRITE\",\"text\":\"abc\",\"variation\":4}")).andExpect(status().isOk());
+		ArgumentCaptor<AiCommand> captor = ArgumentCaptor.forClass(AiCommand.class);
+		verify(pipeline).execute(captor.capture());
+		assertThat(((AiCommand.Transform) captor.getValue()).variation()).isEqualTo(4);
+		mvc.perform(post("/api/v1/ai/transform").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"task\":\"REWRITE\",\"text\":\"abc\",\"variation\":1.5}"))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	void transformCarriesTheOutputLanguageAndExplainInIsItsAlias() throws Exception {
 		when(pipeline.execute(any())).thenReturn(new AiResult.TransformResponse(REQUEST_ID, "EXPLAIN_TEXT", "en",
 				"Explanation", List.of(), List.of(), List.of(), QualityTier.BETA, false, null, usage()));

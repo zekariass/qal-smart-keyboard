@@ -1,5 +1,6 @@
 package com.qalsmartkeyboard.ime.voice
 
+import com.qalsmartkeyboard.ime.KeyboardLabels
 import com.qalsmartkeyboard.ime.LanguageCatalog
 import java.util.Locale
 
@@ -72,20 +73,24 @@ object VoiceLanguages {
     /** The language's name without the region (`ti-ER` -> Tigrinya), for messages. */
     fun languageName(tag: String): String {
         val lang = languageOf(tag)
-        return if (lang in KEYBOARD_LANGUAGES) LanguageCatalog.spokenName(lang) else Locale.forLanguageTag(lang).getDisplayLanguage(Locale.ENGLISH).ifEmpty { lang }
+        return if (lang in KEYBOARD_LANGUAGES) LanguageCatalog.spokenName(lang) else Locale.forLanguageTag(lang).getDisplayLanguage(uiLocale()).ifEmpty { lang }
     }
 
-    /** The name shown for [tag]: our names for am/ti/om/en, the platform's English name otherwise; region in brackets. */
+    /** The UI language (ADR 0032): the platform names other languages and regions in it. */
+    private fun uiLocale(): Locale = KeyboardLabels.current.locale
+
+    /** The name shown for [tag]: our names for am/ti/om/en, the platform's name otherwise (in the UI language); region in brackets. */
     fun displayName(tag: String): String {
         val t = normalize(tag)
         val locale = Locale.forLanguageTag(t)
         val lang = languageOf(t)
+        val ui = uiLocale()
         val name = if (lang in KEYBOARD_LANGUAGES) {
             LanguageCatalog.spokenName(lang)
         } else {
-            locale.getDisplayLanguage(Locale.ENGLISH).ifEmpty { lang }
+            locale.getDisplayLanguage(ui).ifEmpty { lang }
         }
-        val details = listOf(locale.getDisplayScript(Locale.ENGLISH), locale.getDisplayCountry(Locale.ENGLISH)).filter { it.isNotEmpty() }
+        val details = listOf(locale.getDisplayScript(ui), locale.getDisplayCountry(ui)).filter { it.isNotEmpty() }
         return if (details.isEmpty()) name else "$name (${details.joinToString(", ")})"
     }
 }

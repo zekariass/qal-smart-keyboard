@@ -31,7 +31,7 @@ data class TypingMode(val language: String, val kind: LayoutKind) {
     }
 }
 
-/** Static facts about the four launch languages (SD 7.1). Names/labels are DRAFT UI strings. */
+/** Static facts about the four launch languages (SD 7.1). UI words come from [KeyboardLabels] (the app language, ADR 0032). */
 object LanguageCatalog {
     /** Native (non-ABC) layouts per language, in long-press-globe cycle order; the first is the first-run default (ADR 0007: phonetic QWERTY). */
     fun nativeKinds(language: String): List<LayoutKind> = when (language) {
@@ -55,16 +55,16 @@ object LanguageCatalog {
     /** The selector's name of a writing mode (am/ti). */
     fun writingModeLabel(kind: LayoutKind) = when (kind) {
         LayoutKind.FIDEL -> "ፊደል"
-        LayoutKind.PHONETIC -> "Phonetic"
-        LayoutKind.ABC -> "English"
+        LayoutKind.PHONETIC -> KeyboardLabels.current.modePhonetic
+        LayoutKind.ABC -> KeyboardLabels.current.modeEnglish
         else -> kindLabel(kind)
     }
 
     /** Spoken name of a writing mode (am/ti). */
     fun spokenWritingMode(kind: LayoutKind) = when (kind) {
-        LayoutKind.FIDEL -> "Fidel"
-        LayoutKind.PHONETIC -> "Phonetic"
-        LayoutKind.ABC -> "English"
+        LayoutKind.FIDEL -> KeyboardLabels.current.spokenFidel
+        LayoutKind.PHONETIC -> KeyboardLabels.current.modePhonetic
+        LayoutKind.ABC -> KeyboardLabels.current.modeEnglish
         else -> spokenKind(kind)
     }
 
@@ -86,29 +86,23 @@ object LanguageCatalog {
         else -> language
     }
 
-    /** Spoken name for accessibility. */
-    fun spokenName(language: String) = when (language) {
-        "am" -> "Amharic"
-        "ti" -> "Tigrinya"
-        "om" -> "Afaan Oromoo"
-        "en" -> "English"
-        else -> language
-    }
+    /** The language's name in the UI language (spoken for accessibility, and the AI panels' language names). */
+    fun spokenName(language: String) = KeyboardLabels.current.language(language)
 
     fun kindLabel(kind: LayoutKind) = when (kind) {
         LayoutKind.FIDEL -> "ፊደል"
-        LayoutKind.PHONETIC -> "Phonetic"
+        LayoutKind.PHONETIC -> KeyboardLabels.current.modePhonetic
         LayoutKind.QUBEE -> "Qubee"
         LayoutKind.ENGLISH -> "QWERTY"
         LayoutKind.ABC -> "ABC"
     }
 
     fun spokenKind(kind: LayoutKind) = when (kind) {
-        LayoutKind.FIDEL -> "Fidel grid"
-        LayoutKind.PHONETIC -> "phonetic Latin keys"
+        LayoutKind.FIDEL -> KeyboardLabels.current.spokenFidelGrid
+        LayoutKind.PHONETIC -> KeyboardLabels.current.spokenPhoneticKeys
         LayoutKind.QUBEE -> "Qubee"
         LayoutKind.ENGLISH -> "QWERTY"
-        LayoutKind.ABC -> "ABC Latin"
+        LayoutKind.ABC -> KeyboardLabels.current.spokenAbcLatin
     }
 
     /**

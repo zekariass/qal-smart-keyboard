@@ -364,7 +364,7 @@ class KeyboardImeService : InputMethodService() {
         if (aiPanelView != null) return
         val col = column ?: return
         val keys = surface ?: return
-        val strip = AiFieldBar(this).also {
+        val strip = AiFieldBar(ui).also {
             it.workspace = ws
             it.visibility = View.GONE
             it.onDone = {
@@ -374,7 +374,7 @@ class KeyboardImeService : InputMethodService() {
             it.theme = resolvedTheme.theme
         }
         col.addView(strip, col.indexOfChild(keys), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        val panel = AiPanelView(this).also {
+        val panel = AiPanelView(ui).also {
             it.workspace = ws
             it.visibility = View.GONE
             it.heightProvider = { keys.preferredHeightPx() }
@@ -414,7 +414,7 @@ class KeyboardImeService : InputMethodService() {
     private fun onAiApplied(applied: AiApplied) {
         when (applied) {
             AiApplied.FAILED -> return // the panel shows why and stays open
-            AiApplied.INSERTED_ORIGINAL_CHANGED -> Toast.makeText(this, R.string.ai_inserted_instead, Toast.LENGTH_SHORT).show()
+            AiApplied.INSERTED_ORIGINAL_CHANGED -> Toast.makeText(ui, R.string.ai_inserted_instead, Toast.LENGTH_SHORT).show()
             else -> Unit
         }
         closeAiPanels()
@@ -450,6 +450,7 @@ class KeyboardImeService : InputMethodService() {
         adapter.onCompositionAbandoned = { controller.onCompositionAbandoned() }
         snapshot.onChange = { main.post { controller.onPreferencesChanged(); voice.onPreferencesChanged(); applyTheme(); strip?.micShown = voice.micVisible } }
         snapshot.start()
+        AppLanguage.addListener(onAppLanguageChanged)
         loadCoreInBackground()
     }
 
@@ -544,6 +545,7 @@ class KeyboardImeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        AppLanguage.removeListener(onAppLanguageChanged)
         voice.cancel()
         themeAccessHandle?.close()
         themeAccessHandle = null
@@ -564,19 +566,33 @@ class KeyboardImeService : InputMethodService() {
     private var headroom: View? = null
     private var inputRoot: View? = null
 
+    /**
+     * The context the keyboard's views and toasts are built on: the app's UI language (ADR 0032), which may differ from
+     * the service's own configuration below Android 13. Renewed on every [onCreateInputView].
+     */
+    private var ui: Context = this
+
+    /** The app's UI language changed (the app's settings): new labels and views. Main thread. */
+    private val onAppLanguageChanged: () -> Unit = {
+        main.post { if (inputRoot != null) setInputView(onCreateInputView()) }
+    }
+
     override fun onCreateInputView(): View {
+        ui = AppLanguage.uiContext(this)
+        KeyboardLabels.load(ui) // layout key descriptions and language names in the UI language
+        controller.onLabelsChanged()
         val d = resources.displayMetrics.density
-        val s = CandidateStripView(this).also {
+        val s = CandidateStripView(ui).also {
             it.onSelect = { i -> controller.selectCandidate(i) }
             it.onLongSelect = { i ->
                 val added = controller.addCandidateToDictionary(i)
-                Toast.makeText(this, if (added) R.string.user_dictionary_added else R.string.user_dictionary_not_added, Toast.LENGTH_SHORT).show()
+                Toast.makeText(ui, if (added) R.string.user_dictionary_added else R.string.user_dictionary_not_added, Toast.LENGTH_SHORT).show()
             }
             it.onSettings = { openCompanion(AiLink.SETTINGS) }
             it.onModeSelected = { kind -> controller.selectWritingMode(kind) }
             strip = it
         }
-        val ai = AiToolbarView(this).also {
+        val ai = AiToolbarView(ui).also {
             it.controller = aiToolbar
             it.onLink = ::openCompanion
             it.onOpenAssist = { openAiPanel(email = false) }
@@ -584,7 +600,7 @@ class KeyboardImeService : InputMethodService() {
             aiView = it
         }
         // One bar above the keys: pill, AI entry (its actions open in the bar's middle), candidates, mic, gear.
-        val b = KeyboardBar(this, s, ai).also { bar = it }
+        val b = KeyboardBar(ui, s, ai).also { bar = it }
         s.onMic = { voice.onMicTapped() }
         val aiToggle = s.onAiToggle
         s.onAiToggle = {
@@ -592,47 +608,47 @@ class KeyboardImeService : InputMethodService() {
             aiToggle()
             if (bar?.aiOpen != true) closeAiPanels() // closing the AI entry also closes an open AI panel
         }
-        val overlay = PopupOverlay(this).also { overlayView = it }
-        val k = KeyboardSurface(this).also {
+        val overlay = PopupOverlay(ui).also { overlayView = it }
+        val k = KeyboardSurface(ui).also {
             it.controller = controller
             it.overlay = overlay
             surface = it
         }
-        val panel = EmojiPanelView(this).also {
+        val panel = EmojiPanelView(ui).also {
             it.controller = controller
             it.overlay = overlay
             it.visibility = View.GONE
             it.heightProvider = { k.preferredHeightPx() }
             emojiPanel = it
         }
-        val search = EmojiSearchBar(this).also {
+        val search = EmojiSearchBar(ui).also {
             it.controller = controller
             it.visibility = View.GONE
             emojiSearch = it
         }
-        val wordArt = WordArtPanelView(this).also {
+        val wordArt = WordArtPanelView(ui).also {
             it.controller = controller
             it.visibility = View.GONE
             it.heightProvider = { k.preferredHeightPx() }
             wordArtPanel = it
         }
-        val wordArtStrip = WordArtBar(this).also {
+        val wordArtStrip = WordArtBar(ui).also {
             it.controller = controller
             it.visibility = View.GONE
             wordArtBar = it
         }
-        val voiceView = VoicePanelView(this).also {
+        val voiceView = VoicePanelView(ui).also {
             it.visibility = View.GONE
             it.heightProvider = { k.preferredHeightPx() }
             it.controller = voice
             voicePanel = it
         }
-        val space = View(this).also { headroom = it }
+        val space = View(ui).also { headroom = it }
         // A new input view: the AI panel views (if any) belonged to the old one and are created again on the next open.
         aiPanelView = null
         aiFieldBar = null
         aiWorkspace?.discard()
-        val column = KeyboardColumn(this, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.also { this.column = it }.apply {
+        val column = KeyboardColumn(ui, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.also { this.column = it }.apply {
             addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
             addView(ai, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -643,7 +659,7 @@ class KeyboardImeService : InputMethodService() {
             addView(wordArt, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(voiceView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
-        val root = OverlayStack(this).apply {
+        val root = OverlayStack(ui).apply {
             addView(column)
             addView(overlay)
             inputRoot = this

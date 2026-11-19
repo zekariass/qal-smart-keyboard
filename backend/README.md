@@ -926,6 +926,21 @@ up; `DB_URL`/`DB_USER`/`DB_PASSWORD` override). It refuses to run when `SPRING_P
 contains `prod`, `production` or `staging` (exit 2), and each switch is refused by its own component under those profiles
 anyway. Never deploy the `dev` profile. Ctrl-C stops the backend; `docker compose -f infra/compose/docker-compose.yml down` stops Postgres.
 
+**Dev secrets.** To try the real providers locally, copy `infra/scripts/.dev-secrets.env.example` to the git-ignored
+`infra/scripts/.dev-secrets.env` and fill in `QAL_OPENAI_API_KEY`, `QAL_OPENAI_MODEL`, `QAL_OPENAI_REASONING_EFFORT`,
+`QAL_GOOGLE_TRANSLATE_API_KEY`, `QAL_SENTRY_DSN`. The launcher reads `KEY=VALUE` lines (comments, blank lines and CR ignored),
+exports each non-blank one that is not already set in the environment (the environment wins) and prints only the variable
+names it loaded, never values. It runs after the production-like-profile check, so it is never loaded for prod/staging.
+
+**Granting a plan to a dev account.** `infra/scripts/dev-grant-plan.sh <+E164 phone | user-uuid> <PLAN_CODE> [days=30]` inserts
+an `ADMIN_GRANT` / `GRANT` / `ACTIVE` row into `user_subscriptions` of the compose Postgres (`infra/scripts/sql/dev-grant-plan.sql`);
+`--revoke <user> <PLAN_CODE>` sets those dev grants to `REVOKED` (`dev-revoke-plan.sql`). A phone number is looked up in
+`users.phone_e164` (stored in plain text for registered accounts); otherwise pass the user id, the `sub` claim of the access
+token. The script refuses unless the container `compose-postgres-1` is running with host port 5434. The backend caches resolved
+entitlements for 30 s (`qal.entitlements.cache-ttl`) and the app keeps its entitlement token and quota hints (quota re-read every
+5 minutes), so wait ~30 s and reopen the app or the keyboard's AI row. `DevGrantPlanSqlIT` runs the same SQL files against the
+migrated schema.
+
 ## AI gateway: provider SPI and registry (B5.1, ADR 0014, SD 11)
 
 `aigateway.spi` (Modulith named interface `spi`) is the vendor-neutral contract: `AiProvider` with
@@ -993,7 +1008,9 @@ an ordered provider list and returns a `RouteResult<T>`: `outcome` (`SUCCEEDED`,
 - **Fallback:** UNAVAILABLE, TIMEOUT, INVALID_RESPONSE, QUOTA_EXHAUSTED_AT_PROVIDER, AUTHENTICATION_FAILED go to the next
   provider; UNSUPPORTED_LANGUAGE_PAIR goes to the next without a health impact; CONTENT_REJECTED ends the route;
   CANCELLED (thread interrupt) ends it as a client abort. A provider is never retried within a request.
-  `qal.ai.routing.max-attempts` (3), `attempt-timeout` (4 s), `deadline` (8 s); a request may override them.
+  `qal.ai.routing.max-attempts` (3), `attempt-timeout` (4 s), `deadline` (8 s); a request may override them. TRANSLATE
+  (8 s / 12 s) and GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST (6 s / 10 s) have longer per-feature defaults because they reach an
+  LLM (ADR 0027, update).
 - **Circuit breaker** per provider, in-house (`routing/CircuitBreaker`): sliding window of the last `window-size` calls
   (20), opens at `failure-rate-percent` (50) once `minimum-calls` (10) are in, or on `slow-call-rate-percent` (80) of calls
   slower than `slow-call-threshold` (3 s); open for `open-duration` (30 s), then `half-open-calls` (3) probes, all of
@@ -1179,7 +1196,7 @@ contract and ADR 0027.
 
 | Property | Default | Meaning |
 |---|---|---|
-| `qal.ai.pipeline.feature-timeouts.<FEATURE>.attempt-timeout` / `.deadline` | SUMMARIZE, EXPLAIN_TEXT, SMART_REPLY 12s / 20s; DRAFT_DOCUMENT 20s / 30s | per-feature provider attempt and total budget; every other feature keeps `routing.attempt-timeout` (4s) and `pipeline.deadline` (8s) |
+| `qal.ai.pipeline.feature-timeouts.<FEATURE>.attempt-timeout` / `.deadline` | TRANSLATE 8s / 12s; GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST 6s / 10s; SUMMARIZE, EXPLAIN_TEXT, SMART_REPLY 12s / 20s; DRAFT_DOCUMENT 20s / 30s | per-feature provider attempt and total budget; every other feature keeps `routing.attempt-timeout` (4s) and `pipeline.deadline` (8s) |
 | `qal.ai.openai.max-output-tokens-by-feature.<FEATURE>` | DRAFT_DOCUMENT 8192 | `max_completion_tokens` for one feature (0 = not sent); others use `QAL_OPENAI_MAX_OUTPUT_TOKENS` |
 
 Feature keys may be written `DRAFT_DOCUMENT`, `draft_document` or `draft-document`; an unknown one fails startup. A

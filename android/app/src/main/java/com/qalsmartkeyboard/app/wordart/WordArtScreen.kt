@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.qalsmartkeyboard.app.R
 import com.qalsmartkeyboard.ime.R as ImeR
 import com.qalsmartkeyboard.ime.wordart.Greetings
+import com.qalsmartkeyboard.ime.wordart.WordArtStyleNames
 import com.qalsmartkeyboard.ime.wordart.Rendered
 import com.qalsmartkeyboard.ime.wordart.StyleKind
 import com.qalsmartkeyboard.ime.wordart.Support
@@ -177,16 +178,17 @@ fun WordArtScreen(
 @Composable
 private fun StyleCard(style: WordArtStyle, rendered: Rendered, usable: Boolean, onCopy: (String) -> Unit, onShare: (String) -> Unit) {
     val ok = rendered.support != Support.NONE
+    val label = WordArtStyleNames.label(LocalContext.current, style)
     val reason = stringResource(if (style.kind == StyleKind.SPACING) ImeR.string.wordart_unavailable else ImeR.string.wordart_latin_only)
-    val description = if (ok) stringResource(ImeR.string.wordart_row, style.label, rendered.plain)
-    else stringResource(ImeR.string.wordart_row_disabled, style.label, rendered.plain, reason)
-    val copyDesc = stringResource(R.string.wordart_app_copy_desc, style.label)
-    val shareDesc = stringResource(R.string.wordart_app_share_desc, style.label)
+    val description = if (ok) stringResource(ImeR.string.wordart_row, label, rendered.plain)
+    else stringResource(ImeR.string.wordart_row_disabled, label, rendered.plain, reason)
+    val copyDesc = stringResource(R.string.wordart_app_copy_desc, label)
+    val shareDesc = stringResource(R.string.wordart_app_share_desc, label)
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             // One spoken unit: the style name and the plain text; the decorated string itself is not read.
             Column(Modifier.clearAndSetSemantics { contentDescription = description }) {
-                Text(if (ok) style.label else "${style.label} · $reason", style = MaterialTheme.typography.labelMedium)
+                Text(if (ok) label else "$label · $reason", style = MaterialTheme.typography.labelMedium)
                 Text(if (ok) rendered.text else rendered.plain, style = MaterialTheme.typography.titleMedium)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

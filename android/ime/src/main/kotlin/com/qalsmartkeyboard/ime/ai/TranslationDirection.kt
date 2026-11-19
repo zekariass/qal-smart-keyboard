@@ -6,7 +6,7 @@ import com.qalsmartkeyboard.ime.LanguageCatalog
 object AiLanguages {
     val ALL: List<String> = listOf("am", "ti", "om", "en")
 
-    /** The language's English name ("Amharic"), as the AI panels show it (English UI). */
+    /** The language's name in the UI language ("Amharic", "አማርኛ" in Amharic, ADR 0032), as the AI panels show it. */
     fun name(code: String): String = LanguageCatalog.spokenName(code)
 
     /** A plain-language destination (no profile). */

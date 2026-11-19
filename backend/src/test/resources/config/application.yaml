@@ -20,6 +20,10 @@ qal:
     attestation:
       mock:
         enabled: true
+    # ADR 0009: tests never pick up the developer's real Google client ids; Google ITs set their own.
+    oauth:
+      google:
+        client-ids: ""
   # B4.4: random per-JVM Ed25519 entitlement-token key.
   entitlements:
     token:

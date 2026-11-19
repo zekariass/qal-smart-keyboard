@@ -52,5 +52,5 @@ android/.kotlin/
 hs_err_pid*.log
 replay_pid*.log
 
-# Local dev secrets for infra/scripts/run-backend-dev.sh (never commit)
+# Local dev secrets (run-backend-dev.sh); .env.* does not match this name
 infra/scripts/.dev-secrets.env

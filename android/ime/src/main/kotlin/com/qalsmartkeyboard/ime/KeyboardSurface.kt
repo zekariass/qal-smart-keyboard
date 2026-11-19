@@ -186,7 +186,7 @@ class KeyboardSurface(context: Context) : View(context) {
         keyNodes.invalidateRoot()
         controller?.let { c ->
             val spoken = c.modeDescription
-            contentDescription = "Keyboard, $spoken"
+            contentDescription = context.getString(R.string.kb_keyboard_description, spoken)
             if (announcedMode != null && announcedMode != spoken) announceForAccessibility(spoken)
             announcedMode = spoken
         }
@@ -386,7 +386,7 @@ class KeyboardSurface(context: Context) : View(context) {
 
     private val smile = RectF()
 
-    private fun enterText(l: EnterLabel) = enterLabelText(l)
+    private fun enterText(l: EnterLabel) = enterLabelText(context, l)
 
     /** The key under the point; taps in the gaps land on the nearest key within one row height. */
     private fun hit(x: Float, y: Float): Placed? {
@@ -627,17 +627,17 @@ class KeyboardSurface(context: Context) : View(context) {
     internal fun spokenFor(key: Key): String {
         val c = controller
         return when (key.kind) {
-            KeyKind.ENTER -> c?.profile?.enterLabel?.let { if (it == EnterLabel.RETURN) "Enter" else enterText(it) } ?: "Enter"
+            KeyKind.ENTER -> c?.profile?.enterLabel?.let { if (it == EnterLabel.RETURN) context.getString(R.string.kb_key_enter) else enterText(it) } ?: context.getString(R.string.kb_key_enter)
             KeyKind.SHIFT -> when (c?.shift) {
-                ShiftState.LOCKED -> "Shift, caps lock on"
-                ShiftState.ONCE -> "Shift, on"
+                ShiftState.LOCKED -> context.getString(R.string.kb_key_shift_locked)
+                ShiftState.ONCE -> context.getString(R.string.kb_key_shift_on)
                 else -> key.spoken
             }
             KeyKind.CHAR -> if (key.isLetter && key.description.isEmpty() && c != null && c.shift != ShiftState.OFF) key.label.uppercase() else key.spoken
             KeyKind.FIDEL_VOWEL -> c?.orderFace(key)?.let { f ->
-                if (f.active) "${f.label}, vowel order ${f.order}" else "Vowel order ${f.order}, not available"
+                if (f.active) context.getString(R.string.kb_key_vowel_active, f.label, f.order) else context.getString(R.string.kb_key_vowel_unavailable, f.order)
             } ?: key.spoken
-            KeyKind.FIDEL_CONSONANT -> if (c?.isSelectedConsonant(key) == true) "${key.spoken}, selected" else key.spoken
+            KeyKind.FIDEL_CONSONANT -> if (c?.isSelectedConsonant(key) == true) context.getString(R.string.kb_key_selected, key.spoken) else key.spoken
             else -> key.spoken
         }.let { if (key.draftBadge) "$it, ${context.getString(R.string.key_draft_description)}" else it }
     }
@@ -703,13 +703,13 @@ class KeyboardSurface(context: Context) : View(context) {
     }
 }
 
-/** The Enter key label for an editor action (shared with the emoji panel). */
-internal fun enterLabelText(l: EnterLabel) = when (l) {
+/** The Enter key label for an editor action (shared with the emoji panel), in the UI language (ADR 0032). */
+internal fun enterLabelText(c: Context, l: EnterLabel): String = when (l) {
     EnterLabel.RETURN -> "⏎"
-    EnterLabel.GO -> "Go"
-    EnterLabel.SEARCH -> "Search"
-    EnterLabel.SEND -> "Send"
-    EnterLabel.NEXT -> "Next"
-    EnterLabel.PREVIOUS -> "Prev"
-    EnterLabel.DONE -> "Done"
+    EnterLabel.GO -> c.getString(R.string.kb_enter_go)
+    EnterLabel.SEARCH -> c.getString(R.string.kb_enter_search)
+    EnterLabel.SEND -> c.getString(R.string.kb_enter_send)
+    EnterLabel.NEXT -> c.getString(R.string.kb_enter_next)
+    EnterLabel.PREVIOUS -> c.getString(R.string.kb_enter_previous)
+    EnterLabel.DONE -> c.getString(R.string.kb_enter_done)
 }

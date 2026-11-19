@@ -269,9 +269,10 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
 
     private fun showCard(w: WordArtController, style: WordArtStyle) {
         val r = w.render(style)
-        cardTitle.text = style.label
+        val label = WordArtStyleNames.label(context, style)
+        cardTitle.text = label
         cardPreview.text = r.text
-        cardPreview.contentDescription = context.getString(R.string.wordart_preview, style.label, r.plain)
+        cardPreview.contentDescription = context.getString(R.string.wordart_preview, label, r.plain)
         val msg = w.notice.messageRes()?.let { context.getString(it) }
         val note = when {
             msg != null -> msg
@@ -326,11 +327,12 @@ class WordArtPanelView(context: Context) : LinearLayout(context) {
             background = rounded(theme.key)
             name.setTextColor(theme.hintText)
             preview.setTextColor(theme.keyText)
-            name.text = if (ok) e.style.label else "${e.style.label} · $reason"
+            val label = WordArtStyleNames.label(context, e.style)
+            name.text = if (ok) label else "$label · $reason"
             preview.text = if (ok) e.rendered.text else e.rendered.plain
             alpha = if (ok) 1f else 0.55f
-            contentDescription = if (ok) context.getString(R.string.wordart_row, e.style.label, e.rendered.plain)
-            else context.getString(R.string.wordart_row_disabled, e.style.label, e.rendered.plain, reason)
+            contentDescription = if (ok) context.getString(R.string.wordart_row, label, e.rendered.plain)
+            else context.getString(R.string.wordart_row_disabled, label, e.rendered.plain, reason)
         }
     }
 

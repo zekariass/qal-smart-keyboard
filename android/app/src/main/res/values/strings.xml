@@ -453,4 +453,26 @@
     <string name="wordart_app_lang_ti">Tigrinya</string>
     <string name="wordart_app_lang_om">Afaan Oromoo</string>
     <string name="wordart_app_lang_en">English</string>
+
+    <!-- Settings screen (A1.5), moved out of code for localisation (ADR 0032). -->
+    <string name="settings_title">Keyboard settings</string>
+    <string name="settings_languages_title">Languages (top = first on the globe key)</string>
+    <string name="settings_mode_phonetic">Phonetic QWERTY</string>
+    <string name="settings_mode_latin">Latin</string>
+    <string name="settings_translit_profile">Transliteration profile: newest active (automatic)</string>
+    <string name="settings_show_candidates">Show candidates</string>
+    <string name="settings_numerals_title">Numerals</string>
+    <string name="settings_numerals_ethiopic">Ethiopic offered</string>
+    <string name="settings_numerals_western">Western</string>
+    <string name="settings_haptics">Haptic feedback</string>
+    <string name="settings_key_preview">Key press preview</string>
+    <string name="settings_pack_mobile_data">Update language packs on mobile data</string>
+    <!-- %1$d is the key height in percent; %% is the percent sign. -->
+    <string name="settings_key_height">Key height: %1$d%%</string>
+    <string name="settings_reset">Reset to defaults</string>
+    <!-- App language (ADR 0032): the UI language of this app and the keyboard. The options are named in their own
+         language in code (AppLanguage.selfName); only "System default" is translated. -->
+    <string name="settings_app_language_title">App language</string>
+    <string name="settings_app_language_body">The language of this app and of the keyboard\'s buttons and menus. It does not change the languages you type in.</string>
+    <string name="settings_app_language_system">System default</string>
 </resources>

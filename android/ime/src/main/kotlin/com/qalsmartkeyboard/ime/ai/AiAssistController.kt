@@ -30,18 +30,17 @@ enum class AiAssistAction(val kind: AiTaskKind, val output: AiOutputRule, val re
     companion object {
         /**
          * The request of [action] on [text] with output language [output] (null: same as the text). Regenerate sends a
-         * higher [variation] for replies (the contract's `variation`); transforms have no `variation` field, so their
-         * Regenerate is the same body with a new `Idempotency-Key` (a fresh answer, not a replay).
+         * higher [variation] (the contract's `variation`) with a new `Idempotency-Key`, for transforms and replies.
          */
         fun task(action: AiAssistAction, output: String?, note: String = "", variation: Int = 0): AiTask = when (action) {
             TRANSLATE -> AiTask.Translate(AiLanguages.plain(output ?: "en"))
-            EXPLAIN -> AiTask.Explain(output ?: "en")
+            EXPLAIN -> AiTask.Explain(output ?: "en", variation)
             GRAMMAR -> AiTask.Grammar
-            REWRITE -> AiTask.Rewrite(null, output)
-            PROFESSIONAL -> AiTask.Rewrite(AiTone.PROFESSIONAL, output)
-            SIMPLIFY -> AiTask.Simplify(output)
+            REWRITE -> AiTask.Rewrite(null, output, variation)
+            PROFESSIONAL -> AiTask.Rewrite(AiTone.PROFESSIONAL, output, variation)
+            SIMPLIFY -> AiTask.Simplify(output, variation)
             REPLY -> AiTask.Reply(output ?: "en", note.trim(), REPLY_COUNT, variation)
-            SUMMARIZE -> AiTask.Summarize(output ?: "en", AiLength.MEDIUM)
+            SUMMARIZE -> AiTask.Summarize(output ?: "en", AiLength.MEDIUM, variation)
         }
 
         const val REPLY_COUNT = 3
@@ -327,7 +326,7 @@ class AiAssistController(
         }
     }
 
-    /** Another version (Rewrite, Make professional, Simplify, Reply): a new key; replies also ask for the next `variation`. */
+    /** Another version (Rewrite, Make professional, Simplify, Summarise, Explain, Reply): a new key and the next `variation`. */
     fun regenerate() {
         val r = step as? AiAssistStep.Result ?: return
         val prev = lastRequest ?: return
@@ -339,6 +338,10 @@ class AiAssistController(
         }
         val task = when (val t = prev.task) {
             is AiTask.Reply -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
+            is AiTask.Rewrite -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
+            is AiTask.Simplify -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
+            is AiTask.Explain -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
+            is AiTask.Summarize -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
             else -> t
         }
         send(r.action, r.output, AiRequest(runner.key(), task, prev.text))
