@@ -176,8 +176,28 @@
       "name": "gemination-collapses",
       "keystrokes": ["m", "e", "s", "s", "e", "r", "e", "t"],
       "composing": "መሰረት",
-      "alternatives": ["መሠረት"],
+      "alternatives": ["መሠረት", "መስሰረት"],
       "committed": ""
+    },
+    {
+      "name": "repeated-bare-consonant-types-twice",
+      "keystrokes": ["g", "g", "r", "Space", "g", "g"],
+      "steps": [
+        { "after": 1, "composing": "ግ", "commit": "" },
+        { "after": 2, "composing": "ግግ", "commit": "" },
+        { "after": 3, "composing": "ግግር", "commit": "" },
+        { "after": 4, "composing": "", "commit": "ግግር " }
+      ],
+      "composing": "ግግ",
+      "alternatives": [],
+      "committed": "ግግር "
+    },
+    {
+      "name": "repeated-syllables-and-ejective-word",
+      "keystrokes": ["s", "e", "l", "a", "m", "Space", "t", "e", "g", "t", "'", "a", "m", "i", "Space", "l", "e", "l", "e"],
+      "composing": "ለለ",
+      "alternatives": [],
+      "committed": "ሰላም ተግጣሚ "
     },
     {
       "name": "separator-blocks-collapse-and-digraph",
@@ -466,8 +486,8 @@
     {
       "name": "lowercase-w-after-gemination",
       "keystrokes": ["g", "g", "w", "a"],
-      "composing": "ግዋ",
-      "alternatives": ["ጓ"],
+      "composing": "ግግዋ",
+      "alternatives": ["ግጓ"],
       "committed": ""
     },
     {

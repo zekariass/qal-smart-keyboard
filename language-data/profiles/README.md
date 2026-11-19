@@ -21,8 +21,11 @@ name series ids and order numbers.
   gives ኋ: `h` maps to the ኀ labiovelar series). If no such form exists the `W` is read as the consonant.
   Lowercase `w` (`labialAltMarker`) stays the consonant ወ by default (`gwa` gives ግዋ) but the labialised
   form is offered as the first alternative (ጓ).
-- Doubled consonants collapse (`messeret` gives መሰረት, Fidel does not mark gemination); `_` separates
-  letters that would otherwise combine (`s_h` gives ስህ, `s_s` gives ስስ).
+- Doubled consonants **before a vowel** collapse (`messeret` gives መሰረት, Fidel does not mark gemination); the
+  two-letter reading is offered as the last alternative (`messeret`: መስሰረት). A doubled consonant with **no vowel
+  after it** types two letters: pressing a key twice gives the letter twice (`ggr` ግግር, `gg` ግግ; engine rule since
+  the r2 repeated-key fix, no profile change). `_` separates letters that would otherwise combine (`s_h` gives ስህ,
+  `s_se` gives ስሰ).
 - A vowel typed without a consonant uses the glottal series: `a` አ, `e` እ, `u` ኡ, `i` ኢ, `ee` ኤ, `I` እ, `o` ኦ.
   Tigrinya (0.3.0) writes initial /a/ with its own letter: `a` gives ኣ (ኣብ, ኣነ), with አ as the first alternative.
 - Case is folded (a sentence-initial capital is safe), except the explicit `I` and the labial marker `W`.

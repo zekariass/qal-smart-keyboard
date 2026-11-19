@@ -62,6 +62,17 @@
       "committed": "ጓ "
     },
     {
+      "name": "repeated-bare-consonant-types-twice",
+      "keystrokes": ["g", "g", "r", "Space", "l", "l"],
+      "steps": [
+        { "after": 2, "composing": "ግግ", "commit": "" },
+        { "after": 4, "composing": "", "commit": "ግግር " }
+      ],
+      "composing": "ልል",
+      "alternatives": [],
+      "committed": "ግግር "
+    },
+    {
       "name": "initial-vowels-and-gemination",
       "keystrokes": ["e", "t", "t", "a"],
       "composing": "እታ",

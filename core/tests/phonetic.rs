@@ -327,6 +327,61 @@ fn candidates_respect_max_candidates() {
     assert_eq!(u.candidates[0].text, u.composing);
 }
 
+/// Owner report (repeated-key bug): typing ግግር needs ግ twice, but the second press of the same key
+/// never showed because every doubled consonant collapsed as gemination. Every letter key whose
+/// single press is a bare consonant must now give two letters when pressed twice (and the word
+/// committed by Space keeps both), in both profiles, whatever comes after it except a vowel.
+#[test]
+fn a_repeated_consonant_key_is_never_swallowed() {
+    for (lang, profile) in [("am", AM_PROFILE), ("ti", TI_PROFILE)] {
+        let e = engine_with(lang, profile);
+        for key in ('a'..='z')
+            .filter(|c| !"aeiou".contains(*c))
+            .map(String::from)
+        {
+            e.reset();
+            let once = e.on_key(KeyEvent::Char { text: key.clone() });
+            if once.composing.chars().count() != 1 || once.composing.is_ascii() {
+                continue; // a vowel, an unmapped key, or a digraph start
+            }
+            let twice = e.on_key(KeyEvent::Char { text: key.clone() });
+            if twice.composing == once.composing {
+                // A digraph of a doubled letter (`hh` ሐ) is a different letter, not a lost one.
+                panic!("{lang} {key}{key} swallowed the second press");
+            }
+            let bare = once.composing.clone();
+            let space = e.on_key(KeyEvent::Space);
+            if key != "h" {
+                assert_eq!(space.commit, format!("{bare}{bare} "), "{lang} {key}{key}");
+            }
+        }
+        // Before a vowel a doubled consonant is still gemination (one letter), with the
+        // two-letter reading as an alternative.
+        e.reset();
+        let mut u = EditorUpdate::default();
+        for k in ["g", "g", "e"] {
+            u = e.on_key(KeyEvent::Char { text: k.into() });
+        }
+        assert_eq!(u.composing, "ገ", "{lang}");
+        assert!(u.candidates.iter().any(|c| c.text == "ግገ"), "{lang}");
+        // Owner words.
+        for (keys, want) in [("ggr ", "ግግር "), ("selam ", "ሰላም "), ("tegt'ami ", "ተግጣሚ ")]
+        {
+            e.reset();
+            let mut out = String::new();
+            for ch in keys.chars() {
+                let ev = if ch == ' ' {
+                    KeyEvent::Space
+                } else {
+                    KeyEvent::Char { text: ch.into() }
+                };
+                out.push_str(&e.on_key(ev).commit);
+            }
+            assert_eq!(out, want, "{lang} {keys}");
+        }
+    }
+}
+
 #[test]
 fn fidel_keys_and_control_text_do_not_disturb_composing() {
     let e = engine_with("am", AM_PROFILE);

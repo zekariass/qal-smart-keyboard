@@ -378,16 +378,26 @@ impl PhoneticSession {
                 }
                 Some((Hit::Consonant(k), n)) => {
                     let rule = &p.consonants[k];
+                    let (mut tok, used, plain_order) = self.consonant(raw, i + n, rule);
+                    // Fidel does not mark gemination, so a doubled consonant *before a vowel*
+                    // (`messeret`, `etta`) is one letter. A doubled consonant with no vowel after
+                    // it is two sixth-order letters (`ggr` ግግር, `gg` ግግ): pressing a key twice
+                    // types the letter twice. The two-letter reading of a collapsed geminate stays
+                    // reachable as the last alternative of the merged letter (`shshit`: ሺት, ሽሺት).
                     if p.collapse_gemination
+                        && tok.bare.is_none()
                         && toks.last().is_some_and(|t| t.bare == Some(rule.series))
                     {
-                        // Fidel does not mark gemination: a doubled consonant is one letter.
-                        toks.pop();
+                        if let Some(first) = toks.pop() {
+                            let split = format!("{}{}", first.text, tok.text);
+                            if !tok.alts.contains(&split) {
+                                tok.alts.push(split);
+                            }
+                        }
                         if let Some(prev) = toks.last_mut() {
                             prev.merge_next.clear();
                         }
                     }
-                    let (mut tok, used, plain_order) = self.consonant(raw, i + n, rule);
                     if tok.bare.is_some() {
                         tok.rule = Some(k);
                     }

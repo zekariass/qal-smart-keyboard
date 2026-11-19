@@ -83,7 +83,7 @@ All 0.1.0 inputs keep their default output; 0.2.0 only adds inputs and alternati
 | **Labialised (lowercase `w`)** | default unchanged (`gwa` ግዋ); the labialised letter is the **first alternative** | `kwas` ክዋስ, alt ኳስ |
 | **Capitals** | default unchanged (ት ቸ ፕ ስ ክ ን ዝ); SERA reading as **alternative**: `T` ጥ, `C` ጭ, `P` ጵ, `S` ሥ/ጽ, `K` ኽ, `N` ኝ, `Z` ዥ | `Tena` ተና, alt ጠና |
 | Vowel without consonant | glottal series: `a` አ (alt ኣ, ዐ, **ዓ**; **ti 0.3.0: `a` ኣ**, alt አ, ዓ, ዐ), `e` እ (alt አ, ዕ, ዐ, **ኧ**), `u` ኡ, `i` ኢ, `ee` ኤ, `o` ኦ | `amet` አመት, alt ዓመት; ti `ab` ኣብ |
-| Gemination | doubled consonants collapse (Fidel does not mark it); `_` separates | `messeret` መሰረት, `s_h` ስህ |
+| Gemination | a doubled consonant **before a vowel** collapses (Fidel does not mark it; the two-letter reading is the last alternative); a doubled consonant **with no vowel after it** types two letters; `_` separates | `messeret` መሰረት (alt. መስሰረት), `ggr` ግግር, `gg` ግግ, `s_h` ስህ |
 | Punctuation | `..` ። `,,` ፣ `;;` ፤ `::` ፥ `??` ፧; all eight marks (፡ ። ፣ ፤ ፥ ፦ ፧ ፨) are also keys on the symbols page in Phonetic mode | |
 | Numerals | not in the profile: typed digits stay ASCII; Ethiopic numerals ፩–፼ are on the digit keys' long-press (C1.9 data) | |
 
@@ -107,7 +107,8 @@ noise on the dev box).
 | ኣ vs አ word-initially | am: አ default, ኣ alternative. **ti 0.3.0: ኣ default, አ alternative** | Amharic writes initial /a/ አ; Tigrinya writes it ኣ (its lexicon and glossary do). Panel to confirm the ti default. |
 | ኧ | Alternative of standalone `e` (after አ ዕ ዐ) | Rare letter (ኧረ); no deterministic key without breaking `W`/apostrophe uses. |
 | Apostrophe as a glottal-stop marker (SERA `ma'ed`) | Not added | Would eat quote marks (`'selam'`). |
-| `shsh`, `chch` | Collapse to one letter like any geminate | Use `sh_sh` for two. |
+| `shsh`, `chch` | Before a vowel: one letter like any geminate; with no vowel after: two letters | `shshit` ሺት (alt. ሽሺት), `shsh` ሽሽ; `sh_shi` forces ሽሺ. |
+| Repeated key (`gg`, `ll`) — owner report: ግግር needed ግ twice but the second press "disappeared" | **Changed (repeated-key fix):** a doubled consonant only collapses when a vowel follows it. `ggr` ግግር, `gg` ግግ, `llb` ልልብ; `gge` still ገ (gemination), with ግገ as an alternative | The old rule collapsed every doubled consonant, so the second press of a key never showed. Typing a letter twice is the common case; gemination is only spelled with a following vowel. No separator is needed for it any more; `_` stays for the rare ግገ-type split. |
 | `-:` / `:-` for ፦ | Not added | `:-)` would turn into ፦); the mark is on the symbols page. |
 
 ## 5. Open questions for the G0 panel

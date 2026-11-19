@@ -385,6 +385,12 @@ class KeyboardSurface(context: Context) : View(context) {
 
     private fun sq(v: Float) = v * v
 
+    /** Where the first key matching [which] is drawn (surface coordinates), for touch tests; null if none. */
+    internal fun keyBounds(which: (Key) -> Boolean): RectF? {
+        if (placed.isEmpty()) place()
+        return placed.firstOrNull { which(it.key) }?.rect?.let(::RectF)
+    }
+
     // ------------------------------------------------------------------ long-press popup
 
     private fun fireLongPress() {
@@ -485,6 +491,10 @@ class KeyboardSurface(context: Context) : View(context) {
                 val i = e.actionIndex
                 val id = e.getPointerId(i)
                 val p = hit(e.getX(i), e.getY(i)) ?: return true
+                // Fast typing rolls over: the next key goes down before the previous one is released. A key that acts on
+                // release and is still waiting (no popup yet) is typed now, before the new key, so that neither the
+                // order nor the character is lost (the long-press state below holds a single pointer).
+                typePendingTap(c)
                 pressed[id] = p
                 if (c.prefs.hapticsEnabled) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 showPreview(id, p, c)
@@ -564,6 +574,19 @@ class KeyboardSurface(context: Context) : View(context) {
             }
         }
         return true
+    }
+
+    /**
+     * Types the act-on-release key whose finger is still down, if it has not opened its popup or fired its long-press:
+     * a new press means the user has moved on, as on mainstream keyboards. Its later release then does nothing.
+     */
+    private fun typePendingTap(c: KeyboardController) {
+        val k = lpKey ?: return
+        if (lpPointer < 0 || lpFired || popupOpen) return
+        removeCallbacks(longPress)
+        lpPointer = -1
+        lpKey = null
+        c.onKey(k.key)
     }
 
     override fun onWindowVisibilityChanged(visibility: Int) {
