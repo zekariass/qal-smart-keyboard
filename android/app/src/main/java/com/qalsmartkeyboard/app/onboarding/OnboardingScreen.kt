@@ -46,6 +46,7 @@ private fun languageNameRes(code: String): Int = when (code) {
     "am" -> R.string.lang_am
     "ti" -> R.string.lang_ti
     "om" -> R.string.lang_om
+    "ar" -> R.string.lang_ar
     else -> R.string.lang_en
 }
 

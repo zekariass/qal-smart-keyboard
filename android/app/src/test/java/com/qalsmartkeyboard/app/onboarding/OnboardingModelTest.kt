@@ -95,7 +95,7 @@ class OnboardingModelTest {
         var d = LanguageDraft.from(KeyboardSettings.DEFAULT)
         assertEquals("am", d.primary)
         d = d.makePrimary("ti")
-        assertEquals(listOf("ti", "am", "om", "en"), d.order)
+        assertEquals(listOf("ti", "am", "om", "en", "ar"), d.order)
         assertEquals("ti", d.primary)
         d = d.toggle("ti")
         assertEquals("am", d.primary) // first enabled in order
@@ -136,7 +136,7 @@ class OnboardingModelTest {
         assertEquals(ACCOUNT, m.state.value.step)
 
         val saved = repo.current()
-        assertEquals(listOf("ti", "am", "om", "en"), saved.languages.map { it.languageCode })
+        assertEquals(listOf("ti", "am", "om", "en", "ar"), saved.languages.map { it.languageCode })
         assertEquals(listOf("ti", "am", "en"), saved.enabledLanguages)
         assertEquals(InputMode.DIRECT_SCRIPT_LAYOUT, saved.language("ti")!!.inputMode)
         assertEquals(InputMode.PHONETIC_LATIN_TO_NATIVE, saved.language("am")!!.inputMode) // ADR 0007 U3 default kept

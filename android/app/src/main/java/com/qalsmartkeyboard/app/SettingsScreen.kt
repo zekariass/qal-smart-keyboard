@@ -41,6 +41,7 @@ internal fun languageName(code: String): String = when (code) {
     "ti" -> stringResource(ImeR.string.language_name_ti)
     "om" -> stringResource(ImeR.string.language_name_om)
     "en" -> stringResource(ImeR.string.language_name_en)
+    "ar" -> stringResource(ImeR.string.language_name_ar)
     else -> code
 }
 
