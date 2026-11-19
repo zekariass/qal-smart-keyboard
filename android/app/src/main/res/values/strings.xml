@@ -431,6 +431,7 @@
     <string name="wordart_app_draft_note">Greeting wording in Amharic, Tigrinya and Afaan Oromoo is a draft until reviewed by native speakers.</string>
     <string name="wordart_app_sample_note">Showing a sample name. Type your own text above.</string>
     <string name="wordart_app_copied">Copied</string>
+    <string name="wordart_app_tap_hint">Tap a style to copy it.</string>
     <string name="wordart_app_share">Share</string>
     <string name="wordart_app_share_title">Share Word Art</string>
     <string name="wordart_app_copy_desc">Copy %1$s</string>

@@ -428,6 +428,7 @@
     <string name="wordart_app_draft_note">በአማርኛ፣ በትግርኛና በአፋን ኦሮሞ ያሉት የሰላምታ አገላለጾች በቋንቋው ተወላጅ ተናጋሪዎች እስኪገመገሙ ድረስ ረቂቅ ናቸው።</string>
     <string name="wordart_app_sample_note">የናሙና ስም እየታየ ነው። የራስዎን ጽሑፍ ከላይ ይተይቡ።</string>
     <string name="wordart_app_copied">ተቀድቷል</string>
+    <string name="wordart_app_tap_hint">ለመቅዳት አንድ ስልት ይንኩ።</string>
     <string name="wordart_app_share">ያጋሩ</string>
     <string name="wordart_app_share_title">የቃል ጥበብን ያጋሩ</string>
     <string name="wordart_app_copy_desc">%1$sን ይቅዱ</string>

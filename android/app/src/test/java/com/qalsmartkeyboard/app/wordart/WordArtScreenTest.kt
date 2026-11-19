@@ -13,6 +13,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.onFirst
 import com.qalsmartkeyboard.ime.wordart.WordArtCategory
 import org.junit.Assert.assertEquals
@@ -40,11 +42,10 @@ class WordArtScreenTest {
         category: WordArtCategory = WordArtCategory.POPULAR,
         language: String = "en",
         greeting: Boolean = false,
-        copied: Boolean = false,
     ) = compose.setContent {
         WordArtScreen(
             text = text, onText = {}, category = category, onCategory = {}, language = language, onLanguage = {},
-            greeting = greeting, onGreeting = {}, copied = copied,
+            greeting = greeting, onGreeting = {},
             onCopy = { copies += it }, onShare = { shares += it }, onBack = { backs++ },
         )
     }
@@ -95,9 +96,30 @@ class WordArtScreenTest {
         compose.onNodeWithText("Greeting wording in Amharic, Tigrinya and Afaan Oromoo is a draft until reviewed by native speakers.").assertExists()
     }
 
-    @Test fun copiedConfirmationAndBack() {
-        show(copied = true)
+    @Test fun tappingAPreviewCopiesTheCompleteStyledText() {
+        show()
+        compose.onNodeWithContentDescription("Sparkles: Abebe").assertIsEnabled().performClick()
+        assertEquals(listOf("✨ Abebe ✨"), copies)
+        compose.onNodeWithText("Tap a style to copy it.").assertExists()
+    }
+
+    @Test fun previewsWithOnlyTheSampleAreNotClickable() {
+        show(text = "")
+        compose.onNodeWithContentDescription("Sparkles: Your Name").assertIsNotEnabled()
+    }
+
+    @Test fun theHostCopiesToTheClipboardAndConfirmsWithASnackbar() {
+        compose.setContent { WordArtHost(onBack = {}) }
+        compose.onNode(hasSetTextAction()).performTextInput("ሰላም")
+        compose.onNodeWithContentDescription("Sparkles: ሰላም").performClick()
+        val cm = RuntimeEnvironment.getApplication().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        assertEquals("✨ ሰላም ✨", cm.primaryClip!!.getItemAt(0).text.toString())
+        compose.waitForIdle()
         compose.onNodeWithText("Copied").assertExists()
+    }
+
+    @Test fun back() {
+        show()
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Back"))
         compose.onNodeWithText("Back").performClick()
         assertEquals(1, backs)
