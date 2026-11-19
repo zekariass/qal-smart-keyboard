@@ -49,8 +49,18 @@ class DeepLinksTest {
         }
     }
 
+    @Test fun theKeyboardsToolsOpenLanguagesAndThemes() {
+        // ADR 0035: the tools panel's Languages tile and the Theme shortcut / tile.
+        for (account in listOf(out, AccountStatus.Guest, AccountStatus.Registered)) {
+            assertEquals(DeepLinkAction.SHOW_KEYBOARD_LANGUAGES, DeepLinks.route(AiLink.LANGUAGES, account, true))
+            assertEquals(DeepLinkAction.SHOW_KEYBOARD_THEMES, DeepLinks.route(AiLink.THEMES, account, true))
+        }
+        assertEquals(AiLink.THEMES, DeepLinks.parse("THEMES"))
+        assertEquals(AiLink.LANGUAGES, DeepLinks.parse("LANGUAGES"))
+    }
+
     @Test fun firstRunSetupIsNotInterruptedExceptByAnUpdate() {
-        for (l in listOf(AiLink.SIGN_IN, AiLink.AI_SETTINGS, AiLink.UPGRADE, AiLink.SETTINGS, AiLink.EMAIL_WRITER)) {
+        for (l in listOf(AiLink.SIGN_IN, AiLink.AI_SETTINGS, AiLink.UPGRADE, AiLink.SETTINGS, AiLink.EMAIL_WRITER, AiLink.LANGUAGES, AiLink.THEMES)) {
             assertEquals(DeepLinkAction.NONE, DeepLinks.route(l, out, false))
         }
         assertEquals(DeepLinkAction.OPEN_STORE, DeepLinks.route(AiLink.UPDATE_APP, out, false))

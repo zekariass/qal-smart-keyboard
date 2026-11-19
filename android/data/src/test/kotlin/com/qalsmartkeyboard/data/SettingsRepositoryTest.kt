@@ -488,4 +488,17 @@ class SettingsRepositoryTest {
         assertTrue(s.emailSenderName.startsWith("Abebe Kebede "))
         assertEquals(KeyboardSettings.SENDER_NAME_MAX, s.emailSenderName.length)
     }
+
+    /** ADR 0035: the clipboard-history switch is on by default, persists, and old files decode to on. */
+    @Test fun clipboardHistoryDefaultsOnAndPersistsAcrossRestart() = runBlocking {
+        val first = open()
+        assertTrue(first.current().clipboardHistoryEnabled)
+        first.update { it.copy(clipboardHistoryEnabled = false) }
+        closeAll()
+        assertFalse(open().current().clipboardHistoryEnabled)
+        // A store written before the key existed.
+        val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "old-clip.preferences_pb")
+        store.edit { it[intPreferencesKey("schema_version")] = 1 }
+        assertTrue(SettingsRepository(store).current().clipboardHistoryEnabled)
+    }
 }

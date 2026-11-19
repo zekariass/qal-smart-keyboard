@@ -534,4 +534,19 @@
     <string name="wordart_style_name_soft">Dambalii laafaa</string>
     <string name="wordart_style_name_diamond">Almaazii</string>
     <string name="wordart_style_soc_hashtag">Haashtaagii</string>
+    <!-- Keyboard toolbar, tools panel and clipboard panel (ADR 0035). DRAFT (N9). -->
+    <string name="tools_title">Meeshaalee</string>
+    <string name="tool_ai_assist">Gargaarsa AI</string>
+    <string name="tool_email">Imeelii barreessaa</string>
+    <string name="tool_clipboard">Kuusaa garagalchaa</string>
+    <string name="tool_writing_mode">Akkaataa barreessuu</string>
+    <string name="tool_languages">Afaanota</string>
+    <string name="tool_theme">Bifa</string>
+    <string name="tool_settings">Qindaa\'ina</string>
+    <string name="tool_locked">%1$s, cufameera</string>
+    <string name="clip_clear_all">Hunda haqaa</string>
+    <string name="clip_empty">Barreeffamni isin garagalchitan asitti mul\'ata</string>
+    <string name="clip_history_off">Seenaan kuusaa garagalchaa cufameera</string>
+    <string name="clip_paste_item">Maxxansaa: %1$s</string>
+    <string name="clip_delete_item">Seenaa kuusaa garagalchaa irraa haqaa</string>
 </resources>

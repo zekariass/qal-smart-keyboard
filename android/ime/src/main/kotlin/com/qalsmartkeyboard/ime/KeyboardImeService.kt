@@ -59,6 +59,17 @@ import com.qalsmartkeyboard.ime.voice.VoiceIntents
 import com.qalsmartkeyboard.ime.voice.VoicePanelView
 import com.qalsmartkeyboard.ime.voice.VoicePrefs
 import com.qalsmartkeyboard.ime.packs.PackRuntime
+import com.qalsmartkeyboard.ime.toolbar.Clip
+import com.qalsmartkeyboard.ime.toolbar.ClipboardHistory
+import com.qalsmartkeyboard.ime.toolbar.ClipboardPanelView
+import com.qalsmartkeyboard.ime.toolbar.Motion
+import com.qalsmartkeyboard.ime.toolbar.SystemClipboardSource
+import com.qalsmartkeyboard.ime.toolbar.Tool
+import com.qalsmartkeyboard.ime.toolbar.ToolContext
+import com.qalsmartkeyboard.ime.toolbar.ToolHost
+import com.qalsmartkeyboard.ime.toolbar.ToolPanel
+import com.qalsmartkeyboard.ime.toolbar.ToolsController
+import com.qalsmartkeyboard.ime.toolbar.ToolsPanelView
 import com.qalsmartkeyboard.ime.packs.PackStorage
 import java.util.concurrent.atomic.AtomicBoolean
 import com.qalsmartkeyboard.ime.packs.installedProfiles
@@ -83,6 +94,9 @@ class KeyboardImeService : InputMethodService() {
     private var wordArtPanel: WordArtPanelView? = null
     private var wordArtBar: WordArtBar? = null
     private var voicePanel: VoicePanelView? = null
+    private var toolsPanel: ToolsPanelView? = null
+    private var clipPanel: ClipboardPanelView? = null
+    private var seenToolPanel = ToolPanel.NONE
     private var seenEmojiMode = EmojiMode.CLOSED
     private var engine: KeyboardEngine? = null
     private var runtime: PackRuntime? = null
@@ -148,6 +162,8 @@ class KeyboardImeService : InputMethodService() {
         wordArtPanel?.theme = t
         wordArtBar?.theme = t
         voicePanel?.theme = t
+        toolsPanel?.theme = t
+        clipPanel?.theme = t
         aiView?.theme = t
         aiPanelView?.theme = t
         aiFieldBar?.theme = t
@@ -259,6 +275,7 @@ class KeyboardImeService : InputMethodService() {
         }
         override fun beforeVoice() {
             controller.commitComposition()
+            tools.close()
             controller.emoji.close()
             bar?.closeAi()
             closeAiPanels()
@@ -268,6 +285,96 @@ class KeyboardImeService : InputMethodService() {
         override fun commitVoiceText(text: String) = controller.commitVoiceText(text)
     }
     private val voice by lazy { VoiceController(voiceHost, voiceProvider, voicePrefs) { refreshViews() } }
+
+    // Tools panel and clipboard panel (ADR 0035). The clipboard history lives in memory only and dies with the process.
+    private val clipHistory = ClipboardHistory()
+    private val clipSource by lazy {
+        SystemClipboardSource(
+            this, clipHistory,
+            historyOn = { snapshot.current.clipboardHistoryEnabled },
+            focusedField = { controller.profile },
+            onChanged = { main.post { if (tools.panel == ToolPanel.CLIPBOARD) clipPanel?.render() } },
+        )
+    }
+
+    /** The current clip read when the clipboard panel opened (shown even with the history off); dropped on close. */
+    private var clipCurrent: String? = null
+
+    /** The field's tools without the AI part (the bar adds it). */
+    private fun fieldToolContext() = ToolContext(
+        profile = controller.profile,
+        voiceOffered = voice.micVisible,
+        writingModes = controller.writingModeOptions.isNotEmpty(),
+    )
+
+    private val toolHost = object : ToolHost {
+        override fun openTranslate() = openAiActions()
+        override fun openAiActions() {
+            voice.cancel()
+            controller.emoji.close()
+            closeAiPanels()
+            bar?.setAiOpen(true)
+            refreshViews()
+        }
+        override fun openAssist() = openAiPanel(email = false)
+        override fun openEmail() = openAiPanel(email = true)
+        override fun openEmoji() {
+            voice.cancel()
+            bar?.closeAi()
+            closeAiPanels()
+            controller.emoji.open(controller.profile.allowsEmoji)
+            refreshViews()
+        }
+        override fun startVoice() {
+            if (!voice.isOpen) voice.onMicTapped()
+        }
+        override fun openWordArt() {
+            openEmoji()
+            controller.emoji.openWordArt()
+        }
+        override fun openWritingModes() {
+            bar?.closeAi()
+            strip?.openModeChooser()
+        }
+        override fun openLanguages() = openCompanion(AiLink.LANGUAGES)
+        override fun openTheme() = openCompanion(AiLink.THEMES)
+        override fun openSettings() = openCompanion(AiLink.SETTINGS)
+        override fun closeOtherPanels() {
+            controller.commitComposition()
+            voice.cancel()
+            controller.emoji.close()
+            bar?.closeAi()
+            closeAiPanels()
+        }
+    }
+
+    private val tools: ToolsController by lazy {
+        ToolsController(toolHost, { bar?.toolContext() ?: fieldToolContext() }) {
+            if (tools.panel != ToolPanel.CLIPBOARD) clipCurrent = null
+            refreshViews()
+        }
+    }
+
+    /** Starts or stops remembering copies with the "Clipboard history" setting; turning it off forgets every clip. */
+    private fun applyClipboardSetting() {
+        if (snapshot.current.clipboardHistoryEnabled) {
+            clipSource.start()
+        } else {
+            clipSource.stop()
+            clipHistory.clear()
+        }
+    }
+
+    /** The clipboard panel's clips: the history (the current clip joined it on open), or only the current clip when off. */
+    private fun clipEntries(): List<Clip> =
+        if (snapshot.current.clipboardHistoryEnabled) clipHistory.items()
+        else listOfNotNull(clipCurrent?.let { Clip(0L, it, System.currentTimeMillis()) })
+
+    /** A clip was tapped: back to the keys, and the clip goes into the field (the composition is finished first). */
+    private fun pasteClip(c: Clip) {
+        tools.close()
+        controller.pasteText(c.text)
+    }
 
     /** Re-reads which speech services are installed (a PackageManager query), then shows or hides the mic. */
     private fun refreshVoiceInBackground() {
@@ -403,7 +510,9 @@ class KeyboardImeService : InputMethodService() {
     private fun openAiPanel(email: Boolean) {
         val ws = workspace() ?: return
         voice.cancel()
+        tools.close()
         controller.emoji.close()
+        bar?.closeAi()
         aiToolbar?.close()
         aiToolbar?.onToolbarOpened() // the plan state behind the Premium marks (throttled, sends no text)
         ensureAiPanelViews(ws)
@@ -459,8 +568,14 @@ class KeyboardImeService : InputMethodService() {
         attachThemeAccessInBackground()
         refreshVoiceInBackground()
         adapter.onCompositionAbandoned = { controller.onCompositionAbandoned() }
-        snapshot.onChange = { main.post { controller.onPreferencesChanged(); voice.onPreferencesChanged(); applyTheme(); strip?.micShown = voice.micVisible } }
+        snapshot.onChange = {
+            main.post {
+                controller.onPreferencesChanged(); voice.onPreferencesChanged(); applyTheme(); applyClipboardSetting()
+                strip?.micShown = voice.micVisible
+            }
+        }
         snapshot.start()
+        applyClipboardSetting()
         AppLanguage.addListener(onAppLanguageChanged)
         loadCoreInBackground()
     }
@@ -558,6 +673,8 @@ class KeyboardImeService : InputMethodService() {
     override fun onDestroy() {
         AppLanguage.removeListener(onAppLanguageChanged)
         voice.cancel()
+        clipSource.stop()
+        clipHistory.clear()
         themeAccessHandle?.close()
         themeAccessHandle = null
         snapshot.stop()
@@ -601,8 +718,9 @@ class KeyboardImeService : InputMethodService() {
                 val added = controller.addCandidateToDictionary(i)
                 Toast.makeText(ui, if (added) R.string.user_dictionary_added else R.string.user_dictionary_not_added, Toast.LENGTH_SHORT).show()
             }
-            it.onSettings = { openCompanion(AiLink.SETTINGS) }
             it.onModeSelected = { kind -> controller.selectWritingMode(kind) }
+            it.onTools = { tools.toggleTools() }
+            it.haptics = { controller.prefs.hapticsEnabled }
             strip = it
         }
         val ai = AiToolbarView(ui).also {
@@ -613,7 +731,11 @@ class KeyboardImeService : InputMethodService() {
             aiView = it
         }
         // One bar above the keys: pill, AI entry (its actions open in the bar's middle), candidates, mic, gear.
-        val b = KeyboardBar(ui, s, ai).also { bar = it }
+        val b = KeyboardBar(ui, s, ai).also {
+            it.fieldContext = ::fieldToolContext
+            it.onTool = { t -> tools.activate(t) }
+            bar = it
+        }
         s.onMic = { voice.onMicTapped() }
         val aiToggle = s.onAiToggle
         s.onAiToggle = {
@@ -656,6 +778,26 @@ class KeyboardImeService : InputMethodService() {
             it.controller = voice
             voicePanel = it
         }
+        val toolsView = ToolsPanelView(ui).also {
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            it.tiles = { tools.tiles() }
+            it.onTool = { t -> tools.activate(t) }
+            it.haptics = { controller.prefs.hapticsEnabled }
+            toolsPanel = it
+        }
+        val clipView = ClipboardPanelView(ui).also {
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            it.entries = ::clipEntries
+            it.historyOn = { snapshot.current.clipboardHistoryEnabled }
+            it.onPaste = ::pasteClip
+            it.onDelete = { c -> clipHistory.remove(c.id); clipPanel?.render() }
+            it.onClearAll = { clipHistory.clear(); clipPanel?.render() }
+            it.haptics = { controller.prefs.hapticsEnabled }
+            clipPanel = it
+        }
+        seenToolPanel = ToolPanel.NONE
         val space = View(ui).also { headroom = it }
         // A new input view: the AI panel views (if any) belonged to the old one and are created again on the next open.
         aiPanelView = null
@@ -671,6 +813,8 @@ class KeyboardImeService : InputMethodService() {
             addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(wordArt, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(voiceView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(toolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(clipView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val root = OverlayStack(ui).apply {
             addView(column)
@@ -786,6 +930,7 @@ class KeyboardImeService : InputMethodService() {
         controller.startField(profile)
         voice.onFieldStarted(VoiceController.fieldAllowsVoice(profile, info.privateImeOptions), sameField = restarting)
         bar?.closeAi()
+        tools.close() // a new field: the tools and clipboard panels start closed
         // A new field: an open AI panel and its texts never carry over (and a running call is cancelled).
         if (aiWorkspace?.isOpen == true) closeAiPanels()
         aiView?.emailFirst = profile.allowsAi && AiEmailHints.looksLikeEmailBody(info.packageName, info.inputType, info.hintText)
@@ -799,6 +944,7 @@ class KeyboardImeService : InputMethodService() {
         refreshVoiceInBackground() // a speech service may have been installed or removed
         applyTheme() // the entitlement token may have expired since the last time
         controller.refreshAutoCapital()
+        clipHistory.prune()
         refreshViews()
     }
 
@@ -819,6 +965,8 @@ class KeyboardImeService : InputMethodService() {
      * it dismisses the keyboard.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // The tools and clipboard panels: Back returns to the keys.
+        if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && tools.back()) return true
         val ws = aiWorkspace
         if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && ws != null && ws.isOpen) {
             // AI panels: typing → panel, result → inputs, inputs → keyboard.
@@ -847,6 +995,8 @@ class KeyboardImeService : InputMethodService() {
         controller.emoji.close()
         controller.onCompositionAbandoned()
         bar?.closeAi()
+        tools.close()
+        clipHistory.prune()
         aiToolbar?.onKeyboardHidden()
         closeAiPanels()
         super.onFinishInputView(finishingInput)
@@ -889,7 +1039,36 @@ class KeyboardImeService : InputMethodService() {
         strip?.micActive = voiceOpen
         voicePanel?.visibility = if (voiceOpen) View.VISIBLE else View.GONE
         if (voiceOpen) voicePanel?.render()
-        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown) View.GONE else View.VISIBLE
+        // Tools and clipboard panels (ADR 0035): they take the key area too; the bar shows a back arrow and their title.
+        val toolPanel = tools.panel
+        toolsPanel?.visibility = if (toolPanel == ToolPanel.TOOLS) View.VISIBLE else View.GONE
+        clipPanel?.visibility = if (toolPanel == ToolPanel.CLIPBOARD) View.VISIBLE else View.GONE
+        if (toolPanel != seenToolPanel) {
+            seenToolPanel = toolPanel
+            val rise = 8f * resources.displayMetrics.density
+            when (toolPanel) {
+                ToolPanel.TOOLS -> toolsPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
+                ToolPanel.CLIPBOARD -> clipPanel?.let {
+                    clipCurrent = clipSource.currentText() // the user opened the panel: the current clip is read now
+                    it.render()
+                    Motion.reveal(it, fromYPx = rise)
+                }
+                ToolPanel.NONE -> Unit
+            }
+        }
+        strip?.panelTitle = when (toolPanel) {
+            ToolPanel.TOOLS -> ui.getString(R.string.tools_title)
+            ToolPanel.CLIPBOARD -> ui.getString(R.string.tool_clipboard)
+            ToolPanel.NONE -> null
+        }
+        strip?.setActiveTools(
+            buildSet {
+                if (inPanel || inSearch || inWordArt || inWordArtTyping) add(Tool.EMOJI)
+                if (aiPanelShown) add(Tool.AI_ACTIONS)
+            },
+        )
+        bar?.sync() // the field's shortcuts (clipboard, emoji, voice) follow the field and the settings
+        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE) View.GONE else View.VISIBLE
         emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
         bar?.visibility = if (inSearch || inWordArtTyping || aiTyping) View.GONE else View.VISIBLE
         aiFieldBar?.let {

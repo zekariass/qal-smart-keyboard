@@ -2,7 +2,8 @@ package com.qalsmartkeyboard.ime
 
 /**
  * What a key does when pressed. [GLOBE] switches language (tap: next, long-press: cycle layouts),
- * [ABC_TOGGLE] is the one-tap ABC <-> native switch (SD 7.1), [FIDEL_CONSONANT] / [FIDEL_VOWEL] are
+ * [ABC_TOGGLE] is the one-tap ABC <-> native switch (SD 7.1; no layout places it since ADR 0035, the controller still
+ * handles it), [FIDEL_CONSONANT] / [FIDEL_VOWEL] are
  * the two-key direct-Fidel entry (SD 7.2).
  */
 enum class KeyKind {
@@ -164,6 +165,12 @@ object Layouts {
     /** Key descriptions in the UI language (ADR 0032); read when a layout is built. */
     private val L: KeyboardLabels get() = KeyboardLabels.current
     private const val FULL_STOP = "።"
+
+    /** The width of a letter row in key units: the bottom row adds up to it (ADR 0035). */
+    private const val ROW_UNITS = 10f
+
+    /** The space bar is never narrower than three keys (the Arabic row has one key more). */
+    private const val MIN_SPACE_WEIGHT = 3f
     private const val ETHIOPIC_COMMA = "፣"
 
     /** The Ge'ez punctuation marks every Ethiopic native layout must reach (SD 7.2). */
@@ -221,7 +228,7 @@ object Layouts {
     private fun markKey(m: ArabicKeys.Mark) = Key(KeyKind.CHAR, m.label, m.text, description = L.keyArabicMark.format(m.name))
 
     /**
-     * The marks key of the Arabic layout, in the slot the other languages use for the ABC key: tap types a fatha (what
+     * The marks key of the Arabic layout, after the globe (where the ABC key used to be): tap types a fatha (what
      * the key shows), long-press offers every harakah, the superscript alef and the tatweel.
      */
     private fun arabicMarksKey(): Key {
@@ -263,26 +270,26 @@ object Layouts {
                 PopupItem(ArabicKeys.SEMICOLON, description = L.keyArabicPunctuation.format(ArabicKeys.SEMICOLON)),
                 PopupItem(":"),
             )
-            return Key(KeyKind.CHAR, ".", ".", 0.75f, popup = p, popupColumns = 4, hint = ArabicKeys.QUESTION, description = L.keyPeriod)
+            return Key(KeyKind.CHAR, ".", ".", 1f, popup = p, popupColumns = 4, hint = ArabicKeys.QUESTION, description = L.keyPeriod)
         }
         val m = marks(ctx)
         if (ctx.fidelPunctuation) {
             // Fidel grid only (ADR 0007): tap = ። ; ASCII "." leads the popup, then the other marks.
             val others = m.filter { it.label != FULL_STOP }
             return Key(
-                KeyKind.CHAR, FULL_STOP, FULL_STOP, 0.75f,
+                KeyKind.CHAR, FULL_STOP, FULL_STOP, 1f,
                 popup = listOf(PopupItem(".", description = L.keyPeriod)) + others, popupColumns = 4,
                 hint = ".", description = L.keyEthiopicFullStop,
             )
         }
-        return Key(KeyKind.CHAR, ".", ".", 0.75f, popup = m, popupColumns = 4, hint = m.firstOrNull()?.label.orEmpty())
+        return Key(KeyKind.CHAR, ".", ".", 1f, popup = m, popupColumns = 4, hint = m.firstOrNull()?.label.orEmpty())
     }
 
     private fun commaKey(ctx: LayoutContext): Key {
         if (ctx.arabic) {
             // Tap = Arabic comma; long-press: the Arabic semicolon (the hint), then the ASCII comma.
             return Key(
-                KeyKind.CHAR, ArabicKeys.COMMA, ArabicKeys.COMMA, 0.75f,
+                KeyKind.CHAR, ArabicKeys.COMMA, ArabicKeys.COMMA, 1f,
                 popup = listOf(
                     PopupItem(ArabicKeys.SEMICOLON, description = L.keyArabicPunctuation.format(ArabicKeys.SEMICOLON)),
                     PopupItem(",", description = L.keyComma),
@@ -294,28 +301,12 @@ object Layouts {
         if (ctx.fidelPunctuation) {
             val others = m.filter { it.label != ETHIOPIC_COMMA }
             return Key(
-                KeyKind.CHAR, ETHIOPIC_COMMA, ETHIOPIC_COMMA, 0.75f,
+                KeyKind.CHAR, ETHIOPIC_COMMA, ETHIOPIC_COMMA, 1f,
                 popup = listOf(PopupItem(",", description = L.keyComma)) + others, popupColumns = 2,
                 hint = ",", description = L.keyEthiopicComma,
             )
         }
-        return Key(KeyKind.CHAR, ",", ",", 0.75f, popup = m, popupColumns = 2, hint = m.firstOrNull()?.label.orEmpty())
-    }
-
-    /**
-     * The one-tap ABC key. In am/ti it is the English writing mode switch: `ABC` goes to English, the
-     * native glyph goes back to the last of Fidel/Phonetic. Hidden in English (ABC == English).
-     */
-    private fun toggleKey(ctx: LayoutContext): Key? {
-        val lang = ctx.mode.language
-        if (lang == "en") return null // ABC and English are both plain Latin passthrough
-        if (!LanguageCatalog.hasAbcLayout(lang)) return null // Arabic: no Latin layout of its own (ADR 0034)
-        val ethiopic = LanguageCatalog.isEthiopic(lang)
-        return if (ctx.mode.isAbc) {
-            Key(KeyKind.ABC_TOGGLE, LanguageCatalog.nativeGlyph(lang), description = L.keySwitchToLanguageKeys.format(LanguageCatalog.spokenName(lang)))
-        } else {
-            Key(KeyKind.ABC_TOGGLE, "ABC", description = if (ethiopic) L.keySwitchToEnglishMode else L.keySwitchToAbc)
-        }
+        return Key(KeyKind.CHAR, ",", ",", 1f, popup = m, popupColumns = 2, hint = m.firstOrNull()?.label.orEmpty())
     }
 
     private fun letters(profile: InputProfile, ctx: LayoutContext): KeyboardLayout {
@@ -323,16 +314,21 @@ object Layouts {
         val bottom = when (profile.kind) {
             FieldKind.EMAIL -> listOf(toSym, ch("@"), ch(","), plainSpace(3f), ch("."), enter())
             FieldKind.URI -> listOf(toSym, ch("/"), plainSpace(2f), ch("."), Key(KeyKind.CHAR, ".com", ".com", 1.5f), enter())
-            FieldKind.TEXT -> listOfNotNull(
-                toSym,
-                Key(KeyKind.GLOBE, "🌐", weight = 1f, longAction = true, description = L.keySwitchLanguage),
-                if (ctx.arabic) arabicMarksKey() else toggleKey(ctx),
-                commaKey(ctx),
-                emojiKey(profile, 0.9f),
-                spaceKey(if (profile.allowsEmoji) 2.75f else 3f, ctx),
-                periodKey(ctx),
-                enter(),
-            )
+            // ADR 0035, Gboard's order: ?123, comma, globe, (Arabic: the marks key), emoji, space, period, Enter. No ABC key:
+            // am/ti switch writing modes with the bar's pill (one tap away), om reaches ABC by long-pressing the globe.
+            FieldKind.TEXT -> {
+                val keys = listOfNotNull(
+                    toSym,
+                    commaKey(ctx),
+                    Key(KeyKind.GLOBE, "🌐", weight = 1f, longAction = true, description = L.keySwitchLanguage),
+                    if (ctx.arabic) arabicMarksKey() else null,
+                    emojiKey(profile, 1f),
+                )
+                val after = listOf(periodKey(ctx), enter())
+                // The space bar takes what the letter rows' ten units leave, never less than three keys.
+                val space = maxOf(MIN_SPACE_WEIGHT, ROW_UNITS - (keys + after).sumOf { it.weight.toDouble() }.toFloat())
+                keys + spaceKey(space, ctx) + after
+            }
             else -> listOf(toSym, ch(","), plainSpace(4f), ch("."), enter())
         }
         if (ctx.mode.kind == LayoutKind.FIDEL && ctx.grid != null && profile.kind == FieldKind.TEXT) {
@@ -384,7 +380,7 @@ object Layouts {
 
     /**
      * The Arabic letter layout (ADR 0034): the digit row, the three standard rows (the last ending in Delete), then the
-     * bottom row. No shift key (Arabic has no case); the marks key sits in the bottom row's ABC slot.
+     * bottom row. No shift key (Arabic has no case); the marks key sits in the bottom row after the globe.
      */
     private fun arabic(ctx: LayoutContext, bottom: List<Key>): KeyboardLayout {
         val rows = ArabicKeys.ROWS.map { row ->

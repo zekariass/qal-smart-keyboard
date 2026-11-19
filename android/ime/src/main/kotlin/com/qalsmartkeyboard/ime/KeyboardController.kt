@@ -296,6 +296,12 @@ class KeyboardController(
         onChanged()
     }
 
+    /**
+     * The clipboard panel (ADR 0035): pastes [text] into the field like dictated text, after finishing the open
+     * composition as typed; pasted words are not learned into the personal dictionary.
+     */
+    fun pasteText(text: String) = commitVoiceText(text)
+
     /** The field's auto-capitalisation would capitalise a letter at the cursor now (voice typing capitalises English there). */
     fun wantsCapitalAtCursor(): Boolean = profile.capsFlags != 0 && sink.wantsAutoCapital(profile.capsFlags)
 

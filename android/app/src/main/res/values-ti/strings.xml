@@ -497,4 +497,7 @@
         <item quantity="one">%1$d ቃል</item>
         <item quantity="other">%1$d ቃላት</item>
     </plurals>
+    <!-- ADR 0035: the keyboard's clipboard panel. DRAFT (N9). -->
+    <string name="settings_clipboard_history">ታሪኽ ሰሌዳ ቅዳሕ</string>
+    <string name="settings_clipboard_history_summary">ቀረባ ዝተቐድሑ፣ ኣብ ዝኽሪ ጥራይ ን1 ሰዓት ይጸንሑ</string>
 </resources>

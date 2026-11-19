@@ -51,6 +51,7 @@ import com.qalsmartkeyboard.app.privacy.PrivacyGraph
 import com.qalsmartkeyboard.app.privacy.PrivacyHost
 import com.qalsmartkeyboard.app.privacy.PrivacyRoute
 import com.qalsmartkeyboard.app.privacy.PrivacyViewModel
+import com.qalsmartkeyboard.app.settings.SettingsPage
 import com.qalsmartkeyboard.app.settings.rememberSettingsNavigator
 import com.qalsmartkeyboard.app.sync.DictionarySyncRow
 import com.qalsmartkeyboard.app.sync.DictionarySyncSection
@@ -179,6 +180,8 @@ class MainActivity : ComponentActivity() {
             // The theme picker (themes package); themesPreview: a theme to open it on (a locked one tapped on the settings home).
             var themesOpen by rememberSaveable { mutableStateOf(false) }
             var themesPreview by rememberSaveable { mutableStateOf<String?>(null) }
+            // Opened from the keyboard's Theme shortcut (ADR 0035): Back returns to the app the user was typing in.
+            var themesFromKeyboard by rememberSaveable { mutableStateOf(false) }
             // The settings pages' back stack (ADR 0036); empty = the settings home.
             val settingsNav = rememberSettingsNavigator()
             val themeAccess by rememberPremiumThemeAccess()
@@ -208,6 +211,19 @@ class MainActivity : ComponentActivity() {
                         showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()
                         fromKeyboard = true
+                    }
+                    DeepLinkAction.SHOW_KEYBOARD_LANGUAGES -> {
+                        showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        settingsNav.reset()
+                        settingsNav.open(SettingsPage.LANGUAGES)
+                        fromKeyboard = true
+                    }
+                    DeepLinkAction.SHOW_KEYBOARD_THEMES -> {
+                        showSignIn = false; showPlans = false; privacyRoute = null; wordArtOpen = false; emailOpen = false; rerun = false
+                        settingsNav.reset()
+                        themesPreview = null
+                        themesOpen = true
+                        themesFromKeyboard = true
                     }
                     DeepLinkAction.SHOW_EMAIL_WRITER -> {
                         showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; rerun = false
@@ -291,7 +307,10 @@ class MainActivity : ComponentActivity() {
                             store = repository.themeStore(),
                             systemDark = systemDark,
                             onUnlock = { showPlans = true },
-                            onBack = { themesOpen = false; themesPreview = null },
+                            onBack = {
+                                if (themesFromKeyboard) finishAndRemoveTask()
+                                themesOpen = false; themesPreview = null; themesFromKeyboard = false
+                            },
                             initialPreview = themesPreview,
                         )
                         wordArtOpen && !showFlow -> {
@@ -355,7 +374,7 @@ class MainActivity : ComponentActivity() {
                                 onboarding.restart()
                                 rerun = true
                             },
-                            onOpenThemes = { id -> themesPreview = id; themesOpen = true },
+                            onOpenThemes = { id -> themesPreview = id; themesOpen = true; themesFromKeyboard = false },
                             onOpenWordArt = { wordArtOpen = true },
                             onOpenEmail = { emailOpen = true },
                             onOpenPrivacy = { privacyRoute = PrivacyRoute.DASHBOARD.name },
