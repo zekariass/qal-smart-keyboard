@@ -552,7 +552,8 @@ class DataExportIT {
 				"payment_orders", "store_purchases", "voice_jobs", "realtime_sessions", "organization_members");
 		Set<String> excluded = Set.of(
 				// credentials and secrets
-				"user_password_credentials", "password_reset_tokens", "otp_challenges", "attestation_nonces",
+				"user_password_credentials", "password_reset_tokens", "otp_challenges", "email_challenges",
+				"attestation_nonces",
 				"user_data_keys", "user_app_rule_keys", "user_dictionary_sync_state",
 				// bookkeeping and transient state
 				"user_typing_language_revisions", "user_app_rule_revisions", "user_dictionary_applied_changes",
