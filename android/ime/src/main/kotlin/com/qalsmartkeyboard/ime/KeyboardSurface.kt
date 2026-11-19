@@ -21,6 +21,8 @@ import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.Accessibilit
 import androidx.customview.widget.ExploreByTouchHelper
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
+import com.qalsmartkeyboard.ime.toolbar.ToolIcon
+import com.qalsmartkeyboard.ime.toolbar.ToolIcons
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -290,17 +292,27 @@ class KeyboardSurface(context: Context) : View(context) {
                 borderPaint.color = theme.border
                 canvas.drawRoundRect(r.left + hw, r.top + hw, r.right - hw, r.bottom - hw, radius, radius, borderPaint)
             }
-            if (key.kind == KeyKind.GLOBE) {
-                drawGlobe(canvas, p.rect.centerX(), p.rect.centerY(), min(p.rect.width(), p.rect.height()) * 0.24f)
-                continue
+            // Function keys draw icons of the keyboard's one outline family (ADR 0035), Gboard-like: globe, emoji, shift
+            // (outline / filled / filled with a bar for caps lock), delete and the Enter action.
+            val keyIcon = when (key.kind) {
+                KeyKind.GLOBE -> ToolIcon.LANGUAGES
+                KeyKind.EMOJI -> ToolIcon.EMOJI
+                KeyKind.BACKSPACE -> ToolIcon.BACKSPACE
+                KeyKind.SHIFT -> when (c.shift) {
+                    ShiftState.OFF -> ToolIcon.SHIFT
+                    ShiftState.ONCE -> ToolIcon.SHIFT_ON
+                    ShiftState.LOCKED -> ToolIcon.SHIFT_LOCKED
+                }
+                KeyKind.ENTER -> enterIcon(c.profile.enterLabel)
+                else -> null
             }
-            if (key.kind == KeyKind.EMOJI) {
-                drawSmiley(canvas, p.rect.centerX(), p.rect.centerY(), min(p.rect.width(), p.rect.height()) * 0.26f)
+            if (keyIcon != null) {
+                val size = min(min(p.rect.width(), p.rect.height()) * 0.5f, KEY_ICON_DP * d)
+                val color = if (key.kind == KeyKind.ENTER) onAccent else specialText
+                ToolIcons.draw(canvas, keyIcon, p.rect.centerX(), p.rect.centerY(), size, color, icon)
                 continue
             }
             val label = when (key.kind) {
-                KeyKind.ENTER -> enterText(c.profile.enterLabel)
-                KeyKind.SHIFT -> if (c.shift == ShiftState.LOCKED) "⇪" else "⇧"
                 KeyKind.SPACE -> key.label.trim()
                 KeyKind.CHAR -> if (key.isLetter && c.shift != ShiftState.OFF) key.label.uppercase() else key.label
                 KeyKind.FIDEL_VOWEL -> face?.label ?: key.label
@@ -357,34 +369,6 @@ class KeyboardSurface(context: Context) : View(context) {
         text.textSize = size * p.labelScale
         canvas.drawText(label, r.left + p.labelX, r.top + p.labelBaseline, text)
     }
-
-    /** The language key as a drawn globe in the special-key label colour (no colour emoji). */
-    private fun drawGlobe(canvas: Canvas, cx: Float, cy: Float, r: Float) {
-        icon.color = specialText
-        icon.strokeWidth = 1.6f * d
-        canvas.drawCircle(cx, cy, r, icon)
-        canvas.drawOval(cx - r * 0.45f, cy - r, cx + r * 0.45f, cy + r, icon)
-        canvas.drawLine(cx - r, cy, cx + r, cy, icon)
-        canvas.drawLine(cx, cy - r, cx, cy + r, icon)
-        val y = r * 0.5f
-        val half = r * 0.866f
-        canvas.drawLine(cx - half, cy - y, cx + half, cy - y, icon)
-        canvas.drawLine(cx - half, cy + y, cx + half, cy + y, icon)
-    }
-
-    /** The emoji key as a drawn smiley in the special-key label colour (no colour emoji, no font dependency). */
-    private fun drawSmiley(canvas: Canvas, cx: Float, cy: Float, r: Float) {
-        icon.color = specialText
-        icon.strokeWidth = 1.6f * d
-        canvas.drawCircle(cx, cy, r, icon)
-        fill.color = specialText
-        canvas.drawCircle(cx - r * 0.38f, cy - r * 0.25f, r * 0.12f, fill)
-        canvas.drawCircle(cx + r * 0.38f, cy - r * 0.25f, r * 0.12f, fill)
-        smile.set(cx - r * 0.55f, cy - r * 0.5f, cx + r * 0.55f, cy + r * 0.6f)
-        canvas.drawArc(smile, 25f, 130f, false, icon)
-    }
-
-    private val smile = RectF()
 
     private fun enterText(l: EnterLabel) = enterLabelText(context, l)
 
@@ -594,6 +578,9 @@ class KeyboardSurface(context: Context) : View(context) {
     }
 
     private companion object {
+        /** Function-key icons (shift, delete, Enter, globe, emoji): half the key's short side, at most this (dp). */
+        const val KEY_ICON_DP = 24f
+
         /** Size of the DRAFT tag text, and the space between it and the label. */
         const val TAG_TEXT_DP = 8f
         const val TAG_GAP_DP = 3f
@@ -703,7 +690,18 @@ class KeyboardSurface(context: Context) : View(context) {
     }
 }
 
-/** The Enter key label for an editor action (shared with the emoji panel), in the UI language (ADR 0032). */
+/** The Enter key's icon for an editor action (ADR 0035; the key keeps its spoken name, [enterLabelText]). */
+internal fun enterIcon(l: EnterLabel): ToolIcon = when (l) {
+    EnterLabel.RETURN -> ToolIcon.ENTER
+    EnterLabel.GO -> ToolIcon.GO
+    EnterLabel.SEARCH -> ToolIcon.SEARCH
+    EnterLabel.SEND -> ToolIcon.SEND
+    EnterLabel.NEXT -> ToolIcon.NEXT
+    EnterLabel.PREVIOUS -> ToolIcon.PREVIOUS
+    EnterLabel.DONE -> ToolIcon.CHECK
+}
+
+/** The Enter key's spoken / text label for an editor action (shared with the emoji panel), in the UI language (ADR 0032). */
 internal fun enterLabelText(c: Context, l: EnterLabel): String = when (l) {
     EnterLabel.RETURN -> "⏎"
     EnterLabel.GO -> c.getString(R.string.kb_enter_go)

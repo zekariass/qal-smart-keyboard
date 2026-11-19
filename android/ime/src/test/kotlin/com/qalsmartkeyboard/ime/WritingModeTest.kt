@@ -184,19 +184,20 @@ class WritingModeTest {
 
     // ---------------------------------------------------------------- ABC key = English mode
 
-    @Test fun abcKeyGoesToEnglishAndBackToTheLastNativeMode() {
+    @Test fun abcToggleGoesToEnglishAndBackToTheLastNativeMode() {
+        // ADR 0035: no layout shows the ABC key any more (the bar's pill switches modes); the controller still handles it.
         val c = controller()
+        val abc = Key(KeyKind.ABC_TOGGLE, "ABC")
         c.selectWritingMode(LayoutKind.FIDEL)
-        assertEquals("ABC", c.key(KeyKind.ABC_TOGGLE).label)
-        assertEquals("Switch to English writing mode", c.key(KeyKind.ABC_TOGGLE).description)
-        c.onKey(c.key(KeyKind.ABC_TOGGLE))
+        assertTrue(c.layout.rows.flatten().none { it.kind == KeyKind.ABC_TOGGLE })
+        c.onKey(abc)
         assertEquals(LayoutKind.ABC, c.writingMode)
-        assertEquals("አ", c.key(KeyKind.ABC_TOGGLE).label)
-        c.onKey(c.key(KeyKind.ABC_TOGGLE))
+        assertTrue(c.layout.rows.flatten().none { it.kind == KeyKind.ABC_TOGGLE })
+        c.onKey(abc)
         assertEquals(LayoutKind.FIDEL, c.writingMode) // one tap back to the last native mode
         c.selectWritingMode(LayoutKind.PHONETIC)
-        c.onKey(c.key(KeyKind.ABC_TOGGLE))
-        c.onKey(c.key(KeyKind.ABC_TOGGLE))
+        c.onKey(abc)
+        c.onKey(abc)
         assertEquals(LayoutKind.PHONETIC, c.writingMode)
     }
 

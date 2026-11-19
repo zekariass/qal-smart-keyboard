@@ -101,7 +101,8 @@ class KeyboardControllerTest {
         onKey(layout.rows.flatten().first { !it.isSpacer && (it.label == label || it.text == label) })
 
     private fun KeyboardController.tapKind(kind: KeyKind) =
-        onKey(layout.rows.flatten().first { it.kind == kind })
+        // ADR 0035: no layout places the ABC key any more; the controller still handles it (the pill's English option).
+        onKey(if (kind == KeyKind.ABC_TOGGLE) Key(KeyKind.ABC_TOGGLE, "ABC") else layout.rows.flatten().first { it.kind == kind })
 
     private fun KeyboardController.hasKind(kind: KeyKind) = layout.rows.flatten().any { it.kind == kind }
 

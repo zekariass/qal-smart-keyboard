@@ -70,19 +70,22 @@ class ArabicKeyboardTest {
         assertTrue(keys.getValue("ا").actsOnRelease)
     }
 
-    @Test fun bottomRowHasTheSameKeysAndWidthsAsTheOtherLanguages() {
+    @Test fun bottomRowIsTheOtherLanguagesRowWithTheMarksKeyAfterTheGlobe() {
         val bottom = letters().rows.last()
+        // ADR 0035: ?123, comma, globe, marks, emoji, space, period, Enter.
         assertEquals(
-            listOf(KeyKind.TO_SYMBOLS, KeyKind.GLOBE, KeyKind.CHAR, KeyKind.CHAR, KeyKind.EMOJI, KeyKind.SPACE, KeyKind.CHAR, KeyKind.ENTER),
+            listOf(KeyKind.TO_SYMBOLS, KeyKind.CHAR, KeyKind.GLOBE, KeyKind.CHAR, KeyKind.EMOJI, KeyKind.SPACE, KeyKind.CHAR, KeyKind.ENTER),
             bottom.map { it.kind },
         )
         val oromo = Layouts.forPage(Page.LETTERS, text, LayoutContext(TypingMode("om", LayoutKind.QUBEE))).rows.last()
-        assertEquals(oromo.map { it.weight }, bottom.map { it.weight })
+        assertEquals(oromo.map { it.kind }, bottom.filterIndexed { i, _ -> i != 3 }.map { it.kind })
+        assertEquals("Arabic marks", bottom[3].description)
+        assertTrue("the space bar keeps three key widths", bottom[5].weight >= 3f)
         assertEquals("ع · العربية", bottom[5].label)
     }
 
     @Test fun theMarksKeyTypesAFathaAndOffersEveryHarakah() {
-        val marks = letters().rows.last()[2]
+        val marks = letters().rows.last()[3]
         assertEquals(fatha, marks.text)
         assertEquals("\u25CC$fatha", marks.label) // on a dotted circle, never a floating mark
         assertEquals("Arabic marks", marks.description)
@@ -99,7 +102,7 @@ class ArabicKeyboardTest {
 
     @Test fun commaAndPeriodTypeArabicPunctuation() {
         val bottom = letters().rows.last()
-        val comma = bottom[3]
+        val comma = bottom[1]
         assertEquals("،", comma.text)
         assertEquals(listOf("؛", ","), comma.popup.map { it.text })
         assertEquals("Arabic comma", comma.description)
@@ -221,7 +224,7 @@ class ArabicKeyboardTest {
 
     @Test fun backspaceRemovesAHarakahAloneThenTheLetter() {
         val s = session()
-        val marks = s.c.layout.rows.last()[2]
+        val marks = s.c.layout.rows.last()[3]
         s.type("ب")
         s.tap(marks) // fatha
         s.pick(marks.popup.first { it.text == shadda })
