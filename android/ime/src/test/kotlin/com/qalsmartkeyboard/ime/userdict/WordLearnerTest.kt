@@ -74,6 +74,11 @@ class WordLearnerTest {
         assertFalse(WordLearner.isLearnable("am", "ሰላምa"))
         assertTrue(WordLearner.isLearnable("en", "hello"))
         assertTrue(WordLearner.isLearnable("om", "ba'e"))
+        // ADR 0039: Arabic words (letters and harakat) are learnable; Latin is not Arabic.
+        assertTrue(WordLearner.isLearnable("ar", "كتاب"))
+        assertTrue(WordLearner.isLearnable("ar", "كَتَبَ"))
+        assertFalse(WordLearner.isLearnable("ar", "kitab"))
+        assertFalse(WordLearner.isLearnable("en", "كتاب"))
         assertFalse(WordLearner.isLearnable("en", "ሰላም"))
         assertFalse(WordLearner.isLearnable("en", "'tis"))
         assertFalse(WordLearner.isLearnable("en", "NASA"))

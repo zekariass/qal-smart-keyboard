@@ -89,6 +89,12 @@ class FakeEditor(initial: String = "") : EditorOps {
         return text.substring(maxOf(0, selStart - n), selStart)
     }
 
+    override fun getTextAfterCursor(n: Int): CharSequence? {
+        calls += "getTextAfterCursor"
+        if (!answersTextQueries) return null
+        return text.substring(selEnd, minOf(text.length, selEnd + n))
+    }
+
     override fun deleteSurroundingText(beforeLength: Int): Boolean {
         calls += "deleteSurroundingText($beforeLength)"
         if (!honoursDeleteSurrounding) return true

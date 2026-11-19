@@ -48,10 +48,12 @@ import kotlin.math.min
  *
  * Icons are one outline family ([ToolIcons]); an active tool (its panel or row is open, voice typing listens) is drawn
  * on an accent circle, a locked one carries a small lock. The bar is shown in every field and always [HEIGHT_DP] tall,
- * so the keyboard keeps one height. Candidates are drawn left to right as they come from the core (index 0 is the
- * default composition, drawn bold); a tap reports the candidate's index, a long press adds it to the personal
- * dictionary. Candidates that do not fit are not drawn. While the active transliteration profile is DRAFT, a "DRAFT"
- * tag marks them as not verified (rule N9).
+ * so the keyboard keeps one height. Candidates (ADR 0039, Gboard-like) take three equal slots: the centre holds what
+ * Space commits (the composition, or the correction Space will apply), bold; left and right the next two; thin
+ * separators; mirrored for right-to-left languages. An autocorrection is underlined in the accent colour and the typed
+ * word moves to the side in quotes. With more than three candidates a chevron expands the strip into the full list (the
+ * flowing layout, left to right as they come from the core) and back. A tap reports the candidate's core index, a long
+ * press adds it to the personal dictionary. While the data is DRAFT, a "DRAFT" tag marks them as not verified (rule N9).
  *
  * Accessibility: every element is a virtual view ([BarNodes], `ExploreByTouchHelper`) with a label and a role; an
  * accessibility click does what a tap does. Typed text is drawn only here, never logged (N2). Colours: only the
@@ -123,6 +125,11 @@ class CandidateStripView(context: Context) : View(context) {
 
     private var items: List<Suggestion> = emptyList()
     private var draft = false
+    private var autocorrect = -1
+    private var rtl = false
+
+    /** The strip shows every candidate (the chevron was tapped) instead of three slots. */
+    private var expanded = false
     private var modes: List<LayoutKind> = emptyList()
     private var activeMode: LayoutKind = LayoutKind.ABC
     private var chooserOpen = false
@@ -153,12 +160,27 @@ class CandidateStripView(context: Context) : View(context) {
         data object Mic : Target
         data object DraftTag : Target
         data object Title : Target
+
+        /** The chevron that expands the three slots into the full list, or folds it back. */
+        data object More : Target
         data class Shortcut(val tool: Tool) : Target
         data class Mode(val kind: LayoutKind) : Target
     }
 
     /** One placed element: [hit] is its touch target (full bar height), [shape] what is drawn. */
-    class Slot(val target: Target, val hit: RectF, val shape: RectF, val label: String = "", val locked: Boolean = false)
+    class Slot(
+        val target: Target,
+        val hit: RectF,
+        val shape: RectF,
+        val label: String = "",
+        val locked: Boolean = false,
+        /** A candidate in one of the three slots: drawn centred in its cell. */
+        val centred: Boolean = false,
+        /** The centre slot (or index 0 of the full list): what Space commits, drawn bold. */
+        val primary: Boolean = false,
+        /** The correction Space will apply: marked with an accent underline. */
+        val autocorrect: Boolean = false,
+    )
 
     private class Geometry(val width: Int, val slots: List<Slot>, val middleStart: Float, val middleEnd: Float, val dividers: List<Float>)
 
@@ -200,10 +222,17 @@ class CandidateStripView(context: Context) : View(context) {
     private val chevronPath = Path()
     private val tagLabel = context.getString(R.string.candidate_strip_draft)
 
-    fun show(candidates: List<Suggestion>, isDraft: Boolean) {
-        if (candidates == items && isDraft == draft) return
+    /**
+     * The candidates to show (empty: the middle goes back to the shortcuts). [autocorrect] is the index of the correction
+     * Space will apply (-1: none); [rtl] mirrors the side slots (Arabic).
+     */
+    fun show(candidates: List<Suggestion>, isDraft: Boolean, autocorrect: Int = -1, rtl: Boolean = false) {
+        if (candidates == items && isDraft == draft && autocorrect == this.autocorrect && rtl == this.rtl) return
+        if (candidates != items) expanded = false
         items = candidates
         draft = isDraft
+        this.autocorrect = autocorrect
+        this.rtl = rtl
         if (candidates.isNotEmpty()) chooserOpen = false
         changed()
     }
@@ -320,15 +349,37 @@ class CandidateStripView(context: Context) : View(context) {
                     out += Slot(Target.DraftTag, RectF(x, 0f, x + tw, h), RectF(x, 0f, x + tw, h), tagLabel)
                     x += tw + 10f * d
                 }
-                val pad = 14f * d
-                items.forEachIndexed { i, s ->
-                    val p = if (i == 0) bold else text
-                    val cw = p.measureText(s.text) + pad * 2
-                    if (x + cw > end) return@forEachIndexed
-                    if (i > 0) dividers += x
-                    val r = RectF(x, 0f, x + cw, h)
-                    out += Slot(Target.Candidate(i), r, r, s.text)
-                    x += cw
+                val more = items.size > SLOTS
+                val listEnd = if (more) end - MORE_DP * d else end
+                if (expanded && more) {
+                    // The full list, left to right as the core orders it (the pre-ADR 0039 layout).
+                    val pad = 14f * d
+                    items.forEachIndexed { i, s ->
+                        val p = if (i == 0) bold else text
+                        val cw = p.measureText(s.text) + pad * 2
+                        if (x + cw > listEnd) return@forEachIndexed
+                        if (i > 0) dividers += x
+                        val r = RectF(x, 0f, x + cw, h)
+                        out += Slot(Target.Candidate(i), r, r, s.text, primary = i == 0, autocorrect = i == autocorrect)
+                        x += cw
+                    }
+                } else {
+                    val order = slotOrder(items.size, autocorrect, rtl)
+                    val cw = (listEnd - x) / SLOTS
+                    order.forEachIndexed { k, i ->
+                        if (k > 0) dividers += x + cw * k
+                        if (i == null) return@forEachIndexed
+                        val r = RectF(x + cw * k, 0f, x + cw * (k + 1), h)
+                        // Beside a correction, the word as typed is quoted ("keep what I typed").
+                        val typedBesideCorrection = autocorrect in items.indices && i == 0
+                        val label = if (typedBesideCorrection) "\u201C${items[i].text}\u201D" else items[i].text
+                        out += Slot(Target.Candidate(i), r, r, label, centred = true, primary = k == 1, autocorrect = i == autocorrect)
+                    }
+                }
+                if (more) {
+                    val r = RectF(listEnd, 0f, end, h)
+                    val label = context.getString(if (expanded) R.string.top_bar_fewer_suggestions else R.string.top_bar_more_suggestions)
+                    out += Slot(Target.More, r, r, label)
                 }
             }
             aiEntry == AiEntry.OPEN -> {
@@ -378,15 +429,27 @@ class CandidateStripView(context: Context) : View(context) {
                     canvas.drawText(tagLabel, s.shape.left, cy - (tag.descent() + tag.ascent()) / 2, tag)
                 }
                 is Target.Candidate -> {
-                    val p = if (t.index == 0) bold else text
+                    val p = if (s.primary) bold else text
                     p.color = textColor
                     if (down) {
                         shape.style = Paint.Style.FILL
                         shape.color = divider
                         canvas.drawRoundRect(s.shape.left + 2f * d, cy - 16f * d, s.shape.right - 2f * d, cy + 16f * d, 8f * d, 8f * d, shape)
                     }
-                    canvas.drawText(s.label, s.shape.left + 14f * d, cy - (p.descent() + p.ascent()) / 2, p)
+                    val label = if (s.centred) fit(s.label, p, s.shape.width() - 12f * d) else s.label
+                    val w = p.measureText(label)
+                    val left = if (s.centred) s.shape.centerX() - w / 2 else s.shape.left + 14f * d
+                    val baseline = cy - (p.descent() + p.ascent()) / 2
+                    canvas.drawText(label, left, baseline, p)
+                    if (s.autocorrect) {
+                        // The correction Space will apply: an accent underline.
+                        shape.style = Paint.Style.FILL
+                        shape.color = theme.accent
+                        val y = baseline + p.descent() / 2 + 2f * d
+                        canvas.drawRoundRect(left, y, left + w, y + 2f * d, d, d, shape)
+                    }
                 }
+                Target.More -> drawChevron(canvas, s.hit.centerX(), cy, up = expanded)
                 is Target.Mode -> drawModeOption(canvas, s.shape, s.label, t.kind == activeMode)
             }
         }
@@ -452,6 +515,18 @@ class CandidateStripView(context: Context) : View(context) {
         canvas.drawPath(chevronPath, chipBold)
     }
 
+    /** The expand / fold chevron at the end of the candidates. */
+    private fun drawChevron(canvas: Canvas, cx: Float, cy: Float, up: Boolean) {
+        val half = CHEVRON_DP * d * 0.75f
+        val dir = if (up) -1f else 1f
+        line.color = textColor
+        line.strokeWidth = 2f * d
+        canvas.drawLine(cx - half, cy - dir * half / 2, cx, cy + dir * half / 2, line)
+        canvas.drawLine(cx, cy + dir * half / 2, cx + half, cy - dir * half / 2, line)
+        line.strokeWidth = 1f * d
+        line.color = divider
+    }
+
     /** One option of the chooser: the selected mode filled, the others outlined. */
     private fun drawModeOption(canvas: Canvas, r: RectF, label: String, selected: Boolean) {
         val cy = r.centerY()
@@ -493,6 +568,7 @@ class CandidateStripView(context: Context) : View(context) {
             Target.Mic -> { closeModeChooser(); onMic() }
             Target.Pill -> { chooserOpen = !chooserOpen; changed() }
             Target.AiClose -> onAiToggle()
+            Target.More -> { expanded = !expanded; changed() }
             is Target.Shortcut -> { closeModeChooser(); onShortcut(t.tool) }
             is Target.Mode -> {
                 closeModeChooser()
@@ -565,6 +641,7 @@ class CandidateStripView(context: Context) : View(context) {
         Target.Title -> 4
         Target.Mic -> 5
         Target.Pill -> 6
+        Target.More -> 7
         is Target.Candidate -> 100 + t.index
         is Target.Mode -> 200 + t.kind.ordinal
         is Target.Shortcut -> 300 + t.tool.ordinal
@@ -597,7 +674,7 @@ class CandidateStripView(context: Context) : View(context) {
                     node.contentDescription = context.getString(R.string.top_bar_mode, LanguageCatalog.spokenWritingMode(activeMode))
                     node.addAction(AccessibilityActionCompat(click.id, context.getString(R.string.top_bar_mode_change)))
                 }
-                Target.Tools, Target.AiClose -> {
+                Target.Tools, Target.AiClose, Target.More -> {
                     node.className = Button::class.java.name
                     node.contentDescription = s.label
                     node.addAction(click)
@@ -625,6 +702,7 @@ class CandidateStripView(context: Context) : View(context) {
                 is Target.Candidate -> {
                     node.className = Button::class.java.name
                     node.text = s.label
+                    if (s.autocorrect) node.contentDescription = context.getString(R.string.top_bar_candidate_autocorrect, s.label)
                     node.addAction(click)
                     node.isLongClickable = true
                     node.addAction(AccessibilityActionCompat(AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, context.getString(R.string.top_bar_candidate_add)))
@@ -659,6 +737,23 @@ class CandidateStripView(context: Context) : View(context) {
     }
 
     companion object {
+        /** Candidate slots (ADR 0039): left, centre (what Space commits), right. */
+        const val SLOTS = 3
+
+        /**
+         * The core indices shown in the left, centre and right slot (null: empty slot) for [n] candidates: the centre is
+         * the correction Space will apply ([autocorrect]) or else index 0 (the composition / the word as typed); the next
+         * two in core order go left, then right. [rtl] mirrors the sides, so the first alternative is read first.
+         */
+        fun slotOrder(n: Int, autocorrect: Int, rtl: Boolean): List<Int?> {
+            if (n <= 0) return listOf(null, null, null)
+            val primary = if (autocorrect in 0 until n) autocorrect else 0
+            val others = (0 until n).filter { it != primary }
+            val first = others.getOrNull(0)
+            val second = others.getOrNull(1)
+            return if (rtl) listOf(second, primary, first) else listOf(first, primary, second)
+        }
+
         /** The bar's height (ADR 0035: 44 dp, up from 40, so 22 dp icons sit in Gboard-like room). */
         const val HEIGHT_DP = 44f
 
@@ -675,5 +770,8 @@ class CandidateStripView(context: Context) : View(context) {
         private const val LOCK_DP = 10f
         private const val PILL_DP = 30f
         private const val CHEVRON_DP = 8f
+
+        /** Width of the expand / fold chevron at the end of the candidates. */
+        private const val MORE_DP = 36f
     }
 }

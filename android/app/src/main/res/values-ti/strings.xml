@@ -471,6 +471,16 @@
     <string name="settings_group_app">ኣፕ</string>
     <string name="settings_preferences">ምርጫታት</string>
     <string name="settings_prefs_keys">መጠወቕታት</string>
+    <string name="settings_prefs_text">መአረሚ ጽሑፍ</string>
+    <string name="settings_next_word">ርእይቶታት ቀጻሊ ቃል</string>
+    <string name="settings_next_word_summary">ድሕሪ ባዶ ቦታ ቀጻሊ ቃል ይእምት</string>
+    <string name="settings_autocorrect_en">ባዕላዊ መአረሚ፦ እንግሊዝኛ</string>
+    <string name="settings_autocorrect_om">ባዕላዊ መአረሚ፦ ኣፋን ኦሮሞ (ንድፊ)</string>
+    <string name="settings_autocorrect_summary">ባዶ ቦታ ክትጥውቑ ንጹር ጌጋታት ጽሕፈት የዐሪ። ብቕጽበት ምድምሳስ ይመልሶ።</string>
+    <string name="settings_learn_words">ካብ ጽሕፈተይ ተማሃር</string>
+    <string name="settings_learn_words_summary">ሓደሽቲ ቃላት ንምእማት ኣብዚ መሳርሒ ይዝክር። ኣብ ናይ ምሕላፍ ቃል ወይ ብሕታዊ ቦታታት ፈጺሙ ኣይኮነን።</string>
+    <string name="settings_word_suggestions_note_en">ንእትጽሕፍዎ ቃልን ንቀጻሊ ቃልን ካብ መዝገበ ቃላት እንግሊዝኛ (ንድፊ) ዝተረኽቡ ቃላት። ባዕላዊ መአረሚ ኣብ ምርጫታት ኣሎ።</string>
+    <string name="settings_word_suggestions_note_ar">ቅድሚ ሕጂ ዝጸሓፍኩምዎም ቃላት ጥራይ፦ መዝገበ ቃላት ዓረብ ገና ኣይተሓወሰን። ጽሑፍኩም ዝቕየር ርእይቶ ክትጥውቑ ጥራይ እዩ።</string>
     <string name="settings_dictionary">መዝገበ ቃላት</string>
     <string name="settings_advanced">ዝማዕበለ</string>
     <string name="settings_about">ብዛዕባ ኣፕ</string>

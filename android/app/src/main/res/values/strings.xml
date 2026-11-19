@@ -475,6 +475,16 @@
     <string name="settings_group_app">App</string>
     <string name="settings_preferences">Preferences</string>
     <string name="settings_prefs_keys">Keys</string>
+    <string name="settings_prefs_text">Text correction</string>
+    <string name="settings_next_word">Next-word suggestions</string>
+    <string name="settings_next_word_summary">Suggest the next word after a space</string>
+    <string name="settings_autocorrect_en">Auto-correction: English</string>
+    <string name="settings_autocorrect_om">Auto-correction: Afaan Oromoo (draft)</string>
+    <string name="settings_autocorrect_summary">Fixes clear typos when you press space. Backspace right after undoes it.</string>
+    <string name="settings_learn_words">Learn from my typing</string>
+    <string name="settings_learn_words_summary">Remember new words on this device to suggest them. Never in passwords or incognito fields.</string>
+    <string name="settings_word_suggestions_note_en">Words from the English dictionary (draft) for the word you are typing, and the next word. Auto-correction is in Preferences.</string>
+    <string name="settings_word_suggestions_note_ar">Only words you have typed before: no Arabic dictionary is included yet. Your text changes only when you tap a suggestion.</string>
     <string name="settings_dictionary">Dictionary</string>
     <string name="settings_advanced">Advanced</string>
     <string name="settings_about">About</string>

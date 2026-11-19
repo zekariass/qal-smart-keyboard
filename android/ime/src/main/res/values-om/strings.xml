@@ -14,6 +14,9 @@
     <string name="top_bar_ai_open">Meeshaalee AI</string>
     <string name="top_bar_ai_close">Meeshaalee AI cufaa</string>
     <string name="top_bar_candidate_add">Galmee jechootaa keessanitti dabalaa</string>
+    <string name="top_bar_candidate_autocorrect">%1$s, ofumaan sirreessuu</string>
+    <string name="top_bar_more_suggestions">Yaadota dabalataa</string>
+    <string name="top_bar_fewer_suggestions">Yaadota muraasa</string>
     <!-- Accessibility: keys -->
     <string name="key_draft_description">wixinee, dubbattoota afaan dhalootaatiin hin mirkanoofne</string>
     <string name="key_globe_long_action">Qindaa\'ina furtuu jijjiiraa</string>

@@ -318,7 +318,7 @@ class UserDictionary(
     }
 
     companion object {
-        val LANGUAGES = listOf("am", "ti", "om", "en")
+        val LANGUAGES = listOf("am", "ti", "om", "en", "ar")
         const val DEFAULT_DEBOUNCE_MS = 5_000L
 
         /** A typed word is learned on this sighting (ADR 0007 D18). */

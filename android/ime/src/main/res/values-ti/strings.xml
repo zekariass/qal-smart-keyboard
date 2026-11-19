@@ -14,6 +14,9 @@
     <string name="top_bar_ai_open">መሳርሒታት AI</string>
     <string name="top_bar_ai_close">መሳርሒታት AI ዕጸዉ</string>
     <string name="top_bar_candidate_add">ናብ መዝገበ ቃላትኩም ወስኹ</string>
+    <string name="top_bar_candidate_autocorrect">%1$s፣ ባዕላዊ መአረሚ</string>
+    <string name="top_bar_more_suggestions">ተወሳኺ ርእይቶታት</string>
+    <string name="top_bar_fewer_suggestions">ዝወሓዱ ርእይቶታት</string>
     <!-- Accessibility: keys -->
     <string name="key_draft_description">ንድፊ፣ ብተዛረብቲ ቋንቋ ኣደ ገና ዘይተረጋገጸ</string>
     <string name="key_globe_long_action">ሰሌዳ ቀይሩ</string>

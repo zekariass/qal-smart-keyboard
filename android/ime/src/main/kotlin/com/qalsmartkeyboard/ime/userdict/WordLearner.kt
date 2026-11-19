@@ -30,7 +30,7 @@ fun interface WordLearningSink {
  *   leading sentence punctuation is stripped first. A word still being typed when the field is
  *   left is dropped ([reset]).
  * - A token learns only if, after stripping, it is letters of the language's script (Ethiopic for
- *   am/ti, Latin for om/en; an inner apostrophe is allowed), 2 to [MAX_WORD] characters, and not an
+ *   am/ti, Arabic letters and marks for ar, Latin for om/en; an inner apostrophe is allowed in Latin), 2 to [MAX_WORD] characters, and not an
  *   all-capitals acronym. Digits, `@`, `/` and the like inside a token reject the whole token
  *   (so addresses and handles are not learned word by word).
  * - Deleting text (a backspace that reaches committed text) drops the open word and the previous
@@ -109,14 +109,19 @@ class WordLearner(private val sink: WordLearningSink) {
             val cps = word.codePoints().toArray()
             if (cps.size !in 2..MAX_WORD) return false
             val ethiopic = language == "am" || language == "ti"
+            val arabic = language == "ar"
             var letters = 0
             var upper = 0
             for ((i, c) in cps.withIndex()) {
                 val type = Character.getType(c).toByte()
                 val ok = when {
                     type == Character.NON_SPACING_MARK || type == Character.COMBINING_SPACING_MARK -> i > 0
-                    isApostrophe(c) -> !ethiopic && i > 0 && i < cps.lastIndex
-                    Character.isLetter(c) -> if (ethiopic) isEthiopic(c) else isLatin(c)
+                    isApostrophe(c) -> !ethiopic && !arabic && i > 0 && i < cps.lastIndex
+                    Character.isLetter(c) -> when {
+                        ethiopic -> isEthiopic(c)
+                        arabic -> isArabic(c)
+                        else -> isLatin(c)
+                    }
                     else -> false
                 }
                 if (!ok) return false
@@ -125,13 +130,15 @@ class WordLearner(private val sink: WordLearningSink) {
                     if (Character.isUpperCase(c)) upper++
                 }
             }
-            return letters >= 2 && !(upper == letters && !ethiopic)
+            return letters >= 2 && !(upper == letters && !ethiopic && !arabic)
         }
 
         private fun isApostrophe(c: Int) = c == '\''.code || c == 0x2019 || c == 0x02BC
 
         private fun isEthiopic(c: Int) =
             c in 0x1200..0x139F || c in 0x2D80..0x2DDF || c in 0xAB00..0xAB2F || c in 0x1E7E0..0x1E7FF
+
+        private fun isArabic(c: Int) = Character.UnicodeScript.of(c) == Character.UnicodeScript.ARABIC
 
         private fun isLatin(c: Int) = Character.UnicodeScript.of(c) == Character.UnicodeScript.LATIN
     }

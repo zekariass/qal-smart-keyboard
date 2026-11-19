@@ -469,6 +469,16 @@
     <string name="settings_group_app">መተግበሪያ</string>
     <string name="settings_preferences">ምርጫዎች</string>
     <string name="settings_prefs_keys">ቁልፎች</string>
+    <string name="settings_prefs_text">የጽሑፍ እርማት</string>
+    <string name="settings_next_word">የቀጣይ ቃል ጥቆማዎች</string>
+    <string name="settings_next_word_summary">ከክፍተት በኋላ ቀጣዩን ቃል ይጠቁማል</string>
+    <string name="settings_autocorrect_en">ራስ-ሰር እርማት፦ እንግሊዝኛ</string>
+    <string name="settings_autocorrect_om">ራስ-ሰር እርማት፦ አፋን ኦሮሞ (ረቂቅ)</string>
+    <string name="settings_autocorrect_summary">ክፍተት ሲጫኑ ግልጽ የትየባ ስህተቶችን ያርማል። ወዲያው ወደኋላ መሰረዝ ይመልሰዋል።</string>
+    <string name="settings_learn_words">ከትየባዬ ተማር</string>
+    <string name="settings_learn_words_summary">አዲስ ቃላትን ለመጠቆም በዚህ መሣሪያ ላይ ያስታውሳል። በይለፍ ቃል ወይም በግል መስኮች ፈጽሞ አይደለም።</string>
+    <string name="settings_word_suggestions_note_en">ለሚተይቡት ቃልና ለቀጣዩ ቃል ከእንግሊዝኛ መዝገበ ቃላት (ረቂቅ) የተገኙ ቃላት። ራስ-ሰር እርማት በምርጫዎች ውስጥ ነው።</string>
+    <string name="settings_word_suggestions_note_ar">ከዚህ በፊት የተየቧቸው ቃላት ብቻ፦ የዓረብኛ መዝገበ ቃላት ገና አልተካተተም። ጽሑፍዎ የሚቀየረው ጥቆማ ሲነኩ ብቻ ነው።</string>
     <string name="settings_dictionary">መዝገበ ቃላት</string>
     <string name="settings_advanced">የላቀ</string>
     <string name="settings_about">ስለ መተግበሪያው</string>

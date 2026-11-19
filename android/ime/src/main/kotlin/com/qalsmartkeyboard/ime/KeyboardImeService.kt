@@ -114,6 +114,7 @@ class KeyboardImeService : InputMethodService() {
         override fun beginBatchEdit() { ic?.beginBatchEdit() }
         override fun endBatchEdit() { ic?.endBatchEdit() }
         override fun getTextBeforeCursor(n: Int): CharSequence? = ic?.getTextBeforeCursor(n, 0)
+        override fun getTextAfterCursor(n: Int): CharSequence? = ic?.getTextAfterCursor(n, 0)
         override fun deleteSurroundingText(beforeLength: Int) = ic?.deleteSurroundingText(beforeLength, 0) ?: false
         override fun commitText(text: String) = ic?.commitText(text, 1) ?: false
         override fun setComposingText(text: String) = ic?.setComposingText(text, 1) ?: false
@@ -1124,7 +1125,10 @@ class KeyboardImeService : InputMethodService() {
             it.visibility = View.VISIBLE
             // While an AI field is typed into the bar is hidden; its candidates would also close the AI row.
             val candidates = controller.showCandidateStrip && !aiTyping
-            it.show(if (candidates) controller.candidates else emptyList(), candidates && controller.candidatesAreDraft)
+            it.show(
+                if (candidates) controller.candidates else emptyList(), candidates && controller.candidatesAreDraft,
+                autocorrect = if (candidates) controller.autocorrectIndex else -1, rtl = controller.candidatesRtl,
+            )
             it.setModes(controller.writingModeOptions, controller.writingMode)
             it.closeModeChooser()
         }

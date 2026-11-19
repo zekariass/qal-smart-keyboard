@@ -141,6 +141,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val AI_TRANSLATE_PAIRS = stringPreferencesKey("ai_translate_pairs")
         private val EMAIL_SENDER_NAME = stringPreferencesKey("email_sender_name")
         private val CLIPBOARD_HISTORY = booleanPreferencesKey("clipboard_history_enabled")
+        private val NEXT_WORD = booleanPreferencesKey("next_word_predictions")
+        private val AUTOCORRECT_EN = booleanPreferencesKey("autocorrect_en")
+        private val AUTOCORRECT_OM = booleanPreferencesKey("autocorrect_om")
+        private val LEARN_WORDS = booleanPreferencesKey("learn_words")
 
         private const val FIELD = "|"
         private const val LINE = "\n"
@@ -172,6 +176,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[AI_TRANSLATE_PAIRS] = encodeMap(s.aiTranslatePairs)
             p[EMAIL_SENDER_NAME] = s.emailSenderName
             p[CLIPBOARD_HISTORY] = s.clipboardHistoryEnabled
+            p[NEXT_WORD] = s.nextWordPredictions
+            p[AUTOCORRECT_EN] = s.autocorrectEnglish
+            p[AUTOCORRECT_OM] = s.autocorrectOromo
+            p[LEARN_WORDS] = s.learnWords
         }
 
         /** Lenient decode: anything missing or unrecognised takes its default; the result is sanitised. */
@@ -219,6 +227,11 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 emailSenderName = p[EMAIL_SENDER_NAME].orEmpty(),
                 // Additive key (schema stays 1, ADR 0035): files written before it decode to the default (on).
                 clipboardHistoryEnabled = p[CLIPBOARD_HISTORY] ?: d.clipboardHistoryEnabled,
+                // Additive keys (schema stays 1, ADR 0039): prediction switches, absent before it (defaults apply).
+                nextWordPredictions = p[NEXT_WORD] ?: d.nextWordPredictions,
+                autocorrectEnglish = p[AUTOCORRECT_EN] ?: d.autocorrectEnglish,
+                autocorrectOromo = p[AUTOCORRECT_OM] ?: d.autocorrectOromo,
+                learnWords = p[LEARN_WORDS] ?: d.learnWords,
             ).sanitized()
         }
 

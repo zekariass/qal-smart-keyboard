@@ -210,8 +210,9 @@ class KeyboardBarTest {
         assertEquals(barPx, h.layout())
         assertFalse(h.bar.aiOpen)
         assertEquals(View.GONE, h.row().visibility)
-        // The tools button stays reachable at the left while composing.
-        assertEquals(listOf(Target.Tools, Target.Pill, Target.DraftTag, Target.Candidate(0), Target.Candidate(1)), h.targets())
+        // The tools button stays reachable at the left while composing; the composition is in the centre slot, the
+        // other candidate on its left (ADR 0039).
+        assertEquals(listOf(Target.Tools, Target.Pill, Target.DraftTag, Target.Candidate(1), Target.Candidate(0)), h.targets())
         // The word is done: the shortcuts are back, the AI closed.
         h.strip.show(emptyList(), isDraft = true)
         h.layout()
