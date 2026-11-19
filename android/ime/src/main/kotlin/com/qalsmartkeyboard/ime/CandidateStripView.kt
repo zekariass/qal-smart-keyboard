@@ -37,6 +37,7 @@ import com.qalsmartkeyboard.ime.theme.ThemeCatalog
  *   while they are open it is a close (×) button;
  * - the **middle**: candidates while composing in a phonetic mode (they replace the AI entry), the
  *   mode chooser, or the AI actions;
+ * - the **microphone** ([micShown]; voice typing, ADR 0029): drawn filled with the accent while voice typing is open;
  * - the **settings gear**.
  *
  * It is shown in every field and always [HEIGHT_DP] tall, so the keyboard keeps one height.
@@ -61,6 +62,26 @@ class CandidateStripView(context: Context) : View(context) {
 
     /** A writing mode was picked in the chooser. */
     var onModeSelected: (LayoutKind) -> Unit = {}
+
+    /** The microphone was tapped (voice typing). */
+    var onMic: () -> Unit = {}
+
+    /** The microphone is offered here (setting on, a speech service installed, not a password field). */
+    var micShown: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            changed()
+        }
+
+    /** Voice typing is open: the microphone is drawn active and its tap stops. */
+    var micActive: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+            nodes.invalidateRoot()
+        }
 
     /** The AI entry (open) or its close button was tapped. */
     var onAiToggle: () -> Unit = {}
@@ -102,6 +123,7 @@ class CandidateStripView(context: Context) : View(context) {
         data object Pill : Target
         data object Ai : Target
         data object Gear : Target
+        data object Mic : Target
         data object DraftTag : Target
         data class Mode(val kind: LayoutKind) : Target
     }
@@ -212,7 +234,8 @@ class CandidateStripView(context: Context) : View(context) {
             dividers += r.right + 8f * d
             x = r.right + 16f * d
         }
-        val end = gear.left
+        val mic = if (micShown) RectF(gear.left - h * MIC_WIDTH, 0f, gear.left, h) else null
+        val end = mic?.left ?: gear.left
         when {
             isModeChooserOpen -> {
                 val gap = 6f * d
@@ -248,6 +271,7 @@ class CandidateStripView(context: Context) : View(context) {
                 }
             }
         }
+        if (mic != null) out += Slot(Target.Mic, mic, mic, context.getString(R.string.voice_mic))
         out += Slot(Target.Gear, gear, gear, context.getString(R.string.top_bar_settings))
         val middleStart = if (showsAiEntry) x else out.firstOrNull { it.target == Target.Pill }?.let { it.shape.right + 16f * d } ?: 8f * d
         return Geometry(w, out, middleStart, end, dividers)
@@ -261,6 +285,7 @@ class CandidateStripView(context: Context) : View(context) {
         for (s in g.slots) {
             when (val t = s.target) {
                 Target.Gear -> drawGear(canvas, s.shape.centerX(), cy, 10f * d)
+                Target.Mic -> drawMic(canvas, s.shape.centerX(), cy)
                 Target.Pill -> drawPill(canvas, s)
                 Target.Ai -> drawAi(canvas, s.shape)
                 Target.DraftTag -> {
@@ -357,6 +382,20 @@ class CandidateStripView(context: Context) : View(context) {
         p.textSize = size
     }
 
+    /** The microphone: in the text colour, or on an accent circle while voice typing is open. */
+    private fun drawMic(canvas: Canvas, cx: Float, cy: Float) {
+        shape.style = Paint.Style.FILL
+        if (micActive) {
+            shape.color = theme.accent
+            canvas.drawCircle(cx, cy, PILL_DP * d / 2, shape)
+            shape.color = theme.onAccent
+        } else {
+            shape.color = textColor
+        }
+        com.qalsmartkeyboard.ime.voice.VoicePanelView.MainButton.drawMic(canvas, cx, cy, 9f * d, shape, d)
+        shape.strokeWidth = 1.5f * d
+    }
+
     /** A gear in [textColor]: eight teeth around a ring with an open centre. */
     private fun drawGear(canvas: Canvas, cx: Float, cy: Float, r: Float) {
         shape.color = textColor
@@ -394,6 +433,7 @@ class CandidateStripView(context: Context) : View(context) {
         when (t) {
             is Target.Candidate -> onSelect(t.index)
             Target.Gear -> { closeModeChooser(); onSettings() }
+            Target.Mic -> { closeModeChooser(); onMic() }
             Target.Pill -> { chooserOpen = !chooserOpen; changed() }
             Target.Ai -> onAiToggle()
             is Target.Mode -> {
@@ -459,6 +499,7 @@ class CandidateStripView(context: Context) : View(context) {
         Target.Ai -> 2
         Target.DraftTag -> 3
         Target.Gear -> 4
+        Target.Mic -> 5
         is Target.Candidate -> 100 + t.index
         is Target.Mode -> 200 + t.kind.ordinal
     }
@@ -498,6 +539,11 @@ class CandidateStripView(context: Context) : View(context) {
                 Target.Gear -> {
                     node.className = Button::class.java.name
                     node.contentDescription = s.label
+                    node.addAction(click)
+                }
+                Target.Mic -> {
+                    node.className = Button::class.java.name
+                    node.contentDescription = context.getString(if (micActive) R.string.voice_mic_stop else R.string.voice_mic)
                     node.addAction(click)
                 }
                 Target.DraftTag -> {
@@ -545,5 +591,8 @@ class CandidateStripView(context: Context) : View(context) {
         private const val PILL_DP = 28f
         private const val CHEVRON_DP = 8f
         private const val AI_ICON_DP = 12f
+
+        /** The microphone's touch target, as a fraction of the bar height (gear and mic stay comfortable to hit). */
+        private const val MIC_WIDTH = 1f
     }
 }

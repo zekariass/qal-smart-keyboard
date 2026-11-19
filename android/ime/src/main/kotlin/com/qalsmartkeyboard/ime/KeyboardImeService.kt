@@ -41,6 +41,12 @@ import com.qalsmartkeyboard.ime.theme.ThemeAccess
 import com.qalsmartkeyboard.ime.theme.ThemeAccessHolder
 import com.qalsmartkeyboard.ime.theme.ThemeResolver
 import com.qalsmartkeyboard.ime.userdict.UserDictionary
+import com.qalsmartkeyboard.ime.voice.PlatformVoiceProvider
+import com.qalsmartkeyboard.ime.voice.VoiceController
+import com.qalsmartkeyboard.ime.voice.VoiceHost
+import com.qalsmartkeyboard.ime.voice.VoiceIntents
+import com.qalsmartkeyboard.ime.voice.VoicePanelView
+import com.qalsmartkeyboard.ime.voice.VoicePrefs
 import com.qalsmartkeyboard.ime.packs.PackRuntime
 import com.qalsmartkeyboard.ime.packs.PackStorage
 import java.util.concurrent.atomic.AtomicBoolean
@@ -63,6 +69,7 @@ class KeyboardImeService : InputMethodService() {
     private var bar: KeyboardBar? = null
     private var emojiPanel: EmojiPanelView? = null
     private var emojiSearch: EmojiSearchBar? = null
+    private var voicePanel: VoicePanelView? = null
     private var seenEmojiMode = EmojiMode.CLOSED
     private var engine: KeyboardEngine? = null
     private var runtime: PackRuntime? = null
@@ -122,6 +129,7 @@ class KeyboardImeService : InputMethodService() {
         overlayView?.theme = t
         emojiPanel?.theme = t
         emojiSearch?.theme = t
+        voicePanel?.theme = t
         aiView?.theme = t
     }
 
@@ -187,6 +195,55 @@ class KeyboardImeService : InputMethodService() {
         }
     }
 
+    // Voice typing (ADR 0029): the platform's speech service over IPC, only on a mic tap while the keyboard is shown.
+    // The installed services are read off the main thread ([refreshVoiceInBackground]); until then there is no mic.
+    // Recognised text is never logged or stored (N2).
+    private val voiceProvider by lazy { PlatformVoiceProvider(applicationContext) }
+    @Volatile private var voiceNoticeSeen = false
+    private val voicePrefs = object : VoicePrefs {
+        override val enabled: Boolean get() = snapshot.current.voiceTypingEnabled
+        override fun chosen(keyboardLanguage: String): String? = snapshot.current.voiceLanguages[keyboardLanguage]
+        override fun choose(keyboardLanguage: String, tag: String) {
+            if (snapshot.current.voiceLanguages[keyboardLanguage] == tag) return
+            snapshot.launchUpdate { it.copy(voiceLanguages = it.voiceLanguages + (keyboardLanguage to tag)) }
+        }
+        override val noticeShown: Boolean get() = voiceNoticeSeen || snapshot.current.voiceNoticeShown
+        override fun noticeSeen() {
+            voiceNoticeSeen = true
+            snapshot.launchUpdate { it.copy(voiceNoticeShown = true) }
+        }
+    }
+    private val voiceHost = object : VoiceHost {
+        override val keyboardLanguage: String get() = controller.language
+        override fun hasPermission(): Boolean =
+            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        override fun requestPermission() {
+            try {
+                startActivity(VoiceIntents.permission(packageName))
+            } catch (e: RuntimeException) {
+                Log.w(TAG, "cannot open the microphone permission screen: ${e.javaClass.simpleName}")
+            }
+        }
+        override fun beforeVoice() {
+            controller.commitComposition()
+            controller.emoji.close()
+            bar?.closeAi()
+        }
+        override fun textBeforeCursor(): CharSequence? = adapter.editorOps()?.getTextBeforeCursor(VOICE_CONTEXT_CHARS)
+        override fun wantsCapital(): Boolean = controller.wantsCapitalAtCursor()
+        override fun commitVoiceText(text: String) = controller.commitVoiceText(text)
+    }
+    private val voice by lazy { VoiceController(voiceHost, voiceProvider, voicePrefs) { refreshViews() } }
+
+    /** Re-reads which speech services are installed (a PackageManager query), then shows or hides the mic. */
+    private fun refreshVoiceInBackground() {
+        val provider = voiceProvider
+        Thread({
+            provider.refresh()
+            main.post { refreshViews() }
+        }, "qal-voice-services").start()
+    }
+
     // AI toolbar (A2.5): built off the main thread (the app side opens Keystore-backed files), then
     // attached. Until then, or when the app registered none, the keyboard has no toolbar.
     private var aiView: AiToolbarView? = null
@@ -245,8 +302,9 @@ class KeyboardImeService : InputMethodService() {
         super.onCreate()
         attachAiInBackground()
         attachThemeAccessInBackground()
+        refreshVoiceInBackground()
         adapter.onCompositionAbandoned = { controller.onCompositionAbandoned() }
-        snapshot.onChange = { main.post { controller.onPreferencesChanged(); applyTheme() } }
+        snapshot.onChange = { main.post { controller.onPreferencesChanged(); voice.onPreferencesChanged(); applyTheme(); strip?.micShown = voice.micVisible } }
         snapshot.start()
         loadCoreInBackground()
     }
@@ -342,6 +400,7 @@ class KeyboardImeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        voice.cancel()
         themeAccessHandle?.close()
         themeAccessHandle = null
         snapshot.stop()
@@ -377,8 +436,11 @@ class KeyboardImeService : InputMethodService() {
             it.onLink = ::openCompanion
             aiView = it
         }
-        // One bar above the keys: pill, AI entry (its actions open in the bar's middle), candidates, gear.
+        // One bar above the keys: pill, AI entry (its actions open in the bar's middle), candidates, mic, gear.
         val b = KeyboardBar(this, s, ai).also { bar = it }
+        s.onMic = { voice.onMicTapped() }
+        val aiToggle = s.onAiToggle
+        s.onAiToggle = { voice.cancel(); aiToggle() } // the AI actions and voice typing never run together
         val overlay = PopupOverlay(this).also { overlayView = it }
         val k = KeyboardSurface(this).also {
             it.controller = controller
@@ -397,6 +459,12 @@ class KeyboardImeService : InputMethodService() {
             it.visibility = View.GONE
             emojiSearch = it
         }
+        val voiceView = VoicePanelView(this).also {
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            it.controller = voice
+            voicePanel = it
+        }
         val space = View(this).also { headroom = it }
         val column = KeyboardColumn(this, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.apply {
             addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
@@ -405,6 +473,7 @@ class KeyboardImeService : InputMethodService() {
             addView(search, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(voiceView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val root = OverlayStack(this).apply {
             addView(column)
@@ -518,6 +587,7 @@ class KeyboardImeService : InputMethodService() {
             customActionId = info.actionId,
         )
         controller.startField(profile)
+        voice.onFieldStarted(VoiceController.fieldAllowsVoice(profile, info.privateImeOptions), sameField = restarting)
         bar?.closeAi()
         aiToolbar?.onFieldStarted(profile, info.packageName)
     }
@@ -526,6 +596,7 @@ class KeyboardImeService : InputMethodService() {
         super.onStartInputView(info, restarting)
         surface?.let { styleNavigationBar(it) }
         checkPackUpdates()
+        refreshVoiceInBackground() // a speech service may have been installed or removed
         applyTheme() // the entitlement token may have expired since the last time
         controller.refreshAutoCapital()
         refreshViews()
@@ -543,14 +614,22 @@ class KeyboardImeService : InputMethodService() {
         adapter.onSelectionUpdate(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
     }
 
-    /** Back steps out of the emoji search, then out of the panel, before it dismisses the keyboard. */
+    /**
+     * Back closes the voice picker, then voice typing; it steps out of the emoji search, then out of the panel, before
+     * it dismisses the keyboard.
+     */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && voice.isOpen) {
+            if (voice.pickerOpen) voice.closePicker() else voice.backToKeyboard()
+            return true
+        }
         if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && controller.emoji.back()) return true
         return super.onKeyDown(keyCode, event)
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        // Keyboard hidden: the editor keeps the composition as plain text.
+        // Keyboard hidden: the editor keeps the composition as plain text; voice typing never listens while hidden.
+        voice.onKeyboardHidden()
         adapter.finishComposition()
         controller.emoji.close()
         controller.onCompositionAbandoned()
@@ -560,6 +639,7 @@ class KeyboardImeService : InputMethodService() {
     }
 
     override fun onFinishInput() {
+        voice.cancel()
         adapter.finishComposition()
         controller.onCompositionAbandoned()
         userDictionary.saveSoon()
@@ -580,7 +660,13 @@ class KeyboardImeService : InputMethodService() {
         val mode = controller.emoji.mode
         val inPanel = mode == EmojiMode.PANEL
         val inSearch = mode == EmojiMode.SEARCH
-        surface?.visibility = if (inPanel) View.GONE else View.VISIBLE
+        // Voice typing (ADR 0029): its panel takes the key area at the same height; the bar's mic shows its state.
+        val voiceOpen = voice.isOpen
+        strip?.micShown = voice.micVisible
+        strip?.micActive = voiceOpen
+        voicePanel?.visibility = if (voiceOpen) View.VISIBLE else View.GONE
+        if (voiceOpen) voicePanel?.render()
+        surface?.visibility = if (inPanel || voiceOpen) View.GONE else View.VISIBLE
         emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
         bar?.visibility = if (inSearch) View.GONE else View.VISIBLE
         emojiSearch?.visibility = if (inSearch) View.VISIBLE else View.GONE
@@ -599,5 +685,8 @@ class KeyboardImeService : InputMethodService() {
         /** Intent extra on the launch intent of the companion app: the [AiLink] name to show. */
         const val EXTRA_OPEN_LINK = "com.qalsmartkeyboard.OPEN_LINK"
         private const val POPUP_HEADROOM_DP = 190f
+
+        /** Characters read before the cursor to space dictated text (never stored). */
+        private const val VOICE_CONTEXT_CHARS = 4
     }
 }

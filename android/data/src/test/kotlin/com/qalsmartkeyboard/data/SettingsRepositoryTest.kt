@@ -382,4 +382,29 @@ class SettingsRepositoryTest {
         n.acknowledge()
         assertTrue(n.changes.value.isEmpty())
     }
+
+    // ------------------------------------------------------------------ voice typing (ADR 0029)
+
+    @Test fun voiceTypingDefaultsOnWithNoChosenLanguagesAndTheNoteNotShown() = runBlocking {
+        val s = open().current()
+        assertTrue(s.voiceTypingEnabled)
+        assertTrue(s.voiceLanguages.isEmpty())
+        assertFalse(s.voiceNoticeShown)
+    }
+
+    @Test fun voiceSettingsPersistAcrossRestart() = runBlocking {
+        open().update { it.copy(voiceTypingEnabled = false, voiceLanguages = mapOf("ti" to "ti-ER", "en" to "en-GB"), voiceNoticeShown = true) }
+        closeAll()
+        val s = open().current()
+        assertFalse(s.voiceTypingEnabled)
+        assertEquals(mapOf("ti" to "ti-ER", "en" to "en-GB"), s.voiceLanguages)
+        assertTrue(s.voiceNoticeShown)
+    }
+
+    @Test fun voiceLanguagesKeepOnlyKnownKeyboardLanguagesAndWellFormedTags() {
+        val s = KeyboardSettings(
+            voiceLanguages = mapOf("am" to "am-ET", "xx" to "en-US", "en" to "en US|x", "om" to "cmn-Hans-CN", "ti" to ""),
+        ).sanitized()
+        assertEquals(mapOf("am" to "am-ET", "om" to "cmn-Hans-CN"), s.voiceLanguages)
+    }
 }

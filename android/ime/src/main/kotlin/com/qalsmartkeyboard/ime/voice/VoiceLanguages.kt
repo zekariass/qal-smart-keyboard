@@ -1,0 +1,91 @@
+package com.qalsmartkeyboard.ime.voice
+
+import com.qalsmartkeyboard.ime.LanguageCatalog
+import java.util.Locale
+
+/**
+ * Keyboard language to speech-recognition language (BCP-47) mapping, tag normalisation and matching (ADR 0029).
+ * Pure and JVM-testable.
+ *
+ * Preference order per keyboard language: am `am-ET`; ti `ti-ET` then `ti-ER`; om `om-ET`; en the device locale's
+ * English (e.g. `en-GB`) when the device is set to English, then `en-US`. A tag the user chose for the keyboard
+ * language comes before all of these. None of the Ethiopian tags is assumed to work: support is asked of the
+ * recogniser at run time ([VoiceSupport]).
+ */
+object VoiceLanguages {
+    /** The keyboard languages, in the picker's order. */
+    val KEYBOARD_LANGUAGES: List<String> = listOf("am", "ti", "om", "en")
+
+    /** The default tags of [keyboardLanguage], most preferred first. */
+    fun defaults(keyboardLanguage: String, deviceLocale: Locale): List<String> = when (keyboardLanguage) {
+        "am" -> listOf("am-ET")
+        "ti" -> listOf("ti-ET", "ti-ER")
+        "om" -> listOf("om-ET")
+        "en" -> {
+            val region = deviceLocale.country
+            if (deviceLocale.language == "en" && region.isNotEmpty()) listOf("en-$region", "en-US").distinct() else listOf("en-US")
+        }
+        else -> listOf(normalize(keyboardLanguage))
+    }
+
+    /** The tags to try for [keyboardLanguage]: the user's [chosen] tag first (if any), then [defaults]. */
+    fun preference(keyboardLanguage: String, chosen: String?, deviceLocale: Locale): List<String> =
+        (listOfNotNull(chosen?.let { normalize(it) }) + defaults(keyboardLanguage, deviceLocale)).distinct()
+
+    /**
+     * Canonical form of a tag as recognisers spell it: `_` becomes `-`, the language is lower case, a script title
+     * case, a region upper case (`am_et` -> `am-ET`, `zh-hant-tw` -> `zh-Hant-TW`). Unknown subtags keep their case.
+     */
+    fun normalize(tag: String): String {
+        val parts = tag.trim().replace('_', '-').split('-').filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return ""
+        return parts.mapIndexed { i, p ->
+            when {
+                i == 0 -> p.lowercase(Locale.ROOT)
+                p.length == 4 && p.all { it.isLetter() } -> p.lowercase(Locale.ROOT).replaceFirstChar { it.titlecase(Locale.ROOT) }
+                p.length == 2 && p.all { it.isLetter() } -> p.uppercase(Locale.ROOT)
+                p.length == 3 && p.all { it.isDigit() } -> p
+                else -> p
+            }
+        }.joinToString("-")
+    }
+
+    /** The language subtag (`am-ET` -> `am`). */
+    fun languageOf(tag: String): String = normalize(tag).substringBefore('-')
+
+    /** The keyboard language a tag belongs to, or null for any other language. */
+    fun keyboardLanguageOf(tag: String): String? = languageOf(tag).takeIf { it in KEYBOARD_LANGUAGES }
+
+    /** [wanted] exactly as one of [available] (normalised), or null. */
+    fun exact(wanted: String, available: Set<String>): String? = normalize(wanted).takeIf { it in available }
+
+    /**
+     * A tag of [available] with the same language as [wanted] when the exact one is missing: the bare language
+     * (`am`) first, then the alphabetically first regional one (stable).
+     */
+    fun sameLanguage(wanted: String, available: Set<String>): String? {
+        val lang = languageOf(wanted)
+        if (lang in available) return lang
+        return available.filter { languageOf(it) == lang }.minOrNull()
+    }
+
+    /** The language's name without the region (`ti-ER` -> Tigrinya), for messages. */
+    fun languageName(tag: String): String {
+        val lang = languageOf(tag)
+        return if (lang in KEYBOARD_LANGUAGES) LanguageCatalog.spokenName(lang) else Locale.forLanguageTag(lang).getDisplayLanguage(Locale.ENGLISH).ifEmpty { lang }
+    }
+
+    /** The name shown for [tag]: our names for am/ti/om/en, the platform's English name otherwise; region in brackets. */
+    fun displayName(tag: String): String {
+        val t = normalize(tag)
+        val locale = Locale.forLanguageTag(t)
+        val lang = languageOf(t)
+        val name = if (lang in KEYBOARD_LANGUAGES) {
+            LanguageCatalog.spokenName(lang)
+        } else {
+            locale.getDisplayLanguage(Locale.ENGLISH).ifEmpty { lang }
+        }
+        val details = listOf(locale.getDisplayScript(Locale.ENGLISH), locale.getDisplayCountry(Locale.ENGLISH)).filter { it.isNotEmpty() }
+        return if (details.isEmpty()) name else "$name (${details.joinToString(", ")})"
+    }
+}
