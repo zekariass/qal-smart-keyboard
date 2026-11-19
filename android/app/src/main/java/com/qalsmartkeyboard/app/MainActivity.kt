@@ -205,6 +205,17 @@ class MainActivity : ComponentActivity() {
                     signIn.reset()
                     showSignIn = false
                 },
+                onMethod = signIn::setMethod,
+                onEmail = signIn::setEmail,
+                onPassword = signIn::setPassword,
+                onTogglePassword = signIn::togglePasswordVisible,
+                onEmailMode = signIn::setEmailMode,
+                onEmailSubmit = signIn::submitEmail,
+                onForgot = signIn::forgotPassword,
+                onForgotSubmit = signIn::submitForgot,
+                onResetCode = signIn::setResetCode,
+                onNewPassword = signIn::setNewPassword,
+                onResetSubmit = signIn::submitReset,
             )
             val hasGuest = accountStatus == AccountStatus.Guest
             val systemDark = isSystemInDarkTheme()

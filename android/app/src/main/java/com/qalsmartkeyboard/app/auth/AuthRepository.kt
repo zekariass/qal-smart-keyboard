@@ -2,6 +2,8 @@ package com.qalsmartkeyboard.app.auth
 
 import com.qalsmartkeyboard.api.ApiClients
 import com.qalsmartkeyboard.api.ApiError
+import com.qalsmartkeyboard.api.ApiErrors
+import com.qalsmartkeyboard.api.ProblemCodes
 import com.qalsmartkeyboard.api.SessionState
 import com.qalsmartkeyboard.api.SignedOutReason
 import com.qalsmartkeyboard.api.apiCall
@@ -10,6 +12,14 @@ import com.qalsmartkeyboard.api.generated.models.AttestationEvidence
 import com.qalsmartkeyboard.api.generated.models.AuthSession
 import com.qalsmartkeyboard.api.generated.models.ClientPlatformEnum
 import com.qalsmartkeyboard.api.generated.models.DeviceRegistration
+import com.qalsmartkeyboard.api.generated.models.EmailLoginRequest
+import com.qalsmartkeyboard.api.generated.models.EmailRegisterRequest
+import com.qalsmartkeyboard.api.generated.models.EmailResendRequest
+import com.qalsmartkeyboard.api.generated.models.EmailVerificationChallenge
+import com.qalsmartkeyboard.api.generated.models.EmailVerifyRequest
+import com.qalsmartkeyboard.api.generated.models.PasswordForgotRequest
+import com.qalsmartkeyboard.api.generated.models.PasswordResetRequest
+import com.qalsmartkeyboard.api.generated.infrastructure.Serializer
 import com.qalsmartkeyboard.api.generated.models.GuestSessionRequest
 import com.qalsmartkeyboard.api.generated.models.LogoutRequest
 import com.qalsmartkeyboard.api.generated.models.OAuthExchangeRequest
@@ -22,6 +32,13 @@ import com.qalsmartkeyboard.data.secure.StoreRead
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.util.UUID
@@ -51,6 +68,26 @@ class SignInOutcome(val kind: AccountKind, val isNewUser: Boolean, val guestLink
 
 class OtpChallengeInfo(val challengeId: UUID, val codeLength: Int, val expiresAtMs: Long, val resendAtMs: Long?)
 
+/** Result of an e-mail sign-up (ADR 0033): signed in at once, or a code was e-mailed first. */
+sealed interface EmailSignUp {
+    class SignedIn(val outcome: SignInOutcome) : EmailSignUp
+    class VerificationNeeded(val challenge: OtpChallengeInfo) : EmailSignUp
+}
+
+/**
+ * The verification challenge a 403 `EMAIL_NOT_VERIFIED` carries (`challengeId`, `expiresAt`,
+ * `resendAvailableAt`, `codeLength`), or null for any other error.
+ */
+fun ApiError.emailVerificationChallenge(): OtpChallengeInfo? {
+    val http = this as? ApiError.Http ?: return null
+    if (http.code != ProblemCodes.EMAIL_NOT_VERIFIED) return null
+    fun str(name: String) = (http.extensions[name] as? JsonPrimitive)?.contentOrNull
+    val id = str("challengeId")?.let { runCatching { UUID.fromString(it) }.getOrNull() } ?: return null
+    val length = (http.extensions["codeLength"] as? JsonPrimitive)?.intOrNull ?: 6
+    fun ms(name: String) = str(name)?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
+    return OtpChallengeInfo(id, length, ms("expiresAt") ?: 0, ms("resendAvailableAt"))
+}
+
 /** Device facts sent with a sign-in (`device`); no hardware identifiers. */
 class DeviceInfo(val appVersion: String, val osVersion: String)
 
@@ -64,7 +101,8 @@ class AttestationException(val unavailable: Boolean) : RuntimeException(if (unav
  * the account kind.
  *
  * **Guest linking (B2.6):** when a guest session exists, the bearer interceptor already sends
- * its token on `otp/start`, `otp/verify` and `oauth/GOOGLE`, so the server links the guest. If the
+ * its token on `otp/start`, `otp/verify`, `oauth/GOOGLE` and the e-mail register, login and verify
+ * calls, so the server links the guest. If the
  * server says the guest can no longer link (401 `GUEST_SESSION_INVALID`; the authenticator then
  * clears the tokens), the same call is repeated once without it, as the contract prescribes.
  */
@@ -119,6 +157,87 @@ class AuthRepository(
             device = deviceRegistration(),
         )
         return accept(linking { apiCall { auth.exchangeOAuthIdToken(AuthApi.ProviderExchangeOAuthIdToken.GOOGLE, request) } })
+    }
+
+    /**
+     * E-mail sign-up (ADR 0033). The server answers 201 with a session when it does not require
+     * verification, or 202 with a challenge (a code was e-mailed; no account exists yet). The
+     * generated client types one success body per operation, so this call is made by hand over the
+     * same OkHttp client (bearer for guest linking, client headers, error mapping). Neither the
+     * address nor the password is logged.
+     */
+    suspend fun registerWithEmail(email: String, password: String, ageConfirmed: Boolean, displayName: String? = null): EmailSignUp {
+        val request = EmailRegisterRequest(
+            email = email.trim(),
+            password = password,
+            ageConfirmed = ageConfirmed,
+            displayName = displayName?.trim()?.take(120)?.takeIf { it.isNotEmpty() },
+            device = deviceRegistration(),
+        )
+        return linking {
+            apiCall {
+                val json = Serializer.kotlinxSerializationJson
+                val http = Request.Builder()
+                    .url(clients.config.baseUrl.trimEnd('/') + "/api/v1/auth/email/register")
+                    .post(json.encodeToString(EmailRegisterRequest.serializer(), request).toRequestBody(JSON))
+                    .header("Accept", "application/json")
+                    .build()
+                clients.okHttpClient.newCall(http).execute().use { r ->
+                    val text = r.body?.string()
+                    if (!r.isSuccessful) throw ApiErrors.fromHttp(r.code, text, r.headers.toMultimap())
+                    try {
+                        when (r.code) {
+                            201 -> RegisterResponse.Session(json.decodeFromString(AuthSession.serializer(), text.orEmpty()))
+                            202 -> RegisterResponse.Challenge(json.decodeFromString(EmailVerificationChallenge.serializer(), text.orEmpty()))
+                            else -> throw ApiError.Unexpected(r.code)
+                        }
+                    } catch (e: SerializationException) {
+                        throw ApiError.Unexpected(r.code, e)
+                    } catch (e: IllegalArgumentException) {
+                        throw ApiError.Unexpected(r.code, e)
+                    }
+                }
+            }
+        }.let {
+            when (it) {
+                is RegisterResponse.Session -> EmailSignUp.SignedIn(accept(it.session))
+                is RegisterResponse.Challenge -> EmailSignUp.VerificationNeeded(it.challenge.toInfo())
+            }
+        }
+    }
+
+    /** E-mail sign-in. A 403 `EMAIL_NOT_VERIFIED` carries the challenge ([emailVerificationChallenge]). */
+    suspend fun loginWithEmail(email: String, password: String): SignInOutcome {
+        val request = EmailLoginRequest(email = email.trim(), password = password, device = deviceRegistration())
+        return accept(linking { apiCall { auth.loginWithEmail(request) } })
+    }
+
+    /** Proves the mailbox with the e-mailed code; creates the account (sign-up) or verifies it, and signs in. */
+    suspend fun verifyEmail(challengeId: UUID, code: String): SignInOutcome {
+        val request = EmailVerifyRequest(challengeId = challengeId, code = code, device = deviceRegistration())
+        return accept(linking { apiCall { auth.verifyEmailCode(request) } })
+    }
+
+    suspend fun resendEmailCode(challengeId: UUID): OtpChallengeInfo =
+        apiCall { auth.resendEmailCode(EmailResendRequest(challengeId = challengeId)) }.toInfo()
+
+    /** Always succeeds for a well-formed address (the server never says whether an account exists). */
+    suspend fun forgotPassword(email: String) {
+        apiCall { auth.forgotPassword(PasswordForgotRequest(email = email.trim())) }
+    }
+
+    /** Sets a new password with the e-mailed code; the server ends every session of the account. */
+    suspend fun resetPassword(email: String, code: String, newPassword: String) {
+        apiCall { auth.resetPassword(PasswordResetRequest(email = email.trim(), token = code, newPassword = newPassword)) }
+    }
+
+    private fun EmailVerificationChallenge.toInfo() = OtpChallengeInfo(
+        challengeId, codeLength, expiresAt.toInstant().toEpochMilli(), resendAvailableAt?.toInstant()?.toEpochMilli(),
+    )
+
+    private sealed interface RegisterResponse {
+        class Session(val session: AuthSession) : RegisterResponse
+        class Challenge(val challenge: EmailVerificationChallenge) : RegisterResponse
     }
 
     /** Attested guest session: server nonce, then the Integrity (or mock) token over it, then `/auth/guest`. */
@@ -178,6 +297,10 @@ class AuthRepository(
             else -> GuestLink.MERGED
         }
         return SignInOutcome(k, s.isNewUser == true, link)
+    }
+
+    private companion object {
+        val JSON = "application/json".toMediaType()
     }
 
     private fun deviceRegistration() = DeviceRegistration(
