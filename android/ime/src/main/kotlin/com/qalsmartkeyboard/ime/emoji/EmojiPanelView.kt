@@ -354,7 +354,7 @@ class EmojiPanelView(context: Context) : View(context) {
                 0 -> "ABC"
                 1 -> c.indicator
                 2 -> "⌫"
-                else -> enterLabelText(c.profile.enterLabel)
+                else -> enterLabelText(context, c.profile.enterLabel)
             }
             text.color = when (i) { 1 -> theme.hintText; 3 -> theme.onAccent; else -> theme.specialText }
             text.textSize = (if (i == 1) 13f else if (label.length > 2) 15f else 21f) * d
@@ -746,7 +746,7 @@ class EmojiPanelView(context: Context) : View(context) {
                         0 -> context.getString(R.string.emoji_back_to_keys)
                         1 -> context.getString(R.string.emoji_space)
                         2 -> context.getString(R.string.emoji_delete)
-                        else -> c?.profile?.enterLabel?.let { enterLabelText(it) } ?: "Enter"
+                        else -> c?.profile?.enterLabel?.let { enterLabelText(context, it) } ?: context.getString(R.string.kb_key_enter)
                     }
                 }
                 else -> {
@@ -809,7 +809,7 @@ class EmojiPanelView(context: Context) : View(context) {
     }
 
     private companion object {
-        val BACKSPACE = Key(KeyKind.BACKSPACE, "⌫", description = "Delete")
+        val BACKSPACE = Key(KeyKind.BACKSPACE, "⌫", description = "Delete") // only fed to the controller; TalkBack reads emoji_delete
         val SPACE = Key(KeyKind.SPACE, " ", " ")
         val ENTER = Key(KeyKind.ENTER, "")
         const val TONE_ACTION = 0x7F0F0000

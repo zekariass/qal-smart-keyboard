@@ -99,6 +99,8 @@ data class LayoutContext(
 
 /** Layouts: ASCII QWERTY (A1.2), Qubee, phonetic and the Fidel grid from core data (A1.4). */
 object Layouts {
+    /** Key descriptions in the UI language (ADR 0032); read when a layout is built. */
+    private val L: KeyboardLabels get() = KeyboardLabels.current
     private const val FULL_STOP = "።"
     private const val ETHIOPIC_COMMA = "፣"
 
@@ -112,12 +114,12 @@ object Layouts {
         Key(KeyKind.CHAR, c.toString(), c.toString(), hint = hints.lower(c), shiftHint = hints.upper(c))
     }
     private fun spacer(w: Float) = Key(KeyKind.CHAR, "", "", w)
-    private fun backspace(w: Float = 1.5f) = Key(KeyKind.BACKSPACE, "⌫", weight = w, description = "Delete")
+    private fun backspace(w: Float = 1.5f) = Key(KeyKind.BACKSPACE, "⌫", weight = w, description = L.keyDelete)
     private fun enter(w: Float = 1.5f) = Key(KeyKind.ENTER, "", weight = w)
     private fun emojiKey(profile: InputProfile, w: Float = 1f): Key? =
-        if (profile.allowsEmoji) Key(KeyKind.EMOJI, "", weight = w, description = "Emoji") else null
+        if (profile.allowsEmoji) Key(KeyKind.EMOJI, "", weight = w, description = L.keyEmoji) else null
 
-    private fun plainSpace(w: Float) = Key(KeyKind.SPACE, " ", " ", w, description = "Space")
+    private fun plainSpace(w: Float) = Key(KeyKind.SPACE, " ", " ", w, description = L.keySpace)
 
     fun forPage(page: Page, profile: InputProfile, ctx: LayoutContext = LayoutContext.DEFAULT): KeyboardLayout = when (page) {
         Page.LETTERS -> letters(profile, ctx)
@@ -136,7 +138,7 @@ object Layouts {
         val alts = if (ctx.ethiopicNumerals && ctx.ethiopic) ctx.grid?.digits?.get(d.toString()).orEmpty() else emptyList()
         Key(
             KeyKind.CHAR, d.toString(), d.toString(),
-            popup = alts.map { PopupItem(it, description = "Ethiopic numeral $it") },
+            popup = alts.map { PopupItem(it, description = L.keyEthiopicNumeral.format(it)) },
             hint = alts.firstOrNull().orEmpty(),
         )
     }
@@ -144,13 +146,13 @@ object Layouts {
     private fun spaceKey(w: Float, ctx: LayoutContext) = Key(
         KeyKind.SPACE, ctx.indicator, " ", w,
         popup = ctx.picker, popupColumns = 1,
-        description = "Space, ${LanguageCatalog.spokenName(ctx.mode.language)} ${LanguageCatalog.spokenKind(ctx.mode.kind)}",
+        description = L.keySpaceMode.format(LanguageCatalog.spokenName(ctx.mode.language), LanguageCatalog.spokenKind(ctx.mode.kind)),
         draftBadge = ctx.draft,
     )
 
     private fun marks(ctx: LayoutContext, only: Set<String>? = null): List<PopupItem> =
         ctx.ethiopicMarks.filter { only == null || it in only }
-            .map { PopupItem(it, description = "Ethiopic punctuation $it") }
+            .map { PopupItem(it, description = L.keyEthiopicPunctuation.format(it)) }
 
     private fun periodKey(ctx: LayoutContext): Key {
         val m = marks(ctx)
@@ -159,8 +161,8 @@ object Layouts {
             val others = m.filter { it.label != FULL_STOP }
             return Key(
                 KeyKind.CHAR, FULL_STOP, FULL_STOP, 0.75f,
-                popup = listOf(PopupItem(".", description = "Period")) + others, popupColumns = 4,
-                hint = ".", description = "Ethiopic full stop",
+                popup = listOf(PopupItem(".", description = L.keyPeriod)) + others, popupColumns = 4,
+                hint = ".", description = L.keyEthiopicFullStop,
             )
         }
         return Key(KeyKind.CHAR, ".", ".", 0.75f, popup = m, popupColumns = 4, hint = m.firstOrNull()?.label.orEmpty())
@@ -172,8 +174,8 @@ object Layouts {
             val others = m.filter { it.label != ETHIOPIC_COMMA }
             return Key(
                 KeyKind.CHAR, ETHIOPIC_COMMA, ETHIOPIC_COMMA, 0.75f,
-                popup = listOf(PopupItem(",", description = "Comma")) + others, popupColumns = 2,
-                hint = ",", description = "Ethiopic comma",
+                popup = listOf(PopupItem(",", description = L.keyComma)) + others, popupColumns = 2,
+                hint = ",", description = L.keyEthiopicComma,
             )
         }
         return Key(KeyKind.CHAR, ",", ",", 0.75f, popup = m, popupColumns = 2, hint = m.firstOrNull()?.label.orEmpty())
@@ -188,20 +190,20 @@ object Layouts {
         if (lang == "en") return null // ABC and English are both plain Latin passthrough
         val ethiopic = LanguageCatalog.isEthiopic(lang)
         return if (ctx.mode.isAbc) {
-            Key(KeyKind.ABC_TOGGLE, LanguageCatalog.nativeGlyph(lang), description = "Switch to ${LanguageCatalog.spokenName(lang)} keys")
+            Key(KeyKind.ABC_TOGGLE, LanguageCatalog.nativeGlyph(lang), description = L.keySwitchToLanguageKeys.format(LanguageCatalog.spokenName(lang)))
         } else {
-            Key(KeyKind.ABC_TOGGLE, "ABC", description = if (ethiopic) "Switch to English writing mode" else "Switch to ABC Latin keys")
+            Key(KeyKind.ABC_TOGGLE, "ABC", description = if (ethiopic) L.keySwitchToEnglishMode else L.keySwitchToAbc)
         }
     }
 
     private fun letters(profile: InputProfile, ctx: LayoutContext): KeyboardLayout {
-        val toSym = Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.25f, description = "Numbers and symbols")
+        val toSym = Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.25f, description = L.keyNumbersSymbols)
         val bottom = when (profile.kind) {
             FieldKind.EMAIL -> listOf(toSym, ch("@"), ch(","), plainSpace(3f), ch("."), enter())
             FieldKind.URI -> listOf(toSym, ch("/"), plainSpace(2f), ch("."), Key(KeyKind.CHAR, ".com", ".com", 1.5f), enter())
             FieldKind.TEXT -> listOfNotNull(
                 toSym,
-                Key(KeyKind.GLOBE, "🌐", weight = 1f, longAction = true, description = "Switch language"),
+                Key(KeyKind.GLOBE, "🌐", weight = 1f, longAction = true, description = L.keySwitchLanguage),
                 toggleKey(ctx),
                 commaKey(ctx),
                 emojiKey(profile, 0.9f),
@@ -216,10 +218,10 @@ object Layouts {
         }
         val shiftRow = if (ctx.mode.kind == LayoutKind.QUBEE) {
             // The apostrophe (hudhaa) is part of Oromo words, so it lives on the primary layer (SD 7.3).
-            listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.25f, description = "Shift")) + chars("zxcvbnm") +
-                Key(KeyKind.CHAR, "'", "'", description = "Apostrophe, hudhaa") + backspace(1.25f)
+            listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.25f, description = L.keyShift)) + chars("zxcvbnm") +
+                Key(KeyKind.CHAR, "'", "'", description = L.keyApostrophe) + backspace(1.25f)
         } else {
-            listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.5f, description = "Shift")) + letterKeys("zxcvbnm", ctx.hints) + backspace()
+            listOf(Key(KeyKind.SHIFT, "⇧", weight = 1.5f, description = L.keyShift)) + letterKeys("zxcvbnm", ctx.hints) + backspace()
         }
         return KeyboardLayout(
             Page.LETTERS,
@@ -251,14 +253,14 @@ object Layouts {
         }.toMutableList()
         rows[rows.lastIndex] = rows.last() + backspace(1f)
         if (grid.twoKey && grid.vowelKeys.isNotEmpty()) {
-            rows += listOf(grid.vowelKeys.map { Key(KeyKind.FIDEL_VOWEL, it.label, order = it.order, description = "Vowel order ${it.order} ${it.label}") })
+            rows += listOf(grid.vowelKeys.map { Key(KeyKind.FIDEL_VOWEL, it.label, order = it.order, description = L.keyVowelOrder.format(it.order, it.label)) })
         }
         rows += listOf(bottom)
         return KeyboardLayout(Page.LETTERS, rows, rowHeightDp = 42f)
     }
 
     private fun bottomSymbols(profile: InputProfile) = listOfNotNull(
-        Key(KeyKind.TO_LETTERS, "ABC", weight = 1.5f, description = "Letters"), ch(","), emojiKey(profile, 1f),
+        Key(KeyKind.TO_LETTERS, "ABC", weight = 1.5f, description = L.keyLetters), ch(","), emojiKey(profile, 1f),
         plainSpace(if (profile.allowsEmoji) 3.5f else 4f), ch("."), enter(),
     )
 
@@ -267,11 +269,11 @@ object Layouts {
         val rows = buildList {
             add(digitRow(ctx))
             if (marks.isNotEmpty()) {
-                add(marks.map { Key(KeyKind.CHAR, it, it, description = "Ethiopic punctuation $it") })
+                add(marks.map { Key(KeyKind.CHAR, it, it, description = L.keyEthiopicPunctuation.format(it)) })
             }
             add(chars("@#$%&-+()/"))
             add(chars("*\"':;!?~`|"))
-            add(listOf(Key(KeyKind.TO_SYMBOLS_2, "=\\<", weight = 1.5f, description = "More symbols")) + chars(",._") + listOf(backspace()))
+            add(listOf(Key(KeyKind.TO_SYMBOLS_2, "=\\<", weight = 1.5f, description = L.keyMoreSymbols)) + chars(",._") + listOf(backspace()))
             add(bottomSymbols(profile))
         }
         return KeyboardLayout(Page.SYMBOLS, rows, if (rows.size > 5) 44f else 50f)
@@ -283,7 +285,7 @@ object Layouts {
             digitRow(ctx),
             chars("~`|^{}[]<>"),
             chars("=\\£€¥°©®™•"),
-            listOf(Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.5f, description = "Numbers and symbols")) + chars(",._;:") + listOf(backspace()),
+            listOf(Key(KeyKind.TO_SYMBOLS, "?123", weight = 1.5f, description = L.keyNumbersSymbols)) + chars(",._;:") + listOf(backspace()),
             bottomSymbols(profile),
         ),
     )

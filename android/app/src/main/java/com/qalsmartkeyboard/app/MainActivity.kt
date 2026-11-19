@@ -1,5 +1,6 @@
 package com.qalsmartkeyboard.app
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -68,6 +69,8 @@ import com.qalsmartkeyboard.app.email.EmailWriterRoute
 import com.qalsmartkeyboard.app.themes.themeStore
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 import com.qalsmartkeyboard.ime.ai.AiLink
+import com.qalsmartkeyboard.ime.AppLanguage
+import com.qalsmartkeyboard.ime.KeyboardLabels
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -107,8 +110,14 @@ class MainActivity : ComponentActivity() {
     // The keyboard toolbar's link (ADR 0007 D40), consumed once the screen state is known.
     private var pendingLink by mutableStateOf<AiLink?>(null)
 
+    // ADR 0032: the app's UI language below Android 13 (13+: the platform applies it and recreates the activity).
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguage.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        KeyboardLabels.load(this) // language names shared with the keyboard (AI panels, settings) in the UI language
         enableEdgeToEdge()
         if (savedInstanceState == null) pendingLink = DeepLinks.fromIntent(intent)
         // A2.3: language-pack updates. The first value is the app-start check; a later change of the

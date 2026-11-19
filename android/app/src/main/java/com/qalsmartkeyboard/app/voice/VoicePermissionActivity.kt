@@ -1,6 +1,7 @@
 package com.qalsmartkeyboard.app.voice
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -30,6 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.qalsmartkeyboard.ime.AppLanguage
 import androidx.core.content.ContextCompat
 import com.qalsmartkeyboard.app.R
 import com.qalsmartkeyboard.app.ui.theme.QalSmartKeyboardTheme
@@ -70,6 +72,11 @@ object VoicePermissionModel {
  * no longer show the dialog, it explains how to allow the microphone in the app's settings and opens them.
  */
 class VoicePermissionActivity : ComponentActivity() {
+    // ADR 0032: the app's UI language below Android 13 (13+: the platform applies it).
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguage.wrap(newBase))
+    }
+
     private var state by mutableStateOf(VoicePermissionState.EXPLAIN)
 
     private val request = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->

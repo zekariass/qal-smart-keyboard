@@ -40,6 +40,7 @@ import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.PremiumThemeAccess
 import com.qalsmartkeyboard.ime.theme.ThemeAccessHolder
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
+import com.qalsmartkeyboard.ime.theme.ThemeNames
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -126,7 +127,7 @@ fun ThemesScreen(
         Text(stringResource(R.string.themes_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
         Text(stringResource(R.string.themes_intro))
         if (applied != null && applied.isPremium && access != PremiumThemeAccess.ALLOWED) {
-            LockedBanner(applied.name, applied.isLight, access, onUnlock)
+            LockedBanner(themeName(applied), applied.isLight, access, onUnlock)
         }
         SectionTitle(stringResource(R.string.themes_section_free))
         val free = listOf(ThemeCatalog.SYSTEM_ID) + ThemeCatalog.free.map { it.id }
@@ -160,7 +161,7 @@ private fun CardGrid(ids: List<String>, card: @Composable (String) -> Unit) {
 private fun ThemeCard(id: String, appliedId: String, access: PremiumThemeAccess, systemDark: Boolean, onPreview: (String) -> Unit) {
     val theme = ThemePickerModel.previewTheme(id, systemDark)
     val system = id == ThemeCatalog.SYSTEM_ID
-    val name = if (system) stringResource(R.string.themes_system) else theme.name
+    val name = if (system) stringResource(R.string.themes_system) else themeName(theme)
     val premium = !system && theme.isPremium
     val isApplied = id == normalizedApplied(appliedId)
     val locked = premium && access != PremiumThemeAccess.ALLOWED
@@ -216,7 +217,7 @@ private fun accessReason(access: PremiumThemeAccess): String = stringResource(
 /** Tells why the chosen premium theme is not drawn: the keyboard shows Classic Light or Dark instead. */
 @Composable
 private fun LockedBanner(name: String, isLight: Boolean, access: PremiumThemeAccess, onUnlock: () -> Unit) {
-    val fallback = if (isLight) ThemeCatalog.classicLight.name else ThemeCatalog.classicDark.name
+    val fallback = themeName(if (isLight) ThemeCatalog.classicLight else ThemeCatalog.classicDark)
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(stringResource(R.string.themes_locked_title, name), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
@@ -239,7 +240,7 @@ private fun ThemeDetail(
 ) {
     val theme: KeyboardTheme = ThemePickerModel.previewTheme(previewId, systemDark)
     val system = previewId == ThemeCatalog.SYSTEM_ID
-    val name = if (system) stringResource(R.string.themes_system) else theme.name
+    val name = if (system) stringResource(R.string.themes_system) else themeName(theme)
     val premium = !system && theme.isPremium
     val locked = premium && access != PremiumThemeAccess.ALLOWED
     val isApplied = previewId == normalizedApplied(appliedId)
@@ -259,3 +260,7 @@ private fun ThemeDetail(
         OutlinedButton(onClick = onClose) { Text(stringResource(R.string.themes_back_to_list)) }
     }
 }
+
+/** The theme's name in the UI language (ADR 0032). */
+@Composable
+internal fun themeName(theme: KeyboardTheme): String = ThemeNames.name(LocalContext.current, theme)

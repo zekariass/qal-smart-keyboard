@@ -30,7 +30,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val names = mapOf("am" to "Amharic", "ti" to "Tigrinya", "om" to "Afaan Oromoo", "en" to "English")
 private const val PAGE = 50
 
 /**
@@ -99,7 +98,7 @@ private fun LanguageWords(language: String, words: List<String>, onDelete: (Stri
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    stringResource(R.string.pd_language_count, names[language] ?: language, words.size),
+                    stringResource(R.string.pd_language_count, languageName(language), words.size),
                     Modifier.weight(1f),
                 )
                 if (words.isNotEmpty()) {

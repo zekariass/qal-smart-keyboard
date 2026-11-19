@@ -179,7 +179,7 @@ class KeyboardController(
     val modeDescription: String
         get() = effectiveMode.let {
             val kindName = if (LanguageCatalog.isEthiopic(it.language)) LanguageCatalog.spokenWritingMode(it.kind) else LanguageCatalog.spokenKind(it.kind)
-            "${LanguageCatalog.spokenName(it.language)}, $kindName"
+            KeyboardLabels.current.modeDescription.format(LanguageCatalog.spokenName(it.language), kindName)
         }
 
     /**
@@ -210,6 +210,11 @@ class KeyboardController(
      * move to the first available one. Safe to call at any time.
      */
     private var settled = false
+
+    /** The UI language's labels were (re)loaded ([KeyboardLabels]): key descriptions and the space bar are built again. */
+    fun onLabelsChanged() {
+        cachedLayout = null
+    }
 
     fun onPreferencesChanged() {
         cachedLayout = null
@@ -390,7 +395,7 @@ class KeyboardController(
         PopupItem(
             LanguageCatalog.displayName(it),
             language = it,
-            description = "Switch to ${LanguageCatalog.spokenName(it)}",
+            description = KeyboardLabels.current.pickerSwitchTo.format(LanguageCatalog.spokenName(it)),
             selected = it == language,
         )
     }
