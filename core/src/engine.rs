@@ -1338,7 +1338,7 @@ impl KeyboardEngine {
                 && composing_empty
                 && s.options.next_word
                 && s.options.suggestions
-                && s.context.previous.is_some();
+                && (s.context.previous.is_some() || s.context.sentence_start);
             if wants {
                 request(s, RequestKind::Predict)
             } else {
@@ -1637,7 +1637,8 @@ impl KeyboardEngine {
     }
 
     /// Next-word predictions after the previous word: the bigram pack and the user's own word
-    /// pairs first, then frequent words to fill the strip (never the previous word itself).
+    /// pairs first, then frequent words to fill the strip (never the previous word itself). After a
+    /// sentence end (`. ! ? ። ፧ ؟` and a space) there is no previous word: the most frequent words.
     fn with_predictions(
         &self,
         mut update: EditorUpdate,
@@ -1645,13 +1646,14 @@ impl KeyboardEngine {
         model: &LangModel,
         max: usize,
     ) -> EditorUpdate {
-        let Some(prev) = req.previous.clone() else {
-            return update;
-        };
         let limit = self.config.max_candidates.saturating_add(1);
-        let list: Vec<Candidate> = model
-            .ranker
-            .next_words(prev.clone(), limit)
+        let prev = req.previous.clone().unwrap_or_default();
+        let ranked = if prev.is_empty() {
+            model.ranker.frequent(limit)
+        } else {
+            model.ranker.next_words(prev.clone(), limit)
+        };
+        let list: Vec<Candidate> = ranked
             .into_iter()
             .filter(|c| !c.text.is_empty() && c.text != prev)
             .take(max)

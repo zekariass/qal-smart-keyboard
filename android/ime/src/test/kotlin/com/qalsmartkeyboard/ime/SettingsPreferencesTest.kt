@@ -157,13 +157,15 @@ class SettingsPreferencesTest {
 
     @Test fun otherLayoutsKeepAsciiPunctuationOnTap() {
         val s = CoreTestEnv.Session()
-        for (m in listOf(TypingMode("am", LayoutKind.PHONETIC), TypingMode("om", LayoutKind.QUBEE), TypingMode("en", LayoutKind.ENGLISH))) {
+        // am/ti Phonetic now tap ። / ፣ like the Fidel grid (owner 2026-11-19); Latin layouts keep ASCII.
+        for (m in listOf(TypingMode("om", LayoutKind.QUBEE), TypingMode("en", LayoutKind.ENGLISH))) {
             s.mode(m)
             val bottom = s.c.layout.rows.last()
             assertTrue("$m", bottom.any { it.kind == KeyKind.CHAR && it.text == "." })
             assertTrue("$m", bottom.any { it.kind == KeyKind.CHAR && it.text == "," })
         }
         s.mode(TypingMode("am", LayoutKind.PHONETIC))
+        assertTrue(s.c.layout.rows.last().any { it.kind == KeyKind.CHAR && it.text == "።" })
         s.c.selectWritingMode(LayoutKind.ABC) // the pill's English (ADR 0035: no ABC key)
         s.ed.deliver(s.adapter)
         assertTrue(s.c.layout.rows.last().any { it.kind == KeyKind.CHAR && it.text == "." })

@@ -245,11 +245,17 @@ fn next_word_predictions_follow_a_space_and_chain() {
     let p = pick(&e, &mut ed, &u, "morning");
     assert_eq!(p.commit, "morning ");
     assert_eq!(ed.shown(), "good morning ");
-    // Predictions continue after the picked word; no previous word, no predictions.
+    // Predictions continue after the picked word.
     assert!(!p.candidates.is_empty());
-    let mut ed = Editor::default();
-    e.reset();
-    assert!(type_into(&e, &mut ed, ". ").candidates.is_empty());
+    // After a sentence end there is no previous word: the most frequent words start the sentence.
+    let u = type_into(&e, &mut ed, "thanks. ");
+    assert_eq!(u.candidates[0].text, "the");
+    assert!(u
+        .candidates
+        .iter()
+        .all(|c| c.kind == CandidateKind::Prediction));
+    // After other punctuation (no previous word, not a sentence start) there are none.
+    assert!(type_into(&e, &mut ed, "x; ").candidates.is_empty());
 }
 
 #[test]
@@ -369,6 +375,37 @@ fn phonetic_predicts_the_next_word_and_is_never_autocorrected() {
     e.reset();
     let u = type_into(&e, &mut Editor::default(), "sela");
     assert_eq!(u.candidates[1].text, "ሰላም");
+}
+
+#[test]
+fn ethiopic_full_stop_and_comma_keys_attach_and_end_the_sentence() {
+    // The phone's comma / period keys type ፣ / ። directly in Phonetic (and Fidel).
+    let e = amharic(InputMode::PhoneticLatin);
+    let mut ed = Editor::default();
+    let u = type_into(&e, &mut ed, "sela");
+    pick(&e, &mut ed, &u, "ሰላም");
+    // ፣ replaces the space added behind the picked word; a clause comma keeps no previous word.
+    let u = type_into(&e, &mut ed, "፣");
+    assert_eq!(ed.shown(), "ሰላም፣");
+    assert!(u.candidates.is_empty());
+    let u = type_into(&e, &mut ed, " selam");
+    pick(&e, &mut ed, &u, "ሰላም");
+    type_into(&e, &mut ed, "።");
+    assert_eq!(ed.shown(), "ሰላም፣ ሰላም።");
+    // After ። and a space the next sentence is predicted (frequent words, no previous word).
+    let u = type_into(&e, &mut ed, " ");
+    assert!(!u.candidates.is_empty());
+    assert!(u
+        .candidates
+        .iter()
+        .all(|c| c.kind == CandidateKind::Prediction));
+    // Fidel: the same keys commit the marks after a completion.
+    let f = amharic(InputMode::DirectFidel);
+    let mut ed = Editor::default();
+    let u = type_into(&f, &mut ed, "ሰላ");
+    pick(&f, &mut ed, &u, "ሰላም");
+    type_into(&f, &mut ed, "።");
+    assert_eq!(ed.shown(), "ሰላም።");
 }
 
 #[test]

@@ -42,7 +42,9 @@ name series ids and order numbers.
   pharyngeal series in the same and the other orders (`a`: ኣ ዐ ዓ, Tigrinya አ ዓ ዐ; `e`: አ ዕ ዐ ኧ). A bare consonant
   followed by a lowercase-`w` syllable also offers the labialised letter (counts as one substitution).
 - Punctuation by doubling: `..` ። `,,` ፣ `;;` ፤ `::` ፥ `??` ፧. A single `.` `,` `;` `:` `?` stays ASCII (it is
-  held as composing text until the next key decides).
+  held as composing text until the next key decides). On the phone the comma and period keys of the Phonetic and Fidel
+  layouts type ፣ and ። directly (ASCII `,` / `.` first in their long-press popups), so the doubling is only needed
+  from a hardware keyboard or the symbols page.
 - Protected tokens stay Latin: a buffer starting with `http` or `www`, anything containing `@`, and the
   listed product names (`whatsapp`, `telegram`, ...; transliteration is offered as the alternative).
   The real list will come from the `PROTECTED_TERMS` pack and lexicon (C1.6).

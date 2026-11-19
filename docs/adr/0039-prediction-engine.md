@@ -62,8 +62,10 @@ distance) and Arabic has no shipped lexicon.
 
 ### 5. Next-word prediction and spacing
 After a word boundary the strip predicts the next word from the bigram pack plus the user's own word pairs (weighted
-×20), filled with frequent words; never the previous word itself. Shown only when a previous word is known (not at
-the start of a sentence). Picking any suggestion inserts it followed by a space unless the text after the cursor
+×20), filled with frequent words; never the previous word itself. After a sentence end (`. ! ? ። ፧ ؟` and a space)
+there is no previous word, so the most frequent words are offered; after other punctuation (`, ; ፣` …) nothing. In
+am/ti Phonetic and Fidel the comma and period keys type ፣ and ። directly (ASCII on long-press, owner's request
+2026-11-19); ። ends a sentence and ፣ a clause, both attach to the word like their ASCII forms. Picking any suggestion inserts it followed by a space unless the text after the cursor
 already starts with whitespace; a Space typed right after adds no second space, and punctuation that attaches to a
 word (`. , ! ? ; : ) ። ፣ ፤ ፥ ፧ ، ؛ ؟`) replaces the added space. After a cursor move the host passes the text around
 the cursor (`set_cursor_context`, at most 96 characters before and 1 after, in memory only), so predictions, the

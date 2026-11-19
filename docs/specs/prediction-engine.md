@@ -43,7 +43,8 @@ fields or where the app sets `TYPE_TEXT_FLAG_NO_SUGGESTIONS` (no strip at all th
 Three slots: centre = what Space commits (bold); left / right = the next two candidates; thin separators; Arabic
 mirrors left and right. An autocorrection is the centre candidate with an accent underline, and the typed word is on
 the left in quotes. More than three candidates: a chevron expands to the full list. Tapping inserts the word with one
-space (none if a space follows the cursor); Space right after adds no second space; attaching punctuation replaces it.
+space (none if a space follows the cursor); Space right after adds no second space; attaching punctuation replaces it. After a sentence end and a space (`. ! ? ። ፧ ؟`) the most frequent words are predicted (no
+previous word); in am/ti Phonetic and Fidel the comma / period keys type ፣ / ። (ASCII on long-press).
 
 ### Settings
 Preferences → *Text correction*: "Next-word suggestions" (default on), "Auto-correction: English" (on), "Auto-correction:
