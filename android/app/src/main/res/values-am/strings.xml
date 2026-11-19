@@ -516,4 +516,10 @@
     <string name="settings_translate_search">ቋንቋዎችን ይፈልጉ</string>
     <string name="settings_translate_none_found">ምንም ቋንቋ አልተገኘም</string>
     <string name="settings_translate_offline_note">መተግበሪያው አንዴ በመስመር ላይ ከሆነ በኋላ ተጨማሪ ቋንቋዎች እዚህ ይታያሉ።</string>
+    <!-- Key layouts and the number row (ADR 0043). DRAFT (N9). -->
+    <string name="settings_key_layout_title">የቁልፍ አቀማመጥ</string>
+    <string name="settings_key_layout_note">ለዚህ ቋንቋ የላቲን ቁልፎች ሁሉ፣ ፎነቲክና እንግሊዝኛን ጨምሮ።</string>
+    <string name="settings_fidel_layout_title">የፊደል ቁልፎች</string>
+    <string name="settings_number_row">የቁጥር ረድፍ</string>
+    <string name="settings_number_row_summary">ከፊደላቱ በላይ ቁጥሮች። ሲጠፋ ቁጥሩን ለማግኘት የላይኛውን ረድፍ ቁልፍ ይያዙ።</string>
 </resources>

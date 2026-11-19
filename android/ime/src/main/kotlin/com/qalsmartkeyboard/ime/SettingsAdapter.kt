@@ -13,6 +13,8 @@ class SettingsPreferences(
     private val settings: () -> KeyboardSettings,
     /** Saves the selected writing mode of am/ti (`KeyboardSettings.writingModes`). */
     private val saveWritingMode: (language: String, mode: String) -> Unit = { _, _ -> },
+    /** Saves a change of the settings made from the keyboard (ADR 0043: the Layout panel's choice). */
+    private val saveSettings: (transform: (KeyboardSettings) -> KeyboardSettings) -> Unit = {},
     /** Last (a trailing lambda): saves the last native layout (`KeyboardSettings.lastModes`). */
     private val saveLastMode: (language: String, mode: String) -> Unit = { _, _ -> },
 ) : EnabledLanguages, ModePreferences {
@@ -58,6 +60,42 @@ class SettingsPreferences(
 
     /** ADR 0043: the effective style (Ethiopic until the user picks one). */
     override val ethiopicNumerals: Boolean get() = settings().effectiveNumeralStyle == NumeralStyle.ETHIOPIC
+    /**
+     * Layout choices saved from the keyboard but not yet back from the store (value, and the stored value when it was
+     * made): the keys use them at once, the store answers a moment later. Dropped as soon as the stored value changes
+     * (our write landed, or the app changed it meanwhile). Main thread only, like every other read here.
+     */
+    private val pendingLatin = HashMap<String, Pair<String, String?>>()
+    private val pendingFidel = HashMap<String, Pair<String, String?>>()
+
+    private fun read(pending: HashMap<String, Pair<String, String?>>, stored: Map<String, String>, language: String): String? {
+        val (value, base) = pending[language] ?: return stored[language]
+        if (stored[language] != base) {
+            pending.remove(language)
+            return stored[language]
+        }
+        return value
+    }
+
+    override fun latinLayout(language: String): LatinLayout =
+        LatinLayout.fromName(read(pendingLatin, settings().latinLayouts, language)) ?: LatinLayout.DEFAULT
+
+    override fun setLatinLayout(language: String, layout: LatinLayout) {
+        if (latinLayout(language) == layout) return
+        pendingLatin[language] = layout.name to settings().latinLayouts[language]
+        saveSettings { it.copy(latinLayouts = it.latinLayouts + (language to layout.name)) }
+    }
+
+    override fun fidelVariant(language: String): FidelVariant =
+        FidelVariant.fromName(read(pendingFidel, settings().fidelLayouts, language)) ?: FidelVariant.DEFAULT
+
+    override fun setFidelVariant(language: String, variant: FidelVariant) {
+        if (fidelVariant(language) == variant) return
+        pendingFidel[language] = variant.name to settings().fidelLayouts[language]
+        saveSettings { it.copy(fidelLayouts = it.fidelLayouts + (language to variant.name)) }
+    }
+
+    override val numberRow: Boolean get() = settings().numberRow
     override val hapticsEnabled: Boolean get() = settings().hapticsEnabled
     override val keyPreviewEnabled: Boolean get() = settings().keyPreviewEnabled
     override val keyHeightScale: Float get() = settings().keyHeightScale

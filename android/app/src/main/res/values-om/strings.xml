@@ -518,4 +518,10 @@
     <string name="settings_translate_search">Afaanota barbaadaa</string>
     <string name="settings_translate_none_found">Afaan tokkollee hin argamne</string>
     <string name="settings_translate_offline_note">Appiin yeroo tokko toora irra erga ta\'ee booda afaanonni dabalataa asitti mul\'atu.</string>
+    <!-- Key layouts and the number row (ADR 0043). DRAFT (N9). -->
+    <string name="settings_key_layout_title">Tartiiba furtuulee</string>
+    <string name="settings_key_layout_note">Furtuulee Laatinii afaan kanaa hundaaf, Phonetic fi Ingiliffaa dabalatee.</string>
+    <string name="settings_fidel_layout_title">Furtuulee Fidel</string>
+    <string name="settings_number_row">Sarara lakkoofsaa</string>
+    <string name="settings_number_row_summary">Lakkoofsota qubee olii. Yoo dhaame, lakkoofsaaf furtuu sarara olii qabadhaa.</string>
 </resources>

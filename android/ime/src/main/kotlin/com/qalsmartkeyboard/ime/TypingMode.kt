@@ -144,9 +144,11 @@ object LanguageCatalog {
      * mode. am/ti name their English writing mode; elsewhere ABC names where the one-tap ABC toggle
      * goes back to (`OM · ABC→Qu`). Arabic shows `ع · العربية` (drawn right to left as one Arabic run).
      */
-    fun indicator(mode: TypingMode, backTo: LayoutKind?): String {
+    fun indicator(mode: TypingMode, backTo: LayoutKind?, latin: LatinLayout = LatinLayout.DEFAULT): String {
         val tag = shortLabel(mode.language)
         return when {
+            // ADR 0043: English names its key arrangement (EN · QWERTY, EN · Dvorak).
+            mode.kind == LayoutKind.ENGLISH -> "$tag · ${latin.label}"
             mode.isAbc && isEthiopic(mode.language) -> "$tag · ${writingModeLabel(LayoutKind.ABC)}"
             mode.isAbc && backTo != null && mode.language != "en" -> "$tag · ABC→${nativeGlyph(mode.language)}"
             mode.isAbc -> "$tag · ABC"
@@ -215,6 +217,19 @@ interface ModePreferences {
      */
     val ethiopicNumerals: Boolean get() = false
 
+    /** ADR 0043: the Latin key arrangement of [language] (all its Latin layouts). */
+    fun latinLayout(language: String): LatinLayout = LatinLayout.DEFAULT
+
+    fun setLatinLayout(language: String, layout: LatinLayout) {}
+
+    /** ADR 0043: how [language]'s Fidel grid is typed. */
+    fun fidelVariant(language: String): FidelVariant = FidelVariant.DEFAULT
+
+    fun setFidelVariant(language: String, variant: FidelVariant) {}
+
+    /** ADR 0043: the digit row above the letters (off: digits on long-press of the top letter row, and on `?123`). */
+    val numberRow: Boolean get() = true
+
     val hapticsEnabled: Boolean get() = true
 
     /** Key press preview bubbles (never in password fields, see [KeyboardController.keyPreviewsActive]). */
@@ -232,6 +247,12 @@ open class InMemoryModePreferences : ModePreferences {
     override fun setLastNative(language: String, kind: LayoutKind) { last[language] = kind }
     override fun writingMode(language: String) = writing[language]
     override fun setWritingMode(language: String, kind: LayoutKind) { writing[language] = kind }
+    private val latin = HashMap<String, LatinLayout>()
+    private val fidel = HashMap<String, FidelVariant>()
+    override fun latinLayout(language: String) = latin[language] ?: LatinLayout.DEFAULT
+    override fun setLatinLayout(language: String, layout: LatinLayout) { latin[language] = layout }
+    override fun fidelVariant(language: String) = fidel[language] ?: FidelVariant.DEFAULT
+    override fun setFidelVariant(language: String, variant: FidelVariant) { fidel[language] = variant }
 }
 
 /** Direct-Fidel layout data, copied from the core's `FidelLayout` so the UI model does not depend on FFI types. */

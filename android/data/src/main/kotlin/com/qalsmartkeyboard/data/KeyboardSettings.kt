@@ -192,6 +192,15 @@ data class KeyboardSettings(
     val autocorrectOromo: Boolean = false,
     /** ADR 0039: learn new words from typing into the personal dictionary (never in password or incognito fields). On by default. */
     val learnWords: Boolean = true,
+    /** ADR 0043: the digit row above the letters (Gboard's "Number row"). On by default. Device-local. */
+    val numberRow: Boolean = true,
+    /**
+     * ADR 0043: the Latin key arrangement per language, as the IME's `LatinLayout` name (`AZERTY`, `DVORAK`, ...). A missing
+     * entry is QWERTY. It applies to all the language's Latin layouts (Phonetic, Qubee, English, ABC). Device-local.
+     */
+    val latinLayouts: Map<String, String> = emptyMap(),
+    /** ADR 0043: how the Fidel grid is typed per language (am/ti), as the IME's `FidelVariant` name. Missing = two-key. Device-local. */
+    val fidelLayouts: Map<String, String> = emptyMap(),
 ) {
     /** Enabled language codes in the user's order. */
     val enabledLanguages: List<String> get() = languages.filter { it.enabled }.map { it.languageCode }
@@ -202,7 +211,6 @@ data class KeyboardSettings(
 
     /** The numeral style in force (ADR 0043): the user's choice, else the default (Ethiopic). */
     val effectiveNumeralStyle: NumeralStyle get() = if (numeralStyleChosen) numeralStyle else DEFAULT_NUMERAL_STYLE
-
 
     /** The list as `/me/typing-languages` items (sortOrder 10, 20, ...; primary = first enabled). */
     fun toSyncItems(): List<TypingLanguageSyncItem> {
@@ -246,6 +254,8 @@ data class KeyboardSettings(
             keyHeightPercent = keyHeightPercent.coerceIn(KEY_HEIGHT_MIN, KEY_HEIGHT_MAX),
             lastModes = lastModes.filter { (k, v) -> LanguageRules.isKnown(k) && MODE_TOKEN.matches(v) },
             writingModes = writingModes.filter { (k, v) -> LanguageRules.isKnown(k) && MODE_TOKEN.matches(v) },
+            latinLayouts = latinLayouts.filter { (k, v) -> LanguageRules.isKnown(k) && MODE_TOKEN.matches(v) },
+            fidelLayouts = fidelLayouts.filter { (k, v) -> LanguageRules.isKnown(k) && MODE_TOKEN.matches(v) },
             recentEmoji = recentEmoji.filter { emojiToken(it) }.distinct().take(EMOJI_RECENT_MAX),
             emojiTones = emojiTones.filter { (k, v) -> emojiToken(k) && emojiToken(v) }.entries.take(EMOJI_TONES_MAX).associate { it.key to it.value },
             voiceLanguages = voiceLanguages.filter { (k, v) -> LanguageRules.isKnown(k) && LANGUAGE_TAG.matches(v) },
@@ -266,7 +276,6 @@ data class KeyboardSettings(
 
         /** ADR 0043: am/ti typed natively show Ethiopic numerals until the user picks a style. */
         val DEFAULT_NUMERAL_STYLE = NumeralStyle.ETHIOPIC
-
 
         /** An emoji sequence as stored: short, and free of the separators the store uses. */
         private fun emojiToken(s: String) = s.isNotEmpty() && s.length <= 40 && s.none { it == '|' || it == '\n' || it == '\r' }

@@ -42,6 +42,11 @@ fun PreferencesPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: Se
         SettingsHeader(stringResource(R.string.settings_prefs_keys))
         SettingsSwitchRow(stringResource(R.string.settings_haptics), settings.hapticsEnabled, { on -> onUpdate { it.copy(hapticsEnabled = on) } })
         SettingsSwitchRow(stringResource(R.string.settings_key_preview), settings.keyPreviewEnabled, { on -> onUpdate { it.copy(keyPreviewEnabled = on) } })
+        // ADR 0043: Gboard's "Number row".
+        SettingsSwitchRow(
+            stringResource(R.string.settings_number_row), settings.numberRow, { on -> onUpdate { it.copy(numberRow = on) } },
+            summary = stringResource(R.string.settings_number_row_summary),
+        )
         // The slider moves freely and is saved when let go, so a drag is one write (and one sync), not dozens.
         var height by remember(settings.keyHeightPercent) { mutableFloatStateOf(settings.keyHeightPercent.toFloat()) }
         val heightLabel = stringResource(R.string.settings_key_height, height.roundToInt())

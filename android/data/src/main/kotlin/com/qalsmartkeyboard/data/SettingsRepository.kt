@@ -146,6 +146,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val AUTOCORRECT_EN = booleanPreferencesKey("autocorrect_en")
         private val AUTOCORRECT_OM = booleanPreferencesKey("autocorrect_om")
         private val LEARN_WORDS = booleanPreferencesKey("learn_words")
+        private val NUMBER_ROW = booleanPreferencesKey("number_row")
+        private val LATIN_LAYOUTS = stringPreferencesKey("latin_layouts")
+        private val FIDEL_LAYOUTS = stringPreferencesKey("fidel_layouts")
 
         private const val FIELD = "|"
         private const val LINE = "\n"
@@ -182,6 +185,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[AUTOCORRECT_EN] = s.autocorrectEnglish
             p[AUTOCORRECT_OM] = s.autocorrectOromo
             p[LEARN_WORDS] = s.learnWords
+            p[NUMBER_ROW] = s.numberRow
+            p[LATIN_LAYOUTS] = encodeMap(s.latinLayouts)
+            p[FIDEL_LAYOUTS] = encodeMap(s.fidelLayouts)
         }
 
         /** Lenient decode: anything missing or unrecognised takes its default; the result is sanitised. */
@@ -237,6 +243,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 autocorrectEnglish = p[AUTOCORRECT_EN] ?: d.autocorrectEnglish,
                 autocorrectOromo = p[AUTOCORRECT_OM] ?: d.autocorrectOromo,
                 learnWords = p[LEARN_WORDS] ?: d.learnWords,
+                // Additive keys (schema stays 1, ADR 0043): absent before them = number row on, QWERTY, two-key Fidel.
+                numberRow = p[NUMBER_ROW] ?: d.numberRow,
+                latinLayouts = decodeMap(p[LATIN_LAYOUTS]),
+                fidelLayouts = decodeMap(p[FIDEL_LAYOUTS]),
             ).sanitized()
         }
 
