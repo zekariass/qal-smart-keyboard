@@ -87,6 +87,74 @@ class RequestFingerprintTest {
 		assertThat(digests).hasSize(variants.size());
 	}
 
+	/** ADR 0027: a transform without an output language keeps its B5.4 digest (keys in flight stay valid). */
+	@Test
+	void aTransformWithoutOutputLanguageKeepsTheB54Encoding() throws Exception {
+		java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+		for (String field : java.util.Arrays.asList(RequestFingerprint.TAG, "REWRITE", "am", "SHORTEN", null, null,
+				null, null, null, "Selam")) {
+			byte[] bytes = field == null ? new byte[0] : field.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+			b.writeBytes(java.nio.ByteBuffer.allocate(4).putInt(field == null ? -1 : bytes.length).array());
+			b.writeBytes(bytes);
+		}
+		byte[] expected = java.security.MessageDigest.getInstance("SHA-256").digest(b.toByteArray());
+		AiCommand.Transform t = new AiCommand.Transform(Caller.of(USER, "k"), AiFeature.REWRITE, UserText.of("Selam"),
+				"am", "SHORTEN", null, null, null, null);
+		assertThat(RequestFingerprint.of(t)).isEqualTo(expected);
+		AiCommand.Transform withOutput = new AiCommand.Transform(Caller.of(USER, "k"), AiFeature.REWRITE,
+				UserText.of("Selam"), "am", "SHORTEN", null, null, null, null, false, "en");
+		assertThat(RequestFingerprint.of(withOutput)).isNotEqualTo(expected);
+	}
+
+	@Test
+	void everyReplyAndDraftFieldChangesTheDigest() {
+		Caller c = Caller.of(USER, "k");
+		UserText msg = UserText.of("Can we meet?");
+		UserText notes = UserText.of("yes, Thursday");
+		Addressee formal = new Addressee(Addressee.Formality.FORMAL, null);
+		List<AiCommand> variants = List.of(
+				new AiCommand.Reply(c, msg, null, "am", null, null, null, null, null, false),
+				new AiCommand.Reply(c, UserText.of("Can we meet!"), null, "am", null, null, null, null, null, false),
+				new AiCommand.Reply(c, msg, "en", "am", null, null, null, null, null, false),
+				new AiCommand.Reply(c, msg, null, "en", null, null, null, null, null, false),
+				new AiCommand.Reply(c, msg, null, "am", 2, null, null, null, null, false),
+				new AiCommand.Reply(c, msg, null, "am", null, "POLITE", null, null, null, false),
+				new AiCommand.Reply(c, msg, null, "am", null, null, formal, null, null, false),
+				new AiCommand.Reply(c, msg, null, "am", null, null, null, notes, null, false),
+				new AiCommand.Reply(c, msg, null, "am", null, null, null, null, 1, false),
+				draft(null, null, null, null, null, null, null),
+				draft("REPLY", null, null, null, null, null, null),
+				draft(null, "am", null, null, null, null, null),
+				draft(null, null, "FORMAL", null, null, null, null),
+				draft(null, null, null, "SHORT", null, null, null),
+				draft(null, null, null, null, false, null, null),
+				draft(null, null, null, null, null, 1, null),
+				draft(null, null, null, null, null, null, UserText.of("Sarah")),
+				new AiCommand.Draft(c, "EMAIL", "IMPROVE", "en", null, null, UserText.of("draft"), null, null, null,
+						null, null, null, null, null, null, false),
+				new AiCommand.Draft(c, "EMAIL", "REPLY", "en", notes, UserText.of("original"), null, null, null, null,
+						null, null, null, null, null, null, false),
+				new AiCommand.Draft(c, "EMAIL", "REPLY", "en", notes, UserText.of("original"), null, null, null, null,
+						null, null, null, UserText.of("Abebe"), null, null, false),
+				new AiCommand.Draft(c, "EMAIL", "REPLY", "en", notes, UserText.of("original"), null, null, null, null,
+						null, UserText.of("HR"), null, null, null, null, false),
+				new AiCommand.Draft(c, "EMAIL", "NEW", "en", notes, null, null, null, null, null, null, null, formal,
+						null, new CulturalOptions("ETHIOPIAN", null, null, null), null, false));
+		Set<String> digests = new HashSet<>();
+		for (AiCommand v : variants) {
+			digests.add(hex(v));
+		}
+		assertThat(digests).hasSize(variants.size());
+		assertThat(variants.get(7).toString()).doesNotContain("Thursday");
+	}
+
+	static AiCommand.Draft draft(String mode, String language, String tone, String length, Boolean subject,
+			Integer variation, UserText recipient) {
+		return new AiCommand.Draft(Caller.of(USER, "k"), "EMAIL", mode, language == null ? "en" : language,
+				UserText.of("ask for leave"), null, null, tone, length, subject, recipient, null, null, null, null,
+				variation, false);
+	}
+
 	@Test
 	void fieldBoundariesCannotBeShifted() {
 		// "en"+"am" vs "ena"+"m" and an absent value vs an empty one must not collide

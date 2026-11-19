@@ -1,12 +1,16 @@
 package com.qalsmartkeyboard.aigateway;
 
 import java.time.Duration;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import com.qalsmartkeyboard.aigateway.adapter.MockAiProvider;
+import com.qalsmartkeyboard.aigateway.spi.AiFeature;
 
 /**
  * @param registryCacheTtl how long the provider descriptor snapshot is reused before the next lookup reloads it
@@ -32,10 +36,28 @@ record AiGatewayProperties(@DefaultValue("30s") Duration registryCacheTtl, @Defa
 	 * @param connectTimeout  TCP/TLS connect timeout; the read timeout is the router's per-call deadline
 	 * @param maxOutputTokens {@code max_completion_tokens} (includes reasoning tokens), 0 = not sent
 	 * @param reasoningEffort {@code reasoning_effort} for reasoning models (for example {@code low}); blank = model default
+	 * @param maxOutputTokensByFeature per-feature {@code max_completion_tokens} by feature code (ADR 0027), on top of
+	 *                                 {@link #DEFAULT_MAX_OUTPUT_TOKENS_BY_FEATURE}; 0 = not sent for that feature
 	 */
 	record OpenAi(@DefaultValue("") String apiKey, @DefaultValue("") String model,
 			@DefaultValue("https://api.openai.com/v1") String baseUrl, @DefaultValue("2s") Duration connectTimeout,
-			@DefaultValue("4096") int maxOutputTokens, @DefaultValue("") String reasoningEffort) {
+			@DefaultValue("4096") int maxOutputTokens, @DefaultValue("") String reasoningEffort,
+			Map<String, Integer> maxOutputTokensByFeature) {
+
+		/** An e-mail (with a reasoning model's hidden tokens) needs more room than a grammar fix. */
+		static final Map<String, Integer> DEFAULT_MAX_OUTPUT_TOKENS_BY_FEATURE = Map.of("DRAFT_DOCUMENT", 8192);
+
+		/** The defaults overlaid with the configured values, keyed by feature; an unknown feature code fails startup. */
+		Map<AiFeature, Integer> featureMaxOutputTokens() {
+			Map<String, Integer> merged = new HashMap<>(DEFAULT_MAX_OUTPUT_TOKENS_BY_FEATURE);
+			if (maxOutputTokensByFeature != null) {
+				merged.putAll(maxOutputTokensByFeature);
+			}
+			Map<AiFeature, Integer> out = new EnumMap<>(AiFeature.class);
+			merged.forEach((code, tokens) -> out.put(feature(code, "qal.ai.openai.max-output-tokens-by-feature"),
+					tokens));
+			return out;
+		}
 
 		@Override
 		public String toString() {
@@ -101,10 +123,45 @@ record AiGatewayProperties(@DefaultValue("30s") Duration registryCacheTtl, @Defa
 	 * @param minScriptRatio             share of output letters that must be in the destination script
 	 * @param maxTextCharacters          translate/transform text limit (contract maxLength)
 	 * @param maxDetectCharacters        detect-language text limit (contract maxLength)
+	 * @param featureTimeouts            per-feature attempt timeout and deadline by feature code (ADR 0027), on top of
+	 *                                   {@code AiPipeline.DEFAULT_FEATURE_TIMEOUTS}; features without an entry use
+	 *                                   {@code deadline} and the router's attempt timeout
 	 */
 	record Pipeline(@DefaultValue("8s") Duration deadline, @DefaultValue("false") boolean requireAiProcessingConsent,
 			@DefaultValue("30s") Duration catalogCacheTtl, @DefaultValue("0.9") double minScriptRatio,
-			@DefaultValue("5000") int maxTextCharacters, @DefaultValue("1000") int maxDetectCharacters) {
+			@DefaultValue("5000") int maxTextCharacters, @DefaultValue("1000") int maxDetectCharacters,
+			Map<String, FeatureTimeouts> featureTimeouts) {
+
+		/** The defaults overlaid with the configured values; an unknown feature code or a bad value fails startup. */
+		Map<AiFeature, AiPipeline.Timeouts> resolvedFeatureTimeouts() {
+			Map<AiFeature, AiPipeline.Timeouts> out = new EnumMap<>(AiFeature.class);
+			out.putAll(AiPipeline.DEFAULT_FEATURE_TIMEOUTS);
+			if (featureTimeouts != null) {
+				featureTimeouts.forEach((code, t) -> {
+					AiFeature f = feature(code, "qal.ai.pipeline.feature-timeouts");
+					AiPipeline.Timeouts defaults = out.get(f);
+					Duration attempt = t.attemptTimeout() != null ? t.attemptTimeout()
+							: defaults != null ? defaults.attemptTimeout() : null;
+					Duration deadline = t.deadline() != null ? t.deadline()
+							: defaults != null ? defaults.deadline() : null;
+					out.put(f, new AiPipeline.Timeouts(attempt, deadline));
+				});
+			}
+			return out;
+		}
+	}
+
+	/** One feature's time budget; a missing value keeps the built-in default for that feature. */
+	record FeatureTimeouts(Duration attemptTimeout, Duration deadline) {
+	}
+
+	/** A feature code as a map key: {@code DRAFT_DOCUMENT}, {@code draft_document} or {@code draft-document}. */
+	private static AiFeature feature(String code, String property) {
+		AiFeature f = AiFeature.fromCode(code.strip().toUpperCase(java.util.Locale.ROOT).replace('-', '_'));
+		if (f == null) {
+			throw new IllegalArgumentException(property + " names an unknown AI feature: " + code);
+		}
+		return f;
 	}
 
 	record Mock(@DefaultValue("false") boolean enabled, @DefaultValue("mock") String code,

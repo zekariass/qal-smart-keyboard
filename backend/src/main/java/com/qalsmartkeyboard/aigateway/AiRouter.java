@@ -49,6 +49,10 @@ import com.qalsmartkeyboard.aigateway.spi.RouteQuery;
  * <li><b>Request filters</b> ({@link RouteRequest#onlyProviders()}, {@link RouteRequest#excludedProviders()}) narrow the
  * candidates further; B5.3 uses them for the guardrail retry on the same provider and the fallback to another one. A
  * request whose filters leave no candidate fails with PROVIDER_UNAVAILABLE.</li>
+ * <li><b>Long-form features</b> (ADR 0027): a request whose attempt timeout is longer than the configured one (an e-mail
+ * draft: 20 s instead of 4 s) reports its latency to the breaker scaled by {@code configured / requested}, so a 12 s
+ * e-mail is as "slow" as a 2.4 s translation and long-form calls do not open the breaker for the provider's short
+ * calls. Metrics get the real latency.</li>
  * </ol>
  * Nothing here sees user text: it is inside the request closure and the result value, and the router logs only
  * provider codes, attempt numbers and error kinds. A request thread interrupt is the cancellation signal (SPI contract).
@@ -157,7 +161,7 @@ public class AiRouter {
 			try {
 				T value = request.call().execute(c.provider().adapter(), timeout);
 				Duration latency = Duration.ofNanos(System.nanoTime() - t0);
-				breaker.recordSuccess(latency);
+				breaker.recordSuccess(healthLatency(latency, attemptCap));
 				attempts.add(new Attempt(number, code, c.lastResort(), latency, null));
 				metrics.attempt(code, feature, "SUCCEEDED", latency);
 				book(code, query, request.usage().apply(value));
@@ -236,6 +240,15 @@ public class AiRouter {
 			finalKind = null;
 		}
 		return finish(outcome, null, null, false, attempts, skipped, finalKind, start, feature);
+	}
+
+	/** The latency the breaker judges: scaled down for a request allowed a longer attempt than the configured one. */
+	Duration healthLatency(Duration latency, Duration attemptCap) {
+		if (attemptCap.compareTo(settings.attemptTimeout()) <= 0) {
+			return latency;
+		}
+		double factor = (double) settings.attemptTimeout().toNanos() / attemptCap.toNanos();
+		return Duration.ofNanos((long) (latency.toNanos() * factor));
 	}
 
 	private Optional<RoutingPolicy.Plan> plan(RouteQuery query) {

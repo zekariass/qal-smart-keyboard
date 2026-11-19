@@ -24,12 +24,28 @@ public final class PromptValues {
 	/**
 	 * Inputs, already resolved (request, then destination profile, then preferences). Language arguments are codes and
 	 * English names; null = not applicable.
+	 *
+	 * @param outputLanguage     the language the result must be written in (ADR 0027); null = the destination language
+	 *                           (translation), else the language of the text
+	 * @param count              SMART_REPLY: number of replies; null otherwise
+	 * @param variation          0 = first answer, higher = a different version (regenerate); null = not applicable
 	 */
 	public record Inputs(AiFeature feature, String mode, String tone, String style, String targetLength,
 			String sourceLanguage, String sourceLanguageName, String destinationLanguage, String destinationLanguageName,
 			String language, String languageName, Addressee.Formality formality, Addressee.Gender gender,
 			String calendar, String timeNotation, String numerals, boolean adaptIdioms, boolean preserveNames,
-			LocalDate today) {
+			LocalDate today, String outputLanguage, String outputLanguageName, Integer count, Integer variation) {
+
+		/** The B5.3 shape: no explicit output language, count or variation. */
+		public Inputs(AiFeature feature, String mode, String tone, String style, String targetLength,
+				String sourceLanguage, String sourceLanguageName, String destinationLanguage,
+				String destinationLanguageName, String language, String languageName, Addressee.Formality formality,
+				Addressee.Gender gender, String calendar, String timeNotation, String numerals, boolean adaptIdioms,
+				boolean preserveNames, LocalDate today) {
+			this(feature, mode, tone, style, targetLength, sourceLanguage, sourceLanguageName, destinationLanguage,
+					destinationLanguageName, language, languageName, formality, gender, calendar, timeNotation, numerals,
+					adaptIdioms, preserveNames, today, null, null, null, null);
+		}
 	}
 
 	public static Map<String, String> of(Inputs in) {
@@ -54,6 +70,16 @@ public final class PromptValues {
 		put(v, "adaptIdioms", Boolean.toString(in.adaptIdioms()));
 		put(v, "preserveNames", Boolean.toString(in.preserveNames()));
 		put(v, "culturalInstruction", cultural(in));
+		String out = first(in.outputLanguage(), in.destinationLanguage(), in.language());
+		String outName = in.outputLanguage() != null ? in.outputLanguageName()
+				: in.destinationLanguage() != null ? in.destinationLanguageName() : in.languageName();
+		put(v, "outputLanguage", out);
+		put(v, "outputLanguageName", outName);
+		put(v, "outputLanguageInstruction", outName != null && !outName.isBlank()
+				? "Write the result in " + outName + " (" + out + ")."
+				: "Write the result in the same language as the input text.");
+		put(v, "count", in.count() == null ? null : in.count().toString());
+		put(v, "variation", in.variation() == null ? null : in.variation().toString());
 		if (in.today() != null) {
 			EthiopianDate et = EthiopianDate.from(in.today());
 			put(v, "todayGregorian", in.today().toString());
@@ -112,6 +138,15 @@ public final class PromptValues {
 			s.add("Keep personal names, brand names, URLs and e-mail addresses unchanged.");
 		}
 		return String.join(" ", s);
+	}
+
+	private static String first(String... values) {
+		for (String s : values) {
+			if (s != null) {
+				return s;
+			}
+		}
+		return null;
 	}
 
 	private static void put(Map<String, String> v, String key, String value) {

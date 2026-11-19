@@ -44,7 +44,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The AI endpoints of the contract (B5.5): {@code translateText}, {@code transformText} (GRAMMAR_CORRECTION, REWRITE,
- * TONE_ADJUST; the other tasks answer 400 {@code NOT_AVAILABLE}), {@code detectLanguage} and
+ * TONE_ADJUST, SUMMARIZE, EXPLAIN_TEXT; SCRIPT_CONVERSION answers 400 {@code NOT_AVAILABLE}), {@code suggestReplies}
+ * (SMART_REPLY) and {@code draftDocument} (DRAFT_DOCUMENT e-mails, ADR 0027), {@code detectLanguage} and
  * {@code getAiCapabilities}. Each maps the body to an {@link AiCommand}, runs {@link AiPipeline#execute} and returns
  * the contract-shaped {@link AiResult}; every refusal and failure is already an {@code ApiException} with its contract
  * code (the global handler writes the Problem). {@code AiRequestCancelledException} (the calling thread was
@@ -61,6 +62,9 @@ class AiController {
 			Duration.ofMinutes(1));
 	static final RateLimitPolicy TRANSFORM_PER_USER = new RateLimitPolicy("ai.transform.user", 30,
 			Duration.ofMinutes(1));
+	static final RateLimitPolicy REPLIES_PER_USER = new RateLimitPolicy("ai.replies.user", 30, Duration.ofMinutes(1));
+	/** An e-mail is a long LLM call: fewer per minute. */
+	static final RateLimitPolicy DRAFTS_PER_USER = new RateLimitPolicy("ai.drafts.user", 10, Duration.ofMinutes(1));
 	static final RateLimitPolicy DETECT_PER_USER = new RateLimitPolicy("ai.detect.user", 60, Duration.ofMinutes(1));
 	static final RateLimitPolicy FEEDBACK_PER_USER = new RateLimitPolicy("ai.feedback.user", 60, Duration.ofMinutes(1));
 	static final RateLimitPolicy CAPABILITIES_PER_CLIENT = new RateLimitPolicy("ai.capabilities.client", 120,
@@ -73,7 +77,8 @@ class AiController {
 			AiFeature.TONE_ADJUST, AiFeature.SUMMARIZE, AiFeature.EXPLAIN_TEXT, AiFeature.SCRIPT_CONVERSION);
 	/** The features this gateway serves today (the rest of {@link AiFeature} answers NOT_AVAILABLE or has no endpoint). */
 	private static final Set<AiFeature> SERVED = EnumSet.of(AiFeature.TRANSLATE, AiFeature.DETECT_LANGUAGE,
-			AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE, AiFeature.TONE_ADJUST);
+			AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE, AiFeature.TONE_ADJUST, AiFeature.SUMMARIZE,
+			AiFeature.EXPLAIN_TEXT, AiFeature.SMART_REPLY, AiFeature.DRAFT_DOCUMENT);
 
 	private final AiPipeline pipeline;
 	private final RateLimiter limiter;
@@ -115,6 +120,24 @@ class AiController {
 			@RequestHeader(name = "X-Client-Surface", required = false) String surface, @RequestBody byte[] body) {
 		RateLimitDecision limit = limiter.tryConsume(TRANSFORM_PER_USER, caller.userId().toString()).orThrow();
 		return run(parser.transform(body, caller(caller, key(idempotencyKey), surface), AiController::task), limit);
+	}
+
+	/** ADR 0027: reply suggestions (SMART_REPLY) to a message the user pasted, selected or shared. */
+	@PostMapping(path = "/api/v1/ai/replies", consumes = MediaType.APPLICATION_JSON_VALUE)
+	ResponseEntity<AiResult> suggestReplies(@AuthenticationPrincipal AuthenticatedUser caller,
+			@RequestHeader(name = "Idempotency-Key") String idempotencyKey,
+			@RequestHeader(name = "X-Client-Surface", required = false) String surface, @RequestBody byte[] body) {
+		RateLimitDecision limit = limiter.tryConsume(REPLIES_PER_USER, caller.userId().toString()).orThrow();
+		return run(parser.replies(body, caller(caller, key(idempotencyKey), surface)), limit);
+	}
+
+	/** ADR 0027: write a new e-mail, a reply to a pasted e-mail or an improved draft (DRAFT_DOCUMENT). */
+	@PostMapping(path = "/api/v1/ai/drafts", consumes = MediaType.APPLICATION_JSON_VALUE)
+	ResponseEntity<AiResult> draftDocument(@AuthenticationPrincipal AuthenticatedUser caller,
+			@RequestHeader(name = "Idempotency-Key") String idempotencyKey,
+			@RequestHeader(name = "X-Client-Surface", required = false) String surface, @RequestBody byte[] body) {
+		RateLimitDecision limit = limiter.tryConsume(DRAFTS_PER_USER, caller.userId().toString()).orThrow();
+		return run(parser.drafts(body, caller(caller, key(idempotencyKey), surface)), limit);
 	}
 
 	@PostMapping(path = "/api/v1/ai/detect-language", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -172,8 +195,12 @@ class AiController {
 	// ---------------------------------------------------------------------------------------------------- helpers
 
 	private Capabilities.Capability capability(ProviderCapability c) {
-		int pipelineMax = c.feature() == AiFeature.DETECT_LANGUAGE ? properties.pipeline().maxDetectCharacters()
-				: properties.pipeline().maxTextCharacters();
+		int pipelineMax = switch (c.feature()) {
+			case DETECT_LANGUAGE -> properties.pipeline().maxDetectCharacters();
+			case SMART_REPLY -> AiPipeline.MAX_REPLY_CONTEXT_CHARACTERS;
+			case DRAFT_DOCUMENT -> AiPipeline.MAX_DRAFT_EMAIL_CHARACTERS;
+			default -> properties.pipeline().maxTextCharacters();
+		};
 		int max = c.maxInputCharacters() == null ? pipelineMax : Math.min(pipelineMax, c.maxInputCharacters());
 		return new Capabilities.Capability(c.feature().name(), c.sourceLanguage(), c.destinationLanguage(),
 				c.qualityTier(), "SERVER", c.supportsAutoDetection(), false, max);

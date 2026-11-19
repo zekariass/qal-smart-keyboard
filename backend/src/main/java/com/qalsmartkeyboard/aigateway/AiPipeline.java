@@ -30,11 +30,13 @@ import com.qalsmartkeyboard.aigateway.pipeline.AiUserContext;
 import com.qalsmartkeyboard.aigateway.pipeline.Guardrails;
 import com.qalsmartkeyboard.aigateway.pipeline.Guardrails.Flag;
 import com.qalsmartkeyboard.aigateway.pipeline.LanguageCatalog;
+import com.qalsmartkeyboard.aigateway.pipeline.OutputFormats;
 import com.qalsmartkeyboard.aigateway.pipeline.PromptRenderer;
 import com.qalsmartkeyboard.aigateway.pipeline.PromptTemplates;
 import com.qalsmartkeyboard.aigateway.pipeline.PromptValues;
 import com.qalsmartkeyboard.aigateway.spi.Addressee;
 import com.qalsmartkeyboard.aigateway.spi.AiFeature;
+import com.qalsmartkeyboard.aigateway.spi.ContextPart;
 import com.qalsmartkeyboard.aigateway.spi.DetectRequest;
 import com.qalsmartkeyboard.aigateway.spi.DetectResult;
 import com.qalsmartkeyboard.aigateway.spi.MeteredUnit;
@@ -101,6 +103,13 @@ import io.micrometer.core.instrument.MeterRegistry;
  *
  * <p><b>No content anywhere.</b> Text stays in {@link UserText} and the result records; logs, metric tags, exceptions
  * and {@code ai_requests} get feature codes, provider codes, flag names, counts and error codes only.
+ *
+ * <p><b>Text actions and e-mail (ADR 0027).</b> Transforms take an optional output language (SUMMARIZE, EXPLAIN_TEXT,
+ * REWRITE incl. SIMPLIFY, TONE_ADJUST; GRAMMAR_CORRECTION keeps the text's language). SMART_REPLY ({@link AiCommand.Reply})
+ * and DRAFT_DOCUMENT ({@link AiCommand.Draft}) run through the same steps as a transform, with the user's second text
+ * (notes, names) sent as separate {@link ContextPart}s and the output read by {@link OutputFormats}. Features listed in
+ * {@link Settings#featureTimeouts()} get their own per-attempt timeout and deadline (an LLM writing an e-mail needs far
+ * more than the keyboard's 4 s / 8 s).
  */
 public class AiPipeline {
 
@@ -110,16 +119,53 @@ public class AiPipeline {
 	private static final String ON_DEVICE_ONLY = "ON_DEVICE_ONLY";
 
 	private static final Set<AiFeature> TRANSFORM_TASKS = EnumSet.of(AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE,
-			AiFeature.TONE_ADJUST);
+			AiFeature.TONE_ADJUST, AiFeature.SUMMARIZE, AiFeature.EXPLAIN_TEXT);
 	private static final Set<String> STYLES = Set.of("LITERAL", "NATURAL", "POLITE", "PROFESSIONAL", "FRIENDLY");
 	private static final Set<String> TONES = Set.of("FRIENDLY", "POLITE", "PROFESSIONAL", "CONCISE", "APOLOGETIC",
 			"HONORIFIC");
+	/** Contract {@code EmailTone} (DRAFT_DOCUMENT). */
+	private static final Set<String> EMAIL_TONES = Set.of("PROFESSIONAL", "FORMAL", "FRIENDLY", "CASUAL", "POLITE",
+			"PERSUASIVE", "APOLOGETIC", "CONCISE");
+	private static final Set<String> DRAFT_MODES = Set.of("NEW", "REPLY", "IMPROVE");
+	private static final Set<String> DOCUMENT_TYPES = Set.of("EMAIL", "LETTER", "APPLICATION", "ANNOUNCEMENT", "OTHER");
 	private static final Set<String> GRAMMAR_MODES = Set.of("GRAMMAR", "SPELLING_ONLY");
-	private static final Set<String> REWRITE_MODES = Set.of("NATURAL", "SHORTEN", "EXPAND", "CLARIFY");
+	private static final Set<String> REWRITE_MODES = Set.of("NATURAL", "SHORTEN", "EXPAND", "CLARIFY", "SIMPLIFY");
 	private static final Set<String> LENGTHS = Set.of("SHORT", "MEDIUM", "LONG");
 	private static final Set<String> CALENDARS = Set.of("GREGORIAN", "ETHIOPIAN");
 	private static final Set<String> TIME_NOTATIONS = Set.of("INTERNATIONAL", "ETHIOPIAN");
 	private static final Set<String> NUMERALS = Set.of("WESTERN", "ETHIOPIC");
+
+	/** Input limits of the reply and draft fields (code points; contract maxLength, ADR 0027). */
+	public static final int MAX_REPLY_CONTEXT_CHARACTERS = 5000;
+	public static final int MAX_REPLY_INSTRUCTIONS_CHARACTERS = 1000;
+	public static final int MAX_DRAFT_INSTRUCTIONS_CHARACTERS = 2000;
+	/** The e-mail being answered (REPLY) and the draft to improve (IMPROVE): e-mails are longer than chat messages. */
+	public static final int MAX_DRAFT_EMAIL_CHARACTERS = 8000;
+	public static final int MAX_NAME_CHARACTERS = 120;
+	public static final int MAX_VARIATION = 20;
+	public static final int DEFAULT_REPLY_COUNT = 3;
+	public static final int MAX_REPLY_COUNT = 5;
+
+	/** A per-feature time budget: one provider attempt, and route + guardrail retry + fallback together. */
+	public record Timeouts(Duration attemptTimeout, Duration deadline) {
+
+		public Timeouts {
+			if (attemptTimeout == null || deadline == null || !attemptTimeout.isPositive() || !deadline.isPositive()
+					|| attemptTimeout.compareTo(deadline) > 0) {
+				throw new IllegalArgumentException("invalid feature timeouts");
+			}
+		}
+	}
+
+	/**
+	 * ADR 0027 defaults: the long-form features call an LLM that writes a whole summary, explanation, set of replies or
+	 * e-mail; the keyboard's 4 s attempt / 8 s deadline (every other feature) would cut them off.
+	 */
+	public static final Map<AiFeature, Timeouts> DEFAULT_FEATURE_TIMEOUTS = Map.of(
+			AiFeature.SUMMARIZE, new Timeouts(Duration.ofSeconds(12), Duration.ofSeconds(20)),
+			AiFeature.EXPLAIN_TEXT, new Timeouts(Duration.ofSeconds(12), Duration.ofSeconds(20)),
+			AiFeature.SMART_REPLY, new Timeouts(Duration.ofSeconds(12), Duration.ofSeconds(20)),
+			AiFeature.DRAFT_DOCUMENT, new Timeouts(Duration.ofSeconds(20), Duration.ofSeconds(30)));
 
 	/**
 	 * @param deadline                   time budget for all provider calls of one request: route, guardrail retry and
@@ -127,14 +173,35 @@ public class AiPipeline {
 	 * @param requireAiProcessingConsent require the AI_PROCESSING consent for every server AI call
 	 * @param maxTextCharacters          contract maxLength of translate/transform text (code points)
 	 * @param maxDetectCharacters        contract maxLength of detect-language text
+	 * @param featureTimeouts            features with their own attempt timeout and deadline (ADR 0027); every other
+	 *                                   feature uses {@code deadline} and the router's attempt timeout
 	 */
 	public record Settings(Duration deadline, boolean requireAiProcessingConsent, int maxTextCharacters,
-			int maxDetectCharacters) {
+			int maxDetectCharacters, Map<AiFeature, Timeouts> featureTimeouts) {
 
 		public Settings {
 			if (deadline == null || !deadline.isPositive() || maxTextCharacters < 1 || maxDetectCharacters < 1) {
 				throw new IllegalArgumentException("invalid pipeline settings");
 			}
+			featureTimeouts = featureTimeouts == null ? DEFAULT_FEATURE_TIMEOUTS : Map.copyOf(featureTimeouts);
+		}
+
+		/** The B5.3 shape, with {@link #DEFAULT_FEATURE_TIMEOUTS}. */
+		public Settings(Duration deadline, boolean requireAiProcessingConsent, int maxTextCharacters,
+				int maxDetectCharacters) {
+			this(deadline, requireAiProcessingConsent, maxTextCharacters, maxDetectCharacters, null);
+		}
+
+		/** The time budget of one request of the feature. */
+		public Duration deadlineFor(AiFeature feature) {
+			Timeouts t = featureTimeouts.get(feature);
+			return t == null ? deadline : t.deadline();
+		}
+
+		/** The per-attempt cap of the feature; null = the router's default. */
+		public Duration attemptTimeoutFor(AiFeature feature) {
+			Timeouts t = featureTimeouts.get(feature);
+			return t == null ? null : t.attemptTimeout();
 		}
 	}
 
@@ -296,14 +363,47 @@ public class AiPipeline {
 
 	// ============================================================================================ validation
 
-	/** The request with every default resolved, plus what the guardrails expect. Holds the text: never log it. */
+	/**
+	 * The request with every default resolved, plus what the guardrails expect. Holds the text: never log it.
+	 * {@code destinationLanguage} is the translation target, the output language of a transform that has one, the
+	 * reply language or the e-mail language.
+	 */
 	private record Prepared(AiCommand command, AiFeature feature, UserText text, String sourceLanguage,
 			String destinationLanguage, String language, UnicodeScript expectedScript, String expectedLanguage,
 			String templateLanguage, String style, boolean preserveNames, Addressee addressee, String mode, String tone,
-			String targetLength, boolean numbersMayChange, Map<String, String> promptValues) {
+			String targetLength, boolean numbersMayChange, Map<String, String> promptValues, Extras extras) {
+	}
+
+	/**
+	 * What only some features use (ADR 0027).
+	 *
+	 * @param checkInput     all user content the output is checked against (the main text plus notes)
+	 * @param protectedInput the user content whose URLs, e-mails and numbers must survive; null = not checked
+	 * @param crossLanguage  an explicit output language other than the input's (checked like a translation)
+	 * @param parts          further user content for the provider, in order
+	 * @param count          SMART_REPLY: replies asked for; 0 otherwise
+	 * @param variation      0 = first answer
+	 * @param includeSubject DRAFT_DOCUMENT: return the subject line
+	 */
+	private record Extras(UserText checkInput, UserText protectedInput, boolean crossLanguage, List<ContextPart> parts,
+			int count, int variation, boolean includeSubject) {
+
+		static Extras of(UserText text) {
+			return new Extras(text, text, false, List.of(), 0, 0, true);
+		}
 	}
 
 	private Prepared prepare(AiCommand command) {
+		switch (command) {
+			case AiCommand.Reply r -> {
+				return prepareReply(r);
+			}
+			case AiCommand.Draft d -> {
+				return prepareDraft(d);
+			}
+			default -> {
+			}
+		}
 		int chars = command.text().characters();
 		int max = command instanceof AiCommand.Detect ? settings.maxDetectCharacters() : settings.maxTextCharacters();
 		if (command.text().value().isBlank()) {
@@ -317,6 +417,8 @@ public class AiPipeline {
 			case AiCommand.Translate t -> prepareTranslate(t);
 			case AiCommand.Transform t -> prepareTransform(t);
 			case AiCommand.Detect d -> prepareDetect(d);
+			case AiCommand.Reply r -> prepareReply(r);
+			case AiCommand.Draft d -> prepareDraft(d);
 		};
 	}
 
@@ -361,7 +463,7 @@ public class AiPipeline {
 				adaptIdioms, preserveNames, today));
 		return new Prepared(t, AiFeature.TRANSLATE, t.text(), src == null ? null : src.code(), dst.code(), null,
 				dst.script(), dst.code(), dst.code(), style, preserveNames, addressee, null, null, null, conversions,
-				values);
+				values, Extras.of(t.text()));
 	}
 
 	private Prepared prepareTransform(AiCommand.Transform t) {
@@ -369,6 +471,17 @@ public class AiPipeline {
 			throw validation("task", "NOT_AVAILABLE", "This task is not available.");
 		}
 		LanguageCatalog.Language lang = t.language() == null ? null : language(t.language(), "language");
+		LanguageCatalog.Language out = t.outputLanguage() == null ? null
+				: language(t.outputLanguage(), "outputLanguage");
+		if (t.task() == AiFeature.GRAMMAR_CORRECTION && out != null) {
+			// a correction keeps the language of the text: the output language may only name it
+			if (lang != null && !lang.code().equals(out.code())) {
+				throw validation("outputLanguage", "NOT_ALLOWED",
+						"GRAMMAR_CORRECTION keeps the language of the text.");
+			}
+			lang = out;
+			out = null;
+		}
 		switch (t.task()) {
 			case GRAMMAR_CORRECTION -> check(t.mode(), GRAMMAR_MODES, "options.mode");
 			case REWRITE -> check(t.mode(), REWRITE_MODES, "options.mode");
@@ -385,16 +498,151 @@ public class AiPipeline {
 		check(t.targetLength(), LENGTHS, "options.targetLength");
 		AiUserContext.Defaults defaults = users.defaults(t.caller().userId());
 		Addressee addressee = addressee(t.addressee(), null, defaults);
-		UnicodeScript script = lang != null ? lang.script() : dominantScript(t.text().value());
+		UnicodeScript inputScript = lang != null ? lang.script() : dominantScript(t.text().value());
+		boolean cross = out != null && differs(lang, inputScript, out);
+		UnicodeScript script = out != null ? out.script() : inputScript;
+		String expected = out != null ? out.code() : lang == null ? null : lang.code();
+		// a change of language may convert numbers (Ethiopic numerals, Ethiopian calendar years)
+		boolean conversions = cross && (isEthiopic(out) || inputScript == UnicodeScript.ETHIOPIC);
 		LocalDate today = LocalDate.now(clock.withZone(defaults.timeZone()));
 		Map<String, String> values = PromptValues.of(new PromptValues.Inputs(t.task(), t.mode(), t.tone(), null,
 				t.targetLength(), null, null, null, null, lang == null ? null : lang.code(),
 				lang == null ? null : lang.englishName(), addressee.formality(), addressee.gender(), null, null, null,
-				true, true, today));
-		return new Prepared(t, t.task(), t.text(), lang == null ? null : lang.code(), null,
-				lang == null ? null : lang.code(), script, lang == null ? null : lang.code(),
-				lang == null ? "*" : lang.code(), null, true, addressee, t.mode(), t.tone(), t.targetLength(), false,
-				values);
+				true, true, today, out == null ? null : out.code(), out == null ? null : out.englishName(), null,
+				null));
+		// a summary or an explanation need not repeat every number or link of the text
+		boolean keepsTokens = t.task() != AiFeature.SUMMARIZE && t.task() != AiFeature.EXPLAIN_TEXT;
+		Extras extras = new Extras(t.text(), keepsTokens ? t.text() : null, cross, List.of(), 0, 0, true);
+		return new Prepared(t, t.task(), t.text(), lang == null ? null : lang.code(), out == null ? null : out.code(),
+				lang == null ? null : lang.code(), script, expected, lang == null ? "*" : lang.code(), null, true,
+				addressee, t.mode(), t.tone(), t.targetLength(), conversions, values, extras);
+	}
+
+	private Prepared prepareReply(AiCommand.Reply r) {
+		UserText context = r.text();
+		if (context.value().isBlank()) {
+			throw validation("contextText", "REQUIRED", "contextText must not be empty.");
+		}
+		tooLong(context, MAX_REPLY_CONTEXT_CHARACTERS, "contextText");
+		UserText notes = nonBlank(r.instructions());
+		tooLong(notes, MAX_REPLY_INSTRUCTIONS_CHARACTERS, "instructions");
+		if (r.replyLanguage() == null) {
+			throw validation("replyLanguage", "REQUIRED", "The reply language is required.");
+		}
+		LanguageCatalog.Language out = language(r.replyLanguage(), "replyLanguage");
+		LanguageCatalog.Language ctx = r.contextLanguage() == null ? null
+				: language(r.contextLanguage(), "contextLanguage");
+		int count = r.count() == null ? DEFAULT_REPLY_COUNT : r.count();
+		if (count < 1 || count > MAX_REPLY_COUNT) {
+			throw validation("count", "INVALID_VALUE", "count must be between 1 and " + MAX_REPLY_COUNT + ".");
+		}
+		int variation = variation(r.variation());
+		check(r.tone(), TONES, "tone");
+		AiUserContext.Defaults defaults = users.defaults(r.caller().userId());
+		Addressee addressee = addressee(r.addressee(), null, defaults);
+		UnicodeScript inputScript = ctx != null ? ctx.script() : dominantScript(context.value());
+		boolean cross = differs(ctx, inputScript, out);
+		LocalDate today = LocalDate.now(clock.withZone(defaults.timeZone()));
+		Map<String, String> values = PromptValues.of(new PromptValues.Inputs(AiFeature.SMART_REPLY, null, r.tone(),
+				null, null, ctx == null ? null : ctx.code(), ctx == null ? null : ctx.englishName(), out.code(),
+				out.englishName(), ctx == null ? null : ctx.code(), ctx == null ? null : ctx.englishName(),
+				addressee.formality(), addressee.gender(), null, null, null, true, true, today, out.code(),
+				out.englishName(), count, variation));
+		List<ContextPart> parts = notes == null ? List.of() : List.of(new ContextPart(ContextPart.Kind.USER_NOTES, notes));
+		// the replies are checked against everything the user gave; only the user's own notes must keep their numbers
+		Extras extras = new Extras(joined(context, notes), notes, cross, parts, count, variation, true);
+		return new Prepared(r, AiFeature.SMART_REPLY, context, ctx == null ? null : ctx.code(), out.code(),
+				ctx == null ? null : ctx.code(), out.script(), out.code(), out.code(), null, true, addressee, null,
+				r.tone(), null, false, values, extras);
+	}
+
+	private Prepared prepareDraft(AiCommand.Draft d) {
+		String type = d.documentType() == null ? "EMAIL" : d.documentType();
+		check(type, DOCUMENT_TYPES, "documentType");
+		if (!"EMAIL".equals(type)) {
+			throw validation("documentType", "NOT_AVAILABLE", "Only EMAIL drafts are available.");
+		}
+		String mode = d.modeOrDefault();
+		check(mode, DRAFT_MODES, "mode");
+		UserText instructions = nonBlank(d.instructions());
+		UserText original = nonBlank(d.originalEmail());
+		UserText draft = nonBlank(d.draft());
+		if (!"REPLY".equals(mode) && original != null) {
+			throw validation("originalEmail", "NOT_ALLOWED", "originalEmail is only used with mode REPLY.");
+		}
+		if (!"IMPROVE".equals(mode) && draft != null) {
+			throw validation("draft", "NOT_ALLOWED", "draft is only used with mode IMPROVE.");
+		}
+		switch (mode) {
+			case "REPLY" -> {
+				required(original, "originalEmail");
+				required(instructions, "instructions");
+			}
+			case "IMPROVE" -> required(draft, "draft");
+			default -> required(instructions, "instructions");
+		}
+		tooLong(instructions, MAX_DRAFT_INSTRUCTIONS_CHARACTERS, "instructions");
+		tooLong(original, MAX_DRAFT_EMAIL_CHARACTERS, "originalEmail");
+		tooLong(draft, MAX_DRAFT_EMAIL_CHARACTERS, "draft");
+		UserText recipientName = nonBlank(d.recipientName());
+		UserText recipientRole = nonBlank(d.recipientRole());
+		UserText senderName = nonBlank(d.senderName());
+		tooLong(recipientName, MAX_NAME_CHARACTERS, "recipient.name");
+		tooLong(recipientRole, MAX_NAME_CHARACTERS, "recipient.role");
+		tooLong(senderName, MAX_NAME_CHARACTERS, "senderName");
+		if (d.language() == null) {
+			throw validation("language", "REQUIRED", "The language of the e-mail is required.");
+		}
+		LanguageCatalog.Language out = language(d.language(), "language");
+		String tone = d.tone() == null ? "PROFESSIONAL" : d.tone();
+		check(tone, EMAIL_TONES, "tone");
+		String length = d.length() == null ? "MEDIUM" : d.length();
+		check(length, LENGTHS, "length");
+		int variation = variation(d.variation());
+		AiUserContext.Defaults defaults = users.defaults(d.caller().userId());
+		Addressee addressee = addressee(d.addressee(), null, defaults);
+		AiCommand.CulturalOptions c = d.culturalOptions();
+		String calendar = first(c.calendar(), defaults.calendar());
+		String time = first(c.timeNotation(), defaults.timeNotation());
+		String numerals = first(c.numerals(), defaults.numerals());
+		check(calendar, CALENDARS, "culturalOptions.calendar");
+		check(time, TIME_NOTATIONS, "culturalOptions.timeNotation");
+		check(numerals, NUMERALS, "culturalOptions.numerals");
+
+		UserText main = d.text();
+		UserText notes = "NEW".equals(mode) ? null : instructions;
+		UserText all = joined(main, notes);
+		UnicodeScript inputScript = dominantScript(all.value());
+		boolean cross = differs(null, inputScript, out);
+		boolean conversions = c.calendar() != null || c.timeNotation() != null || "ETHIOPIC".equals(numerals)
+				|| isEthiopic(out) || inputScript == UnicodeScript.ETHIOPIC;
+		LocalDate today = LocalDate.now(clock.withZone(defaults.timeZone()));
+		Map<String, String> values = PromptValues.of(new PromptValues.Inputs(AiFeature.DRAFT_DOCUMENT, mode, tone,
+				null, length, null, null, out.code(), out.englishName(), null, null, addressee.formality(),
+				addressee.gender(), calendar, time, numerals, true, true, today, out.code(), out.englishName(), null,
+				variation));
+		List<ContextPart> parts = new ArrayList<>();
+		if (notes != null) {
+			parts.add(new ContextPart(ContextPart.Kind.USER_NOTES, notes));
+		}
+		if (recipientName != null) {
+			parts.add(new ContextPart(ContextPart.Kind.RECIPIENT_NAME, recipientName));
+		}
+		if (recipientRole != null) {
+			parts.add(new ContextPart(ContextPart.Kind.RECIPIENT_ROLE, recipientRole));
+		}
+		if (senderName != null) {
+			parts.add(new ContextPart(ContextPart.Kind.SENDER_NAME, senderName));
+		}
+		// what the user wrote must keep its links and numbers: the description, the notes on a reply, the draft
+		UserText protectedInput = switch (mode) {
+			case "REPLY" -> instructions;
+			default -> main;
+		};
+		Extras extras = new Extras(all, protectedInput, cross, List.copyOf(parts), 0, variation,
+				d.includeSubject() == null || d.includeSubject());
+		return new Prepared(d, AiFeature.DRAFT_DOCUMENT, main, null, out.code(), null, out.script(), out.code(),
+				out.code(), null, true, addressee, mode, tone, length, conversions, values, extras);
 	}
 
 	private Prepared prepareDetect(AiCommand.Detect d) {
@@ -402,7 +650,50 @@ public class AiPipeline {
 			language(c, "candidates");
 		}
 		return new Prepared(d, AiFeature.DETECT_LANGUAGE, d.text(), null, null, null, null, null, "*", null, false,
-				Addressee.UNSPECIFIED, null, null, null, false, Map.of());
+				Addressee.UNSPECIFIED, null, null, null, false, Map.of(), Extras.of(d.text()));
+	}
+
+	/**
+	 * True when the output language is not the input's: the known input language differs, or (unknown input language)
+	 * the input is mostly in another script. Two Latin-script languages of unknown input count as the same.
+	 */
+	private static boolean differs(LanguageCatalog.Language input, UnicodeScript inputScript,
+			LanguageCatalog.Language out) {
+		if (input != null) {
+			return !input.code().equals(out.code());
+		}
+		return inputScript != null && out.script() != null && inputScript != out.script();
+	}
+
+	private static UserText nonBlank(UserText t) {
+		return t == null || t.value().isBlank() ? null : t;
+	}
+
+	private static void required(UserText t, String field) {
+		if (t == null) {
+			throw validation(field, "REQUIRED", field + " is required for this mode.");
+		}
+	}
+
+	private static void tooLong(UserText t, int max, String field) {
+		if (t != null && t.characters() > max) {
+			throw new ApiException(ApiErrorCode.INPUT_TOO_LONG, HttpStatus.BAD_REQUEST,
+					"The text in " + field + " is longer than " + max + " characters.",
+					List.of(new ApiFieldError(field, "TOO_LONG", "At most " + max + " characters.")), Map.of());
+		}
+	}
+
+	private static int variation(Integer v) {
+		int value = v == null ? 0 : v;
+		if (value < 0 || value > MAX_VARIATION) {
+			throw validation("variation", "INVALID_VALUE", "variation must be between 0 and " + MAX_VARIATION + ".");
+		}
+		return value;
+	}
+
+	/** The main text and the notes as one text for the output checks (never sent anywhere). */
+	private static UserText joined(UserText main, UserText notes) {
+		return notes == null ? main : UserText.of(main.value() + "\n\n" + notes.value());
 	}
 
 	private LanguageCatalog.Language language(String code, String field) {
@@ -423,7 +714,7 @@ public class AiPipeline {
 	}
 
 	private static boolean isEthiopic(LanguageCatalog.Language l) {
-		return l.script() == UnicodeScript.ETHIOPIC;
+		return l != null && l.script() == UnicodeScript.ETHIOPIC;
 	}
 
 	/** The script most of the text's letters are in; null without letters. */
@@ -496,6 +787,9 @@ public class AiPipeline {
 			routed = switch (p.command()) {
 				case AiCommand.Translate t -> routeWithGuardrails(p, translateRoute(p), r -> r.translatedText().value());
 				case AiCommand.Transform t -> routeWithGuardrails(p, transformRoute(p), r -> r.resultText().value());
+				case AiCommand.Reply r -> routeWithGuardrails(p, transformRoute(p),
+						res -> String.join("\n\n", replies(p, res)));
+				case AiCommand.Draft d -> routeWithGuardrails(p, transformRoute(p), res -> checkedEmail(p, res));
 				case AiCommand.Detect d -> routeWithGuardrails(p, detectRoute(p), null);
 			};
 		} catch (RuntimeException e) {
@@ -558,15 +852,25 @@ public class AiPipeline {
 	}
 
 	private FeatureRoute<TransformResult> transformRoute(Prepared p) {
-		RouteRequest<TransformResult> base = RouteRequest.transform(new TransformRequest(p.feature(), p.text(),
-				p.language(), p.mode(), p.tone(), p.targetLength(), null, p.addressee(), null), null,
-				p.command().caller().dataPolicy());
+		Extras x = p.extras();
+		TransformRequest spi = new TransformRequest(p.feature(), p.text(), p.language(), p.mode(), p.tone(),
+				p.targetLength(), p.destinationLanguage(), p.addressee(), null, x.parts(), x.count(), x.variation());
+		RouteRequest<TransformResult> base = RouteRequest.transform(spi, null, p.command().caller().dataPolicy());
 		Map<String, Prompt> prompts = prompts(p, base);
 		RouteRequest<TransformResult> request = base.withCall((adapter, timeout) -> adapter.llmTransform(
-				new TransformRequest(p.feature(), p.text(), p.language(), p.mode(), p.tone(), p.targetLength(), null,
-						p.addressee(), prompts.getOrDefault(adapter.code(), Prompt.NONE).instructions()),
-				timeout));
+				spi.withInstructions(prompts.getOrDefault(adapter.code(), Prompt.NONE).instructions()), timeout));
 		return new FeatureRoute<>(request, prompts, TransformResult::call, TransformResult::usage);
+	}
+
+	/** SMART_REPLY: the replies read from the provider's output (at most the requested count). */
+	private static List<String> replies(Prepared p, TransformResult r) {
+		return OutputFormats.replies(r.resultText().value(), p.extras().count());
+	}
+
+	/** DRAFT_DOCUMENT: what the guardrails check, subject and body; empty when there is no body. */
+	private static String checkedEmail(Prepared p, TransformResult r) {
+		OutputFormats.Email e = OutputFormats.email(r.resultText().value());
+		return e.body().isBlank() ? "" : e.text();
 	}
 
 	private FeatureRoute<DetectResult> detectRoute(Prepared p) {
@@ -604,11 +908,13 @@ public class AiPipeline {
 	 */
 	private <T> Routed<T> routeWithGuardrails(Prepared p, FeatureRoute<T> route, Function<T, String> text) {
 		long start = System.nanoTime();
-		long deadline = settings.deadline().toNanos();
+		Duration budget = settings.deadlineFor(p.feature());
+		Duration attempt = settings.attemptTimeoutFor(p.feature()); // null = the router's default
+		long deadline = budget.toNanos();
 		Set<Flag> flags = EnumSet.noneOf(Flag.class);
 		Set<String> tried = new LinkedHashSet<>();
 		long[] providerNanos = { 0 };
-		RouteRequest<T> base = route.request().withLimits(settings.deadline(), null, 0);
+		RouteRequest<T> base = route.request().withLimits(budget, attempt, 0);
 
 		RouteResult<T> first = router.route(base);
 		account(first, tried, providerNanos);
@@ -628,8 +934,8 @@ public class AiPipeline {
 				break;
 			}
 			// step 0: one retry on the same provider; step 1: one fallback route over the providers not yet tried
-			RouteRequest<T> next = step == 0 ? base.withLimits(left, null, 0).pinnedTo(first.providerCode())
-					: base.withLimits(left, null, 0).excluding(tried);
+			RouteRequest<T> next = step == 0 ? base.withLimits(left, attempt, 0).pinnedTo(first.providerCode())
+					: base.withLimits(left, attempt, 0).excluding(tried);
 			RouteResult<T> r = router.route(next);
 			account(r, tried, providerNanos);
 			if (r.outcome() == RouteResult.Outcome.CANCELLED || r.outcome() == RouteResult.Outcome.CONTENT_REJECTED) {
@@ -678,12 +984,14 @@ public class AiPipeline {
 
 	private <T> Set<Flag> check(Prepared p, FeatureRoute<T> route, RouteResult<T> r, Function<T, String> text) {
 		Prompt prompt = route.prompts().getOrDefault(r.providerCode(), Prompt.NONE);
-		return guardrails.check(p.text().value(), text.apply(r.value()), expectation(p, prompt));
+		Extras x = p.extras();
+		return guardrails.check(x.checkInput().value(), x.protectedInput() == null ? null : x.protectedInput().value(),
+				text.apply(r.value()), expectation(p, prompt));
 	}
 
 	private static Guardrails.Expectation expectation(Prepared p, Prompt prompt) {
 		return new Guardrails.Expectation(p.feature(), p.expectedScript(), p.expectedLanguage(), p.mode(),
-				p.numbersMayChange(), prompt.instructions());
+				p.numbersMayChange(), prompt.instructions(), p.extras().crossLanguage());
 	}
 
 	private void guardrailFailed(Prepared p, Set<Flag> flags) {
@@ -767,11 +1075,16 @@ public class AiPipeline {
 		boolean save = switch (p.command()) {
 			case AiCommand.Translate t -> t.saveToHistory();
 			case AiCommand.Transform t -> t.saveToHistory();
+			case AiCommand.Reply r -> r.saveToHistory();
+			case AiCommand.Draft d -> d.saveToHistory();
 			case AiCommand.Detect d -> false;
 		};
 		String output = switch (result) {
 			case AiResult.TranslateResponse t -> t.translatedText();
 			case AiResult.TransformResponse t -> t.resultText();
+			case AiResult.RepliesResponse r -> String.join("\n\n",
+					r.suggestions().stream().map(AiResult.RepliesResponse.Suggestion::text).toList());
+			case AiResult.DraftResponse d -> d.subject() == null ? d.body() : d.subject() + "\n\n" + d.body();
 			default -> null;
 		};
 		if (!save || output == null) {
@@ -893,6 +1206,35 @@ public class AiPipeline {
 	private AiResult response(Prepared p, Routed<?> routed, UUID requestId, AiResult.UsageSummary usage) {
 		QualityTier tier = routed.serving().capability() == null ? null : routed.serving().capability().qualityTier();
 		List<AiResult.AiNote> notes = notes(p, tier);
+		return switch (p.command()) {
+			case AiCommand.Reply r -> repliesResponse(p, r.tone(), (TransformResult) routed.value(), requestId, notes,
+					tier, usage);
+			case AiCommand.Draft d -> draftResponse(p, (TransformResult) routed.value(), requestId, notes, tier, usage);
+			default -> providerResponse(p, routed, requestId, notes, tier, usage);
+		};
+	}
+
+	private static AiResult repliesResponse(Prepared p, String tone, TransformResult result, UUID requestId,
+			List<AiResult.AiNote> notes, QualityTier tier, AiResult.UsageSummary usage) {
+		List<AiResult.RepliesResponse.Suggestion> suggestions = replies(p, result).stream()
+				.map(s -> new AiResult.RepliesResponse.Suggestion(s, tone)).toList();
+		return new AiResult.RepliesResponse(requestId, p.destinationLanguage(), suggestions, notes, tier, false, null,
+				usage);
+	}
+
+	private static AiResult draftResponse(Prepared p, TransformResult result, UUID requestId,
+			List<AiResult.AiNote> notes, QualityTier tier, AiResult.UsageSummary usage) {
+		OutputFormats.Email e = OutputFormats.email(result.resultText().value());
+		String subject = "REPLY".equals(p.mode()) ? OutputFormats.replySubject(e.subject()) : e.subject();
+		if (!p.extras().includeSubject()) {
+			subject = null;
+		}
+		return new AiResult.DraftResponse(requestId, p.mode(), p.destinationLanguage(), subject, e.body(),
+				OutputFormats.placeholders(subject, e.body()), notes, tier, false, null, usage);
+	}
+
+	private AiResult providerResponse(Prepared p, Routed<?> routed, UUID requestId, List<AiResult.AiNote> notes,
+			QualityTier tier, AiResult.UsageSummary usage) {
 		return switch (routed.value()) {
 			case TranslateResult t -> {
 				List<AiResult.Alternative> alternatives = new ArrayList<>();
@@ -906,8 +1248,8 @@ public class AiPipeline {
 						t.detectionConfidence(), p.destinationLanguage(), t.translatedText().value(),
 						List.copyOf(alternatives), notes, tier, false, null, usage);
 			}
-			case TransformResult t -> new AiResult.TransformResponse(requestId, p.feature().name(), p.language(),
-					t.resultText().value(),
+			case TransformResult t -> new AiResult.TransformResponse(requestId, p.feature().name(),
+					p.destinationLanguage() != null ? p.destinationLanguage() : p.language(), t.resultText().value(),
 					t.edits().stream().map(e -> new AiResult.TextEdit(e.start(), e.end(), null,
 							e.replacement() == null ? null : e.replacement().value(), e.category())).toList(),
 					List.of(), notes, tier, false, null, usage);

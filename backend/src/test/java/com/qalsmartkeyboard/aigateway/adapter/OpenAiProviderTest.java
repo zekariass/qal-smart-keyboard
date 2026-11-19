@@ -164,6 +164,77 @@ class OpenAiProviderTest {
 				.withRequestBody(notContaining("\"max_completion_tokens\"")));
 	}
 
+	// ------------------------------------------------------------------ ADR 0027: text actions and e-mail
+
+	@Test
+	void anEmailReplySendsTheEmailAndEveryPartAsSeparateUserMessagesWithTheWriterFrame() {
+		answer(ok(completion("\"Subject: Re: Meeting\\n\\nDear Sarah,\\n\\nThursday works.\"", "stop", "null")));
+		String original = "Dear Abebe, can we meet on Thursday? Sarah";
+		String notes = "ሐሙስ ይመቸኛል";
+		String rendered = "Task: write an e-mail. Mode: REPLY.";
+		var request = new TransformRequest(AiFeature.DRAFT_DOCUMENT, UserText.of(original), null, "REPLY",
+				"PROFESSIONAL", "SHORT", "en", null, rendered,
+				List.of(com.qalsmartkeyboard.aigateway.spi.ContextPart.of(
+						com.qalsmartkeyboard.aigateway.spi.ContextPart.Kind.USER_NOTES, notes),
+						com.qalsmartkeyboard.aigateway.spi.ContextPart.of(
+								com.qalsmartkeyboard.aigateway.spi.ContextPart.Kind.SENDER_NAME, "Abebe")),
+				0, 2);
+
+		var result = provider().llmTransform(request, T);
+
+		assertThat(result.resultText().value()).startsWith("Subject: Re: Meeting");
+		assertThat(result.usage().inputCharacters()).isEqualTo(request.inputCharacters());
+		server.verify(postRequestedFor(urlPathEqualTo(PATH))
+				.withRequestBody(matchingJsonPath("$.messages.length()", equalTo("4")))
+				.withRequestBody(matchingJsonPath("$.messages[1].content", equalTo(original)))
+				.withRequestBody(matchingJsonPath("$.messages[2].role", equalTo("user")))
+				.withRequestBody(matchingJsonPath("$.messages[2].content", equalTo(notes)))
+				.withRequestBody(matchingJsonPath("$.messages[3].content", equalTo("Abebe")))
+				// DRAFT_DOCUMENT has its own, higher token cap by default (8192); this config sets none for it
+				.withRequestBody(matchingJsonPath("$.max_completion_tokens", equalTo("1000"))));
+		String developer = developerMessage(server.getAllServeEvents().get(0).getRequest());
+		assertThat(developer).startsWith(OpenAiProvider.WRITER_FRAME)
+				.contains("There are 3 user messages", "Message 2: the user's own notes",
+						"Message 3: the name of the sender", rendered, "Output language: English (en).")
+				.doesNotContain(original).doesNotContain(notes).doesNotContain("Abebe");
+	}
+
+	@Test
+	void theTokenCapCanBeRaisedPerFeature() {
+		answer(ok(completion("\"Subject: Hi\\n\\nBody\"", "stop", "null")));
+		var config = new OpenAiProvider.Config(URI.create(server.baseUrl() + "/v1"), null, KEY, MODEL, 1000, "",
+				java.util.Map.of(AiFeature.DRAFT_DOCUMENT, 8192, AiFeature.SUMMARIZE, 0));
+		OpenAiProvider p = new OpenAiProvider(config);
+		p.llmTransform(TransformRequest.of(AiFeature.DRAFT_DOCUMENT, "ask for leave", null), T);
+		p.llmTransform(TransformRequest.of(AiFeature.SUMMARIZE, "long text", "en"), T);
+		p.llmTransform(TransformRequest.of(AiFeature.REWRITE, "text", "en"), T);
+		List<String> bodies = server.getAllServeEvents().stream().map(e -> e.getRequest().getBodyAsString())
+				.toList().reversed();
+		assertThat(bodies.get(0)).contains("\"max_completion_tokens\":8192");
+		assertThat(bodies.get(1)).doesNotContain("max_completion_tokens");
+		assertThat(bodies.get(2)).contains("\"max_completion_tokens\":1000");
+	}
+
+	@Test
+	void withoutATemplateTheNewTasksGetAStructuralTaskLineAndTheOutputLanguage() {
+		var draft = new TransformRequest(AiFeature.DRAFT_DOCUMENT, UserText.of("x"), null, "NEW", "FORMAL", null,
+				"am", null, null, List.of(), 0, 1);
+		assertThat(OpenAiProvider.transformInstructions(draft)).startsWith(OpenAiProvider.WRITER_FRAME)
+				.contains("Start with the line 'Subject: '", "Output language: Amharic (am).", "Variation: 1")
+				.doesNotContain("There are");
+		var replies = new TransformRequest(AiFeature.SMART_REPLY, UserText.of("x"), "en", null, null, null, "om",
+				null, null, List.of(), 3, 0);
+		assertThat(OpenAiProvider.transformInstructions(replies)).contains("suggest 3 different short replies",
+				"line containing only ---", "Output language: Afaan Oromoo (om).");
+		// the B5.3 transforms keep their frame and wording; an output language adds one line
+		var rewrite = new TransformRequest(AiFeature.REWRITE, UserText.of("x"), "am", "SIMPLIFY", null, null, "en",
+				null, "Rendered.");
+		assertThat(OpenAiProvider.transformInstructions(rewrite)).isEqualTo(OpenAiProvider.FRAME
+				+ "\n\nRendered.\n\nOutput language: English (en).");
+		assertThat(OpenAiProvider.transformInstructions(TransformRequest.of(AiFeature.SUMMARIZE, "x", "en")))
+				.startsWith(OpenAiProvider.WRITER_FRAME).contains("summarise the text");
+	}
+
 	// ------------------------------------------------------------------ failures
 
 	private ProviderException fails(Supplier<?> call) {

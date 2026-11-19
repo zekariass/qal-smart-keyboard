@@ -11,14 +11,14 @@ import com.qalsmartkeyboard.aigateway.spi.QualityTier;
 
 /**
  * What {@link AiPipeline#execute} returns, field for field the contract response bodies ({@code TranslateResponse},
- * {@code TransformResponse}, {@code DetectLanguageResponse}), so B5.5 serialises them as they are. Absent optional
- * members are null and omitted from JSON.
+ * {@code TransformResponse}, {@code RepliesResponse}, {@code DraftResponse}, {@code DetectLanguageResponse}), so B5.5
+ * serialises them as they are. Absent optional members are null and omitted from JSON.
  *
  * <p>These records carry the result text for the client. Their {@code toString()} prints lengths instead, so logging a
  * result by accident leaks nothing (SD 19).
  */
 public sealed interface AiResult permits AiResult.TranslateResponse, AiResult.TransformResponse,
-		AiResult.DetectLanguageResponse {
+		AiResult.RepliesResponse, AiResult.DraftResponse, AiResult.DetectLanguageResponse {
 
 	/** Contract {@code UsageSummary}; null on a response for an unmetered feature. */
 	UsageSummary usage();
@@ -95,6 +95,59 @@ public sealed interface AiResult permits AiResult.TranslateResponse, AiResult.Tr
 		public String toString() {
 			return "TransformResponse[" + requestId + ", " + task + ", " + language + ", " + length(resultText)
 					+ " chars, " + qualityTier + ", " + usage + "]";
+		}
+	}
+
+	/** Contract {@code RepliesResponse} (SMART_REPLY, ADR 0027). */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	record RepliesResponse(UUID requestId, String language, List<Suggestion> suggestions, List<AiNote> notes,
+			QualityTier qualityTier, boolean replayed, UUID historyItemId, UsageSummary usage) implements AiResult {
+
+		/** One suggested reply; {@code tone} echoes the requested tone (absent when none was asked for). */
+		@JsonInclude(JsonInclude.Include.NON_NULL)
+		public record Suggestion(String text, String tone) {
+
+			@Override
+			public String toString() {
+				return "Suggestion[" + length(text) + " chars]";
+			}
+		}
+
+		@Override
+		public AiResult withHistoryItemId(UUID id) {
+			return new RepliesResponse(requestId, language, suggestions, notes, qualityTier, replayed, id, usage);
+		}
+
+		@Override
+		public String toString() {
+			return "RepliesResponse[" + requestId + ", " + language + ", " + suggestions.size() + " suggestions, "
+					+ qualityTier + ", " + usage + "]";
+		}
+	}
+
+	/**
+	 * Contract {@code DraftResponse} (DRAFT_DOCUMENT, ADR 0027).
+	 *
+	 * @param subject      absent when the request said {@code includeSubject: false} or an improved draft had none
+	 * @param placeholders bracketed items in the subject or body the user must fill in ({@code [date]}), brackets
+	 *                     included, in order of appearance; empty when there are none
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	record DraftResponse(UUID requestId, String mode, String language, String subject, String body,
+			List<String> placeholders, List<AiNote> notes, QualityTier qualityTier, boolean replayed,
+			UUID historyItemId, UsageSummary usage) implements AiResult {
+
+		@Override
+		public AiResult withHistoryItemId(UUID id) {
+			return new DraftResponse(requestId, mode, language, subject, body, placeholders, notes, qualityTier,
+					replayed, id, usage);
+		}
+
+		@Override
+		public String toString() {
+			return "DraftResponse[" + requestId + ", " + mode + ", " + language + ", subject " + length(subject)
+					+ " chars, body " + length(body) + " chars, " + (placeholders == null ? 0 : placeholders.size())
+					+ " placeholders, " + qualityTier + ", " + usage + "]";
 		}
 	}
 

@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import com.qalsmartkeyboard.aigateway.AiCommand;
 import com.qalsmartkeyboard.aigateway.spi.Addressee;
+import com.qalsmartkeyboard.aigateway.spi.UserText;
 
 /**
  * The request fingerprint of B5.4 (SD 8.3 "keys are stored with a hash of the request body"): SHA-256 over a canonical,
@@ -20,8 +21,11 @@ import com.qalsmartkeyboard.aigateway.spi.Addressee;
  * preferences or a destination profile, which may change between two retries of the same body), and the exact input
  * text. Translate: source and destination language, style, preserveNames, glossary, addressee formality and gender,
  * the four cultural options, destination profile. Transform: task, language, mode, tone, target length, addressee,
- * glossary. Detect is unmetered and never fingerprinted. Headers (device, surface, data policy) are not part of the
- * body and not covered.
+ * glossary, and (only when present, so the digest of a request without it is unchanged) the output language. Replies
+ * (ADR 0027): context and reply language, count, tone, addressee, variation, the user's notes. Drafts: document type,
+ * mode, language, tone, length, includeSubject, recipient, sender, cultural options, variation and every text. Detect
+ * is unmetered and never fingerprinted. Headers (device, surface, data policy) are not part of the body and not
+ * covered.
  *
  * <p>Encoding: the tag {@code qal.ai.request-fingerprint.v1}, then each field as a 4-byte big-endian length
  * ({@code -1} for an absent value) followed by its UTF-8 bytes, in a fixed order. Lengths make it unambiguous: no
@@ -64,6 +68,40 @@ final class RequestFingerprint {
 				e.add(t.targetLength());
 				addressee(e, t.addressee());
 				e.add(t.glossaryId());
+				if (t.outputLanguage() != null) {
+					// appended only when present: keys of requests without it keep their B5.4 digest
+					e.add("outputLanguage");
+					e.add(t.outputLanguage());
+				}
+			}
+			case AiCommand.Reply r -> {
+				e.add(r.contextLanguage());
+				e.add(r.replyLanguage());
+				e.add(r.count());
+				e.add(r.tone());
+				addressee(e, r.addressee());
+				e.add(r.variation());
+				e.add(r.instructions());
+			}
+			case AiCommand.Draft d -> {
+				e.add(d.documentType());
+				e.add(d.mode());
+				e.add(d.language());
+				e.add(d.tone());
+				e.add(d.length());
+				e.add(d.includeSubject());
+				addressee(e, d.addressee());
+				e.add(d.culturalOptions().calendar());
+				e.add(d.culturalOptions().timeNotation());
+				e.add(d.culturalOptions().numerals());
+				e.add(d.culturalOptions().adaptIdioms());
+				e.add(d.variation());
+				e.add(d.instructions());
+				e.add(d.originalEmail());
+				e.add(d.draft());
+				e.add(d.recipientName());
+				e.add(d.recipientRole());
+				e.add(d.senderName());
 			}
 			case AiCommand.Detect d -> {
 				for (String candidate : d.candidates()) {
@@ -106,6 +144,14 @@ final class RequestFingerprint {
 
 		void add(UUID value) {
 			add(value == null ? null : value.toString());
+		}
+
+		void add(Integer value) {
+			add(value == null ? null : value.toString());
+		}
+
+		void add(UserText value) {
+			add(value == null ? null : value.value());
 		}
 
 		private void length(int n) {

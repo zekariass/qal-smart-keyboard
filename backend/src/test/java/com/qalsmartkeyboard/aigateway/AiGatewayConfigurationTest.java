@@ -111,7 +111,7 @@ class AiGatewayConfigurationTest {
 	@Test
 	void vendorPropertiesNeverPrintTheKeys() {
 		var openai = new AiGatewayProperties.OpenAi("sk-secret-value", "m", "https://api.openai.com/v1",
-				java.time.Duration.ofSeconds(2), 4096, "");
+				java.time.Duration.ofSeconds(2), 4096, "", null);
 		var google = new AiGatewayProperties.GoogleTranslate("AIza-secret-value", "https://translation.googleapis.com",
 				java.time.Duration.ofSeconds(2));
 		assertThat(openai.toString()).doesNotContain("sk-secret-value");
