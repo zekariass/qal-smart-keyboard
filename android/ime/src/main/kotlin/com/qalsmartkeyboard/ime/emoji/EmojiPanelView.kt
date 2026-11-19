@@ -187,7 +187,11 @@ class EmojiPanelView(context: Context) : View(context) {
         }
     }
 
-    private fun slotWidth() = width / (EmojiCategory.entries.size + 1f)
+    /** Tab slots: the search entry, the categories, then the Word Art tab (ADR 0030). */
+    private val slots get() = EmojiCategory.entries.size + 2
+    private val wordArtSlot get() = slots - 1
+
+    private fun slotWidth() = width / slots.toFloat()
 
     private fun drawBackground(canvas: Canvas) {
         if (!theme.isGradient) {
@@ -221,15 +225,22 @@ class EmojiPanelView(context: Context) : View(context) {
         val sw = slotWidth()
         val cur = currentCategory()
         val cy = tabsH / 2f
-        for (slot in 0..EmojiCategory.entries.size) {
+        for (slot in 0 until slots) {
             val cx = sw * slot + sw / 2f
-            val selected = slot > 0 && EmojiCategory.entries[slot - 1] == cur
+            val selected = slot in 1..EmojiCategory.entries.size && EmojiCategory.entries[slot - 1] == cur
             if (slot == pressedSlot && region == Region.TABS) {
                 fill.color = theme.pressed
                 canvas.drawRoundRect(sw * slot + 2 * d, 3 * d, sw * (slot + 1) - 2 * d, tabsH - 3 * d, 8 * d, 8 * d, fill)
             }
             when {
                 slot == 0 -> drawMagnifier(canvas, cx, cy, 8f * d, theme.stripText)
+                slot == wordArtSlot -> {
+                    text.color = theme.stripText
+                    text.textSize = 13f * d
+                    text.isFakeBoldText = true
+                    canvas.drawText(WORD_ART_LABEL, cx, cy - (text.descent() + text.ascent()) / 2, text)
+                    text.isFakeBoldText = false
+                }
                 EmojiCategory.entries[slot - 1] == EmojiCategory.RECENT -> drawClock(canvas, cx, cy, 9f * d, if (selected) theme.accentText else theme.stripText)
                 else -> {
                     glyph.textSize = 19f * d
@@ -422,7 +433,7 @@ class EmojiPanelView(context: Context) : View(context) {
                 velocity?.recycle()
                 velocity = VelocityTracker.obtain().also { it.addMovement(e) }
                 when (region) {
-                    Region.TABS -> pressedSlot = (e.x / slotWidth()).toInt().coerceIn(0, EmojiCategory.entries.size)
+                    Region.TABS -> pressedSlot = (e.x / slotWidth()).toInt().coerceIn(0, slots - 1)
                     Region.BOTTOM -> {
                         pressedSlot = bottomIndexAt(e.x, e.y)
                         if (pressedSlot == 2) {
@@ -458,7 +469,7 @@ class EmojiPanelView(context: Context) : View(context) {
                     }
                 } else if (region == Region.BOTTOM || region == Region.TABS) {
                     // Sliding off the pressed key or tab cancels it.
-                    val still = if (region == Region.TABS) regionAt(e.y) == Region.TABS && (e.x / slotWidth()).toInt().coerceIn(0, EmojiCategory.entries.size) == pressedSlot
+                    val still = if (region == Region.TABS) regionAt(e.y) == Region.TABS && (e.x / slotWidth()).toInt().coerceIn(0, slots - 1) == pressedSlot
                     else regionAt(e.y) == Region.BOTTOM && bottomIndexAt(e.x, e.y) == pressedSlot
                     if (!still && pressedSlot != -1) { stopRepeat(); pressedSlot = -1; invalidate() }
                 }
@@ -488,7 +499,7 @@ class EmojiPanelView(context: Context) : View(context) {
                             postInvalidateOnAnimation()
                         }
                     }
-                    region == Region.TABS -> if (pressedSlot >= 0 && pressedSlot == (e.x / slotWidth()).toInt().coerceIn(0, EmojiCategory.entries.size)) {
+                    region == Region.TABS -> if (pressedSlot >= 0 && pressedSlot == (e.x / slotWidth()).toInt().coerceIn(0, slots - 1)) {
                         tap(c)
                         onTab(pressedSlot)
                     }
@@ -536,10 +547,14 @@ class EmojiPanelView(context: Context) : View(context) {
         }
     }
 
-    /** Slot 0 opens the search; the others jump to their category's section. */
+    /** Slot 0 opens the search, the last one Word Art; the others jump to their category's section. */
     private fun onTab(slot: Int) {
         if (slot == 0) {
             emoji?.openSearch()
+            return
+        }
+        if (slot == wordArtSlot) {
+            emoji?.openWordArt()
             return
         }
         val m = model ?: return
@@ -666,7 +681,7 @@ class EmojiPanelView(context: Context) : View(context) {
 
         override fun getVirtualViewAt(x: Float, y: Float): Int {
             when (regionAt(y)) {
-                Region.TABS -> return tabBase + (x / slotWidth()).toInt().coerceIn(0, EmojiCategory.entries.size)
+                Region.TABS -> return tabBase + (x / slotWidth()).toInt().coerceIn(0, slots - 1)
                 Region.BOTTOM -> return keyBase + bottomIndexAt(x, y)
                 else -> {
                     val m = model ?: return INVALID_ID
@@ -677,7 +692,7 @@ class EmojiPanelView(context: Context) : View(context) {
         }
 
         override fun getVisibleVirtualViews(ids: MutableList<Int>) {
-            for (i in 0..EmojiCategory.entries.size) ids += tabBase + i
+            for (i in 0 until slots) ids += tabBase + i
             val m = model
             if (m != null) {
                 var i = m.firstRowAt(scrollY)
@@ -711,12 +726,16 @@ class EmojiPanelView(context: Context) : View(context) {
             val bounds = Rect()
             var description = ""
             when {
-                id in tabBase..tabBase + EmojiCategory.entries.size -> {
+                id in tabBase until tabBase + slots -> {
                     val sw = slotWidth()
                     val slot = id - tabBase
                     bounds.set((sw * slot).toInt(), 0, ceil(sw * (slot + 1)).toInt(), tabsH.toInt())
-                    description = if (slot == 0) context.getString(R.string.emoji_search) else context.getString(EmojiCategory.entries[slot - 1].titleRes())
-                    node.isSelected = slot > 0 && EmojiCategory.entries[slot - 1] == currentCategory()
+                    description = when (slot) {
+                        0 -> context.getString(R.string.emoji_search)
+                        wordArtSlot -> context.getString(R.string.wordart_tab)
+                        else -> context.getString(EmojiCategory.entries[slot - 1].titleRes())
+                    }
+                    node.isSelected = slot in 1..EmojiCategory.entries.size && EmojiCategory.entries[slot - 1] == currentCategory()
                 }
                 id in keyBase until keyBase + 4 -> {
                     layoutBottom()
@@ -766,7 +785,7 @@ class EmojiPanelView(context: Context) : View(context) {
         override fun onPerformActionForVirtualView(id: Int, action: Int, arguments: Bundle?): Boolean {
             val c = controller ?: return false
             when {
-                id in tabBase..tabBase + EmojiCategory.entries.size -> if (action == AccessibilityNodeInfoCompat.ACTION_CLICK) onTab(id - tabBase) else return false
+                id in tabBase until tabBase + slots -> if (action == AccessibilityNodeInfoCompat.ACTION_CLICK) onTab(id - tabBase) else return false
                 id in keyBase until keyBase + 4 -> if (action == AccessibilityNodeInfoCompat.ACTION_CLICK) {
                     val i = id - keyBase
                     if (i == 2) c.onKey(BACKSPACE) else onBottom(c, i)
@@ -794,5 +813,6 @@ class EmojiPanelView(context: Context) : View(context) {
         val SPACE = Key(KeyKind.SPACE, " ", " ")
         val ENTER = Key(KeyKind.ENTER, "")
         const val TONE_ACTION = 0x7F0F0000
+        const val WORD_ART_LABEL = "Aa✨"
     }
 }

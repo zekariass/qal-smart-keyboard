@@ -105,6 +105,48 @@
     <string name="ai_link_upgrade">See plans</string>
     <string name="ai_link_update">Update</string>
 
+    <!-- Word Art (ADR 0030) -->
+    <string name="wordart_tab">Word Art</string>
+    <string name="wordart_back_to_keys">Back to keyboard</string>
+    <string name="wordart_field_hint">Tap to type your text</string>
+    <string name="wordart_field_empty">Word Art text, empty. Double tap to type</string>
+    <string name="wordart_field">Word Art text: %1$s. Double tap to edit</string>
+    <string name="wordart_typing_field">Word Art text: %1$s</string>
+    <string name="wordart_typing_hint">Type your text</string>
+    <string name="wordart_typing_done">Done typing</string>
+    <string name="wordart_done">Done</string>
+    <string name="wordart_greeting">Greeting</string>
+    <string name="wordart_greeting_desc">Add a greeting phrase in your keyboard language</string>
+    <string name="wordart_state_on">On</string>
+    <string name="wordart_state_off">Off</string>
+    <string name="wordart_latin_only">Latin letters only</string>
+    <string name="wordart_unavailable">Not available for this text</string>
+    <string name="wordart_insert">Insert</string>
+    <string name="wordart_copy">Copy</string>
+    <string name="wordart_back">Styles</string>
+    <string name="wordart_back_desc">Back to the list of styles</string>
+    <string name="wordart_notice_copied">Copied</string>
+    <string name="wordart_notice_copy_failed">Could not copy</string>
+    <string name="wordart_notice_inserted">Inserted</string>
+    <string name="wordart_notice_nothing">Type your text first</string>
+    <string name="wordart_draft_phrase">Greeting wording is a draft</string>
+    <string name="wordart_sample_hint">Showing a sample. Type your own text above.</string>
+    <string name="wordart_row">%1$s: %2$s</string>
+    <string name="wordart_row_disabled">%1$s: %2$s, %3$s, unavailable</string>
+    <string name="wordart_preview">%1$s style preview: %2$s</string>
+    <string name="wordart_category_popular">Popular</string>
+    <string name="wordart_category_birthday">Birthday</string>
+    <string name="wordart_category_love">Love</string>
+    <string name="wordart_category_wedding">Wedding</string>
+    <string name="wordart_category_congrats">Congratulations</string>
+    <string name="wordart_category_thanks">Thank you</string>
+    <string name="wordart_category_holidays">Holidays and festivals</string>
+    <string name="wordart_category_announcements">Announcements</string>
+    <string name="wordart_category_social">Social captions</string>
+    <string name="wordart_category_names">Names</string>
+    <string name="wordart_category_letters">Letter styles</string>
+    <string name="wordart_category_selected">%1$s, selected</string>
+
     <!-- Voice typing (ADR 0029). Wording is honest: support depends on the phone's speech service. -->
     <string name="voice_mic">Voice typing</string>
     <string name="voice_mic_stop">Stop voice typing and insert the text</string>

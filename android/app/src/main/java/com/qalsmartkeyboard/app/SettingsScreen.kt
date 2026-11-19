@@ -51,6 +51,8 @@ fun SettingsScreen(
     syncContent: @Composable () -> Unit = {},
     /** Opens the theme picker (`ThemesScreen`), owned by the host. */
     onOpenThemes: () -> Unit = {},
+    /** Opens the Word Art screen, owned by the host. */
+    onOpenWordArt: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -118,6 +120,13 @@ fun SettingsScreen(
         Text(stringResource(R.string.settings_theme_title), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.settings_theme_current, ThemeCatalog.find(settings.theme)?.name ?: stringResource(R.string.themes_system)))
         Button(onClick = onOpenThemes) { Text(stringResource(R.string.settings_theme_button)) }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.settings_wordart_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.settings_wordart_body))
+                Button(onClick = onOpenWordArt) { Text(stringResource(R.string.settings_wordart_button)) }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Haptic feedback", Modifier.weight(1f))
             Switch(checked = settings.hapticsEnabled, onCheckedChange = { on -> scope.launch { repository.update { it.copy(hapticsEnabled = on) } } })
