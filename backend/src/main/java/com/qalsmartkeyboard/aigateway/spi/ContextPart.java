@@ -16,11 +16,12 @@ public record ContextPart(Kind kind, UserText text) {
 		/** The user's own description of what the result should say (any language). */
 		USER_NOTES("the user's own notes on what the result should say or do (any language)"),
 		/** The name of the person the result is addressed to. */
-		RECIPIENT_NAME("the name of the recipient"),
+		RECIPIENT_NAME("the name of the recipient, the person the result is addressed to (use it in the greeting)"),
 		/** The recipient's role or title (for example "HR manager"). */
 		RECIPIENT_ROLE("the recipient's role or title"),
 		/** The name the result is signed with. */
-		SENDER_NAME("the name of the sender (the user), to sign with");
+		SENDER_NAME("the name of the sender, the user who writes the result (use it only in the sign-off, never in "
+				+ "the greeting; the sender is never the recipient)");
 
 		private final String description;
 
