@@ -219,7 +219,7 @@ class PackManagerTest {
     fun debugBuildTrustsTheDevKeyFromSeedIndex() {
         val keys = PackTrust.configured()
         assertTrue(keys.single().devOnly)
-        assertEquals("qal-dev-2fe9e4a0", keys.single().id)
+        assertEquals("qal-dev-36652306", keys.single().id)
     }
 
     @Test

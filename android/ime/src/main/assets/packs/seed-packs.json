@@ -4,8 +4,8 @@
  "status": "DRAFT_UNVERIFIED",
  "userExposable": false,
  "reviewRequired": "Native-speaker review (human gate G0) for am, ti, om; none of this content may be shown to users as verified (N9).",
- "signingKeyId": "qal-dev-2fe9e4a0",
- "signingPublicKeyHex": "2fe9e4a008a2b48158b81f7bd0a9836cd3d4e6bc3d14582a14f6dc06b26d9b1a",
+ "signingKeyId": "qal-dev-36652306",
+ "signingPublicKeyHex": "366523060c3f38cd76816570320130691fa71d67548b777794ec953f8ca93ce4",
  "signingKeyIsDevOnly": true,
  "packs": [
   {
@@ -15,7 +15,7 @@
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
    "sizeBytes": 687,
-   "sha256": "43a451935a9704dd668a657095f583af9290497b413be6b068cb829494b0c473",
+   "sha256": "31516a1021017dac23a037981476d323b99d246cd68b22e7355031288dfd7be4",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "am-seed-bigrams"
@@ -29,7 +29,7 @@
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
    "sizeBytes": 1741,
-   "sha256": "9511d7abdf2759ad9ab64f6c6ed8f37d8eeb3d3928cd3ff369b015a97a7374cb",
+   "sha256": "d6d0f26b1ff302757a6fac983637733520baa5017dd4f28c33876e911712c6de",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "am-seed-wordlist"
@@ -42,8 +42,8 @@
    "resourceType": "KEYBOARD_LAYOUT",
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
-   "sizeBytes": 2909,
-   "sha256": "87acd31b2aeda38543a6cd07f482f6854a2f0af13fe674e39b71ba6761d4e470",
+   "sizeBytes": 2868,
+   "sha256": "81365bb61d61ac473cb0a66e526315e5b87bb7620b3ce6b4276d1ca30a56cacc",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "am-fidel-draft-layout"
@@ -56,8 +56,8 @@
    "resourceType": "TRANSLITERATION_RULES",
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
-   "sizeBytes": 2612,
-   "sha256": "baffd222e42d8feeaac4569bedfde9321a3ef813639cb120d8574a596fe7faf5",
+   "sizeBytes": 3344,
+   "sha256": "0b689fd886d6fa4141bb4a49b971ec6aa42f568c138bf8a30ee784508ffe4a6b",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "am-phonetic-draft-profile"
@@ -71,7 +71,7 @@
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
    "sizeBytes": 634,
-   "sha256": "0b3e4a6243a832a322262aaf52c7ae71f7414cf9e374eaf789811987b81d8113",
+   "sha256": "a031752eae57cc27dc979529596df75b8f94d7ec459cf7050e6d07b6e6ed9c2d",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "en-seed-bigrams"
@@ -85,7 +85,7 @@
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
    "sizeBytes": 1494,
-   "sha256": "5ba871a578ab13b7a4cbdd3821921b0d0d72f2f5cd928b856852adecdaa8e7ba",
+   "sha256": "7c61229d6e07a26457e7a1c158b419eae1e363eaff28810ccd50a344c7d80586",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "en-seed-wordlist"
@@ -99,7 +99,7 @@
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
    "sizeBytes": 42223,
-   "sha256": "2c6e96827eee9242e154ac51bc182d06e054fd292cbfbebdf3fd66b43e27721b",
+   "sha256": "3e5d51e4a9c7f10a3733ff61ae75d2cfbfa083c9cd1251bac65f5835d918d2b5",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "langid-seed-am",
@@ -118,7 +118,7 @@
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
    "sizeBytes": 597,
-   "sha256": "406ac564b94423c6b77c7d5d929cd096bdb73292723e0d454360968118f009b5",
+   "sha256": "13734a21a64a3268449ae013e6a3841ca5119876002dc71760bb0efd85bc6da9",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "om-seed-bigrams"
@@ -132,7 +132,7 @@
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
    "sizeBytes": 1479,
-   "sha256": "70fede5a1e0be48d1c00f95a3a9160daaa78680badf81a5e1f4a094b6daa7eca",
+   "sha256": "6445889960ba1dc80425f24394ad7c09c3fa81f7fe7222d0787520328fb116b4",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "om-seed-wordlist"
@@ -146,7 +146,7 @@
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
    "sizeBytes": 637,
-   "sha256": "1f6331ea32eb852c7842ca6cdf7e142aa88ee613e64ae3efadbd15708cec1052",
+   "sha256": "57c07b2eee29c5939ace431b941599cfde6bf8789c8cef0d0ff29df6a739de78",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "ti-seed-bigrams"
@@ -160,7 +160,7 @@
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
    "sizeBytes": 1722,
-   "sha256": "e9ccd16af2cd56fdbca331a016328d7b0efb02ca31e8bfce18bb3cbcb0208472",
+   "sha256": "cf8a8b6ea29ccfbf1dc3ffb006596019445988648fb45034eab48504f389decd",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "ti-seed-wordlist"
@@ -173,8 +173,8 @@
    "resourceType": "KEYBOARD_LAYOUT",
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
-   "sizeBytes": 2964,
-   "sha256": "00c22e34c75fc0d91ba5ca5fc30299174509bc8a2cfb785ff041cc0dfa68c6e5",
+   "sizeBytes": 2923,
+   "sha256": "15752f70ce75d7f4951ed0545955caf81cb37759f126c4bfd34dc33b3282b41d",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "ti-fidel-draft-layout"
@@ -187,8 +187,8 @@
    "resourceType": "TRANSLITERATION_RULES",
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
-   "sizeBytes": 2719,
-   "sha256": "2a195b3b8ab334c85d5a1284328327a4dca474746ec8c8d61a1d5f9f7def73bf",
+   "sizeBytes": 3434,
+   "sha256": "aee18c2564b710458bc7d139c6051789fa9a1209df0d20fec886cb791eb37b8a",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "ti-phonetic-draft-profile"
