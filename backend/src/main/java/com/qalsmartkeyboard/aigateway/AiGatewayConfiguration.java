@@ -147,7 +147,7 @@ class AiGatewayConfiguration {
 					+ "blank: set the OpenAI model id to use, or unset the key to run without the OpenAI adapter");
 		}
 		return new OpenAiProvider(new OpenAiProvider.Config(URI.create(o.baseUrl()), o.connectTimeout(), o.apiKey(),
-				o.model(), o.maxOutputTokens(), o.reasoningEffort()));
+				o.model(), o.maxOutputTokens(), o.reasoningEffort(), o.featureMaxOutputTokens()));
 	}
 
 	/** Google Cloud Translation - Basic (D46): only with {@code QAL_GOOGLE_TRANSLATE_API_KEY}. */

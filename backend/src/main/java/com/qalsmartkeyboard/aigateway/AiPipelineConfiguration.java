@@ -101,7 +101,7 @@ class AiPipelineConfiguration {
 				users, new Guardrails(new Guardrails.Config(p.minScriptRatio())), requests, idempotency,
 				history.getIfAvailable(() -> AiHistorySink.NONE), clock.getIfAvailable(Clock::systemUTC), meters.getIfAvailable(),
 				new AiPipeline.Settings(p.deadline(), p.requireAiProcessingConsent(), p.maxTextCharacters(),
-						p.maxDetectCharacters()));
+						p.maxDetectCharacters(), p.resolvedFeatureTimeouts()));
 	}
 
 }

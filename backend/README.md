@@ -1068,18 +1068,20 @@ scan, sweep, deletion), `RequestFingerprintTest`.
 ## AI gateway: HTTP endpoints (B5.5, ADR 0017 "HTTP endpoints (B5.5)")
 
 `aigateway.AiController` serves the contract operations `translateText` (`POST /api/v1/ai/translate`), `transformText`
-(`POST /api/v1/ai/transform`: GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST), `detectLanguage`
-(`POST /api/v1/ai/detect-language`) and `getAiCapabilities` (`GET /api/v1/ai/capabilities`). The contract has no
+(`POST /api/v1/ai/transform`: GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST, and since ADR 0027 SUMMARIZE and EXPLAIN_TEXT),
+`suggestReplies` (`POST /api/v1/ai/replies`, ADR 0027), `draftDocument` (`POST /api/v1/ai/drafts`, ADR 0027),
+`detectLanguage` (`POST /api/v1/ai/detect-language`) and `getAiCapabilities` (`GET /api/v1/ai/capabilities`). The
+text actions and the e-mail writer are described in "AI gateway: text actions and e-mail writer" below. The contract has no
 `/grammar` or `/rewrite`: they are tasks of `/transform`. `/transliterate` exists only as the partner operation
 `/partner/v1/transliterate` (it needs the server-side keyboard core, a later step) and is **not built**.
 
 - **Mapping:** body bytes -> `AiRequestParser` -> `AiCommand` (`Translate` / `Transform` / `Detect`) -> `AiPipeline.execute`
   -> the `AiResult` record as the response (200, `Cache-Control: no-store`). `Idempotency-Key` is required (a UUID) on
   translate and transform; detect needs none. `X-Client-Surface` (KEYBOARD | COMPANION) sets the surface. Accepted and
-  ignored for now: `applyStyleProfile`, `options.explainIn`, `options.sourceRomanization` (`saveToHistory` is
-  honoured since B5.7, see below). The tasks
-  SUMMARIZE, EXPLAIN_TEXT and SCRIPT_CONVERSION answer 400 `VALIDATION_FAILED` (`NOT_AVAILABLE` on `task`). SSE streaming
-  (`Accept: text/event-stream`) is not implemented (406); `capabilities` says `supportsStreaming: false`.
+  ignored for now: `applyStyleProfile`, `options.sourceRomanization` (`saveToHistory` is honoured since B5.7, see below;
+  `options.explainIn` is the EXPLAIN_TEXT name of `outputLanguage` since ADR 0027). The task SCRIPT_CONVERSION answers
+  400 `VALIDATION_FAILED` (`NOT_AVAILABLE` on `task`). SSE streaming (`Accept: text/event-stream`) is not implemented
+  (406); `capabilities` says `supportsStreaming: false`.
 - **Bodies are read by hand** (`byte[]` + `AiRequestParser`), not bound by the framework: a binding error quotes the
   rejected value ("... from String "<text>""), and the framework logs resolved exceptions at DEBUG. Every parse failure is
   a static 400 `VALIDATION_FAILED` naming the field only (`MALFORMED_REQUEST_BODY` for syntax errors). The log-scrub IT
@@ -1097,11 +1099,13 @@ scan, sweep, deletion), `RequestFingerprintTest`.
   interrupt comes from whoever cancels the thread (shutdown, a future async wrapper). Until then a vanished client's
   request completes and is charged once; the client's retry with the same key is answered from the replay cache.
 - **Rate limits** (`platform.ratelimit`, per user, fixed window, in memory): `ai.translate.user` 30/min,
-  `ai.transform.user` 30/min, `ai.detect.user` 60/min, `ai.capabilities.client` 120/min (per user, or per remote address
-  when anonymous). 429 `RATE_LIMITED` with `Retry-After`; translate and transform 200s carry `RateLimit-*` headers.
-- **`GET /ai/capabilities`** (bearer optional): the active providers' enabled BETA/PRODUCTION capabilities for the five
+  `ai.transform.user` 30/min, `ai.replies.user` 30/min, `ai.drafts.user` 10/min, `ai.detect.user` 60/min,
+  `ai.capabilities.client` 120/min (per user, or per remote address when anonymous). 429 `RATE_LIMITED` with
+  `Retry-After`; translate, transform, replies and drafts 200s carry `RateLimit-*` headers.
+- **`GET /ai/capabilities`** (bearer optional): the active providers' enabled BETA/PRODUCTION capabilities for the nine
   served features, one item per (feature, source, destination) with the best tier, `execution: SERVER`,
-  `supportsStreaming: false`, `maxInputCharacters` = min(capability, contract limit). A signed-in caller sees only what
+  `supportsStreaming: false`, `maxInputCharacters` = min(capability, contract limit: 5000 for text and reply messages,
+  8000 for DRAFT_DOCUMENT e-mails and drafts, 1000 for detection). A signed-in caller sees only what
   its plan includes; nothing when the account may not use server AI (SUSPENDED, MERGED...) or prefers `ON_DEVICE_ONLY`;
   only DETECT_LANGUAGE while the deletion is pending. `no-store`, private.
 - **Privacy:** metadata only (`ai_requests`, ledger); nothing in this layer logs, counts or tags text.
@@ -1110,6 +1114,45 @@ scan, sweep, deletion), `RequestFingerprintTest`.
   distinctive input and provider output text must not appear in any log line (web loggers at DEBUG, exception class and
   message included), Problem body, metric name or tag, or any column of any table (plaintext or the hex of its bytes,
   covering `ai_requests`, `usage_events`, `usage_reservations`, `outbox_events`, `audit_events`, the replay cache).
+
+## AI gateway: text actions and e-mail writer (ADR 0027)
+
+Actions on text the user selected or copied, each with an output language: Translate (`/translate`), Explain
+(`/transform` EXPLAIN_TEXT), Correct grammar (GRAMMAR_CORRECTION, keeps the text's language), Rewrite (REWRITE), Make more
+professional (TONE_ADJUST `tone: PROFESSIONAL`), Simplify (REWRITE `mode: SIMPLIFY`), Summarise (SUMMARIZE), Generate a reply
+(`/replies`, SMART_REPLY) and Write e-mail with AI (`/drafts`, DRAFT_DOCUMENT: mode NEW, REPLY or IMPROVE, eight tones,
+subject line, bracketed `placeholders` for missing details, `variation` to regenerate). Request and response shapes:
+contract and ADR 0027.
+
+- **Output language:** `/transform` takes `outputLanguage` (EXPLAIN_TEXT also `options.explainIn`); `/replies`
+  `replyLanguage`; `/drafts` `language`. A result in another language than the input is checked like a translation.
+- **Two user texts** (an e-mail being answered and the user's notes, names) reach the provider as separate untrusted
+  parts (`spi.ContextPart`; OpenAI: one `user` message each), never inside the instructions.
+- **Templates:** V20 seeds active v1 prompt templates (any language, any model family) for GRAMMAR_CORRECTION, REWRITE,
+  TONE_ADJUST, SUMMARIZE, EXPLAIN_TEXT, SMART_REPLY and DRAFT_DOCUMENT (facts kept, nothing invented, placeholders,
+  tones, output format). Turn one off with `UPDATE ai_prompt_templates SET is_active = FALSE WHERE ...`.
+- **Input limits** (code points): transform text 5000; reply message 5000 and notes 1000; draft `instructions` 2000,
+  `originalEmail` and `draft` 8000 each, names 120; `count` 1-5, `variation` 0-20. Too long = 400 `INPUT_TOO_LONG` with the
+  field.
+- **Metering:** one REQUEST unit per call of the feature (DRAFT_DOCUMENT costs 3 credits per unit when credits pay);
+  reserve before the provider call, settle on success, release on every failure. FREE has EXPLAIN_TEXT (3/day) but no
+  SMART_REPLY, SUMMARIZE or DRAFT_DOCUMENT (403 `FEATURE_NOT_ENTITLED`).
+- **V20 capabilities** (BETA, am/ti/om/en, auto-detect) for SMART_REPLY, SUMMARIZE, EXPLAIN_TEXT, DRAFT_DOCUMENT on
+  `openai`, `mock` and `wiremock-http`; openai routing policies seeded disabled (enable with the V19 ones).
+- **Mock outputs** (`QAL_AI_MOCK=true`): fixed phrases in the output language (`Summary:`/`ማጠቃለያ፦`, `count` replies
+  separated by `---`, an e-mail with `Subject:`, names or `[recipient name]`/`[your name]`, a `[date]` line), so a client
+  can develop against them.
+
+| Property | Default | Meaning |
+|---|---|---|
+| `qal.ai.pipeline.feature-timeouts.<FEATURE>.attempt-timeout` / `.deadline` | SUMMARIZE, EXPLAIN_TEXT, SMART_REPLY 12s / 20s; DRAFT_DOCUMENT 20s / 30s | per-feature provider attempt and total budget; every other feature keeps `routing.attempt-timeout` (4s) and `pipeline.deadline` (8s) |
+| `qal.ai.openai.max-output-tokens-by-feature.<FEATURE>` | DRAFT_DOCUMENT 8192 | `max_completion_tokens` for one feature (0 = not sent); others use `QAL_OPENAI_MAX_OUTPUT_TOKENS` |
+
+Feature keys may be written `DRAFT_DOCUMENT`, `draft_document` or `draft-document`; an unknown one fails startup. A
+long-form call's latency is scaled down for the circuit breaker (configured attempt / requested attempt), so slow e-mails
+do not open the breaker for the provider's short calls. Proof: `AiTextActionsIT` (PG18, V20 seeds, HTTP),
+`AiControllerTest`, `GuardrailsTextActionsTest`, `OutputFormatsTest`, `MockAiProviderTextActionsTest`,
+`OpenAiProviderTest`, `AiFeatureLimitsTest`.
 
 ## AI feedback and history (B5.6, B5.7, ADR 0021)
 

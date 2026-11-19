@@ -99,6 +99,34 @@ class AiRouterTest {
 		return router.route(RouteRequest.translate(TranslateRequest.of("hello", "en", "am"), null, null));
 	}
 
+	// ------------------------------------------------------------------------------------------------ ADR 0027
+
+	@Test
+	void aRequestWithALongerAttemptReportsAScaledLatencyToTheBreaker() {
+		// configured attempt 1 s: a 1 s call is as slow as a 5 s call of a request allowed 5 s per attempt
+		assertThat(router.healthLatency(Duration.ofMillis(800), Duration.ofSeconds(1))).isEqualTo(Duration.ofMillis(800));
+		assertThat(router.healthLatency(Duration.ofMillis(800), Duration.ofMillis(500)))
+				.isEqualTo(Duration.ofMillis(800));
+		assertThat(router.healthLatency(Duration.ofSeconds(5), Duration.ofSeconds(5))).isEqualTo(Duration.ofSeconds(1));
+		assertThat(router.healthLatency(Duration.ofSeconds(12), Duration.ofSeconds(20)))
+				.isEqualTo(Duration.ofMillis(600));
+	}
+
+	@Test
+	void aRequestMayAllowALongerAttemptThanTheConfiguredOne() {
+		alpha.setBehavior(Behavior.slow(Duration.ofMillis(1300)));
+		RouteRequest<TranslateResult> base = RouteRequest.translate(TranslateRequest.of("hello", "en", "am"), null,
+				null);
+		// the configured 1 s attempt cuts alpha off
+		assertThat(router.route(base.pinnedTo("alpha")).succeeded()).isFalse();
+		breakers.resetAll();
+		// a 2 s attempt (an e-mail draft, say) lets alpha finish
+		RouteResult<TranslateResult> longer = router.route(base.withLimits(Duration.ofSeconds(3),
+				Duration.ofSeconds(2), 0).pinnedTo("alpha"));
+		assertThat(longer.succeeded()).isTrue();
+		assertThat(longer.providerCode()).isEqualTo("alpha");
+	}
+
 	// ------------------------------------------------------------------------------------------------ B5.3 filters
 
 	@Test

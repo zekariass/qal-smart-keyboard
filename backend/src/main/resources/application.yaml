@@ -128,6 +128,10 @@ qal:
       base-url: ${QAL_OPENAI_BASE_URL:https://api.openai.com/v1}
       max-output-tokens: ${QAL_OPENAI_MAX_OUTPUT_TOKENS:4096}
       reasoning-effort: ${QAL_OPENAI_REASONING_EFFORT:}
+      # Per-feature max_completion_tokens (ADR 0027), on top of the built-in DRAFT_DOCUMENT: 8192 (an e-mail needs more
+      # room than a grammar fix, reasoning tokens included); 0 = not sent for that feature. Example:
+      # max-output-tokens-by-feature:
+      #   DRAFT_DOCUMENT: 8192
     google-translate:
       api-key: ${QAL_GOOGLE_TRANSLATE_API_KEY:}
       base-url: ${QAL_GOOGLE_TRANSLATE_BASE_URL:https://translation.googleapis.com}
@@ -151,6 +155,11 @@ qal:
       require-ai-processing-consent: ${QAL_AI_REQUIRE_PROCESSING_CONSENT:false}
       catalog-cache-ttl: 30s
       min-script-ratio: 0.9
+      # Per-feature time budgets (ADR 0027), on top of the built-in defaults: SUMMARIZE, EXPLAIN_TEXT and SMART_REPLY
+      # 12s per attempt / 20s in total, DRAFT_DOCUMENT 20s / 30s. Every other feature uses the deadline above and
+      # routing.attempt-timeout (the keyboard's 4s / 8s). Example:
+      # feature-timeouts:
+      #   DRAFT_DOCUMENT: { attempt-timeout: 20s, deadline: 30s }
     # Idempotency (B5.4, ADR 0017): encrypted replay cache (0s..10m, 0s = off) and request fingerprints (>= 24h).
     idempotency:
       cache-ttl: ${QAL_AI_REPLAY_CACHE_TTL:10m}

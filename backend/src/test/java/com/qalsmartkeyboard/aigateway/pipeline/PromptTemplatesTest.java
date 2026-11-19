@@ -105,6 +105,30 @@ class PromptTemplatesTest {
 		assertThat(PromptValues.addressee(null, null)).isEmpty();
 	}
 
+	/** ADR 0027: the output language, the reply count and the regenerate variation. */
+	@Test
+	void theOutputLanguageCountAndVariationAreRendered() {
+		Map<String, String> reply = PromptValues.of(new PromptValues.Inputs(AiFeature.SMART_REPLY, null, "POLITE",
+				null, null, "en", "English", "am", "Amharic", "en", "English", null, null, null, null, null, true, true,
+				LocalDate.of(2026, 11, 18), "am", "Amharic", 3, 2));
+		assertThat(renderer.render("{{outputLanguageInstruction}} {{count}} replies, variation {{variation}} "
+				+ "({{outputLanguage}}/{{outputLanguageName}})", reply))
+				.isEqualTo("Write the result in Amharic (am). 3 replies, variation 2 (am/Amharic)");
+		// a transform without an output language: the language of the text, else "the same language"
+		Map<String, String> known = PromptValues.of(new PromptValues.Inputs(AiFeature.REWRITE, "SIMPLIFY", null, null,
+				null, null, null, null, null, "ti", "Tigrinya", null, null, null, null, null, true, true, null));
+		assertThat(renderer.render("{{outputLanguageInstruction}}", known)).isEqualTo("Write the result in Tigrinya (ti).");
+		Map<String, String> unknown = PromptValues.of(new PromptValues.Inputs(AiFeature.REWRITE, "SIMPLIFY", null,
+				null, null, null, null, null, null, null, null, null, null, null, null, null, true, true, null));
+		assertThat(renderer.render("{{outputLanguageInstruction}}[{{count}}][{{variation}}]", unknown))
+				.isEqualTo("Write the result in the same language as the input text.[][]");
+		// a translation's output language is its destination
+		Map<String, String> translate = PromptValues.of(new PromptValues.Inputs(AiFeature.TRANSLATE, null, null, null,
+				null, "en", "English", "om", "Afaan Oromoo", null, null, null, null, null, null, null, true, true, null));
+		assertThat(renderer.render("{{outputLanguageInstruction}}", translate))
+				.isEqualTo("Write the result in Afaan Oromoo (om).");
+	}
+
 	@Test
 	void everyPlaceholderIsKnownToTheRenderer() {
 		String all = String.join(" ", PromptRenderer.PLACEHOLDERS.stream().map(p -> "{{" + p + "}}").toList());

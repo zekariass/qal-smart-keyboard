@@ -26,6 +26,7 @@ import com.qalsmartkeyboard.aigateway.spi.ProviderException;
 import com.qalsmartkeyboard.aigateway.spi.ProviderException.Kind;
 import com.qalsmartkeyboard.aigateway.spi.TransformRequest;
 import com.qalsmartkeyboard.aigateway.spi.TranslateRequest;
+import com.qalsmartkeyboard.aigateway.spi.UserText;
 import com.qalsmartkeyboard.testsupport.logging.CapturedLogs;
 
 /**
@@ -101,6 +102,28 @@ class HttpJsonAiProviderTest {
 		assertThat(result.call().providerRequestId()).hasSize(36); // templated UUID from the stub
 		assertThat(result.usage().inputTokens()).isEqualTo(25);
 		assertThat(result.usage().outputTokens()).isEqualTo(31);
+	}
+
+	/** ADR 0027: the output language and every further user text travel as their own JSON members. */
+	@Test
+	void anEmailReplyCarriesTheOutputLanguageAndTheContextPartsSeparately() {
+		var request = new TransformRequest(AiFeature.DRAFT_DOCUMENT, UserText.of("Original e-mail"), null, "REPLY",
+				"FORMAL", null, "am", null, "Rendered.",
+				List.of(com.qalsmartkeyboard.aigateway.spi.ContextPart.of(
+						com.qalsmartkeyboard.aigateway.spi.ContextPart.Kind.USER_NOTES, "say yes")),
+				0, 2);
+		provider(compose, "").llmTransform(request, T);
+		compose.verify(postRequestedFor(urlPathEqualTo("/ai/v1/llm/chat"))
+				.withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.output_language",
+						equalTo("am")))
+				.withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.context[0].kind",
+						equalTo("USER_NOTES")))
+				.withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.context[0].text",
+						equalTo("say yes")))
+				.withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.variation",
+						equalTo("2")))
+				.withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.text",
+						equalTo("Original e-mail"))));
 	}
 
 	@Test

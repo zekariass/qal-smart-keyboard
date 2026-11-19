@@ -4,11 +4,15 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.qalsmartkeyboard.aigateway.spi.AiProvider;
+import com.qalsmartkeyboard.aigateway.spi.ContextPart;
 import com.qalsmartkeyboard.aigateway.spi.DetectRequest;
 import com.qalsmartkeyboard.aigateway.spi.DetectResult;
 import com.qalsmartkeyboard.aigateway.spi.DetectResult.DetectedLanguage;
@@ -29,9 +33,22 @@ import com.qalsmartkeyboard.aigateway.spi.UserText;
  *
  * <p>Behaviour: translation returns {@code "[mock:<dst>] <text>"} for the languages {@code am ti om en}; any other
  * language, or source equal to destination, is an {@code UnsupportedLanguagePair}. Grammar correction collapses
- * whitespace; other transforms return {@code "[mock:<task>] <text>"}. Language detection reads the script: Ethiopic
+ * whitespace; GRAMMAR_CORRECTION, REWRITE and TONE_ADJUST return {@code "[mock:<task>] <text>"} (with an output language
+ * other than the text's: a fixed word in that language, then the text). Language detection reads the script: Ethiopic
  * is Amharic (Tigrinya as the alternative), Latin is English, anything else is undetermined ({@code und}).
  * Tokens are estimated as one per four characters.
+ *
+ * <p>The ADR 0027 features answer in the requested output language with fixed phrases, so the output guardrails pass
+ * and a client can develop against them (all deterministic; {@code variation} changes the result):
+ * <ul>
+ * <li>SUMMARIZE: a label ({@code Summary:}, {@code ማጠቃለያ፦}...) and the first 280 characters of the text;
+ * EXPLAIN_TEXT: a label ({@code Explanation:}...) and the text.</li>
+ * <li>SMART_REPLY: {@code count} fixed replies in the reply language, separated by {@code ---} lines, rotated by
+ * {@code variation}.</li>
+ * <li>DRAFT_DOCUMENT: {@code Subject: ...} (mode REPLY: {@code Re: ...}; IMPROVE: none), a greeting with the recipient
+ * name or the {@code [recipient name]} placeholder, the user's text, a {@code [date]} placeholder line (mode NEW) and
+ * a closing with the sender name or the {@code [your name]} placeholder.</li>
+ * </ul>
  */
 public final class MockAiProvider implements AiProvider {
 
@@ -124,12 +141,126 @@ public final class MockAiProvider implements AiProvider {
 	public TransformResult llmTransform(TransformRequest request, Duration timeout) {
 		long start = begin(timeout);
 		String text = request.text().value();
+		String output = request.outputLanguage();
+		boolean otherLanguage = output != null && LANGUAGES.contains(output) && !output.equals(request.language());
+		// the language the fixed phrases are written in: the output language, else the text's
+		String language = output != null ? output
+				: request.language() != null ? request.language() : detect(text, List.of()).get(0).languageCode();
 		String result = switch (request.task()) {
 			case GRAMMAR_CORRECTION -> text.strip().replaceAll("\\s+", " ");
-			default -> "[mock:" + request.task().name().toLowerCase(Locale.ROOT) + "] " + text;
+			case SUMMARIZE -> phrase(language, Phrase.SUMMARY) + " " + first(text, 280);
+			case EXPLAIN_TEXT -> phrase(language, Phrase.EXPLANATION) + " " + text;
+			case SMART_REPLY -> replies(request, language);
+			case DRAFT_DOCUMENT -> email(request, language);
+			default -> otherLanguage ? phrase(output, Phrase.MOCK) + " " + text
+					: "[mock:" + request.task().name().toLowerCase(Locale.ROOT) + "] " + text;
 		};
 		UserText out = UserText.of(result);
-		return new TransformResult(out, List.of(), meta("mock-llm-1", start), usage(request.text(), out));
+		int in = request.inputCharacters();
+		return new TransformResult(out, List.of(), meta("mock-llm-1", start),
+				new ProviderUsage(in, out.characters(), (long) Math.ceilDiv(in, 4), tokens(out), null));
+	}
+
+	// ---------------------------------------------------------------- fixed phrases (ADR 0027)
+
+	private enum Phrase {
+		MOCK, SUMMARY, EXPLANATION, SUBJECT, GREETING, DATE_LINE, CLOSING, YOUR_NAME, RECIPIENT
+	}
+
+	/** Fixed phrases per output language (en when unknown). Mock text only: not reviewed translations. */
+	private static final Map<String, Map<Phrase, String>> PHRASES = Map.of(
+			"en", Map.of(Phrase.MOCK, "[mock]", Phrase.SUMMARY, "Summary:", Phrase.EXPLANATION, "Explanation:",
+					Phrase.SUBJECT, "Mock email subject", Phrase.GREETING, "Dear", Phrase.DATE_LINE,
+					"We can meet on [date].", Phrase.CLOSING, "Best regards,", Phrase.YOUR_NAME, "[your name]",
+					Phrase.RECIPIENT, "[recipient name]"),
+			"am", Map.of(Phrase.MOCK, "[ሙከራ]", Phrase.SUMMARY, "ማጠቃለያ፦", Phrase.EXPLANATION, "ማብራሪያ፦",
+					Phrase.SUBJECT, "የሙከራ ኢሜይል ርዕስ", Phrase.GREETING, "ውድ", Phrase.DATE_LINE, "በ[ቀን] መገናኘት እንችላለን።",
+					Phrase.CLOSING, "ከሰላምታ ጋር፣", Phrase.YOUR_NAME, "[ስምዎ]", Phrase.RECIPIENT, "[የተቀባይ ስም]"),
+			"ti", Map.of(Phrase.MOCK, "[ፈተና]", Phrase.SUMMARY, "ጽማቝ፦", Phrase.EXPLANATION, "መብርሂ፦",
+					Phrase.SUBJECT, "ናይ ፈተና ኢመይል ኣርእስቲ", Phrase.GREETING, "ክቡር", Phrase.DATE_LINE,
+					"ብ[ዕለት] ክንራኸብ ንኽእል ኢና።", Phrase.CLOSING, "ምስ ሰላምታ፣", Phrase.YOUR_NAME, "[ስምኩም]",
+					Phrase.RECIPIENT, "[ስም ተቐባላይ]"),
+			"om", Map.of(Phrase.MOCK, "[yaalii]", Phrase.SUMMARY, "Cuunfaa:", Phrase.EXPLANATION, "Ibsa:",
+					Phrase.SUBJECT, "Mata duree imeelii yaalii", Phrase.GREETING, "Kabajamoo", Phrase.DATE_LINE,
+					"Guyyaa [guyyaa] wal arguu dandeenya.", Phrase.CLOSING, "Nagaa wajjin,", Phrase.YOUR_NAME,
+					"[maqaa keessan]", Phrase.RECIPIENT, "[maqaa fudhataa]"));
+
+	private static final Map<String, List<String>> REPLIES = Map.of(
+			"en", List.of("Thank you for your message.", "Sounds good, I will get back to you soon.", "Thanks, noted.",
+					"That is a good idea.", "Let us talk about it."),
+			"am", List.of("ስለ መልእክትዎ እናመሰግናለን።", "እሺ፣ በቅርቡ እመልስልዎታለሁ።", "ተቀብያለሁ፣ አመሰግናለሁ።", "ጥሩ ሀሳብ ነው።",
+					"እንነጋገርበታለን።"),
+			"ti", List.of("ስለ መልእኽትኹም የቐንየልና።", "ሕራይ፣ ቀልጢፈ ክምልሰልኩም እየ።", "ተቐቢለዮ፣ የቐንየለይ።", "ጽቡቕ ሓሳብ እዩ።",
+					"ክንዘራረበሉ ኢና።"),
+			"om", List.of("Ergaa keessaniif galatoomaa.", "Tole, dafee isinii deebisa.", "Fudhadheera, galatoomaa.",
+					"Yaada gaarii dha.", "Itti haasofna."));
+
+	private static String phrase(String language, Phrase p) {
+		return PHRASES.getOrDefault(language == null ? "en" : language, PHRASES.get("en")).get(p);
+	}
+
+	/** Links, e-mail addresses and numbers of 3+ digits in the user's notes, which a real reply would keep. */
+	private static final Pattern KEPT = Pattern.compile(
+			"(?i)\\b(?:https?://|www\\.)\\S+|[\\p{L}\\p{N}._%+-]+@[\\p{L}\\p{N}.-]+\\.\\p{L}{2,}|\\d{3,}");
+
+	private static String kept(TransformRequest r) {
+		String notes = part(r, ContextPart.Kind.USER_NOTES);
+		if (notes == null) {
+			return "";
+		}
+		List<String> tokens = new ArrayList<>();
+		Matcher m = KEPT.matcher(notes);
+		while (m.find()) {
+			tokens.add(m.group());
+		}
+		return tokens.isEmpty() ? "" : " " + String.join(" ", tokens);
+	}
+
+	private static String replies(TransformRequest r, String language) {
+		List<String> all = REPLIES.getOrDefault(language, REPLIES.get("en"));
+		List<String> out = new ArrayList<>();
+		for (int i = 0; i < Math.min(Math.max(1, r.count()), all.size()); i++) {
+			out.add(all.get((i + r.variation()) % all.size()) + kept(r));
+		}
+		return String.join("\n---\n", out);
+	}
+
+	private static String email(TransformRequest r, String language) {
+		String mode = r.mode() == null ? "NEW" : r.mode();
+		String recipient = part(r, ContextPart.Kind.RECIPIENT_NAME);
+		String sender = part(r, ContextPart.Kind.SENDER_NAME);
+		StringBuilder sb = new StringBuilder();
+		String subject = phrase(language, Phrase.SUBJECT) + (r.variation() > 0 ? " (" + r.variation() + ")" : "");
+		switch (mode) {
+			case "REPLY" -> sb.append("Subject: Re: ").append(subject).append("\n\n");
+			case "IMPROVE" -> {
+			}
+			default -> sb.append("Subject: ").append(subject).append("\n\n");
+		}
+		sb.append(phrase(language, Phrase.GREETING)).append(' ')
+				.append(recipient != null ? recipient : phrase(language, Phrase.RECIPIENT)).append(",\n\n");
+		// a reply answers with a fixed sentence (the notes may be in another language) plus their links and numbers
+		sb.append("REPLY".equals(mode) ? REPLIES.getOrDefault(language, REPLIES.get("en")).get(0) + kept(r)
+				: r.text().value().strip()).append("\n\n");
+		if ("NEW".equals(mode)) {
+			sb.append(phrase(language, Phrase.DATE_LINE)).append("\n\n");
+		}
+		sb.append(phrase(language, Phrase.CLOSING)).append('\n')
+				.append(sender != null ? sender : phrase(language, Phrase.YOUR_NAME));
+		return sb.toString();
+	}
+
+	private static String part(TransformRequest r, ContextPart.Kind kind) {
+		return r.context().stream().filter(p -> p.kind() == kind).map(p -> p.text().value().strip()).findFirst()
+				.orElse(null);
+	}
+
+	private static String first(String text, int codePoints) {
+		String t = text.strip();
+		if (t.codePointCount(0, t.length()) <= codePoints) {
+			return t;
+		}
+		return t.substring(0, t.offsetByCodePoints(0, codePoints)) + "…";
 	}
 
 	@Override
