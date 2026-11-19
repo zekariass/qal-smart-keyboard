@@ -535,4 +535,19 @@
     <string name="wordart_style_name_soft">ልስሉስ ማዕበላት</string>
     <string name="wordart_style_name_diamond">ኣልማዛት</string>
     <string name="wordart_style_soc_hashtag">ሃሽታግ</string>
+    <!-- Keyboard toolbar, tools panel and clipboard panel (ADR 0035). DRAFT (N9). -->
+    <string name="tools_title">መሳርሒታት</string>
+    <string name="tool_ai_assist">ሓገዝ AI</string>
+    <string name="tool_email">ኢመይል ጽሓፉ</string>
+    <string name="tool_clipboard">ሰሌዳ ቅዳሕ</string>
+    <string name="tool_writing_mode">ኣገባብ ጽሕፈት</string>
+    <string name="tool_languages">ቋንቋታት</string>
+    <string name="tool_theme">ገጽታ</string>
+    <string name="tool_settings">ቅጥዕታት</string>
+    <string name="tool_locked">%1$s፣ ተዓጽዩ</string>
+    <string name="clip_clear_all">ኩሉ ደምስሱ</string>
+    <string name="clip_empty">እትቐድሕዎ ጽሑፍ ኣብዚ ክርአ እዩ</string>
+    <string name="clip_history_off">ታሪኽ ሰሌዳ ቅዳሕ ጠፊኡ ኣሎ</string>
+    <string name="clip_paste_item">ለጥፉ: %1$s</string>
+    <string name="clip_delete_item">ካብ ታሪኽ ሰሌዳ ቅዳሕ ደምስሱ</string>
 </resources>

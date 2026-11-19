@@ -195,6 +195,16 @@ class SettingsScreenTest {
         compose.onNodeWithText("Tigrinya").assertExists() // the row's summary
     }
 
+    /** ADR 0035: the keyboard's clipboard history is a Preferences switch, on by default. */
+    @Test fun clipboardHistorySwitchIsOnByDefaultAndToggles() {
+        show()
+        compose.onNodeWithText("Preferences").performClick()
+        compose.onNodeWithText("Clipboard history").performScrollTo().assertIsOn()
+        compose.onNodeWithText("Recent copies, kept for 1 hour in memory only").assertExists()
+        compose.onNodeWithText("Clipboard history").performClick()
+        waitFor { !it.clipboardHistoryEnabled }
+    }
+
     @Test fun fromTheKeyboardTheArrowAndBackReturnToTyping() {
         show(fromKeyboard = true)
         compose.onNodeWithContentDescription("Back to typing").performClick()

@@ -51,6 +51,7 @@ import com.qalsmartkeyboard.app.privacy.PrivacyGraph
 import com.qalsmartkeyboard.app.privacy.PrivacyHost
 import com.qalsmartkeyboard.app.privacy.PrivacyRoute
 import com.qalsmartkeyboard.app.privacy.PrivacyViewModel
+import com.qalsmartkeyboard.app.settings.SettingsPage
 import com.qalsmartkeyboard.app.settings.rememberSettingsNavigator
 import com.qalsmartkeyboard.app.sync.DictionarySyncRow
 import com.qalsmartkeyboard.app.sync.DictionarySyncSection
@@ -166,6 +167,7 @@ class MainActivity : ComponentActivity() {
             val flow by onboarding.state.collectAsState()
             val accountStatus by remember { graph.repository.status() }
                 .collectAsState(initial = graph.repository.currentStatus())
+            val accountLabel by graph.repository.accountLabel.collectAsState()
             val signInState by signIn.state.collectAsState()
             val updateRequired by graph.updateRequired.collectAsState()
             var updateDismissed by rememberSaveable { mutableStateOf(false) }
@@ -178,6 +180,8 @@ class MainActivity : ComponentActivity() {
             // The theme picker (themes package); themesPreview: a theme to open it on (a locked one tapped on the settings home).
             var themesOpen by rememberSaveable { mutableStateOf(false) }
             var themesPreview by rememberSaveable { mutableStateOf<String?>(null) }
+            // Opened from the keyboard's Theme shortcut (ADR 0035): Back returns to the app the user was typing in.
+            var themesFromKeyboard by rememberSaveable { mutableStateOf(false) }
             // The settings pages' back stack (ADR 0036); empty = the settings home.
             val settingsNav = rememberSettingsNavigator()
             val themeAccess by rememberPremiumThemeAccess()
@@ -193,15 +197,33 @@ class MainActivity : ComponentActivity() {
                 pendingLink = null
                 when (DeepLinks.route(link, graph.repository.currentStatus(), completed == true)) {
                     DeepLinkAction.NONE -> Unit
-                    DeepLinkAction.SHOW_SETTINGS -> { showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false; settingsNav.reset() }
                     DeepLinkAction.SHOW_PRIVACY -> { showSignIn = false; showPlans = false; rerun = false; privacyRoute = PrivacyRoute.DASHBOARD.name }
-                    DeepLinkAction.SHOW_SIGN_IN -> { signIn.reset(); showPlans = false; privacyRoute = null; showSignIn = true }
+                    // ADR 0035: the keyboard's "Sign in to use AI": the sign-in pane over the keyboard settings ("Back to typing").
+                    DeepLinkAction.SHOW_SIGN_IN -> {
+                        signIn.reset(); showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        settingsNav.reset() // after the sign-in: the settings home, account first
+                        fromKeyboard = true
+                        showSignIn = true
+                    }
                     DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true }
                     DeepLinkAction.OPEN_STORE -> openStorePage(this@MainActivity)
                     DeepLinkAction.SHOW_KEYBOARD_SETTINGS -> {
                         showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()
                         fromKeyboard = true
+                    }
+                    DeepLinkAction.SHOW_KEYBOARD_LANGUAGES -> {
+                        showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        settingsNav.reset()
+                        settingsNav.open(SettingsPage.LANGUAGES)
+                        fromKeyboard = true
+                    }
+                    DeepLinkAction.SHOW_KEYBOARD_THEMES -> {
+                        showSignIn = false; showPlans = false; privacyRoute = null; wordArtOpen = false; emailOpen = false; rerun = false
+                        settingsNav.reset()
+                        themesPreview = null
+                        themesOpen = true
+                        themesFromKeyboard = true
                     }
                     DeepLinkAction.SHOW_EMAIL_WRITER -> {
                         showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; rerun = false
@@ -225,6 +247,17 @@ class MainActivity : ComponentActivity() {
                     signIn.reset()
                     showSignIn = false
                 },
+                onMethod = signIn::setMethod,
+                onEmail = signIn::setEmail,
+                onPassword = signIn::setPassword,
+                onTogglePassword = signIn::togglePasswordVisible,
+                onEmailMode = signIn::setEmailMode,
+                onEmailSubmit = signIn::submitEmail,
+                onForgot = signIn::forgotPassword,
+                onForgotSubmit = signIn::submitForgot,
+                onResetCode = signIn::setResetCode,
+                onNewPassword = signIn::setNewPassword,
+                onResetSubmit = signIn::submitReset,
             )
             val hasGuest = accountStatus == AccountStatus.Guest
             val systemDark = isSystemInDarkTheme()
@@ -248,6 +281,8 @@ class MainActivity : ComponentActivity() {
                         showSignIn && !showFlow -> Column(
                             Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
                         ) {
+                            // Back leaves the pane for the settings (from the keyboard: the ones with "Back to typing").
+                            BackHandler { signIn.reset(); showSignIn = false }
                             SignInPane(signInState, actions, googleSource.isConfigured, graph.repository.guestSupported, hasGuest)
                             if (signInState.step != SignInStep.DONE) {
                                 OutlinedButton(onClick = { signIn.reset(); showSignIn = false }) { Text(stringResource(R.string.onb_back)) }
@@ -272,7 +307,10 @@ class MainActivity : ComponentActivity() {
                             store = repository.themeStore(),
                             systemDark = systemDark,
                             onUnlock = { showPlans = true },
-                            onBack = { themesOpen = false; themesPreview = null },
+                            onBack = {
+                                if (themesFromKeyboard) finishAndRemoveTask()
+                                themesOpen = false; themesPreview = null; themesFromKeyboard = false
+                            },
                             initialPreview = themesPreview,
                         )
                         wordArtOpen && !showFlow -> {
@@ -328,13 +366,15 @@ class MainActivity : ComponentActivity() {
                             systemDark = systemDark,
                             keyboardReady = flow.ime.enabled && flow.ime.selected,
                             account = accountStatus,
+                            accountLabel = accountLabel,
+                            onSignIn = { signIn.reset(); showSignIn = true },
                             fromKeyboard = fromKeyboard,
                             onBackToTyping = { finishAndRemoveTask() },
                             onRunSetup = {
                                 onboarding.restart()
                                 rerun = true
                             },
-                            onOpenThemes = { id -> themesPreview = id; themesOpen = true },
+                            onOpenThemes = { id -> themesPreview = id; themesOpen = true; themesFromKeyboard = false },
                             onOpenWordArt = { wordArtOpen = true },
                             onOpenEmail = { emailOpen = true },
                             onOpenPrivacy = { privacyRoute = PrivacyRoute.DASHBOARD.name },
@@ -342,6 +382,7 @@ class MainActivity : ComponentActivity() {
                             accountContent = {
                                 AccountSection(
                                     status = accountStatus,
+                                    label = accountLabel,
                                     onSignIn = { signIn.reset(); showSignIn = true },
                                     onSignOut = { signIn.reset(); signIn.signOut() },
                                 )

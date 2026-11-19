@@ -18,8 +18,9 @@ import com.qalsmartkeyboard.identity.UserExportParticipant;
  * <li>{@code authIdentities}: how the person signs in (provider, provider subject, provider e-mail).</li>
  * <li>{@code sessions}: metadata of the refresh-token families (when, from which device, IP address and user agent).
  * Left out: the refresh-token hashes and family ids (credentials).</li>
- * <li>Not exported: password credentials and reset tokens (credentials), OTP challenges and attestation nonces
- * (short-lived authentication records without personal content), the data keys.</li>
+ * <li>Not exported: password credentials and reset tokens (credentials), OTP and e-mail code challenges and attestation
+ * nonces (short-lived authentication records), the data keys. The e-mail address and whether it is verified are in
+ * {@code account} ({@code email}, {@code email_verified_at}) and in {@code authIdentities} ({@code EMAIL}).</li>
  * </ul>
  */
 @Component
@@ -57,7 +58,8 @@ class IdentityExport implements UserExportParticipant {
 						       created_at, last_used_at, expires_at, revoked_at
 						FROM user_sessions WHERE user_id = :u ORDER BY created_at, id
 						""", user));
-		out.excluded("credentials", "Password hashes, reset tokens, refresh-token hashes, one-time-code challenges, "
-				+ "attestation nonces and data keys are security material, not personal content; they are never exported.");
+		out.excluded("credentials", "Password hashes, reset tokens, refresh-token hashes, one-time-code challenges "
+				+ "(SMS and e-mail), attestation nonces and data keys are security material, not personal content; they are "
+				+ "never exported.");
 	}
 }

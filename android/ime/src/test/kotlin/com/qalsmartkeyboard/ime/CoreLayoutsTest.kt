@@ -12,6 +12,9 @@ import org.junit.Test
  * typing a word in each of the four languages, switching, punctuation and numerals.
  */
 class CoreLayoutsTest {
+    /** The one-tap ABC switch: no layout has the key since ADR 0035, the controller still handles it (the pill's English). */
+    private val abcToggle = Key(KeyKind.ABC_TOGGLE, "ABC")
+
     private val engine get() = CoreTestEnv.engine
     private fun session(type: Int = InputType.TYPE_CLASS_TEXT) = CoreTestEnv.Session(type, prefs = CoreTestEnv.FidelFirst())
 
@@ -52,9 +55,10 @@ class CoreLayoutsTest {
         assertEquals("አማ · ፊደል", s.c.indicator)
         s.mode(amPhonetic)
         assertEquals("አማ · Phonetic", s.c.indicator)
-        s.tap(s.key(KeyKind.ABC_TOGGLE))
+        s.tap(abcToggle)
         assertEquals("አማ · English", s.c.indicator) // am/ti: ABC is the English writing mode
-        assertEquals("አ", s.key(KeyKind.ABC_TOGGLE).label)
+        // ADR 0035: no ABC key in the bottom row (the bar's pill switches writing modes).
+        assertFalse(s.c.layout.rows.flatten().any { it.kind == KeyKind.ABC_TOGGLE })
         s.mode(om)
         assertEquals("OM · Qubee", s.c.indicator)
         s.mode(en)
@@ -131,16 +135,16 @@ class CoreLayoutsTest {
         s.mode(en)
         s.type("hello, world. ")
         assertEquals("hello, world. ", s.ed.text.toString())
-        assertFalse(s.c.layout.rows.flatten().any { it.kind == KeyKind.ABC_TOGGLE }) // ABC == English here
+        assertFalse(s.c.layout.rows.flatten().any { it.kind == KeyKind.ABC_TOGGLE }) // no layout has the ABC key (ADR 0035)
     }
 
     @Test fun abcInAnEthiopicLanguageTypesLatin() {
         val s = session()
-        s.tap(s.key(KeyKind.ABC_TOGGLE))
+        s.tap(abcToggle)
         assertEquals(TypingMode.abc("am"), s.c.effectiveMode)
         s.type("hi ")
         assertEquals("hi ", s.ed.text.toString())
-        s.tap(s.key(KeyKind.ABC_TOGGLE))
+        s.tap(abcToggle)
         assertEquals(amFidel, s.c.effectiveMode)
     }
 
@@ -172,7 +176,7 @@ class CoreLayoutsTest {
         s.mode(en)
         assertTrue(s.c.layout.rows.flatten().all { it.popup.none { p -> p.text == "።" || p.text == "፩" } })
         s.mode(amFidel)
-        s.tap(s.key(KeyKind.ABC_TOGGLE))
+        s.tap(abcToggle)
         assertTrue(s.c.layout.rows.flatten().all { it.popup.none { p -> p.text == "።" || p.text == "፩" } })
         s.tap(s.key(KeyKind.TO_SYMBOLS))
         assertTrue(s.c.layout.rows.flatten().none { it.text == "፨" })

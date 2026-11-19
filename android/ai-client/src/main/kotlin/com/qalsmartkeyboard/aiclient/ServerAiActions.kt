@@ -71,6 +71,12 @@ object AiTimeouts {
  *
  * Nothing here sends user text except [submit]; [refresh] only reads account metadata. Text,
  * results and tokens are never logged.
+ *
+ * **Shared session (ADR 0035):** the keyboard and the companion app use one session. Every session change reaches the
+ * availability listeners (the toolbar, the panels, the premium themes) without a restart. When the account itself
+ * changes (sign-in, sign-out, another account) the previous account's plan state and entitlement token are dropped
+ * and, when someone is signed in, fetched again for the new account in the background (a user action, never the
+ * keyboard's start-up). A token rotation of the same account only re-renders.
  */
 class ServerAiActions(
     private val aiClient: OkHttpClient,
@@ -91,18 +97,42 @@ class ServerAiActions(
     @Volatile private var snapshot: Pair<List<DestinationProfile>, List<AppRule>> = emptyList<DestinationProfile>() to emptyList()
     private val connectivityHandle: AutoCloseable = connectivity.addListener { changed() }
 
+    /** The account the cached plan state belongs to (`sub`, or null when signed out); only touched on [background]. */
+    private var account: String? = null
+
+    @Volatile private var accountGeneration = 0L
+
+    private val sessionHandle: AutoCloseable
+
     init {
         entitlements.onChanged = { changed() }
         // Disk reads (the encrypted token and destination files) happen here, never on the main thread.
         background.execute {
+            account = currentAccount()
             entitlements.loadCached()
             snapshot = destinationSource.load()
             lastDestinations?.load()
             changed()
         }
+        // The listener runs on the thread that changed the session (maybe inside the refresh lock): hand over at once.
+        sessionHandle = session.addListener { background.execute(::onSessionChanged) }
     }
 
     fun changed() = listeners.forEach { it() }
+
+    private fun currentAccount(): String? = if (session.signedIn()) "user:" + session.subject() else null
+
+    /** On [background]: a sign-in, sign-out, account switch or token rotation, in the app or the keyboard. */
+    internal fun onSessionChanged() {
+        val now = currentAccount()
+        if (now != account) {
+            account = now
+            accountGeneration++
+            entitlements.clear() // nothing of the previous account stays; notifies the listeners (signed in/out now)
+            if (now != null) entitlements.refresh(force = true) // the new account's plan state and offline token
+        }
+        changed()
+    }
 
     override val availability: AiAvailability
         get() {
@@ -113,7 +143,10 @@ class ServerAiActions(
                 !online -> AiBlock.OFFLINE
                 else -> AiBlock.NONE
             }
-            return AiAvailability(block, entitlements.quota, entitlements.planLabel, entitlements.gates(online).onDeviceModels, entitlements.entitled)
+            return AiAvailability(
+                block, entitlements.quota, entitlements.planLabel, entitlements.gates(online).onDeviceModels, entitlements.entitled,
+                accountGeneration,
+            )
         }
 
     override fun destinations(): List<AiDestination> {
@@ -223,7 +256,10 @@ class ServerAiActions(
         return AutoCloseable { listeners -= listener }
     }
 
-    fun close() = connectivityHandle.close()
+    fun close() {
+        connectivityHandle.close()
+        sessionHandle.close()
+    }
 
     private fun toDestination(p: DestinationProfile) = AiDestination(
         id = p.localId,

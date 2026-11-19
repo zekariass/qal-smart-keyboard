@@ -47,13 +47,17 @@ session.signedIn(apiCall { clients.auth.verifyPhoneOtp(...) })   // stores the p
 ## Transport behaviour
 - **`ClientHeadersInterceptor`:** `X-Client-Platform: ANDROID`, `X-App-Version`, `X-Client-Surface: KEYBOARD | COMPANION` on every request.
 - **`BearerInterceptor`:** `Authorization: Bearer` from `SessionManager.tokens()` unless the request already has one.
+  `ApiClients.anonymousAuth` is the auth API over a client without it (and without the authenticator): sign-in calls that
+  must not present the stored session (ADR 0035).
 - **`CorrelationIdInterceptor`:** reports `(method, status, X-Correlation-Id)` to a `CallLogger`. No URL (some paths carry tokens), headers or bodies.
 - **`TokenAuthenticator`** (refresh rotation, ADR 0006 / ADR 0007 D8):
-  - 401 `TOKEN_EXPIRED` with a bearer: take the session lock, refresh once with the stored refresh token (a separate client without bearer or authenticator, so no recursion), store the new pair atomically, retry **once**. Concurrent 401s queue on the lock; a request whose token is no longer the stored one just retries with the stored one, so N parallel expiries cause one refresh.
+  - 401 `TOKEN_EXPIRED` with a bearer, or 401 `UNAUTHENTICATED` with `WWW-Authenticate: Bearer error="invalid_token"` (the token itself was refused, e.g. a signing key the server no longer has; ADR 0035): take the session lock, refresh once with the stored refresh token (a separate client without bearer or authenticator, so no recursion), store the new pair atomically, retry **once**. Concurrent 401s queue on the lock; a request whose token is no longer the stored one just retries with the stored one, so N parallel expiries cause one refresh.
   - Only the newest pair is kept. A refresh whose response is lost leaves the old pair in place; the next refresh sends the old token again and the server's 30 s grace window accepts it.
-  - `REFRESH_TOKEN_REUSED` / `GUEST_SESSION_INVALID` on a request, or 401/403 from the refresh call: tokens cleared, `SessionManager.state` becomes `SignedOut(reason)`, the call fails with `ApiError.SignedOut`. A guest session is never refreshed on `GUEST_SESSION_INVALID`; the app creates a new guest or signs in (and retries the same OTP code without the discarded guest token, per the contract).
+  - `REFRESH_TOKEN_REUSED` / `GUEST_SESSION_INVALID` on a request, 401/403 from the refresh call, or `invalid_token` again on the retry with the newest token (`ACCESS_TOKEN_REJECTED`): tokens cleared, `SessionManager.state` becomes `SignedOut(reason)`, the call fails with `ApiError.SignedOut`. A guest session is never refreshed on `GUEST_SESSION_INVALID`; the app creates a new guest or signs in (and retries the same OTP code without the discarded guest token, per the contract).
   - A refresh that cannot complete (offline, 5xx, 429, 426) keeps the session and fails with the typed error (`Network`, `Http`, `RateLimited`, `UpdateRequired`).
-  - Other 401s (`UNAUTHENTICATED`) are surfaced as they are.
+  - A session-ending answer about a token the session no longer holds (a sign-in or refresh replaced it while the request was in flight) never ends the new session; the request is retried once with the current token.
+  - Other 401s (`UNAUTHENTICATED` without `invalid_token`, e.g. a refused Google ID token) are surfaced as they are.
+- **`SessionManager.addListener`:** a plain callback after every `signedIn`/`signedOut`, including an account switch or a token rotation that the `state` flow conflates; the keyboard's AI client uses it (ADR 0035).
 - **Tokens never appear in logs or exception messages** (`TokenPair.toString()` is redacted; `ApiError` messages are status plus code only).
 
 ## Errors (`ApiError`, sealed)

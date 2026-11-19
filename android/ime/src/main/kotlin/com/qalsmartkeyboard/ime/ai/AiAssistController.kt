@@ -126,6 +126,9 @@ class AiAssistController(
 
     private val picked = HashMap<AiAssistAction, String?>()
     private val sessionLocks = HashSet<AiTaskKind>()
+
+    /** The account [sessionLocks] were learned for ([AiAvailability.accountGeneration]); another account forgets them. */
+    private var locksGeneration = 0L
     private var selection: String? = null
     private var lastRequest: AiRequest? = null
     private var lastAction: AiAssistAction? = null
@@ -271,7 +274,10 @@ class AiAssistController(
     }
 
     /** The cached plan state (or this session's refusal) says [a] is not part of the plan. */
-    fun isLocked(a: AiAssistAction): Boolean = availability.locks(a.kind) || a.kind in sessionLocks
+    fun isLocked(a: AiAssistAction): Boolean {
+        val now = availability
+        return now.locks(a.kind) || (a.kind in sessionLocks && locksGeneration == now.accountGeneration)
+    }
 
     /** Why [run] cannot send right now, or null. */
     val problem: AiAssistProblem?
@@ -318,7 +324,12 @@ class AiAssistController(
             step = when (outcome) {
                 is AiOutcome.Success -> AiAssistStep.Result(a, output, outcome.result)
                 is AiOutcome.Failure -> {
-                    if (outcome.failure == AiFailure.NotEntitled) sessionLocks += a.kind
+                    if (outcome.failure == AiFailure.NotEntitled) {
+                        val generation = availability.accountGeneration
+                        if (generation != locksGeneration) sessionLocks.clear()
+                        locksGeneration = generation
+                        sessionLocks += a.kind
+                    }
                     AiAssistStep.Failed(a, outcome.failure)
                 }
             }

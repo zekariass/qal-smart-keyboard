@@ -164,7 +164,8 @@ class SettingsPreferencesTest {
             assertTrue("$m", bottom.any { it.kind == KeyKind.CHAR && it.text == "," })
         }
         s.mode(TypingMode("am", LayoutKind.PHONETIC))
-        s.tap(s.key(KeyKind.ABC_TOGGLE))
+        s.c.selectWritingMode(LayoutKind.ABC) // the pill's English (ADR 0035: no ABC key)
+        s.ed.deliver(s.adapter)
         assertTrue(s.c.layout.rows.last().any { it.kind == KeyKind.CHAR && it.text == "." })
     }
 

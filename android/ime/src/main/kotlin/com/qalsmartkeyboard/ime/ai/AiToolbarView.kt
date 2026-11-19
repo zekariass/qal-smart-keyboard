@@ -20,6 +20,9 @@ import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.qalsmartkeyboard.ime.R
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
+import com.qalsmartkeyboard.ime.toolbar.ToolIcon
+import com.qalsmartkeyboard.ime.toolbar.ToolIconDrawable
+import com.qalsmartkeyboard.ime.toolbar.ToolIcons
 
 /**
  * The AI toolbar (A2.5, SD 6-7, 11) in two parts:
@@ -117,7 +120,7 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
         // A block (signed out, update, offline) explains why the actions will not run: show it first.
         val blocked = c.availability.block != AiBlock.NONE
         if (blocked && state != null) toolbar.addView(state)
-        val email = chip(context.getString(R.string.ai_email_chip), on = emailFirst, iconPath = AiIcons.EMAIL) { onOpenEmail() }
+        val email = chip(context.getString(R.string.ai_email_chip), on = emailFirst, icon = ToolIcon.EMAIL) { onOpenEmail() }
         if (emailFirst) toolbar.addView(email)
         // The direction control (ADR 0031): [ Auto · Amharic ⇄ English ] and the primary Translate action next to it.
         toolbar.addView(directionGroup(c))
@@ -126,13 +129,13 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
         toolbar.addView(
             chip(
                 if (wide) context.getString(R.string.ai_translate_to, dest) else context.getString(R.string.ai_translate),
-                enabled = !busy, primary = true, description = context.getString(R.string.ai_translate_to, dest),
+                enabled = !busy, primary = true, icon = ToolIcon.TRANSLATE, description = context.getString(R.string.ai_translate_to, dest),
             ) { c.onTask(AiTaskKind.TRANSLATE) },
         )
-        toolbar.addView(chip(context.getString(R.string.ai_assist_chip), iconPath = AiIcons.ASSIST, description = context.getString(R.string.ai_assist_chip_description)) { onOpenAssist() })
+        toolbar.addView(chip(context.getString(R.string.ai_assist_chip), icon = ToolIcon.AI, description = context.getString(R.string.ai_assist_chip_description)) { onOpenAssist() })
         if (!emailFirst) toolbar.addView(email)
-        toolbar.addView(chip(R.string.ai_grammar, enabled = !busy) { c.onTask(AiTaskKind.GRAMMAR) })
-        toolbar.addView(chip(R.string.ai_rewrite, enabled = !busy) { c.onTask(AiTaskKind.REWRITE) })
+        toolbar.addView(chip(context.getString(R.string.ai_grammar), enabled = !busy, icon = ToolIcon.GRAMMAR) { c.onTask(AiTaskKind.GRAMMAR) })
+        toolbar.addView(chip(context.getString(R.string.ai_rewrite), enabled = !busy, icon = ToolIcon.REWRITE) { c.onTask(AiTaskKind.REWRITE) })
         toolbar.addView(chip(toneLabel(c.tone), on = c.picker == AiPicker.TONE, small = true) { c.openPicker(AiPicker.TONE) })
         if (!blocked && state != null) toolbar.addView(state)
     }
@@ -405,14 +408,17 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     private fun chip(res: Int, on: Boolean = false, enabled: Boolean = true, small: Boolean = false, click: () -> Unit) =
         chip(context.getString(res), on, enabled, small, click = click)
 
-    /** [primary]: the accent fill (the direction control's Translate). [iconPath]: a leading icon. */
+    /**
+     * [primary]: the accent fill (the direction control's Translate). [icon]: a leading icon of the keyboard's icon family
+     * ([ToolIcons], ADR 0035). Tonal chips on the key fill; an outline only in themes that draw key borders.
+     */
     private fun chip(
         text: String,
         on: Boolean = false,
         enabled: Boolean = true,
         small: Boolean = false,
         primary: Boolean = false,
-        iconPath: String? = null,
+        icon: ToolIcon? = null,
         description: String? = null,
         click: () -> Unit,
     ): TextView =
@@ -429,17 +435,17 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
             gravity = Gravity.CENTER
             // One line, never ellipsized: every chip row scrolls sideways instead.
             isSingleLine = true
-            minHeight = (32f * d).toInt()
-            setPadding((12f * d).toInt(), 0, (12f * d).toInt(), 0)
-            if (iconPath != null) {
-                val px = (16f * d).toInt()
-                setCompoundDrawables(AiIconDrawable(iconPath, color, px).also { it.setBounds(0, 0, px, px) }, null, null, null)
-                compoundDrawablePadding = (5f * d).toInt()
+            minHeight = (CHIP_DP * d).toInt()
+            setPadding(((if (icon != null) 10f else 14f) * d).toInt(), 0, (14f * d).toInt(), 0)
+            if (icon != null) {
+                val px = (18f * d).toInt()
+                setCompoundDrawables(ToolIconDrawable(icon, color, px).also { it.setBounds(0, 0, px, px) }, null, null, null)
+                compoundDrawablePadding = (6f * d).toInt()
             }
             background = GradientDrawable().apply {
-                cornerRadius = 16f * d
+                cornerRadius = CHIP_DP / 2 * d
                 setColor(if (primary && enabled) theme.accent else if (on) chipOn else chipBg)
-                if (!(primary && enabled)) setStroke((1f * d).toInt(), chipStroke)
+                if (!(primary && enabled) && (theme.hasBorder || on)) setStroke((1f * d).toInt(), if (on) theme.accentText else chipStroke)
             }
             isEnabled = enabled
             isClickable = enabled
@@ -448,7 +454,7 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
             setOnClickListener { click() }
             asButton(this)
             layoutParams = LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins((3f * d).toInt(), (2f * d).toInt(), (3f * d).toInt(), (2f * d).toInt())
+                setMargins((4f * d).toInt(), (2f * d).toInt(), (4f * d).toInt(), (2f * d).toInt())
             }
         }
 
@@ -475,5 +481,8 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
     companion object {
         /** From this screen width (dp) the Translate chip names its destination ("Translate to English"); narrower bars show "Translate". */
         const val WIDE_DP = 600
+
+        /** Chip height (dp) in the 44 dp bar. */
+        const val CHIP_DP = 34f
     }
 }

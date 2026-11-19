@@ -533,4 +533,19 @@
     <string name="wordart_style_name_soft">ለስላሳ ሞገዶች</string>
     <string name="wordart_style_name_diamond">አልማዞች</string>
     <string name="wordart_style_soc_hashtag">ሃሽታግ</string>
+    <!-- Keyboard toolbar, tools panel and clipboard panel (ADR 0035). DRAFT (N9). -->
+    <string name="tools_title">መሣሪያዎች</string>
+    <string name="tool_ai_assist">የAI እገዛ</string>
+    <string name="tool_email">ኢሜይል ይጻፉ</string>
+    <string name="tool_clipboard">ቅንጥብ ሰሌዳ</string>
+    <string name="tool_writing_mode">የአጻጻፍ ዘዴ</string>
+    <string name="tool_languages">ቋንቋዎች</string>
+    <string name="tool_theme">ገጽታ</string>
+    <string name="tool_settings">ቅንብሮች</string>
+    <string name="tool_locked">%1$s፣ ተቆልፏል</string>
+    <string name="clip_clear_all">ሁሉንም ያጽዱ</string>
+    <string name="clip_empty">የሚቀዱት ጽሑፍ እዚህ ይታያል</string>
+    <string name="clip_history_off">የቅንጥብ ሰሌዳ ታሪክ ጠፍቷል</string>
+    <string name="clip_paste_item">ይለጥፉ፦ %1$s</string>
+    <string name="clip_delete_item">ከቅንጥብ ሰሌዳ ታሪክ ይሰርዙ</string>
 </resources>

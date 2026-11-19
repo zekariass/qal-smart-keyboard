@@ -21,34 +21,41 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
 import androidx.customview.widget.ExploreByTouchHelper
-import kotlin.math.ceil
-import kotlin.math.min
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
+import com.qalsmartkeyboard.ime.toolbar.Tool
+import com.qalsmartkeyboard.ime.toolbar.ToolEntry
+import com.qalsmartkeyboard.ime.toolbar.ToolIcon
+import com.qalsmartkeyboard.ime.toolbar.ToolIcons
+import com.qalsmartkeyboard.ime.toolbar.toolLabel
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.min
 
 /**
- * The keyboard's one bar above the keys (SD 6.2 `KeyboardSurface`; custom View per ADR 0003), hosted
- * by [KeyboardBar]. Left to right:
+ * The keyboard's one bar above the keys (SD 6.2 `KeyboardSurface`; custom View per ADR 0003), hosted by [KeyboardBar].
+ * Laid out after Gboard's toolbar (ADR 0035), left to right:
  *
- * - the **writing-mode pill** (am/ti only): names the active mode (ፊደል / Phonetic / English); a tap
- *   opens a three-option chooser in the middle, a second tap or a choice closes it;
- * - the **AI entry** ([aiEntry], only where AI is allowed and nothing else uses the middle): a small
- *   "AI" chip that opens the AI actions in the middle ([KeyboardBar] lays them over [middleRange]);
- *   while they are open it is a close (×) button;
- * - the **middle**: candidates while composing in a phonetic mode (they replace the AI entry), the
- *   mode chooser, or the AI actions;
- * - the **microphone** ([micShown]; voice typing, ADR 0029): drawn filled with the accent while voice typing is open;
- * - the **settings gear**.
+ * - the **tools button** ([Target.Tools], a 2×2 grid): opens the tools panel in place of the keys. While a tool panel is
+ *   open ([panelTitle] set) the bar shows only a back arrow and the panel's title;
+ * - the **writing-mode pill** (am/ti only): names the active mode (ፊደል / Phonetic / English); a tap opens a three-option
+ *   chooser in the middle, a second tap or a choice closes it;
+ * - the **middle**: the pinned **shortcuts** when idle ([setShortcuts]: Translate, AI, Clipboard, then Settings, Theme and
+ *   Emoji while they fit, evenly spaced, each a 48 dp target); candidates while composing in a phonetic mode; the mode
+ *   chooser; or, while the AI actions are open, a close (×) button followed by the actions row ([KeyboardBar] lays it
+ *   over [middleRange]);
+ * - the **microphone** ([micShown]; voice typing, ADR 0029) at the right end.
  *
- * It is shown in every field and always [HEIGHT_DP] tall, so the keyboard keeps one height.
- * Candidates are drawn left to right as they come from the core (index 0 is the default composition,
- * drawn bold); a tap reports the candidate's index, a long press adds it to the personal dictionary.
- * Candidates that do not fit are not drawn. While the active transliteration profile is DRAFT, a
- * "DRAFT" tag marks them as not verified (rule N9).
+ * Icons are one outline family ([ToolIcons]); an active tool (its panel or row is open, voice typing listens) is drawn
+ * on an accent circle, a locked one carries a small lock. The bar is shown in every field and always [HEIGHT_DP] tall,
+ * so the keyboard keeps one height. Candidates are drawn left to right as they come from the core (index 0 is the
+ * default composition, drawn bold); a tap reports the candidate's index, a long press adds it to the personal
+ * dictionary. Candidates that do not fit are not drawn. While the active transliteration profile is DRAFT, a "DRAFT"
+ * tag marks them as not verified (rule N9).
  *
- * Accessibility: pill, AI entry, DRAFT tag, candidates, chooser options and gear are virtual views
- * ([BarNodes], `ExploreByTouchHelper`) with a label and a role; an accessibility click does what a
- * tap does. Typed text is drawn only here, never logged (N2). Colours: only the theme's strip tokens.
+ * Accessibility: every element is a virtual view ([BarNodes], `ExploreByTouchHelper`) with a label and a role; an
+ * accessibility click does what a tap does. Typed text is drawn only here, never logged (N2). Colours: only the
+ * theme's strip tokens (plus accent / on-accent for the active state).
  */
 class CandidateStripView(context: Context) : View(context) {
     /** Tap on the candidate at this index. */
@@ -57,14 +64,26 @@ class CandidateStripView(context: Context) : View(context) {
     /** Long press on the candidate at this index (A1.8: add it to the personal dictionary). */
     var onLongSelect: (Int) -> Unit = {}
 
-    /** The settings gear was tapped. */
-    var onSettings: () -> Unit = {}
-
     /** A writing mode was picked in the chooser. */
     var onModeSelected: (LayoutKind) -> Unit = {}
 
     /** The microphone was tapped (voice typing). */
     var onMic: () -> Unit = {}
+
+    /** The tools button (or, while a tool panel is open, the back arrow) was tapped. */
+    var onTools: () -> Unit = {}
+
+    /** A pinned shortcut was tapped. */
+    var onShortcut: (Tool) -> Unit = {}
+
+    /** The AI actions' close button was tapped (the bar wires it to close the row). */
+    var onAiToggle: () -> Unit = {}
+
+    /** What uses the middle, or its extent, may have changed ([KeyboardBar] re-lays the AI actions). */
+    var onMiddleChanged: () -> Unit = {}
+
+    /** Whether a tap gives haptic feedback (the keys' setting; set by the service). */
+    var haptics: () -> Boolean = { true }
 
     /** The microphone is offered here (setting on, a speech service installed, not a password field). */
     var micShown: Boolean = false
@@ -83,12 +102,6 @@ class CandidateStripView(context: Context) : View(context) {
             nodes.invalidateRoot()
         }
 
-    /** The AI entry (open) or its close button was tapped. */
-    var onAiToggle: () -> Unit = {}
-
-    /** What uses the middle, or its extent, may have changed ([KeyboardBar] re-lays the AI actions). */
-    var onMiddleChanged: () -> Unit = {}
-
     /** The AI entry: none (AI not allowed here or not attached), closed, or open (actions in the middle). */
     enum class AiEntry { NONE, CLOSED, OPEN }
 
@@ -99,20 +112,34 @@ class CandidateStripView(context: Context) : View(context) {
             changed()
         }
 
+    /** While a tool panel replaces the keys: its title (the bar shows a back arrow and the title only). */
+    var panelTitle: String? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            if (value != null) chooserOpen = false
+            changed()
+        }
+
     private var items: List<Suggestion> = emptyList()
     private var draft = false
     private var modes: List<LayoutKind> = emptyList()
     private var activeMode: LayoutKind = LayoutKind.ABC
     private var chooserOpen = false
+    private var shortcuts: List<ToolEntry> = emptyList()
+    private var activeTools: Set<Tool> = emptySet()
 
     /** Candidates are shown (composing in a phonetic mode). */
     val hasCandidates: Boolean get() = items.isNotEmpty()
 
     /** The writing-mode chooser is open in the middle. */
-    val isModeChooserOpen: Boolean get() = chooserOpen && modes.isNotEmpty()
+    val isModeChooserOpen: Boolean get() = chooserOpen && modes.isNotEmpty() && panelTitle == null
 
-    /** The AI entry is drawn: AI is allowed and neither candidates nor the chooser use the middle. */
-    val showsAiEntry: Boolean get() = aiEntry != AiEntry.NONE && items.isEmpty() && !isModeChooserOpen
+    /** Neither candidates, the chooser nor a tool panel use the bar: the shortcuts (or the AI actions) can. */
+    private val middleFree: Boolean get() = items.isEmpty() && !isModeChooserOpen && panelTitle == null
+
+    /** The AI shortcut (or, while the actions are open, their close button) can be shown. */
+    val showsAiEntry: Boolean get() = aiEntry != AiEntry.NONE && middleFree
 
     /** The middle belongs to the AI actions. */
     val showsAiActions: Boolean get() = showsAiEntry && aiEntry == AiEntry.OPEN
@@ -120,16 +147,18 @@ class CandidateStripView(context: Context) : View(context) {
     /** What a touch (or an accessibility action) can land on. */
     sealed interface Target {
         data class Candidate(val index: Int) : Target
+        data object Tools : Target
         data object Pill : Target
-        data object Ai : Target
-        data object Gear : Target
+        data object AiClose : Target
         data object Mic : Target
         data object DraftTag : Target
+        data object Title : Target
+        data class Shortcut(val tool: Tool) : Target
         data class Mode(val kind: LayoutKind) : Target
     }
 
     /** One placed element: [hit] is its touch target (full bar height), [shape] what is drawn. */
-    class Slot(val target: Target, val hit: RectF, val shape: RectF, val label: String = "")
+    class Slot(val target: Target, val hit: RectF, val shape: RectF, val label: String = "", val locked: Boolean = false)
 
     private class Geometry(val width: Int, val slots: List<Slot>, val middleStart: Float, val middleEnd: Float, val dividers: List<Float>)
 
@@ -159,12 +188,17 @@ class CandidateStripView(context: Context) : View(context) {
         textSize = 10f * d
         typeface = Typeface.DEFAULT_BOLD
     }
+    private val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 16f * d
+        typeface = Typeface.DEFAULT_BOLD
+    }
     private val line = Paint().apply { strokeWidth = 1f * d }
     private val shape = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val chip = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 14f * d; textAlign = Paint.Align.CENTER }
     private val chipBold = Paint(chip).apply { typeface = Typeface.DEFAULT_BOLD }
+    private val chevronPath = Path()
     private val tagLabel = context.getString(R.string.candidate_strip_draft)
-    private val aiLabel = context.getString(R.string.top_bar_ai_label)
 
     fun show(candidates: List<Suggestion>, isDraft: Boolean) {
         if (candidates == items && isDraft == draft) return
@@ -180,6 +214,28 @@ class CandidateStripView(context: Context) : View(context) {
         chooserOpen = false
         modes = options
         activeMode = active
+        changed()
+    }
+
+    /** The shortcuts this field offers, in priority order; the bar shows the first ones that fit. */
+    fun setShortcuts(entries: List<ToolEntry>) {
+        if (entries == shortcuts) return
+        shortcuts = entries
+        changed()
+    }
+
+    /** Tools whose panel or row is open: their shortcut is drawn active. */
+    fun setActiveTools(tools: Set<Tool>) {
+        if (tools == activeTools) return
+        activeTools = tools
+        invalidate()
+        nodes.invalidateRoot()
+    }
+
+    /** Opens the mode chooser (the tools panel's Writing mode tile). */
+    fun openModeChooser() {
+        if (modes.isEmpty() || chooserOpen) return
+        chooserOpen = true
         changed()
     }
 
@@ -210,7 +266,7 @@ class CandidateStripView(context: Context) : View(context) {
     /** The middle (px from the left) for a bar [width] px wide: where candidates, the chooser or the AI actions go. */
     fun middleRange(width: Int = this.width): Pair<Float, Float> = geometry(width).let { it.middleStart to it.middleEnd }
 
-    /** The placed elements for the current width, left to right (gear last). */
+    /** The placed elements for the current width, left to right (the microphone last). */
     fun slots(): List<Slot> = geometry(width).slots
 
     private fun geometry(w: Int): Geometry {
@@ -223,19 +279,30 @@ class CandidateStripView(context: Context) : View(context) {
         val cy = h / 2
         val out = ArrayList<Slot>()
         val dividers = ArrayList<Float>()
-        val gear = RectF(w - h, 0f, w.toFloat(), h)
+        val target = TARGET_DP * d
         val pillH = PILL_DP * d
-        var x = 8f * d
+        // The tools button (or the back arrow) always takes the left end.
+        val tools = RectF(0f, 0f, target, h)
+        val title = panelTitle
+        if (title != null) {
+            out += Slot(Target.Tools, tools, tools, context.getString(R.string.emoji_back_to_keys))
+            val x = tools.right + 4f * d
+            val r = RectF(x, 0f, w - 8f * d, h)
+            out += Slot(Target.Title, r, r, title)
+            return Geometry(w, out, x, w.toFloat(), dividers)
+        }
+        out += Slot(Target.Tools, tools, tools, context.getString(R.string.tools_title))
+        var x = tools.right
         if (modes.isNotEmpty()) {
             val label = LanguageCatalog.writingModeLabel(activeMode)
             val pw = chipBold.measureText(label) + 24f * d + CHEVRON_DP * d
-            val r = RectF(x, cy - pillH / 2, x + pw, cy + pillH / 2)
-            out += Slot(Target.Pill, RectF(0f, 0f, r.right + 4f * d, h), r, label)
-            dividers += r.right + 8f * d
-            x = r.right + 16f * d
+            val r = RectF(x + 2f * d, cy - pillH / 2, x + 2f * d + pw, cy + pillH / 2)
+            out += Slot(Target.Pill, RectF(x, 0f, r.right + 4f * d, h), r, label)
+            x = r.right + 8f * d
         }
-        val mic = if (micShown) RectF(gear.left - h * MIC_WIDTH, 0f, gear.left, h) else null
-        val end = mic?.left ?: gear.left
+        val mic = if (micShown) RectF(w - target, 0f, w.toFloat(), h) else null
+        val end = mic?.left ?: (w - 4f * d)
+        var middleStart = x
         when {
             isModeChooserOpen -> {
                 val gap = 6f * d
@@ -247,14 +314,8 @@ class CandidateStripView(context: Context) : View(context) {
                     ox += ow + gap
                 }
             }
-            showsAiEntry -> {
-                val aw = if (aiEntry == AiEntry.OPEN) pillH else AI_ICON_DP * d + chipBold.measureText(aiLabel) + 22f * d
-                val r = RectF(x, cy - pillH / 2, x + aw, cy + pillH / 2)
-                out += Slot(Target.Ai, RectF(r.left - 6f * d, 0f, r.right + 4f * d, h), r, aiLabel)
-                x = r.right + 6f * d
-            }
-            else -> {
-                if (draft && items.isNotEmpty()) {
+            items.isNotEmpty() -> {
+                if (draft) {
                     val tw = tag.measureText(tagLabel)
                     out += Slot(Target.DraftTag, RectF(x, 0f, x + tw, h), RectF(x, 0f, x + tw, h), tagLabel)
                     x += tw + 10f * d
@@ -270,10 +331,28 @@ class CandidateStripView(context: Context) : View(context) {
                     x += cw
                 }
             }
+            aiEntry == AiEntry.OPEN -> {
+                // The AI actions: a close button, then the row ([KeyboardBar] lays it over the rest of the middle).
+                val r = RectF(x, 0f, x + CLOSE_DP * d, h)
+                out += Slot(Target.AiClose, r, r, context.getString(R.string.top_bar_ai_close))
+                middleStart = r.right
+            }
+            else -> {
+                // The pinned shortcuts: as many as fit at 48 dp each, evenly spread (at most 72 dp apart), centred.
+                val room = end - x
+                val n = min(shortcuts.size, floor(room / target).toInt())
+                if (n > 0) {
+                    val sw = min(room / n, MAX_SHORTCUT_DP * d)
+                    var sx = x + (room - sw * n) / 2
+                    for (e in shortcuts.take(n)) {
+                        val r = RectF(sx, 0f, sx + sw, h)
+                        out += Slot(Target.Shortcut(e.tool), r, r, toolLabel(context, e.tool), e.locked)
+                        sx += sw
+                    }
+                }
+            }
         }
         if (mic != null) out += Slot(Target.Mic, mic, mic, context.getString(R.string.voice_mic))
-        out += Slot(Target.Gear, gear, gear, context.getString(R.string.top_bar_settings))
-        val middleStart = if (showsAiEntry) x else out.firstOrNull { it.target == Target.Pill }?.let { it.shape.right + 16f * d } ?: 8f * d
         return Geometry(w, out, middleStart, end, dividers)
     }
 
@@ -283,11 +362,17 @@ class CandidateStripView(context: Context) : View(context) {
         val g = geometry(width)
         val cy = height / 2f
         for (s in g.slots) {
+            val down = s.target == pressed
             when (val t = s.target) {
-                Target.Gear -> drawGear(canvas, s.shape.centerX(), cy, 10f * d)
-                Target.Mic -> drawMic(canvas, s.shape.centerX(), cy)
-                Target.Pill -> drawPill(canvas, s)
-                Target.Ai -> drawAi(canvas, s.shape)
+                Target.Tools -> drawIcon(canvas, s, if (panelTitle != null) ToolIcon.BACK else ToolIcon.TOOLS, active = false, down)
+                Target.Title -> {
+                    titlePaint.color = textColor
+                    canvas.drawText(fit(s.label, titlePaint, s.shape.width()), s.shape.left, cy - (titlePaint.descent() + titlePaint.ascent()) / 2, titlePaint)
+                }
+                is Target.Shortcut -> drawIcon(canvas, s, t.tool.icon, active = t.tool in activeTools, down)
+                Target.AiClose -> drawIcon(canvas, s, ToolIcon.CLOSE, active = true, down)
+                Target.Mic -> drawIcon(canvas, s, ToolIcon.MIC, active = micActive, down)
+                Target.Pill -> drawPill(canvas, s, down)
                 Target.DraftTag -> {
                     tag.color = draftColor
                     canvas.drawText(tagLabel, s.shape.left, cy - (tag.descent() + tag.ascent()) / 2, tag)
@@ -295,6 +380,11 @@ class CandidateStripView(context: Context) : View(context) {
                 is Target.Candidate -> {
                     val p = if (t.index == 0) bold else text
                     p.color = textColor
+                    if (down) {
+                        shape.style = Paint.Style.FILL
+                        shape.color = divider
+                        canvas.drawRoundRect(s.shape.left + 2f * d, cy - 16f * d, s.shape.right - 2f * d, cy + 16f * d, 8f * d, 8f * d, shape)
+                    }
                     canvas.drawText(s.label, s.shape.left + 14f * d, cy - (p.descent() + p.ascent()) / 2, p)
                 }
                 is Target.Mode -> drawModeOption(canvas, s.shape, s.label, t.kind == activeMode)
@@ -303,66 +393,63 @@ class CandidateStripView(context: Context) : View(context) {
         for (x in g.dividers) canvas.drawLine(x, height * 0.25f, x, height * 0.75f, line)
     }
 
+    /** Shortens [label] with an ellipsis until it fits [max] px. */
+    private fun fit(label: String, p: Paint, max: Float): String {
+        if (p.measureText(label) <= max) return label
+        var n = label.length
+        while (n > 1 && p.measureText(label, 0, n) + p.measureText("…") > max) n--
+        return label.substring(0, n) + "…"
+    }
+
+    /**
+     * One icon button: [ToolIcons] in the strip text colour; active = on an accent circle in the on-accent colour (the
+     * treatment the microphone already had while voice typing listens); pressed = a subtle circle behind it; locked = a
+     * small lock at the lower right.
+     */
+    private fun drawIcon(canvas: Canvas, s: Slot, icon: ToolIcon, active: Boolean, down: Boolean) {
+        val cx = s.hit.centerX()
+        val cy = s.hit.centerY()
+        val r = CIRCLE_DP * d / 2
+        shape.style = Paint.Style.FILL
+        if (active) {
+            shape.color = theme.accent
+            canvas.drawCircle(cx, cy, r, shape)
+        } else if (down) {
+            shape.color = divider
+            canvas.drawCircle(cx, cy, r, shape)
+        }
+        val size = ICON_DP * d
+        ToolIcons.draw(canvas, icon, cx, cy, size, if (active) theme.onAccent else textColor, iconPaint)
+        if (s.locked && !active) {
+            val b = LOCK_DP * d
+            val bx = cx + size / 2 - b / 4
+            val by = cy + size / 2 - b / 4
+            shape.color = bg
+            canvas.drawCircle(bx, by, b * 0.75f, shape)
+            ToolIcons.draw(canvas, ToolIcon.LOCK, bx, by, b, theme.hintText, iconPaint, strokeScale = 1.4f)
+        }
+    }
+
     /** The mode pill with a small chevron: up while the chooser is open, down otherwise. */
-    private fun drawPill(canvas: Canvas, s: Slot) {
+    private fun drawPill(canvas: Canvas, s: Slot, down: Boolean) {
         val r = s.shape
         val cy = r.centerY()
         shape.style = Paint.Style.FILL
-        shape.color = divider
+        shape.color = if (down) theme.pressed else divider
         canvas.drawRoundRect(r, r.height() / 2, r.height() / 2, shape)
-        chipBold.color = textColor
+        chipBold.color = if (down) theme.keyText else textColor
         val textCx = r.left + 12f * d + chipBold.measureText(s.label) / 2
         canvas.drawText(s.label, textCx, cy - (chipBold.descent() + chipBold.ascent()) / 2, chipBold)
         val chevron = CHEVRON_DP * d
         val cx = r.right - 12f * d - chevron / 2 + 2f * d
         val half = chevron / 2
         val dir = if (chooserOpen) -1f else 1f
-        val path = Path().apply {
-            moveTo(cx - half, cy - dir * half / 2)
-            lineTo(cx + half, cy - dir * half / 2)
-            lineTo(cx, cy + dir * half / 2)
-            close()
-        }
-        canvas.drawPath(path, chipBold)
-    }
-
-    /** The AI entry: a pill with a sparkle and "AI" (closed), or a round close button (open). */
-    private fun drawAi(canvas: Canvas, r: RectF) {
-        val cy = r.centerY()
-        shape.style = Paint.Style.FILL
-        shape.color = divider
-        canvas.drawRoundRect(r, r.height() / 2, r.height() / 2, shape)
-        if (aiEntry == AiEntry.OPEN) {
-            line.color = textColor
-            line.strokeWidth = 1.8f * d
-            line.isAntiAlias = true
-            val a = r.height() * 0.2f
-            canvas.drawLine(r.centerX() - a, cy - a, r.centerX() + a, cy + a, line)
-            canvas.drawLine(r.centerX() - a, cy + a, r.centerX() + a, cy - a, line)
-            line.strokeWidth = 1f * d
-            line.color = divider
-            return
-        }
-        val icon = AI_ICON_DP * d
-        drawSparkle(canvas, r.left + 10f * d + icon / 2, cy, icon / 2)
-        chipBold.color = textColor
-        canvas.drawText(aiLabel, r.left + 10f * d + icon + 4f * d + chipBold.measureText(aiLabel) / 2, cy - (chipBold.descent() + chipBold.ascent()) / 2, chipBold)
-    }
-
-    /** A four-pointed sparkle in the text colour. */
-    private fun drawSparkle(canvas: Canvas, cx: Float, cy: Float, r: Float) {
-        val k = r * 0.28f
-        val path = Path().apply {
-            moveTo(cx, cy - r)
-            quadTo(cx + k, cy - k, cx + r, cy)
-            quadTo(cx + k, cy + k, cx, cy + r)
-            quadTo(cx - k, cy + k, cx - r, cy)
-            quadTo(cx - k, cy - k, cx, cy - r)
-            close()
-        }
-        shape.color = textColor
-        shape.style = Paint.Style.FILL
-        canvas.drawPath(path, shape)
+        chevronPath.reset()
+        chevronPath.moveTo(cx - half, cy - dir * half / 2)
+        chevronPath.lineTo(cx + half, cy - dir * half / 2)
+        chevronPath.lineTo(cx, cy + dir * half / 2)
+        chevronPath.close()
+        canvas.drawPath(chevronPath, chipBold)
     }
 
     /** One option of the chooser: the selected mode filled, the others outlined. */
@@ -382,36 +469,6 @@ class CandidateStripView(context: Context) : View(context) {
         p.textSize = size
     }
 
-    /** The microphone: in the text colour, or on an accent circle while voice typing is open. */
-    private fun drawMic(canvas: Canvas, cx: Float, cy: Float) {
-        shape.style = Paint.Style.FILL
-        if (micActive) {
-            shape.color = theme.accent
-            canvas.drawCircle(cx, cy, PILL_DP * d / 2, shape)
-            shape.color = theme.onAccent
-        } else {
-            shape.color = textColor
-        }
-        com.qalsmartkeyboard.ime.voice.VoicePanelView.MainButton.drawMic(canvas, cx, cy, 9f * d, shape, d)
-        shape.strokeWidth = 1.5f * d
-    }
-
-    /** A gear in [textColor]: eight teeth around a ring with an open centre. */
-    private fun drawGear(canvas: Canvas, cx: Float, cy: Float, r: Float) {
-        shape.color = textColor
-        shape.style = Paint.Style.FILL
-        val toothW = r * 0.42f
-        for (i in 0 until 8) {
-            canvas.save()
-            canvas.rotate(i * 45f, cx, cy)
-            canvas.drawRoundRect(cx - toothW / 2, cy - r, cx + toothW / 2, cy - r * 0.55f, toothW * 0.25f, toothW * 0.25f, shape)
-            canvas.restore()
-        }
-        canvas.drawCircle(cx, cy, r * 0.72f, shape)
-        shape.color = bg
-        canvas.drawCircle(cx, cy, r * 0.32f, shape)
-    }
-
     // ------------------------------------------------------------------ touch and actions
 
     private var pressed: Target? = null
@@ -420,34 +477,41 @@ class CandidateStripView(context: Context) : View(context) {
         val p = pressed
         if (p is Target.Candidate) {
             longFired = true
-            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            if (haptics()) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             onLongSelect(p.index)
         }
     }
 
     private fun targetAt(x: Float, y: Float): Target? =
-        geometry(width).slots.firstOrNull { it.target != Target.DraftTag && it.hit.contains(x, y) }?.target
+        geometry(width).slots.firstOrNull { it.target != Target.DraftTag && it.target != Target.Title && it.hit.contains(x, y) }?.target
 
     /** What a tap on [t] does (touch and accessibility click alike). */
     fun activate(t: Target) {
         when (t) {
             is Target.Candidate -> onSelect(t.index)
-            Target.Gear -> { closeModeChooser(); onSettings() }
+            Target.Tools -> { closeModeChooser(); onTools() }
             Target.Mic -> { closeModeChooser(); onMic() }
             Target.Pill -> { chooserOpen = !chooserOpen; changed() }
-            Target.Ai -> onAiToggle()
+            Target.AiClose -> onAiToggle()
+            is Target.Shortcut -> { closeModeChooser(); onShortcut(t.tool) }
             is Target.Mode -> {
                 closeModeChooser()
                 if (t.kind != activeMode) onModeSelected(t.kind)
             }
-            Target.DraftTag -> Unit
+            Target.DraftTag, Target.Title -> Unit
         }
+    }
+
+    private fun setPressed(t: Target?) {
+        if (pressed == t) return
+        pressed = t
+        invalidate()
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                pressed = targetAt(e.x, e.y)
+                setPressed(targetAt(e.x, e.y))
                 longFired = false
                 if (pressed is Target.Candidate) postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
             }
@@ -455,20 +519,20 @@ class CandidateStripView(context: Context) : View(context) {
                 removeCallbacks(longPress)
                 val hit = targetAt(e.x, e.y)
                 val p = pressed
-                pressed = null
+                setPressed(null)
                 if (!longFired && hit != null && hit == p) {
-                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    if (haptics()) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     activate(hit)
                 }
             }
             MotionEvent.ACTION_CANCEL -> {
                 removeCallbacks(longPress)
-                pressed = null
+                setPressed(null)
             }
             MotionEvent.ACTION_MOVE ->
                 if (pressed != null && targetAt(e.x, e.y) != pressed) {
                     removeCallbacks(longPress)
-                    pressed = null
+                    setPressed(null)
                 }
         }
         return true
@@ -495,18 +559,20 @@ class CandidateStripView(context: Context) : View(context) {
 
     /** Stable virtual-view id of a target. */
     internal fun idOf(t: Target): Int = when (t) {
-        Target.Pill -> 1
-        Target.Ai -> 2
+        Target.Tools -> 1
+        Target.AiClose -> 2
         Target.DraftTag -> 3
-        Target.Gear -> 4
+        Target.Title -> 4
         Target.Mic -> 5
+        Target.Pill -> 6
         is Target.Candidate -> 100 + t.index
         is Target.Mode -> 200 + t.kind.ordinal
+        is Target.Shortcut -> 300 + t.tool.ordinal
     }
 
     private fun slotOf(id: Int): Slot? = geometry(width).slots.firstOrNull { idOf(it.target) == id }
 
-    /** One virtual accessibility node per pill, AI entry, DRAFT tag, candidate, chooser option and gear. */
+    /** One virtual accessibility node per element of the bar. */
     private inner class BarNodes : ExploreByTouchHelper(this) {
         override fun getVirtualViewAt(x: Float, y: Float): Int =
             geometry(width).slots.firstOrNull { it.hit.contains(x, y) }?.let { idOf(it.target) } ?: INVALID_ID
@@ -531,14 +597,20 @@ class CandidateStripView(context: Context) : View(context) {
                     node.contentDescription = context.getString(R.string.top_bar_mode, LanguageCatalog.spokenWritingMode(activeMode))
                     node.addAction(AccessibilityActionCompat(click.id, context.getString(R.string.top_bar_mode_change)))
                 }
-                Target.Ai -> {
-                    node.className = Button::class.java.name
-                    node.contentDescription = context.getString(if (aiEntry == AiEntry.OPEN) R.string.top_bar_ai_close else R.string.top_bar_ai_open)
-                    node.addAction(click)
-                }
-                Target.Gear -> {
+                Target.Tools, Target.AiClose -> {
                     node.className = Button::class.java.name
                     node.contentDescription = s.label
+                    node.addAction(click)
+                }
+                Target.Title -> {
+                    node.className = TextView::class.java.name
+                    node.text = s.label
+                    node.isHeading = true
+                }
+                is Target.Shortcut -> {
+                    node.className = Button::class.java.name
+                    node.contentDescription = if (s.locked) context.getString(R.string.tool_locked, s.label) else s.label
+                    node.isSelected = t.tool in activeTools
                     node.addAction(click)
                 }
                 Target.Mic -> {
@@ -565,14 +637,14 @@ class CandidateStripView(context: Context) : View(context) {
                     node.addAction(click)
                 }
             }
-            if (s.target != Target.DraftTag) node.isClickable = true
+            if (s.target != Target.DraftTag && s.target != Target.Title) node.isClickable = true
         }
 
         override fun onPerformActionForVirtualView(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
             val t = slotOf(virtualViewId)?.target ?: return false
             when (action) {
                 AccessibilityNodeInfoCompat.ACTION_CLICK -> {
-                    if (t == Target.DraftTag) return false
+                    if (t == Target.DraftTag || t == Target.Title) return false
                     sendEventForVirtualView(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
                     activate(t)
                 }
@@ -587,12 +659,21 @@ class CandidateStripView(context: Context) : View(context) {
     }
 
     companion object {
-        const val HEIGHT_DP = 40f
-        private const val PILL_DP = 28f
-        private const val CHEVRON_DP = 8f
-        private const val AI_ICON_DP = 12f
+        /** The bar's height (ADR 0035: 44 dp, up from 40, so 22 dp icons sit in Gboard-like room). */
+        const val HEIGHT_DP = 44f
 
-        /** The microphone's touch target, as a fraction of the bar height (gear and mic stay comfortable to hit). */
-        private const val MIC_WIDTH = 1f
+        /** The touch target of every icon button (tools, shortcuts, mic): 48 dp wide, the bar's full height. */
+        const val TARGET_DP = 48f
+
+        /** Shortcuts never spread further apart than this, so a few of them stay a group. */
+        const val MAX_SHORTCUT_DP = 72f
+
+        /** The icon size (dp) of the bar's buttons. */
+        const val ICON_DP = 22f
+        private const val CLOSE_DP = 44f
+        private const val CIRCLE_DP = 36f
+        private const val LOCK_DP = 10f
+        private const val PILL_DP = 30f
+        private const val CHEVRON_DP = 8f
     }
 }

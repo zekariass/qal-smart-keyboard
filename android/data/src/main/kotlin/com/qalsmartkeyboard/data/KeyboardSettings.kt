@@ -163,6 +163,11 @@ data class KeyboardSettings(
     val aiTranslatePairs: Map<String, String> = emptyMap(),
     /** Write Email with AI: the name the user signs e-mails with (remembered on this device only, never synced). */
     val emailSenderName: String = "",
+    /**
+     * Clipboard panel (ADR 0035): remember text copied while the keyboard runs (in memory only, at most 20 clips, each for
+     * an hour, never persisted). On by default; off = the panel offers only the current clip. Device-local, not synced.
+     */
+    val clipboardHistoryEnabled: Boolean = true,
 ) {
     /** Enabled language codes in the user's order. */
     val enabledLanguages: List<String> get() = languages.filter { it.enabled }.map { it.languageCode }

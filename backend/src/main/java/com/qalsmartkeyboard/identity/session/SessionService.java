@@ -313,6 +313,21 @@ public class SessionService implements SessionIssuer, DeviceSessions {
 		return revoked;
 	}
 
+	/**
+	 * Ends every session family of an account whose password was reset, or whose unverified credential was replaced by
+	 * the person who proved control of the mailbox (ADR 0033, reason {@code PASSWORD_CHANGED}). Joins the caller's
+	 * transaction and takes the family locks first, like logout-all.
+	 *
+	 * @return the number of session rows revoked
+	 */
+	public int revokeAllForPasswordChange(UUID userId) {
+		int revoked = revokeFamilies(userId, null, "PASSWORD_CHANGED");
+		if (revoked > 0) {
+			count("password_changed");
+		}
+		return revoked;
+	}
+
 	private int revokeFamilies(UUID userId, UUID keepFamily, String reason) {
 		List<UUID> families = store.activeFamiliesOfUser(userId).stream().filter(f -> !f.equals(keepFamily)).toList();
 		families.forEach(store::lockFamily);

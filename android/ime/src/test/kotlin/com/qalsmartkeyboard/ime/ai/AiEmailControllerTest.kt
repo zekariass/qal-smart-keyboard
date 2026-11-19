@@ -213,6 +213,18 @@ class AiEmailControllerTest {
         assertEquals(AiFailure.NotEntitled, (h.c.step as AiEmailStep.Failed).failure)
     }
 
+    @Test fun aServerRefusalLocksUntilTheAccountChanges() {
+        // ADR 0035: the lock learned from a refusal belongs to the account that got it.
+        val h = H()
+        h.c.open()
+        h.c.instructions.set("x")
+        h.c.generate()
+        h.actions.answer(0, FakeAiActions.fail(AiFailure.NotEntitled))
+        assertTrue(h.c.isLocked)
+        h.actions.availability = AiAvailability(accountGeneration = 1)
+        assertFalse(h.c.isLocked)
+    }
+
     @Test fun theHandoffCarriesTheInputsOnceAndExpires() {
         val h = H()
         h.c.open()

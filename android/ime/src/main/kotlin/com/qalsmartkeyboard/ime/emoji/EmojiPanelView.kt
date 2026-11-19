@@ -26,9 +26,12 @@ import com.qalsmartkeyboard.ime.KeyboardController
 import com.qalsmartkeyboard.ime.PopupItem
 import com.qalsmartkeyboard.ime.PopupOverlay
 import com.qalsmartkeyboard.ime.R
+import com.qalsmartkeyboard.ime.enterIcon
 import com.qalsmartkeyboard.ime.enterLabelText
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
+import com.qalsmartkeyboard.ime.toolbar.ToolIcon
+import com.qalsmartkeyboard.ime.toolbar.ToolIcons
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
@@ -85,6 +88,7 @@ class EmojiPanelView(context: Context) : View(context) {
     private var bgShader: LinearGradient? = null
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glyph = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val icon = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -350,12 +354,14 @@ class EmojiPanelView(context: Context) : View(context) {
                 borderPaint.color = theme.border
                 canvas.drawRoundRect(r.left + hw, r.top + hw, r.right - hw, r.bottom - hw, radius, radius, borderPaint)
             }
-            val label = when (i) {
-                0 -> "ABC"
-                1 -> c.indicator
-                2 -> "⌫"
-                else -> enterLabelText(context, c.profile.enterLabel)
+            // Delete and Enter draw the keyboard's icons (ADR 0035), like the keys they stand for.
+            if (i >= 2) {
+                val icon = if (i == 2) ToolIcon.BACKSPACE else enterIcon(c.profile.enterLabel)
+                val size = min(min(r.width(), r.height()) * 0.5f, 24f * d)
+                ToolIcons.draw(canvas, icon, r.centerX(), r.centerY(), size, if (i == 3) theme.onAccent else theme.specialText, iconPaint)
+                continue
             }
+            val label = if (i == 0) "ABC" else c.indicator
             text.color = when (i) { 1 -> theme.hintText; 3 -> theme.onAccent; else -> theme.specialText }
             text.textSize = (if (i == 1) 13f else if (label.length > 2) 15f else 21f) * d
             val w = text.measureText(label)

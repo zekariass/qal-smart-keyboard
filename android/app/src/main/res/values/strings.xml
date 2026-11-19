@@ -129,6 +129,7 @@
     <string name="acct_signed_out">You are not signed in. Typing works without an account.</string>
     <string name="acct_session_ended">You were signed out because your session ended. Sign in again to continue.</string>
     <string name="acct_signed_in">You are signed in.</string>
+    <string name="acct_signed_in_as">Signed in as %1$s</string>
     <string name="acct_guest">You are using a guest session. Sign in to keep it.</string>
     <string name="acct_sign_in">Sign in</string>
     <string name="acct_sign_out">Sign out</string>
@@ -186,6 +187,44 @@
     <string name="si_err_guest_unavailable">Guest sessions are not available on this device or build.</string>
     <string name="si_err_session_ended">Your session ended. Please try again.</string>
     <string name="si_err_unexpected">Something went wrong. Try again.</string>
+
+    <!-- E-mail and password sign-in (ADR 0033) -->
+    <string name="si_method_phone">Phone</string>
+    <string name="si_method_email">Email</string>
+    <string name="si_email_label">Email</string>
+    <string name="si_email_hint">name@example.com</string>
+    <string name="si_password_label">Password</string>
+    <string name="si_password_new_label">New password</string>
+    <string name="si_password_show">Show</string>
+    <string name="si_password_hide">Hide</string>
+    <string name="si_password_rules">At least %1$d characters. A short sentence is easy to remember and hard to guess.</string>
+    <string name="si_email_sign_in">Sign in with email</string>
+    <string name="si_email_create">Create account</string>
+    <string name="si_forgot">Forgot password?</string>
+    <string name="si_email_new_here">New here? Create an account</string>
+    <string name="si_email_have_account">Already have an account? Sign in</string>
+    <string name="si_email_code_sent">We sent a %1$d-digit code to %2$s. Check your inbox and spam folder.</string>
+    <string name="si_change_email">Use another email</string>
+    <string name="si_reset_title">Reset your password</string>
+    <string name="si_reset_body">Enter your email. If it belongs to an account, we send a code to reset the password.</string>
+    <string name="si_reset_code_sent">If %2$s has an account, we sent a %1$d-digit code to it. Enter it with your new password.</string>
+    <string name="si_reset_button">Change password</string>
+    <string name="si_back_to_sign_in">Back to sign in</string>
+    <string name="si_reset_sent">Code sent. It can take a minute to arrive.</string>
+    <string name="si_reset_done">Your password was changed. Sign in with the new password.</string>
+    <string name="si_err_email_empty">Enter your email address.</string>
+    <string name="si_err_email_invalid">Enter a valid email address, for example name@example.com.</string>
+    <string name="si_err_password_empty">Enter your password.</string>
+    <string name="si_err_password_short">Use at least %1$d characters.</string>
+    <string name="si_err_password_long">Use at most %1$d characters.</string>
+    <string name="si_err_password_common">This password is too easy to guess. Try a short sentence instead.</string>
+    <string name="si_err_password_email">Don\'t use your email address as the password.</string>
+    <string name="si_err_credentials">Email or password is not right.</string>
+    <string name="si_err_locked">Too many wrong passwords. Try again later or reset your password.</string>
+    <string name="si_err_locked_in">Too many wrong passwords. Try again in %1$d min or reset your password.</string>
+    <string name="si_err_email_taken">An account with this email already exists. Sign in or reset the password.</string>
+    <string name="si_err_email_unavailable">Email sign-in is not available right now. Use your phone number or Google.</string>
+    <string name="si_err_reset_code">That code is not right or has expired. Ask for a new code.</string>
 
     <string name="upd_title">Please update the app</string>
     <string name="upd_body">This version of Qal Smart Keyboard is too old to talk to the server. Typing still works; update to sign in and use online features.</string>
@@ -466,4 +505,7 @@
     </plurals>
     <string name="settings_numerals_western_sample" translatable="false">1 2 3</string>
     <string name="settings_numerals_ethiopic_sample" translatable="false">፩ ፪ ፫</string>
+    <!-- ADR 0035: the keyboard's clipboard panel. -->
+    <string name="settings_clipboard_history">Clipboard history</string>
+    <string name="settings_clipboard_history_summary">Recent copies, kept for 1 hour in memory only</string>
 </resources>

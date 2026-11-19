@@ -112,4 +112,33 @@ class IdentityContractDeclarationsTest {
 		assertThat(list.getParameters()).extracting(p -> p.getName()).containsExactlyInAnyOrder("cursor", "limit");
 		assertThat(list.getResponses()).containsKeys("200", "400", "401");
 	}
+
+	/** ADR 0033: the e-mail operations declare what the server answers, and the shapes it relies on. */
+	@Test
+	void emailSignInOperationsDeclareTheirStatusesAndShapes() {
+		assertThat(op("/api/v1/auth/email/register", PathItem.HttpMethod.POST).getResponses()).containsKeys("201", "202",
+				"400", "401", "409", "429", "503");
+		assertThat(op("/api/v1/auth/email/login", PathItem.HttpMethod.POST).getResponses()).containsKeys("200", "400",
+				"401", "403", "429", "503");
+		Operation verify = op("/api/v1/auth/email/verify", PathItem.HttpMethod.POST);
+		assertThat(verify.getOperationId()).isEqualTo("verifyEmailCode");
+		assertThat(verify.getResponses()).containsKeys("200", "400", "401", "403", "409", "429");
+		Operation resend = op("/api/v1/auth/email/verify/resend", PathItem.HttpMethod.POST);
+		assertThat(resend.getSecurity()).allMatch(Map::isEmpty);
+		assertThat(resend.getResponses()).containsKeys("202", "401", "429", "503");
+		assertThat(op("/api/v1/auth/password/forgot", PathItem.HttpMethod.POST).getResponses()).containsKeys("202",
+				"429", "503");
+		assertThat(op("/api/v1/auth/password/reset", PathItem.HttpMethod.POST).getResponses()).containsKeys("204", "400",
+				"429", "503");
+		assertThat(API.getComponents().getSchemas().get("PasswordResetRequest").getRequired())
+				.containsExactlyInAnyOrder("email", "token", "newPassword");
+		assertThat(API.getComponents().getSchemas().get("EmailVerificationChallenge").getRequired())
+				.containsExactlyInAnyOrder("challengeId", "expiresAt", "codeLength");
+		assertThat(API.getComponents().getSchemas().get("UserProfile").getProperties()).containsKeys("email",
+				"emailVerified");
+		String codes = ((Schema<?>) API.getComponents().getSchemas().get("Problem").getProperties().get("code"))
+				.getDescription();
+		assertThat(codes).contains("INVALID_CREDENTIALS", "ACCOUNT_LOCKED", "EMAIL_NOT_VERIFIED", "EMAIL_NOT_CONFIGURED",
+				"RESET_CODE_INVALID", "EMAIL_ALREADY_REGISTERED");
+	}
 }

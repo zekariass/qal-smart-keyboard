@@ -29,11 +29,13 @@ final class ApiPaths {
 	static final RequestMatcher OPTIONAL_BEARER = new OrRequestMatcher(List.of(
 			post("/api/v1/auth/attestation-nonces"), post("/api/v1/auth/otp/start"), post("/api/v1/auth/otp/verify"),
 			post("/api/v1/auth/oauth/{provider}"), post("/api/v1/auth/email/register"), post("/api/v1/auth/email/login"),
+			post("/api/v1/auth/email/verify"),
 			get("/api/v1/config"), get("/api/v1/ai/capabilities"), get("/api/v1/languages"),
 			get("/api/v1/languages/{languageCode}/transliteration-profiles"), get("/api/v1/language-resources"),
 			get("/api/v1/language-resources/{resourceId}"), get("/api/v1/resource-signing-keys")));
 
 	static final RequestMatcher NO_BEARER = new OrRequestMatcher(List.of(post("/api/v1/auth/password/forgot"),
+			post("/api/v1/auth/email/verify/resend"),
 			post("/api/v1/auth/password/reset"), post("/api/v1/auth/refresh"), post("/api/v1/auth/guest"),
 			post("/api/v1/billing/webhooks/{providerCode}/{accountCode}"),
 			post("/api/v1/billing/store-notifications/{providerCode}"), get("/.well-known/jwks.json"),

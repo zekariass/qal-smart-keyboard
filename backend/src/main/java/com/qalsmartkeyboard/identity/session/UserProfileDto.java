@@ -13,13 +13,22 @@ import com.qalsmartkeyboard.identity.account.UserAccount;
  * one to one when it does.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record UserProfileDto(UUID id, String accountType, String accountStatus, String displayName,
-		String phoneNumberMasked, Boolean phoneVerified, String uiLocale, String timeZone, Instant createdAt) {
+public record UserProfileDto(UUID id, String accountType, String accountStatus, String displayName, String email,
+		Boolean emailVerified, String phoneNumberMasked, Boolean phoneVerified, String uiLocale, String timeZone,
+		Instant createdAt) {
 
+	/** {@code email}/{@code emailVerified} only for an account with its own address (e-mail sign-in, ADR 0033). */
 	public static UserProfileDto of(UserAccount user) {
-		return new UserProfileDto(user.id(), user.accountType(), user.accountStatus(), user.displayName(),
-				maskPhone(user.phoneE164()), user.phoneE164() == null ? null : user.phoneVerifiedAt() != null,
-				user.uiLocale(), user.timeZone(), user.createdAt());
+		return new UserProfileDto(user.id(), user.accountType(), user.accountStatus(), user.displayName(), user.email(),
+				user.email() == null ? null : user.emailVerifiedAt() != null, maskPhone(user.phoneE164()),
+				user.phoneE164() == null ? null : user.phoneVerifiedAt() != null, user.uiLocale(), user.timeZone(),
+				user.createdAt());
+	}
+
+	/** Never prints the address. */
+	@Override
+	public String toString() {
+		return "UserProfileDto[id=" + id + ", accountType=" + accountType + "]";
 	}
 
 	/**

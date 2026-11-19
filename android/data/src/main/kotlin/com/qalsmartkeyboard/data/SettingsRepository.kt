@@ -140,6 +140,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val AI_PREFERRED_TARGET = stringPreferencesKey("ai_preferred_target")
         private val AI_TRANSLATE_PAIRS = stringPreferencesKey("ai_translate_pairs")
         private val EMAIL_SENDER_NAME = stringPreferencesKey("email_sender_name")
+        private val CLIPBOARD_HISTORY = booleanPreferencesKey("clipboard_history_enabled")
 
         private const val FIELD = "|"
         private const val LINE = "\n"
@@ -170,6 +171,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[AI_PREFERRED_TARGET] = s.aiPreferredTarget.orEmpty()
             p[AI_TRANSLATE_PAIRS] = encodeMap(s.aiTranslatePairs)
             p[EMAIL_SENDER_NAME] = s.emailSenderName
+            p[CLIPBOARD_HISTORY] = s.clipboardHistoryEnabled
         }
 
         /** Lenient decode: anything missing or unrecognised takes its default; the result is sanitised. */
@@ -215,6 +217,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 aiPreferredTarget = p[AI_PREFERRED_TARGET]?.takeIf { it.isNotEmpty() },
                 aiTranslatePairs = decodeMap(p[AI_TRANSLATE_PAIRS]),
                 emailSenderName = p[EMAIL_SENDER_NAME].orEmpty(),
+                // Additive key (schema stays 1, ADR 0035): files written before it decode to the default (on).
+                clipboardHistoryEnabled = p[CLIPBOARD_HISTORY] ?: d.clipboardHistoryEnabled,
             ).sanitized()
         }
 

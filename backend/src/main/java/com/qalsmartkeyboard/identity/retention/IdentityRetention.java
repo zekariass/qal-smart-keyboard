@@ -22,6 +22,8 @@ import com.qalsmartkeyboard.platform.retention.RetentionSupport;
  * abuse investigation (SD gives no period; V1 note 10 lists these rows for purging).</li>
  * <li>{@code attestation_nonces}: 1 h after expiry (V5 "purged shortly after expiry").</li>
  * <li>{@code password_reset_tokens}: 24 h after expiry (V1 note 10; no writer yet).</li>
+ * <li>{@code email_challenges} (V22, ADR 0033): 24 h after expiry, like OTP challenges. A pending sign-up's sealed
+ * address and password hash go with it.</li>
  * <li>{@code user_sessions}: 30 days after the <b>whole token family</b> expired. Rows of a live family are never
  * touched (a ROTATED row is what detects refresh-token reuse), and a family goes as a unit because
  * {@code replaced_by_session_id ON DELETE SET NULL} would otherwise break {@code ck_session_rotation} on the rows left
@@ -42,6 +44,7 @@ class IdentityRetention implements RetentionParticipant {
 	static final String OTP = "otp-challenges";
 	static final String NONCES = "attestation-nonces";
 	static final String RESET_TOKENS = "password-reset-tokens";
+	static final String EMAIL_CHALLENGES = "email-challenges";
 	static final String SESSIONS = "user-sessions";
 	static final String MERGED_GUESTS = "merged-guest-accounts";
 	static final String DELETED_TOMBSTONES = "deleted-account-tombstones";
@@ -66,6 +69,8 @@ class IdentityRetention implements RetentionParticipant {
 						"attestation_nonces, counted from expires_at (V5)"),
 				new RetentionRule(RESET_TOKENS, "identity", RetentionAction.DELETE, Duration.ofHours(24), "UNDEFINED",
 						"password_reset_tokens, counted from expires_at"),
+				new RetentionRule(EMAIL_CHALLENGES, "identity", RetentionAction.DELETE, Duration.ofHours(24),
+						"UNDEFINED", "email_challenges (ADR 0033), counted from expires_at"),
 				new RetentionRule(SESSIONS, "identity", RetentionAction.DELETE, Duration.ofDays(30), "UNDEFINED",
 						"user_sessions of a token family whose every session expired, counted from the latest expires_at"),
 				new RetentionRule(MERGED_GUESTS, "identity", RetentionAction.DELETE, Duration.ofDays(30),
@@ -84,6 +89,8 @@ class IdentityRetention implements RetentionParticipant {
 			case NONCES -> RetentionSupport.deleteBatch(jdbc, "attestation_nonces", "id", "expires_at < :cutoff", now,
 					cutoff, limit);
 			case RESET_TOKENS -> RetentionSupport.deleteBatch(jdbc, "password_reset_tokens", "id",
+					"expires_at < :cutoff", now, cutoff, limit);
+			case EMAIL_CHALLENGES -> RetentionSupport.deleteBatch(jdbc, "email_challenges", "id",
 					"expires_at < :cutoff", now, cutoff, limit);
 			case SESSIONS -> purgeSessions(cutoff, limit);
 			case MERGED_GUESTS -> purgeUsers("account_status = 'MERGED' AND u.updated_at < :cutoff", "u.updated_at",

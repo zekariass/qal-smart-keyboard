@@ -75,6 +75,9 @@ more international or technical term was chosen (ኢንተርነት, ሰርቨ�
 | replace | ይተኩ | ተክኡ | bakka buusaa | |
 | paste | ይለጥፉ | ለጥፉ | maxxansaa | |
 | clipboard | ቅንጥብ ሰሌዳ | ሰሌዳ ቅዳሕ | kuusaa garagalchaa | |
+| clipboard history | የቅንጥብ ሰሌዳ ታሪክ | ታሪኽ ሰሌዳ ቅዳሕ | seenaa kuusaa garagalchaa | ADR 0035 |
+| clear all | ሁሉንም ያጽዱ | ኩሉ ደምስሱ | hunda haqaa | ADR 0035 |
+| tools (keyboard tools panel) | መሣሪያዎች | መሳርሒታት | meeshaalee | ADR 0035; am መሣሪያ also means "device", the plural in the bar title reads as "tools" |
 | delete | ይሰርዙ | ደምስሱ | haqaa | |
 | cancel | ይቅር | ሰርዙ | dhiisaa | ti: ሰርዙ = cancel, ደምስሱ = delete |
 | back | ይመለሱ | ተመለሱ | deebi'aa | |

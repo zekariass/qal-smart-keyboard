@@ -440,4 +440,92 @@ class ApiClientTest {
         val e = failure { getConfig(clients()) }
         assertTrue("was $e", e is ApiError.Unexpected)
     }
+
+    // ------------------------------------------------------------------ ADR 0035: refused tokens, listeners, sign-in without the session
+
+    /** The security chain's refusal of the bearer itself (signature, key id, closed account): RFC 6750 `invalid_token`. */
+    private fun invalidToken() = problem(401, "UNAUTHENTICATED").setHeader("WWW-Authenticate", "Bearer error=\"invalid_token\"")
+
+    @Test
+    fun invalidTokenRefreshesOnceAndRetries() {
+        dispatch { r ->
+            when {
+                r.path == "/api/v1/auth/refresh" -> ok(sessionJson("new-access", "new-refresh"))
+                r.getHeader("Authorization") == "Bearer old-access" -> invalidToken()
+                else -> ok(CONFIG_JSON)
+            }
+        }
+        assertEquals(3, getConfig(clients()).configVersion)
+        assertEquals(TokenPair("new-access", "new-refresh"), store.load())
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test
+    fun invalidTokenWithRejectedRefreshSignsOut() {
+        dispatch { r -> if (r.path == "/api/v1/auth/refresh") problem(401, "UNAUTHENTICATED") else invalidToken() }
+        val e = failure { getConfig(clients()) } as ApiError.SignedOut
+        assertEquals(SignedOutReason.REFRESH_REJECTED, e.reason)
+        assertNull(store.load())
+        assertEquals(SessionState.SignedOut(SignedOutReason.REFRESH_REJECTED), session.state.value)
+    }
+
+    @Test
+    fun invalidTokenAgainAfterRefreshSignsOutWithoutLooping() {
+        val refreshes = AtomicInteger()
+        dispatch { r ->
+            if (r.path == "/api/v1/auth/refresh") {
+                refreshes.incrementAndGet()
+                ok(sessionJson("new-access", "new-refresh"))
+            } else {
+                invalidToken()
+            }
+        }
+        val e = failure { getConfig(clients()) } as ApiError.SignedOut
+        assertEquals(SignedOutReason.ACCESS_TOKEN_REJECTED, e.reason)
+        assertEquals(1, refreshes.get())
+        assertEquals(3, server.requestCount)
+        assertNull(store.load())
+    }
+
+    @Test
+    fun guestRefusalOfAReplacedTokenKeepsTheNewSession() {
+        dispatch { r ->
+            if (r.getHeader("Authorization") == "Bearer old-access") {
+                // A sign-in replaced the guest pair while this request was in flight.
+                session.signedIn(TokenPair("account-access", "account-refresh"))
+                problem(401, "GUEST_SESSION_INVALID")
+            } else {
+                ok(CONFIG_JSON)
+            }
+        }
+        assertEquals(3, getConfig(clients()).configVersion)
+        assertEquals(TokenPair("account-access", "account-refresh"), store.load())
+        assertEquals(SessionState.SignedIn, session.state.value)
+        server.takeRequest()
+        assertEquals("Bearer account-access", server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test
+    fun listenersSeeEverySessionChangeIncludingAccountSwitches() {
+        val calls = AtomicInteger()
+        val handle = session.addListener { calls.incrementAndGet() }
+        session.signedIn(TokenPair("a", "b"))
+        session.signedIn(TokenPair("c", "d")) // SignedIn -> SignedIn: the StateFlow conflates it, the listener does not
+        session.signedOut(SignedOutReason.SIGNED_OUT)
+        assertEquals(3, calls.get())
+        handle.close()
+        session.signedIn(TokenPair("e", "f"))
+        assertEquals(3, calls.get())
+    }
+
+    @Test
+    fun anonymousAuthSendsNoBearerAndNeverRefreshes() {
+        dispatch { invalidToken() }
+        val c = clients()
+        val e = failure { runBlocking { apiCall { c.anonymousAuth.createAttestationNonce() } } }
+        assertEquals(401, e.status)
+        assertNull(server.takeRequest().getHeader("Authorization"))
+        assertEquals(1, server.requestCount)
+        assertEquals(TokenPair("old-access", "old-refresh"), store.load())
+    }
 }

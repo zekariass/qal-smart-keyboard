@@ -129,6 +129,7 @@
     <string name="acct_signed_out">Hin seenne. Barreessuun akkaawuntii malee hojjeta.</string>
     <string name="acct_session_ended">Yeroon tajaajilaa keessanii waan xumurameef baatanii jirtu. Itti fufuuf irra deebi\'aa seenaa.</string>
     <string name="acct_signed_in">Seentanii jirtu.</string>
+    <string name="acct_signed_in_as">%1$s tiin seentanii jirtu</string>
     <string name="acct_guest">Tajaajila keessummaa fayyadamaa jirtu. Isa eeguuf seenaa.</string>
     <string name="acct_sign_in">Seenuu</string>
     <string name="acct_sign_out">Ba\'uu</string>
@@ -186,6 +187,44 @@
     <string name="si_err_guest_unavailable">Tajaajilli keessummaa meeshaa ykn fooyya\'iinsa kana irratti hin argamu.</string>
     <string name="si_err_session_ended">Yeroon tajaajila keessanii xumurameera. Maaloo irra deebi\'aa yaalaa.</string>
     <string name="si_err_unexpected">Rakkoon uumameera. Irra deebi\'aa yaalaa.</string>
+
+    <!-- E-mail and password sign-in (ADR 0033), DRAFT -->
+    <string name="si_method_phone">Bilbila</string>
+    <string name="si_method_email">Imeelii</string>
+    <string name="si_email_label">Imeelii</string>
+    <string name="si_email_hint">name@example.com</string>
+    <string name="si_password_label">Jecha icciitii</string>
+    <string name="si_password_new_label">Jecha icciitii haaraa</string>
+    <string name="si_password_show">Agarsiisi</string>
+    <string name="si_password_hide">Dhoksi</string>
+    <string name="si_password_rules">Yoo xiqqaate qubee %1$d. Hima gabaabaa yaadachuuf salphaa, tilmaamuuf garuu ulfaataa dha.</string>
+    <string name="si_email_sign_in">Imeeliidhaan seenaa</string>
+    <string name="si_email_create">Akkaawuntii uumaa</string>
+    <string name="si_forgot">Jecha icciitii irraanfattanii?</string>
+    <string name="si_email_new_here">Haaraa dha? Akkaawuntii uumaa</string>
+    <string name="si_email_have_account">Akkaawuntii qabduu? Seenaa</string>
+    <string name="si_email_code_sent">Koodii dijitii %1$d qabu gara %2$s ergineerra. Saanduqa ergaa fi spaamii ilaalaa.</string>
+    <string name="si_change_email">Imeelii biraa fayyadamaa</string>
+    <string name="si_reset_title">Jecha icciitii keessan haaromsaa</string>
+    <string name="si_reset_body">Imeelii keessan galchaa. Kan akkaawuntii tokkoo yoo ta\'e, jecha icciitii jijjiiruuf koodii ni ergina.</string>
+    <string name="si_reset_code_sent">%2$s akkaawuntii yoo qabaate, koodii dijitii %1$d qabu ergineerra. Jecha icciitii haaraa waliin galchaa.</string>
+    <string name="si_reset_button">Jecha icciitii jijjiiri</string>
+    <string name="si_back_to_sign_in">Gara seensaatti deebi\'aa</string>
+    <string name="si_reset_sent">Koodiin ergameera. Ga\'uuf daqiiqaa tokko fudhachuu danda\'a.</string>
+    <string name="si_reset_done">Jechi icciitii keessan jijjiirameera. Jecha icciitii haaraan seenaa.</string>
+    <string name="si_err_email_empty">Imeelii keessan galchaa.</string>
+    <string name="si_err_email_invalid">Imeelii sirrii galchaa, fakkeenyaaf name@example.com.</string>
+    <string name="si_err_password_empty">Jecha icciitii keessan galchaa.</string>
+    <string name="si_err_password_short">Yoo xiqqaate qubee %1$d fayyadamaa.</string>
+    <string name="si_err_password_long">Yoo baay\'ate qubee %1$d fayyadamaa.</string>
+    <string name="si_err_password_common">Jechi icciitii kun salphaatti tilmaamama. Hima gabaabaa yaalaa.</string>
+    <string name="si_err_password_email">Imeelii keessan akka jecha icciitii hin fayyadaminaa.</string>
+    <string name="si_err_credentials">Imeeliin ykn jechi icciitii sirrii miti.</string>
+    <string name="si_err_locked">Jechi icciitii dogoggoraa baay\'ateera. Booda yaalaa ykn jecha icciitii keessan haaromsaa.</string>
+    <string name="si_err_locked_in">Jechi icciitii dogoggoraa baay\'ateera. Daqiiqaa %1$d booda yaalaa ykn jecha icciitii keessan haaromsaa.</string>
+    <string name="si_err_email_taken">Imeelii kanaan akkaawuntiin jira. Seenaa ykn jecha icciitii haaromsaa.</string>
+    <string name="si_err_email_unavailable">Imeeliidhaan seenuun amma hin jiru. Lakkoofsa bilbilaa ykn Google fayyadamaa.</string>
+    <string name="si_err_reset_code">Koodiin sirrii miti ykn yeroon isaa darbeera. Koodii haaraa gaafadhaa.</string>
 
     <string name="upd_title">Maaloo appii haaromsaa</string>
     <string name="upd_body">Fooyya\'iinsi Qal Smart Keyboard kun sarvarii wajjin haasa\'uuf baay\'ee dulloomeera. Barreessuun ammallee hojjeta; seenuu fi amaloota toora irraa fayyadamuuf haaromsaa.</string>
@@ -460,4 +499,7 @@
         <item quantity="one">jecha %1$d</item>
         <item quantity="other">jechoota %1$d</item>
     </plurals>
+    <!-- ADR 0035: the keyboard's clipboard panel. DRAFT (N9). -->
+    <string name="settings_clipboard_history">Seenaa kuusaa garagalchaa</string>
+    <string name="settings_clipboard_history_summary">Kan dhiyeenya garagalfame, yaadannoo keessa qofa sa\'aatii 1 tura</string>
 </resources>
