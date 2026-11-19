@@ -156,7 +156,7 @@ class AiTextActionsIT {
 
 	UUID seededTemplate(String feature) {
 		return jdbc.queryForObject("""
-				SELECT id FROM ai_prompt_templates WHERE feature_code = ? AND template_version = 1
+				SELECT id FROM ai_prompt_templates WHERE feature_code = ?
 				   AND language_scope = '*' AND model_family = '*' AND is_active""", UUID.class, feature);
 	}
 
@@ -168,10 +168,30 @@ class AiTextActionsIT {
 	// ======================================================================================= V20 seeds
 
 	@Test
+	void v21ReplacesTheEmailAndReplyTemplatesWithV2() {
+		Map<String, Object> draft = jdbc.queryForMap("""
+				SELECT template_version, template_body FROM ai_prompt_templates
+				 WHERE feature_code = 'DRAFT_DOCUMENT' AND is_active AND language_scope = '*' AND model_family = '*'""");
+		assertThat(draft.get("template_version")).isEqualTo(2);
+		assertThat((String) draft.get("template_body"))
+				.contains("use the sender's name only in the sign-off, never in the greeting")
+				.doesNotContain("use them in the greeting and the signature");
+		Map<String, Object> reply = jdbc.queryForMap("""
+				SELECT template_version, template_body FROM ai_prompt_templates
+				 WHERE feature_code = 'SMART_REPLY' AND is_active AND language_scope = '*' AND model_family = '*'""");
+		assertThat(reply.get("template_version")).isEqualTo(2);
+		assertThat((String) reply.get("template_body")).contains("Do not number the replies");
+		// v1 is kept (feedback and history rows point at it) but no longer served
+		assertThat(jdbc.queryForObject("""
+				SELECT count(*) FROM ai_prompt_templates WHERE feature_code IN ('DRAFT_DOCUMENT', 'SMART_REPLY')
+				   AND template_version = 1 AND NOT is_active""", Integer.class)).isEqualTo(2);
+	}
+
+	@Test
 	void v20SeedsActiveTemplatesForEveryTextActionAndTheEmailModes() {
 		List<String> features = jdbc.queryForList("""
 				SELECT feature_code FROM ai_prompt_templates
-				 WHERE is_active AND evaluation_status = 'APPROVED' AND template_version = 1
+				 WHERE is_active AND evaluation_status = 'APPROVED'
 				   AND language_scope = '*' AND model_family = '*' ORDER BY feature_code""", String.class);
 		assertThat(features).containsExactly("DRAFT_DOCUMENT", "EXPLAIN_TEXT", "GRAMMAR_CORRECTION", "REWRITE",
 				"SMART_REPLY", "SUMMARIZE", "TONE_ADJUST");
@@ -207,8 +227,8 @@ class AiTextActionsIT {
 				"Today is 2026-11-18 in the Gregorian calendar");
 		String replies = renderer.render(templates.select("SMART_REPLY", "en", null, null).orElseThrow().body(),
 				values);
-		assertThat(replies).contains("suggest 3 different replies", "exactly 3 replies separated by a line that "
-				+ "contains only ---", "the user's own notes", "Variation 2", "[time]");
+		assertThat(replies).contains("suggest 3 different replies", "exactly 3 replies, with a line that "
+				+ "contains only ---", "Do not number the replies", "the user's own notes", "Variation 2", "[time]");
 		String rewrite = renderer.render(templates.select("REWRITE", "en", null, null).orElseThrow().body(),
 				PromptValues.of(new PromptValues.Inputs(AiFeature.REWRITE, "SIMPLIFY", null, null, null, null, null,
 						null, null, "en", "English", null, null, null, null, null, true, true, null)));
