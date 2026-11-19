@@ -1,5 +1,7 @@
 package com.qalsmartkeyboard.ime.toolbar
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
 import android.os.Build
@@ -39,6 +41,17 @@ object Motion {
         view.translationX = fromXPx
         view.translationY = fromYPx
         view.animate().alpha(1f).translationX(0f).translationY(0f)
-            .setDuration(DURATION_MS).setInterpolator(DecelerateInterpolator()).start()
+            .setDuration(DURATION_MS).setInterpolator(DecelerateInterpolator())
+            .setListener(SettleOnCancel(view))
+            .start()
+    }
+
+    /** A cancelled reveal (closed and reopened mid-way, window detached) must never leave the view faded or offset. */
+    private class SettleOnCancel(private val view: View) : AnimatorListenerAdapter() {
+        override fun onAnimationCancel(animation: Animator) {
+            view.alpha = 1f
+            view.translationX = 0f
+            view.translationY = 0f
+        }
     }
 }
