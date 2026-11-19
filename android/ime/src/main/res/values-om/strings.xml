@@ -419,6 +419,26 @@
     <string name="theme_name_deep_sea">Galaana Gadi Fagoo</string>
     <string name="theme_name_berry_dusk">Galgala Ija Mukaa</string>
     <string name="theme_name_mint_frost">Qorra Mintii</string>
+    <string name="theme_name_soft_grey">Gurraacha Laafaa</string>
+    <string name="theme_name_cream">Kiriimii</string>
+    <string name="theme_name_warm_beige">Beejii Ho\'aa</string>
+    <string name="theme_name_sky">Samii</string>
+    <string name="theme_name_peach">Pichii</string>
+    <string name="theme_name_rose">Roozii</string>
+    <string name="theme_name_ice_blue">Cuquliisa Cammaa</string>
+    <string name="theme_name_sage">Sagee</string>
+    <string name="theme_name_coral">Koraalii</string>
+    <string name="theme_name_tibeb">Tibeb</string>
+    <string name="theme_name_deep_navy">Cuquliisa Gad-fageessa</string>
+    <string name="theme_name_slate">Silaatii</string>
+    <string name="theme_name_charcoal">Dhagaa Cilaa</string>
+    <string name="theme_name_teal_night">Halkan Tiilii</string>
+    <string name="theme_name_plum">Pilamii</string>
+    <string name="theme_name_cocoa">Kokoo</string>
+    <string name="theme_name_meskel">Masqala</string>
+    <string name="theme_name_night_gradient">Halkan Bifa Jijjiiramu</string>
+    <string name="theme_name_sunrise_gradient">Bakka Bahaa Bifa Jijjiiramu</string>
+    <string name="theme_name_pastel_rainbow">Salphaa Ravaa Kamiyyaa</string>
 
     <!-- Word Art style names -->
     <string name="wordart_style_bold">Furdaa</string>

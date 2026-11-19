@@ -79,7 +79,9 @@
 
     <!-- Keyboard themes -->
     <string name="themes_title">Bifa kiiboordii</string>
-    <string name="themes_section_free">Bifoota bilisaa</string>
+    <string name="themes_section_light">Ifaa</string>
+    <string name="themes_section_dark">Dukkana</string>
+    <string name="themes_section_gradient">Bifa Jijjiiramu</string>
     <string name="themes_section_premium">Bifoota Premium</string>
     <string name="themes_system">Sirna</string>
     <string name="themes_system_hint">Classic Light ykn Classic Dark, akka bilbila keessanii.</string>

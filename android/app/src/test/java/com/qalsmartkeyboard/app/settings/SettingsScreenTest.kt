@@ -18,6 +18,10 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToNode
+import com.qalsmartkeyboard.app.themes.THEME_STRIP_TAG
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -99,6 +103,11 @@ class SettingsScreenTest {
 
     private fun waitFor(condition: (KeyboardSettings) -> Boolean) = compose.waitUntil(5_000) { condition(stored()) }
 
+    /** The strip is a lazy row: a tile far along is not composed until the row is scrolled to it. */
+    private fun stripTile(description: String) = compose.onNodeWithTag(THEME_STRIP_TAG).performScrollToNode(hasContentDescription(description)).let {
+        compose.onNodeWithContentDescription(description)
+    }
+
     private fun systemBack() = compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
 
     // ---------------------------------------------------------------- home and theme strip
@@ -111,15 +120,24 @@ class SettingsScreenTest {
         compose.onNodeWithText("Theme").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
         // The applied theme first and marked; free themes after it.
         compose.onNodeWithContentDescription("System, Selected").assertIsSelected()
-        compose.onNodeWithContentDescription("Midnight").assertExists()
         compose.onAllNodesWithContentDescription("Selected", substring = true).assertCountEquals(1)
+        stripTile("Midnight").assertExists()
         compose.onNodeWithText("View more").performClick()
         assertEquals(listOf<String?>(null), themesOpened)
     }
 
+    @Test fun theStripScrollsToEveryThemeAndAppliesANewOne() {
+        show()
+        // The last free (new) theme is far along the row; it is reachable and applies.
+        stripTile("Pastel Rainbow").performClick()
+        waitFor { it.theme == "pastel_rainbow" }
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Pastel Rainbow, Selected").assertIsSelected()
+    }
+
     @Test fun tappingAFreeThemeAppliesIt() {
         show()
-        compose.onNodeWithContentDescription("Midnight").performScrollTo().performClick()
+        stripTile("Midnight").performClick()
         waitFor { it.theme == "midnight" }
         compose.waitForIdle()
         // The applied theme moves to the front and carries the mark.
@@ -133,7 +151,7 @@ class SettingsScreenTest {
         // The chosen premium theme stays first, with its lock, so the way to unlock it is one tap away.
         compose.onNodeWithContentDescription("Aurora, Premium theme, locked, Selected").performClick()
         assertEquals(listOf<String?>("aurora"), themesOpened)
-        compose.onNodeWithContentDescription("Midnight").performScrollTo().performClick()
+        stripTile("Midnight").performClick()
         waitFor { it.theme == "midnight" } // a free theme still applies
         assertEquals(listOf<String?>("aurora"), themesOpened)
     }

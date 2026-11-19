@@ -15,6 +15,9 @@ fun interface ThemeStore {
 
 fun SettingsRepository.themeStore() = ThemeStore { id -> update { it.copy(theme = id) } }
 
+/** The gallery's sections (ADR 0042), in display order; [SYSTEM] has no heading of its own (it leads the first row). */
+enum class ThemeGroup { LIGHT, DARK, GRADIENT, PREMIUM }
+
 /** What [ThemePickerModel.apply] did. */
 enum class ApplyResult {
     /** Stored: the keyboard draws it from the next draw. */
@@ -60,6 +63,19 @@ class ThemePickerModel(private val store: ThemeStore, initialPreview: String? = 
     }
 
     companion object {
+        /** Premium themes form their own group; free ones are gradients, else light or dark by their background. */
+        fun groupOf(theme: KeyboardTheme): ThemeGroup = when {
+            theme.isPremium -> ThemeGroup.PREMIUM
+            theme.isGradient -> ThemeGroup.GRADIENT
+            theme.isLight -> ThemeGroup.LIGHT
+            else -> ThemeGroup.DARK
+        }
+
+        /** The ids of one gallery section, in catalogue order; [ThemeGroup.LIGHT] starts with "System". */
+        fun idsIn(group: ThemeGroup): List<String> =
+            (if (group == ThemeGroup.LIGHT) listOf(ThemeCatalog.SYSTEM_ID) else emptyList()) +
+                ThemeCatalog.all.filter { groupOf(it) == group }.map { it.id }
+
         fun isKnown(id: String) = id == ThemeCatalog.SYSTEM_ID || ThemeCatalog.find(id) != null
 
         /** The theme drawn in a card or preview for [id]: "System" shows Classic Light or Dark by the device mode. */

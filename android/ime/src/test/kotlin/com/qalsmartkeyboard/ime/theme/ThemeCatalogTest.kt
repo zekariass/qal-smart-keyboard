@@ -23,13 +23,43 @@ class ThemeCatalogTest {
     }
 
     @Test fun requiredThemesArePresentInTheirTier() {
-        assertEquals(freeNames, ThemeCatalog.free.map { it.name })
+        assertEquals(freeNames, ThemeCatalog.free.map { it.name }.take(freeNames.size))
         assertTrue(ThemeCatalog.free.all { it.tier == ThemeTier.FREE && !it.isPremium })
         val premium = ThemeCatalog.premium.map { it.name }
         assertTrue(premium.containsAll(premiumNames))
         assertTrue("3 to 5 more premium themes", premium.size - premiumNames.size in 3..5)
         assertTrue(ThemeCatalog.premium.all { it.isPremium })
         assertEquals(ThemeCatalog.all.size, ThemeCatalog.free.size + ThemeCatalog.premium.size)
+    }
+
+    /** ADR 0042: the ids and tiers released before the theme gallery never change (a saved id must keep resolving). */
+    @Test fun existingThemesKeepTheirIdsAndTiers() {
+        val freeIds = listOf("classic_light", "classic_dark", "minimal_white", "midnight", "forest_green", "ocean_blue", "lavender", "soft_pink")
+        val premiumIds = listOf(
+            "premium_purple", "amoled_black", "emerald", "sunset", "aurora", "elegant_gold", "modern_gradient",
+            "graphite", "desert_sand", "deep_sea", "berry_dusk", "mint_frost",
+        )
+        for (id in freeIds) assertEquals(id, ThemeTier.FREE, ThemeCatalog.find(id)?.tier)
+        for (id in premiumIds) assertEquals(id, ThemeTier.PREMIUM, ThemeCatalog.find(id)?.tier)
+        assertEquals(freeIds + premiumIds, ThemeCatalog.all.map { it.id }.take(freeIds.size + premiumIds.size).let { all ->
+            all.filter { it in freeIds } + all.filter { it in premiumIds }
+        })
+    }
+
+    @Test fun newThemesAreFreeVariedAndAboutTwentyStrong() {
+        val newOnes = ThemeCatalog.all.drop(20)
+        assertEquals(20, newOnes.size)
+        assertTrue(newOnes.all { it.tier == ThemeTier.FREE })
+        assertTrue("at most 3 gradients", newOnes.count { it.isGradient } in 1..3)
+        assertTrue("some borders", newOnes.count { it.hasBorder } >= 2)
+        assertTrue(newOnes.any { it.isLight } && newOnes.any { !it.isLight })
+        // Visibly different from each other: no two share both the background and the key fill.
+        assertEquals(newOnes.size, newOnes.map { it.bgTop to it.key }.toSet().size)
+        assertEquals(ThemeCatalog.all.size, ThemeCatalog.all.map { it.bgTop to it.key to it.accent }.toSet().size)
+    }
+
+    @Test fun everyThemeHasAnExplicitUiName() {
+        for (t in ThemeCatalog.all) assertTrue(t.id, ThemeNames.RES.containsKey(t.id))
     }
 
     @Test fun lookupAndClassicFallback() {

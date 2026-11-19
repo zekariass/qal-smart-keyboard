@@ -257,7 +257,10 @@ class ToolbarRenderTest {
         val dir = System.getenv("QAL_RENDER_DIR")
         assumeTrue("set QAL_RENDER_DIR to render", !dir.isNullOrEmpty())
         val out = File(dir!!).also { it.mkdirs() }
-        for (theme in listOf(ThemeCatalog.classicLight, ThemeCatalog.classicDark) + ThemeCatalog.all.filter { it.isGradient || it.hasBorder }.take(3)) {
+        // QAL_RENDER_NEW=1 renders the 20 gallery themes (ADR 0042) as well: keys, tools and clipboard (no translate set).
+        val gallery = if (System.getenv("QAL_RENDER_NEW") == "1") ThemeCatalog.all.drop(20) else emptyList()
+        val base = listOf(ThemeCatalog.classicLight, ThemeCatalog.classicDark) + ThemeCatalog.all.take(20).filter { it.isGradient || it.hasBorder }.take(3)
+        for (theme in base + gallery) {
             val controller = KeyboardController(Sink()) {}
             controller.startField(InputProfile.from(InputType.TYPE_CLASS_TEXT, 0, false, 0))
             val keys = KeyboardSurface(ctx).also { it.controller = controller; it.theme = theme }
@@ -286,9 +289,11 @@ class ToolbarRenderTest {
                 File(out, "keys-${theme.id}.png"),
             )
             shoot(listOf(bar(theme) { s, _ -> s.panelTitle = "Tools" }, tools), File(out, "tools-${theme.id}.png"))
-            renderAi(theme, keys, out)
-            renderEditorRow(theme, out)
-            renderTranslate(theme, keys, out)
+            if (theme !in gallery) {
+                renderAi(theme, keys, out)
+                renderEditorRow(theme, out)
+                renderTranslate(theme, keys, out)
+            }
             shoot(listOf(bar(theme) { s, _ -> s.panelTitle = "Clipboard" }, clips), File(out, "clipboard-${theme.id}.png"))
         }
     }

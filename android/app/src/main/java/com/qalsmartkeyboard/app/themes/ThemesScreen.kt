@@ -1,18 +1,23 @@
 package com.qalsmartkeyboard.app.themes
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -31,10 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.qalsmartkeyboard.app.R
 import com.qalsmartkeyboard.app.settings.SettingsScaffold
@@ -109,7 +116,7 @@ fun ThemesHost(
 }
 
 /**
- * The picker: Free and Premium sections of preview cards, a large preview with Apply or Unlock. The system Back (and
+ * The picker: a gallery of preview cards grouped Light, Dark, Gradient and Premium, a large preview with Apply or Unlock. The system Back (and
  * the bar's arrow) closes the preview first, then the picker.
  */
 @Composable
@@ -136,13 +143,19 @@ fun ThemesScreen(
             if (applied != null && applied.isPremium && access != PremiumThemeAccess.ALLOWED) {
                 LockedBanner(themeName(applied), applied.isLight, access, onUnlock)
             }
-            SectionTitle(stringResource(R.string.themes_section_free))
-            val free = listOf(ThemeCatalog.SYSTEM_ID) + ThemeCatalog.free.map { it.id }
-            CardGrid(free) { id -> ThemeCard(id, appliedId, access, systemDark, onPreview) }
-            SectionTitle(stringResource(R.string.themes_section_premium))
-            CardGrid(ThemeCatalog.premium.map { it.id }) { id -> ThemeCard(id, appliedId, access, systemDark, onPreview) }
+            for (group in ThemeGroup.entries) {
+                SectionTitle(stringResource(sectionTitle(group)))
+                CardGrid(ThemePickerModel.idsIn(group)) { id -> ThemeCard(id, appliedId, access, systemDark, onPreview) }
+            }
         }
     }
+}
+
+private fun sectionTitle(group: ThemeGroup): Int = when (group) {
+    ThemeGroup.LIGHT -> R.string.themes_section_light
+    ThemeGroup.DARK -> R.string.themes_section_dark
+    ThemeGroup.GRADIENT -> R.string.themes_section_gradient
+    ThemeGroup.PREMIUM -> R.string.themes_section_premium
 }
 
 @Composable
@@ -155,18 +168,20 @@ private fun SectionTitle(text: String) {
     )
 }
 
-/** Two cards per row; the last odd card keeps half the width. */
+/** Three cards per row (a gallery, as on Gboard); the last short row keeps the card width. */
 @Composable
 private fun CardGrid(ids: List<String>, card: @Composable (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ids.chunked(2).forEach { pair ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                pair.forEach { id -> Column(Modifier.weight(1f)) { card(id) } }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ids.chunked(GRID_COLUMNS).forEach { rowIds ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                rowIds.forEach { id -> Column(Modifier.weight(1f)) { card(id) } }
+                repeat(GRID_COLUMNS - rowIds.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
 }
+
+private const val GRID_COLUMNS = 3
 
 @Composable
 private fun ThemeCard(id: String, appliedId: String, access: PremiumThemeAccess, systemDark: Boolean, onPreview: (String) -> Unit) {
@@ -187,16 +202,29 @@ private fun ThemeCard(id: String, appliedId: String, access: PremiumThemeAccess,
             .padding(2.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        KeyboardThemePreview(
-            theme,
-            Modifier.fillMaxWidth().clip(shape).border(if (isApplied) 2.dp else 1.dp, if (isApplied) colors.primary else colors.outlineVariant, shape),
-            showStrip = false,
+        Box {
+            KeyboardThemePreview(
+                theme,
+                Modifier.fillMaxWidth().clip(shape).border(if (isApplied) 2.dp else 1.dp, if (isApplied) colors.primary else colors.outlineVariant, shape),
+                showStrip = false,
+            )
+            if (isApplied) {
+                Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(18.dp).background(colors.primary, CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(painterResource(R.drawable.ic_settings_check), contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(12.dp))
+                }
+            }
+        }
+        Text(
+            name,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (isApplied) colors.primary else colors.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
-        Text(name, style = MaterialTheme.typography.titleSmall, color = if (isApplied) colors.primary else colors.onSurface)
-        if (system) Text(stringResource(R.string.themes_system_hint), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        if (system) Text(stringResource(R.string.themes_system_hint), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (premium) PremiumBadge(locked)
-            if (isApplied) Text(stringResource(R.string.themes_applied), style = MaterialTheme.typography.labelLarge, color = colors.primary)
+            if (isApplied) Text(stringResource(R.string.themes_applied), style = MaterialTheme.typography.labelMedium, color = colors.primary)
         }
     }
 }
