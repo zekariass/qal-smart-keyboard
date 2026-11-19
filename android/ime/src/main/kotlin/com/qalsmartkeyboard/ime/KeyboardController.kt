@@ -167,9 +167,12 @@ class KeyboardController(
     val keyPreviewsActive: Boolean
         get() = prefs.keyPreviewEnabled && profile.kind != FieldKind.PASSWORD
 
-    /** The strip is shown for phonetic modes only, and never in password fields. */
+    /**
+     * The strip is shown where the language offers suggestions (am/ti Phonetic, Afaan Oromoo Qubee: [LanguageCatalog.offersSuggestions]),
+     * never in password fields, and not when the user turned the language's suggestions off.
+     */
     val showCandidateStrip: Boolean
-        get() = effectiveMode.phonetic && profile.kind != FieldKind.PASSWORD && prefs.showCandidates(language)
+        get() = LanguageCatalog.offersSuggestions(effectiveMode) && profile.kind != FieldKind.PASSWORD && prefs.showCandidates(language)
 
     /** The active profile or layout is DRAFT: the UI must say it is not verified (rule N9). */
     val candidatesAreDraft: Boolean

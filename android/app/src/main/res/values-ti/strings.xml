@@ -406,6 +406,8 @@
     <string name="settings_layout_arabic">ዓረብኛ</string>
     <string name="settings_translit_profile">ፕሮፋይል ትራንስሊተሬሽን: እቲ ሓድሽ ንጡፍ (ባዕሉ)</string>
     <string name="settings_show_candidates">እማመታት ኣርእዩ</string>
+    <string name="settings_suggestions_title">እማመታት</string>
+    <string name="settings_word_suggestions_note">ነቲ ትጽሕፍዎ ዘለኹም ቃል ካብ መዝገበ ቃላት ኣፋን ኦሮሞ (ንድፊ) ዝመጽኡ ቃላት። ጽሑፍኩም ዝቕየር እማመ ምስ ጠወቕኩም ጥራይ እዩ።</string>
     <string name="settings_numerals_title">ቁጽርታት</string>
     <string name="settings_numerals_ethiopic">ቁጽርታት ግእዝ ይቐርቡ</string>
     <string name="settings_numerals_western">ምዕራባዊ</string>

@@ -405,6 +405,8 @@
     <string name="settings_layout_arabic">ዓረብኛ</string>
     <string name="settings_translit_profile">የፊደል ልውውጥ መገለጫ፦ አዲሱ ንቁ (ራስ-ሰር)</string>
     <string name="settings_show_candidates">ጥቆማዎችን አሳይ</string>
+    <string name="settings_suggestions_title">ጥቆማዎች</string>
+    <string name="settings_word_suggestions_note">እየተየቡት ላለው ቃል ከአፋን ኦሮሞ መዝገበ ቃላት (ረቂቅ) የሚመጡ ቃላት። ጽሑፍዎ የሚቀየረው ጥቆማ ሲነኩ ብቻ ነው።</string>
     <string name="settings_numerals_title">ቁጥሮች</string>
     <string name="settings_numerals_ethiopic">የግዕዝ ቁጥሮችም ይቅረቡ</string>
     <string name="settings_numerals_western">ምዕራባዊ</string>

@@ -120,7 +120,10 @@ class CoreLayoutsTest {
         assertTrue(s.c.layout.rows.flatten().any { it.text == "'" })
         s.type("ba'e dhaabbata ")
         assertEquals("ba'e dhaabbata ", s.ed.text.toString()) // exactly as typed, never Ge'ez
-        assertFalse(s.c.showCandidateStrip)
+        assertTrue(s.c.showCandidateStrip) // Afaan Oromoo word suggestions (om dictionary)
+        // Latin punctuation only: no Ethiopic marks on the Qubee keys.
+        val keys = s.c.layout.rows.flatten()
+        assertTrue(keys.none { k -> k.text in Layouts.GEEZ_MARKS || k.popup.any { it.text in Layouts.GEEZ_MARKS } })
     }
 
     @Test fun englishTypesUnchanged() {

@@ -190,7 +190,7 @@ fun AllLanguagesPage(
     }
 }
 
-/** One language: its layout (radio rows with a one-line description) and, for phonetic typing, the suggestion strip. */
+/** One language: its layout (radio rows with a one-line description) and, for phonetic typing and Qubee, the suggestion strip. */
 @Composable
 fun LanguagePage(
     language: TypingLanguageSetting,
@@ -220,6 +220,11 @@ fun LanguagePage(
             SettingsHeader(stringResource(R.string.settings_phonetic_title))
             SettingsSwitchRow(stringResource(R.string.settings_show_candidates), language.showTransliterationCandidates, onShowSuggestions)
             SettingsNote(stringResource(R.string.settings_translit_profile))
+        } else if (LanguageRules.hasWordSuggestions(code)) {
+            // Qubee (Afaan Oromoo) suggests dictionary words for the word being typed; the same per-language switch hides the strip.
+            SettingsHeader(stringResource(R.string.settings_suggestions_title))
+            SettingsSwitchRow(stringResource(R.string.settings_show_candidates), language.showTransliterationCandidates, onShowSuggestions)
+            SettingsNote(stringResource(R.string.settings_word_suggestions_note))
         }
     }
 }
