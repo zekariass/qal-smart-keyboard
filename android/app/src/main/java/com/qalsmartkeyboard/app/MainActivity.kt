@@ -3,7 +3,9 @@ package com.qalsmartkeyboard.app
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.graphics.Color
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -268,6 +270,16 @@ class MainActivity : ComponentActivity() {
             val hasGuest = accountStatus == AccountStatus.Guest
             val systemDark = isSystemInDarkTheme()
             val dark = ThemeCatalog.find(settings.theme)?.let { !it.isLight } ?: systemDark
+            // The app follows the keyboard theme's lightness, not the system's: style the system bars to match, or a
+            // dark theme on a light system draws dark status-bar icons on a dark background (and the reverse).
+            LaunchedEffect(dark) {
+                val style = if (dark) {
+                    SystemBarStyle.dark(Color.TRANSPARENT)
+                } else {
+                    SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                }
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            }
             // First run: show the flow. A re-run from settings stays until finished or skipped.
             val showFlow = completed == false || (rerun && !flow.finished)
             LaunchedEffect(flow.finished) { if (flow.finished) rerun = false }
