@@ -257,6 +257,22 @@ class KeyboardController(
         onChanged()
     }
 
+    /**
+     * Voice typing (ADR 0029): commits recognised [text] to the field, after finishing the open composition as typed.
+     * The text goes straight to the sink, never through the composer or the word learner: dictated words are not
+     * learned into the personal dictionary (privacy, and recognition errors would poison it), and they end the word.
+     */
+    fun commitVoiceText(text: String) {
+        send(ComposerKey.Commit)
+        if (text.isNotEmpty()) sink.apply(ComposerUpdate(commit = text))
+        learner.reset()
+        refreshAutoCapital()
+        onChanged()
+    }
+
+    /** The field's auto-capitalisation would capitalise a letter at the cursor now (voice typing capitalises English there). */
+    fun wantsCapitalAtCursor(): Boolean = profile.capsFlags != 0 && sink.wantsAutoCapital(profile.capsFlags)
+
     /** The composition was given up (field change, cursor moved, keyboard hidden). */
     fun onCompositionAbandoned() {
         composer.reset()

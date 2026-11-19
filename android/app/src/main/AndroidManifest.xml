@@ -5,6 +5,9 @@
     <!-- A2.2: the companion app talks to the API (sign-in). The :ime module must stay network-free
          (NoNetworkTest): the permission lives here only. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- ADR 0029: voice typing. Asked only when the user taps the keyboard's mic (VoicePermissionActivity); audio
+         goes to the phone's speech service, never to Qal. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:name=".QalApplication"
@@ -26,6 +29,21 @@
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ADR 0029: the keyboard opens this (VoiceIntents.ACTION_VOICE_PERMISSION, our package only) because an
+             input method cannot show the permission dialog. Its own task, so finishing it returns to the typing app. -->
+        <activity
+            android:name=".voice.VoicePermissionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="@string/voice_perm_title"
+            android:taskAffinity=""
+            android:theme="@style/Theme.QalSmartKeyboard">
+            <intent-filter>
+                <action android:name="com.qalsmartkeyboard.action.VOICE_PERMISSION" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
