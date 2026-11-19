@@ -64,7 +64,8 @@ public class UserAccountStore {
 	 */
 	private static final String USER_COLUMNS = "u.id, u.account_type, "
 			+ "CASE WHEN u.deleted_at IS NOT NULL THEN 'DELETED' ELSE u.account_status END AS account_status, "
-			+ "u.phone_e164, u.phone_verified_at, u.display_name, u.ui_locale, u.time_zone, u.created_at";
+			+ "u.phone_e164, u.phone_verified_at, u.display_name, u.ui_locale, u.time_zone, u.created_at, u.email, "
+			+ "u.email_verified_at";
 
 	private final JdbcClient jdbc;
 
@@ -245,6 +246,88 @@ public class UserAccountStore {
 	}
 
 	/**
+	 * Creates the {@code REGISTERED}, {@code ACTIVE} account of an e-mail sign-up with its {@code EMAIL} identity
+	 * (subject = the normalised address) and records the login (ADR 0033). The password credential is the caller's. With
+	 * {@code guestToUpgrade} the guest row itself becomes the account (B2.6, ADR 0010), as for phone and Google; the
+	 * caller has locked it. The caller holds the per-address lock and has checked that no live account has the address
+	 * (V1 {@code ux_users_email_normalized} is the backstop).
+	 *
+	 * @param emailVerifiedAt when the mailbox was proven, {@code null} for an unverified sign-up
+	 */
+	public UserAccount createEmailAccount(String email, String emailNormalized, String displayName,
+			Instant emailVerifiedAt, Instant now, UUID guestToUpgrade) {
+		UserAccount created;
+		Timestamp verified = emailVerifiedAt == null ? null : Timestamp.from(emailVerifiedAt);
+		if (guestToUpgrade != null) {
+			created = jdbc.sql("""
+					UPDATE users u SET account_type = 'REGISTERED', email = :email, email_normalized = :normalized,
+					       email_verified_at = :verified, display_name = COALESCE(u.display_name, :displayName),
+					       age_confirmed_at = COALESCE(u.age_confirmed_at, :now), last_login_at = :now, updated_at = :now
+					WHERE u.id = :id AND u.account_type = 'GUEST' AND u.account_status = 'ACTIVE' AND u.deleted_at IS NULL
+					RETURNING """ + " " + USER_COLUMNS).param("email", email).param("normalized", emailNormalized)
+					.param("verified", verified).param("displayName", displayName).param("now", Timestamp.from(now))
+					.param("id", guestToUpgrade).query(UserAccountStore::map).optional()
+					.orElseThrow(UserAccountStore::guestChanged);
+		}
+		else {
+			created = jdbc.sql("""
+					INSERT INTO users AS u (id, account_type, email, email_normalized, email_verified_at, display_name,
+					                        account_status, age_confirmed_at, last_login_at, created_at, updated_at)
+					VALUES (:id, 'REGISTERED', :email, :normalized, :verified, :displayName, 'ACTIVE', :now, :now, :now,
+					        :now)
+					RETURNING """ + " " + USER_COLUMNS).param("id", UUID.randomUUID()).param("email", email)
+					.param("normalized", emailNormalized).param("verified", verified).param("displayName", displayName)
+					.param("now", Timestamp.from(now)).query(UserAccountStore::map).single();
+		}
+		jdbc.sql("""
+				INSERT INTO user_auth_identities (id, user_id, identity_provider, provider_subject, provider_email,
+				                                  created_at, last_used_at)
+				VALUES (:id, :userId, 'EMAIL', :subject, :email, :now, :now)
+				""").param("id", UUID.randomUUID()).param("userId", created.id()).param("subject", emailNormalized)
+				.param("email", email).param("now", Timestamp.from(now)).update();
+		return created;
+	}
+
+	/**
+	 * Records an e-mail sign-in of an existing account (ADR 0033): last login, the {@code EMAIL} identity's last use (the
+	 * identity row is added if an older row lacks it), {@code PENDING} becomes {@code ACTIVE}, and, with
+	 * {@code verifiedNow}, the address counts as verified from now on.
+	 */
+	public UserAccount recordEmailSignIn(UUID userId, boolean verifiedNow, Instant now) {
+		UserAccount updated = jdbc.sql("""
+				UPDATE users u SET last_login_at = :now, updated_at = :now,
+				       email_verified_at = CASE WHEN :verify THEN COALESCE(u.email_verified_at, :now)
+				                                ELSE u.email_verified_at END,
+				       account_status = CASE WHEN u.account_status = 'PENDING' THEN 'ACTIVE' ELSE u.account_status END
+				WHERE u.id = :id
+				RETURNING """ + " " + USER_COLUMNS).param("now", Timestamp.from(now)).param("verify", verifiedNow)
+				.param("id", userId).query(UserAccountStore::map).single();
+		if (updated.email() != null) {
+			String normalized = updated.email().toLowerCase(java.util.Locale.ROOT);
+			jdbc.sql("""
+					INSERT INTO user_auth_identities (id, user_id, identity_provider, provider_subject, provider_email,
+					                                  created_at, last_used_at)
+					VALUES (:id, :userId, 'EMAIL', :subject, :email, :now, :now)
+					ON CONFLICT (user_id, identity_provider) DO UPDATE SET last_used_at = EXCLUDED.last_used_at
+					""").param("id", UUID.randomUUID()).param("userId", userId).param("subject", normalized)
+					.param("email", updated.email()).param("now", Timestamp.from(now)).update();
+		}
+		return updated;
+	}
+
+	/**
+	 * Marks the address of an account as verified (a password reset proves control of the mailbox, ADR 0033) and
+	 * activates a {@code PENDING} account. Does not record a login.
+	 */
+	public void markEmailVerified(UUID userId, Instant now) {
+		jdbc.sql("""
+				UPDATE users u SET email_verified_at = COALESCE(u.email_verified_at, :now), updated_at = :now,
+				       account_status = CASE WHEN u.account_status = 'PENDING' THEN 'ACTIVE' ELSE u.account_status END
+				WHERE u.id = :id
+				""").param("now", Timestamp.from(now)).param("id", userId).update();
+	}
+
+	/**
 	 * Creates an anonymous {@code GUEST} account (SD 9.1): ACTIVE, no email, phone or identity row (V1
 	 * {@code ck_users_guest_has_no_identity}), no age confirmation (it has no personal data and no purchases). Its plan is
 	 * {@code GUEST}, resolved from the account type (SD 15.5), so no subscription row is written.
@@ -344,7 +427,7 @@ public class UserAccountStore {
 		return new UserAccount(rs.getObject("id", UUID.class), rs.getString("account_type"),
 				rs.getString("account_status"), rs.getString("phone_e164"), instant(rs, "phone_verified_at"),
 				rs.getString("display_name"), rs.getString("ui_locale"), rs.getString("time_zone"),
-				instant(rs, "created_at"));
+				instant(rs, "created_at"), rs.getString("email"), instant(rs, "email_verified_at"));
 	}
 
 	private static Instant instant(ResultSet rs, String column) throws SQLException {
