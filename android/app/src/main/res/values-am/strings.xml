@@ -448,8 +448,9 @@
     <string name="settings_suggestions_title">ጥቆማዎች</string>
     <string name="settings_word_suggestions_note">እየተየቡት ላለው ቃል ከአፋን ኦሮሞ መዝገበ ቃላት (ረቂቅ) የሚመጡ ቃላት። ጽሑፍዎ የሚቀየረው ጥቆማ ሲነኩ ብቻ ነው።</string>
     <string name="settings_numerals_title">ቁጥሮች</string>
-    <string name="settings_numerals_ethiopic">የግዕዝ ቁጥሮችም ይቅረቡ</string>
+    <string name="settings_numerals_ethiopic">ግዕዝ</string>
     <string name="settings_numerals_western">ምዕራባዊ</string>
+    <string name="settings_numerals_note">በአማርኛና በትግርኛ (ፊደል እና ፎነቲክ) የግዕዝ ቁጥሮች ይጻፋሉ፤ 1 2 3 ለማግኘት የቁጥር ቁልፉን ተጭነው ይያዙ። የቁጥር፣ የስልክና የቀን መስኮች፣ እንግሊዝኛና ሌሎች ቋንቋዎች ሁልጊዜ 1 2 3 ይጠቀማሉ።</string>
     <string name="settings_haptics">የንዝረት ግብረ መልስ</string>
     <string name="settings_key_preview">የቁልፍ ሲጫን ቅድመ እይታ</string>
     <string name="settings_pack_mobile_data">የቋንቋ ጥቅሎችን በሞባይል ዳታ አዘምን</string>

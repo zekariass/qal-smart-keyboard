@@ -160,14 +160,14 @@ class CoreLayoutsTest {
         s.consonant("S"); s.vowel(1)
         s.tap(period)
         assertEquals("ሰ።", s.ed.text.toString())
-        // the Fidel grid has no digit row: digits (with Ethiopic numeral long-press) are on the ?123 page,
-        // which also carries the marks as keys
+        // the Fidel grid has no digit row: the digits are on the ?123 page (ADR 0043: Ethiopic numerals, the Western
+        // digit on long-press), which also carries the marks as keys
         s.tap(s.key(KeyKind.TO_SYMBOLS))
         val sym = s.c.layout.rows.flatten()
-        val one = sym.first { it.kind == KeyKind.CHAR && it.text == "1" }
-        assertEquals("፩", one.popup.first().text)
-        assertEquals("፩", one.hint)
-        s.pick(one.popup.first())
+        val one = sym.first { it.kind == KeyKind.CHAR && it.text == "፩" }
+        assertEquals("1", one.popup.first().text)
+        assertEquals("1", one.hint)
+        s.tap(one)
         assertEquals("ሰ።፩", s.ed.text.toString())
         s.tap(sym.first { it.text == "፨" })
         assertEquals("ሰ።፩፨", s.ed.text.toString())
@@ -182,10 +182,11 @@ class CoreLayoutsTest {
         assertTrue(s.c.layout.rows.flatten().none { it.text == "፨" })
     }
 
-    @Test fun phoneticAmharicTapsEthiopicPunctuationAndKeepsNumeralsOnLongPress() {
+    @Test fun phoneticAmharicTapsEthiopicPunctuationAndNumeralsWithWesternOnLongPress() {
         val s = session()
         s.mode(amPhonetic)
-        assertEquals("፩", s.c.layout.rows.flatten().first { it.text == "1" }.popup.first().text)
+        // ADR 0043: the digit keys type Ethiopic numerals, the Western digit leads the popup.
+        assertEquals("1", s.c.layout.rows.flatten().first { it.text == "፩" }.popup.first().text)
         // Product owner 2026-11-19: like the Fidel grid, a tap types ። / ፣ and the ASCII mark leads the popup.
         val period = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "።" }
         val comma = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "፣" }

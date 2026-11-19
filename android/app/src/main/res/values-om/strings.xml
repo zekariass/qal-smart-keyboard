@@ -449,8 +449,9 @@
     <string name="settings_suggestions_title">Yaadota</string>
     <string name="settings_word_suggestions_note">Jechoota galmee jechootaa Afaan Oromoo (wixinee) irraa, jecha barreessaa jirtaniif. Barreeffamni keessan kan jijjiiramu yaada tokko yoo tuqxan qofa.</string>
     <string name="settings_numerals_title">Lakkoofsota</string>
-    <string name="settings_numerals_ethiopic">Gi\'iiziin ni dhiyaata</string>
+    <string name="settings_numerals_ethiopic">Gi\'iizii</string>
     <string name="settings_numerals_western">Dhihaa</string>
+    <string name="settings_numerals_note">Afaan Amaaraa fi Tigiriffaatiin (Fidel fi Phonetic) lakkoofsonni Gi\'iizii ni barreeffamu; 1 2 3 argachuuf furtuu lakkoofsaa qabadhaa turaa. Iddoon lakkoofsaa, bilbilaa fi guyyaa, Ingiliffaa fi afaanonni biroo yeroo hunda 1 2 3 fayyadamu.</string>
     <string name="settings_haptics">Raafama tuqaa</string>
     <string name="settings_key_preview">Dursa-ilaalcha furtuu tuqamee</string>
     <string name="settings_pack_mobile_data">Paakeejii afaanii daataa moobaayilaatiin haaromsi</string>

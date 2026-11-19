@@ -122,6 +122,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val VERSION = intPreferencesKey("schema_version")
         private val LANGUAGES = stringPreferencesKey("languages")
         private val NUMERALS = stringPreferencesKey("numeral_style")
+        private val NUMERALS_CHOSEN = booleanPreferencesKey("numeral_style_chosen")
         private val THEME = stringPreferencesKey("theme")
         private val HAPTICS = booleanPreferencesKey("haptics_enabled")
         private val KEY_PREVIEW = booleanPreferencesKey("key_preview_enabled")
@@ -158,6 +159,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 ).joinToString(FIELD)
             }
             p[NUMERALS] = s.numeralStyle.name
+            p[NUMERALS_CHOSEN] = s.numeralStyleChosen
             p[THEME] = s.theme
             p[HAPTICS] = s.hapticsEnabled
             p[KEY_PREVIEW] = s.keyPreviewEnabled
@@ -203,6 +205,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             return KeyboardSettings(
                 languages = languages,
                 numeralStyle = enumOrNull<NumeralStyle>(p[NUMERALS]) ?: d.numeralStyle,
+                // Additive key (schema stays 1, ADR 0043). Older files stored the style on every write, so a stored WESTERN
+                // (the old default) is not a choice; ETHIOPIC was never a default, so it is one.
+                numeralStyleChosen = p[NUMERALS_CHOSEN] ?: (p[NUMERALS] == NumeralStyle.ETHIOPIC.name),
                 theme = ThemeIds.normalize(p[THEME]),
                 hapticsEnabled = p[HAPTICS] ?: d.hapticsEnabled,
                 keyPreviewEnabled = p[KEY_PREVIEW] ?: d.keyPreviewEnabled,

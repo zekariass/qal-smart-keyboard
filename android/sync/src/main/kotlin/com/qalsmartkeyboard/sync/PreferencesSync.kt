@@ -48,7 +48,10 @@ class PreferencesSync internal constructor(
             // Each field only if the user did not change it while the sync ran (then it stays local and wins next time).
             (merged["numeralStyle"] as? JsonPrimitive)?.contentOrNull?.let { n ->
                 val v = NumeralStyle.entries.firstOrNull { it.name == n }
-                if (v != null && cur.numeralStyle == start.numeralStyle) s = s.copy(numeralStyle = v)
+                // A value that differs from this device's was picked on another device (ADR 0043): it counts as a choice.
+                if (v != null && cur.numeralStyle == start.numeralStyle) {
+                    s = s.copy(numeralStyle = v, numeralStyleChosen = s.numeralStyleChosen || v != cur.numeralStyle)
+                }
             }
             (merged["keyboardTheme"] as? JsonPrimitive)?.contentOrNull?.let { n ->
                 // Old clients wrote SYSTEM / LIGHT / DARK; any other value is a theme id (the IME resolves unknown ones).

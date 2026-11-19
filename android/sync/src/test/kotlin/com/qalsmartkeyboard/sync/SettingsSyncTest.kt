@@ -77,6 +77,8 @@ class SettingsSyncTest {
         b.sync()
         val bs = b.settings.current()
         assertEquals(NumeralStyle.ETHIOPIC, bs.numeralStyle)
+        // ADR 0043: a style picked on another device is a choice here too.
+        assertTrue(bs.numeralStyleChosen)
         assertFalse(bs.hapticsEnabled)
         assertEquals(ThemeIds.CLASSIC_LIGHT, bs.theme)
         // Device-local settings never travel.

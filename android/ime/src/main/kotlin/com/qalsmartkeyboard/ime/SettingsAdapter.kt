@@ -56,7 +56,8 @@ class SettingsPreferences(
 
     override val learnWords: Boolean get() = settings().learnWords
 
-    override val ethiopicNumerals: Boolean get() = settings().numeralStyle == NumeralStyle.ETHIOPIC
+    /** ADR 0043: the effective style (Ethiopic until the user picks one). */
+    override val ethiopicNumerals: Boolean get() = settings().effectiveNumeralStyle == NumeralStyle.ETHIOPIC
     override val hapticsEnabled: Boolean get() = settings().hapticsEnabled
     override val keyPreviewEnabled: Boolean get() = settings().keyPreviewEnabled
     override val keyHeightScale: Float get() = settings().keyHeightScale

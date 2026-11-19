@@ -451,8 +451,9 @@
     <string name="settings_suggestions_title">Suggestions</string>
     <string name="settings_word_suggestions_note">Words from the Afaan Oromoo dictionary (draft) for the word you are typing. Your text changes only when you tap a suggestion.</string>
     <string name="settings_numerals_title">Numerals</string>
-    <string name="settings_numerals_ethiopic">Ethiopic offered</string>
+    <string name="settings_numerals_ethiopic">Ethiopic</string>
     <string name="settings_numerals_western">Western</string>
+    <string name="settings_numerals_note">Ethiopic numerals type in Amharic and Tigrinya (Fidel and Phonetic); hold a number key for 1 2 3. Number, phone and date fields, English and the other languages always use 1 2 3.</string>
     <string name="settings_haptics">Haptic feedback</string>
     <string name="settings_key_preview">Key press preview</string>
     <string name="settings_pack_mobile_data">Update language packs on mobile data</string>

@@ -208,7 +208,11 @@ interface ModePreferences {
     /** Words typed are learned into the personal dictionary ("Learn from my typing", ADR 0039). */
     val learnWords: Boolean get() = true
 
-    /** numeralStyle ETHIOPIC: offer Ethiopic numerals as digit alternatives. */
+    /**
+     * numeralStyle ETHIOPIC (ADR 0043): am/ti typed natively (Fidel, Phonetic) put Ethiopic numerals on the digit keys,
+     * Western digits on long-press. The product default (Ethiopic) comes from the settings ([SettingsPreferences]); this
+     * in-memory default stays Western so the plain layout tests keep ASCII digit keys.
+     */
     val ethiopicNumerals: Boolean get() = false
 
     val hapticsEnabled: Boolean get() = true

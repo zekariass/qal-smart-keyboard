@@ -73,7 +73,7 @@ data class LayoutContext(
     /** The enabled languages for the space-bar picker. */
     val picker: List<PopupItem> = emptyList(),
     val draft: Boolean = false,
-    /** numeralStyle ETHIOPIC: Ethiopic numerals are offered as alternatives for typed digits (SD 7.2). */
+    /** numeralStyle ETHIOPIC (ADR 0043): the digit keys of am/ti typed natively type Ethiopic numerals ([ethiopicDigits]). */
     val ethiopicNumerals: Boolean = false,
     /** Phonetic mode: the native output of each letter key (secondary key labels). */
     val hints: PhoneticHints? = null,
@@ -97,6 +97,14 @@ data class LayoutContext(
      */
     val ethiopicPunctuation: Boolean
         get() = LanguageCatalog.isEthiopic(mode.language) && (mode.kind == LayoutKind.FIDEL && grid != null || mode.kind == LayoutKind.PHONETIC)
+
+    /**
+     * ADR 0043: the digit keys type Ethiopic numerals (፩…፱, ፲ on the 0 key), the Western digit on long-press. Only while
+     * Amharic or Tigrinya is typed natively (Fidel or Phonetic) with numeralStyle ETHIOPIC: never in the English (ABC)
+     * writing mode, other languages or the number pad of number, phone and date fields.
+     */
+    val ethiopicDigits: Boolean
+        get() = ethiopicNumerals && LanguageCatalog.isEthiopic(mode.language) && (mode.kind == LayoutKind.FIDEL || mode.kind == LayoutKind.PHONETIC)
 
     /** The Arabic letter layout is in force (ADR 0034): Arabic punctuation, Arabic-Indic digits and the marks. */
     val arabic: Boolean get() = mode.kind == LayoutKind.ARABIC
@@ -165,6 +173,33 @@ object ArabicKeys {
     val SYMBOLS: Map<Char, String> = mapOf(',' to COMMA, ';' to SEMICOLON, '?' to QUESTION, '%' to PERCENT)
 }
 
+/**
+ * Ethiopic numerals (U+1369..U+137C, ADR 0043). Ethiopic has no zero and no place value: 1-9 are ፩…፱, the tens ፲…፺, then
+ * ፻ (100) and ፼ (10 000); 2017 is ፳፻፲፯. The digit row puts ፩…፱ on 1-9 and ፲ on the 0 key (its place in the row,
+ * and the next numeral after ፱), so every numeral is a tap or a long-press away.
+ */
+object EthiopicNumerals {
+    /** What digit key [d] types: ፩…፱ for 1-9, ፲ (ten) for 0. */
+    fun primary(d: Char): String = when (d) {
+        '0' -> "፲"
+        in '1'..'9' -> (0x1369 + (d - '1')).toChar().toString()
+        else -> d.toString()
+    }
+
+    /**
+     * The long-press numerals when no layout pack is loaded (the packs' `digits` list the same): the ten of each digit
+     * (፳ on 2, ...), ፲ on 1, ፻ and ፼ on 0.
+     */
+    fun alternatives(d: Char): List<String> = when (d) {
+        '0' -> listOf("፻", "፼")
+        in '1'..'9' -> listOf(primary(d), (0x1372 + (d - '1')).toChar().toString())
+        else -> emptyList()
+    }
+
+    /** Whether [c] is an Ethiopic number (digit, ten, hundred or ten thousand). */
+    fun isNumeral(c: Char): Boolean = c in '፩'..'፼'
+}
+
 /** Layouts: ASCII QWERTY (A1.2), Qubee, phonetic, the Fidel grid from core data (A1.4) and Arabic (ADR 0034). */
 object Layouts {
     /** Key descriptions in the UI language (ADR 0032); read when a layout is built. */
@@ -208,22 +243,31 @@ object Layouts {
         else -> Page.LETTERS
     }
 
-    private fun digitRow(ctx: LayoutContext): List<Key> = "1234567890".map { d ->
+    private fun digitRow(ctx: LayoutContext): List<Key> = "1234567890".map { digitKey(it, ctx) }
+
+    /** The key of ASCII digit [d] in the digit row (letters and symbols pages). */
+    private fun digitKey(d: Char, ctx: LayoutContext): Key {
         if (ctx.arabic) {
             // Western digits type by default (what most Arabic-script phones send); the Arabic-Indic digit is on long-press.
             val indic = ArabicKeys.indicDigit(d)
-            return@map Key(
+            return Key(
                 KeyKind.CHAR, d.toString(), d.toString(),
                 popup = listOf(PopupItem(indic, description = L.keyArabicNumeral.format(indic))),
                 hint = indic,
             )
         }
-        val alts = if (ctx.ethiopicNumerals && ctx.ethiopic) ctx.grid?.digits?.get(d.toString()).orEmpty() else emptyList()
-        Key(
-            KeyKind.CHAR, d.toString(), d.toString(),
-            popup = alts.map { PopupItem(it, description = L.keyEthiopicNumeral.format(it)) },
-            hint = alts.firstOrNull().orEmpty(),
-        )
+        if (ctx.ethiopicDigits) {
+            // ADR 0043: the Ethiopic numeral types; long-press offers the Western digit first (the hint), then the rest of
+            // the layout pack's alternatives (the tens on 1-9, hundred and ten thousand on the ፲ key).
+            val primary = EthiopicNumerals.primary(d)
+            val others = (ctx.grid?.digits?.get(d.toString()) ?: EthiopicNumerals.alternatives(d)).filter { it != primary }
+            return Key(
+                KeyKind.CHAR, primary, primary,
+                popup = listOf(PopupItem(d.toString())) + others.map { PopupItem(it, description = L.keyEthiopicNumeral.format(it)) },
+                popupColumns = 3, hint = d.toString(), description = L.keyEthiopicNumeral.format(primary),
+            )
+        }
+        return ch(d.toString())
     }
 
     /** One Arabic mark as a popup choice. */

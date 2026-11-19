@@ -73,6 +73,9 @@ class SettingsRepositoryTest {
         assertEquals(InputMode.PHONETIC_LATIN_TO_NATIVE, s.language("ti")!!.inputMode)
         assertEquals("am", s.enabledLanguages.first())
         assertEquals(NumeralStyle.WESTERN, s.numeralStyle)
+        // ADR 0043: nothing picked yet, so am/ti type Ethiopic numerals.
+        assertFalse(s.numeralStyleChosen)
+        assertEquals(NumeralStyle.ETHIOPIC, s.effectiveNumeralStyle)
         assertTrue(s.hapticsEnabled)
         assertTrue(s.keyPreviewEnabled)
         assertEquals(100, s.keyHeightPercent)
@@ -106,6 +109,36 @@ class SettingsRepositoryTest {
         val s = SettingsRepository(store).current()
         assertTrue(s.crashReports)
         assertEquals(110, s.keyHeightPercent)
+    }
+
+    /** ADR 0043: how a file written before `numeral_style_chosen` decodes. */
+    @Test fun numeralStyleMigration() = runBlocking {
+        fun old(name: String, style: String?) = runBlocking {
+            val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "$name.preferences_pb")
+            store.edit {
+                it[intPreferencesKey("schema_version")] = 1
+                if (style != null) it[stringPreferencesKey("numeral_style")] = style
+            }
+            SettingsRepository(store).current()
+        }
+        // The old default WESTERN was written on every save: it cannot be told from a choice, so the new default applies.
+        old("old-western", "WESTERN").let {
+            assertFalse(it.numeralStyleChosen)
+            assertEquals(NumeralStyle.ETHIOPIC, it.effectiveNumeralStyle)
+        }
+        old("old-none", null).let { assertEquals(NumeralStyle.ETHIOPIC, it.effectiveNumeralStyle) }
+        // ETHIOPIC was never a default: it was picked, and stays.
+        old("old-ethiopic", "ETHIOPIC").let {
+            assertTrue(it.numeralStyleChosen)
+            assertEquals(NumeralStyle.ETHIOPIC, it.effectiveNumeralStyle)
+        }
+        // From now on an explicit Western is kept across a restart.
+        val repo = open()
+        repo.update { it.copy(numeralStyle = NumeralStyle.WESTERN, numeralStyleChosen = true) }
+        closeAll()
+        val s = open().current()
+        assertTrue(s.numeralStyleChosen)
+        assertEquals(NumeralStyle.WESTERN, s.effectiveNumeralStyle)
     }
 
     @Test fun persistedAcrossRestart() = runBlocking {
