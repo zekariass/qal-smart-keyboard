@@ -11,6 +11,7 @@ import com.qalsmartkeyboard.ime.ai.AiFailure
 import com.qalsmartkeyboard.ime.ai.AiOutcome
 import com.qalsmartkeyboard.ime.ai.AiRequest
 import com.qalsmartkeyboard.ime.ai.AiTaskKind
+import com.qalsmartkeyboard.ime.ai.TranslationCatalog
 import java.util.concurrent.TimeUnit
 import com.qalsmartkeyboard.sync.AppRule
 import com.qalsmartkeyboard.sync.DestinationProfile
@@ -47,6 +48,12 @@ fun interface DestinationSource {
  * network and the server's own work around the provider call, so a slow answer arrives instead of a client timeout.
  */
 object AiTimeouts {
+    /**
+     * Connecting to the server (TCP and TLS), separate from the call timeouts below: a server that cannot be reached at
+     * all (wrong address, down, a phone build pointing at the emulator's `10.0.2.2`) fails within this as
+     * [AiFailure.Unreachable] instead of hanging until the call timeout and reading "That took too long".
+     */
+    const val CONNECT_SECONDS = 5L
     const val FAST_SECONDS = 8L
     const val TRANSLATE_SECONDS = 15L
     const val QUICK_LLM_SECONDS = 12L
@@ -92,7 +99,19 @@ class ServerAiActions(
     private val saveToHistory: () -> Boolean = { false },
     /** The call timeout in seconds per kind; tests shorten it. */
     private val callTimeouts: (AiTaskKind) -> Long = AiTimeouts::callTimeoutSeconds,
+    /** The device's copy of the translation language catalogue (ADR 0040); null: the bundled five languages only. */
+    private val catalogStore: TranslationCatalogStore? = null,
 ) : AiActions {
+    /**
+     * [aiClient] with the short connect timeout ([AiTimeouts.CONNECT_SECONDS], never longer than the caller's) and the
+     * network interceptor that marks a request once a connection carries it, so a failure before that point is told
+     * apart from a slow answer ([AiFailure.Unreachable] vs [AiFailure.Timeout]).
+     */
+    private val baseClient: OkHttpClient = aiClient.newBuilder()
+        .connectTimeout(minOf(aiClient.connectTimeoutMillis.toLong().takeIf { it > 0 } ?: Long.MAX_VALUE, AiTimeouts.CONNECT_SECONDS * 1000), TimeUnit.MILLISECONDS)
+        .addNetworkInterceptor(ConnectionMark.Interceptor)
+        .build()
+
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     @Volatile private var snapshot: Pair<List<DestinationProfile>, List<AppRule>> = emptyList<DestinationProfile>() to emptyList()
     private val connectivityHandle: AutoCloseable = connectivity.addListener { changed() }
@@ -110,6 +129,7 @@ class ServerAiActions(
         background.execute {
             account = currentAccount()
             entitlements.loadCached()
+            catalogStore?.load()
             snapshot = destinationSource.load()
             lastDestinations?.load()
             changed()
@@ -130,6 +150,7 @@ class ServerAiActions(
             accountGeneration++
             entitlements.clear() // nothing of the previous account stays; notifies the listeners (signed in/out now)
             if (now != null) entitlements.refresh(force = true) // the new account's plan state and offline token
+            catalogStore?.invalidate() // the catalogue follows the plan: fetched again on the next refresh
         }
         changed()
     }
@@ -151,8 +172,12 @@ class ServerAiActions(
 
     override fun destinations(): List<AiDestination> {
         val profiles = snapshot.first.sortedWith(compareBy({ it.sortOrder }, { it.label })).map(::toDestination)
-        return profiles + PLAIN_LANGUAGES.map(::plain)
+        val catalog = translationCatalog()
+        val plain = (PLAIN_LANGUAGES.filter(catalog::isDestination) + catalog.destinations.map { it.code }).distinct()
+        return profiles + plain.map(::plain)
     }
+
+    override fun translationCatalog(): TranslationCatalog = catalogStore?.catalog ?: TranslationCatalog.BUNDLED
 
     /**
      * Precedence: 1. the A2.4 app rule for this app (enabled; its profile if it still exists, else its
@@ -168,23 +193,38 @@ class ServerAiActions(
         }
         lastDestinations?.lastFor(packageName)?.let { id ->
             profiles.firstOrNull { it.localId == id }?.let { return toDestination(it) }
-            if (id.startsWith("lang:") && id.removePrefix("lang:") in PLAIN_LANGUAGES) return plain(id.removePrefix("lang:"))
+            if (id.startsWith("lang:") && translationCatalog().isDestination(id.removePrefix("lang:"))) return plain(id.removePrefix("lang:"))
         }
         return profiles.minWithOrNull(compareBy({ it.sortOrder }, { it.label }))?.let(::toDestination) ?: plain("en")
     }
 
+    /**
+     * Every path ends in exactly one [onOutcome] unless the user cancelled: offline (no request), a request that cannot
+     * even be built (a broken base URL: [AiFailure.Other]), no connection made ([AiFailure.Unreachable]: refused,
+     * unknown host, connect timeout), a connection that failed or timed out after the request went out
+     * ([AiFailure.Offline] / [AiFailure.Timeout]), an HTTP error (its problem code), an unreadable answer
+     * ([AiFailure.Other]). The UI's loading state therefore always ends. The `Idempotency-Key` is the request's id, so a
+     * retry of the same request is replayed by the server, never charged twice (ADR 0031).
+     */
     override fun submit(request: AiRequest, onOutcome: (AiOutcome) -> Unit): AiCall {
         if (!connectivity.isOnline()) {
             onOutcome(AiOutcome.Failure(AiFailure.Offline))
             return AiCall { }
         }
-        val call = clientFor(request.task.kind).newCall(AiWire.request(baseUrl, request, saveToHistory()))
+        val mark = ConnectionMark()
+        val call = try {
+            val built = AiWire.request(baseUrl, request, saveToHistory()).newBuilder().tag(ConnectionMark::class.java, mark).build()
+            clientFor(request.task.kind).newCall(built)
+        } catch (e: RuntimeException) {
+            onOutcome(AiOutcome.Failure(AiFailure.Other)) // a malformed base URL: nothing was sent
+            return AiCall { }
+        }
         // OkHttp also marks a call cancelled when its call timeout fires, so only the user's cancel is silent.
         val userCancelled = java.util.concurrent.atomic.AtomicBoolean(false)
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 if (userCancelled.get()) return
-                onOutcome(AiOutcome.Failure(AiWire.failure(ApiErrors.map(e))))
+                onOutcome(AiOutcome.Failure(transportFailure(e, mark)))
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -192,7 +232,9 @@ class ServerAiActions(
                     response.use { read(request, it) }
                 } catch (e: IOException) {
                     if (userCancelled.get()) return
-                    AiOutcome.Failure(AiWire.failure(ApiErrors.map(e)))
+                    AiOutcome.Failure(transportFailure(e, mark))
+                } catch (e: RuntimeException) {
+                    AiOutcome.Failure(AiFailure.Other) // never leave the caller waiting on a parsing or bookkeeping bug
                 }
                 onOutcome(outcome)
             }
@@ -203,16 +245,23 @@ class ServerAiActions(
         }
     }
 
+    /** No connection ever carried the request: the server could not be reached. Otherwise the usual mapping. */
+    private fun transportFailure(e: IOException, mark: ConnectionMark): AiFailure =
+        if (!mark.connected) AiFailure.Unreachable else AiWire.failure(ApiErrors.map(e))
+
     private val clientsBySeconds = java.util.concurrent.ConcurrentHashMap<Long, OkHttpClient>()
 
     private fun withTimeout(seconds: Long): OkHttpClient {
-        val b = aiClient.newBuilder().callTimeout(seconds, TimeUnit.SECONDS)
+        val b = baseClient.newBuilder().callTimeout(seconds, TimeUnit.SECONDS)
         // A read timeout shorter than the call timeout would end a slow answer early; never shorten it.
-        if (aiClient.readTimeoutMillis in 1 until seconds * 1000) b.readTimeout(seconds, TimeUnit.SECONDS)
+        if (baseClient.readTimeoutMillis in 1 until seconds * 1000) b.readTimeout(seconds, TimeUnit.SECONDS)
         return b.build()
     }
 
-    /** The client whose call timeout fits [kind] ([AiTimeouts]): [aiClient] with that call timeout (same pool and dispatcher). */
+    /**
+     * The client whose call timeout fits [kind] ([AiTimeouts]): [aiClient] with that call timeout and the short connect
+     * timeout (same pool and dispatcher).
+     */
     internal fun clientFor(kind: AiTaskKind): OkHttpClient =
         clientsBySeconds.getOrPut(callTimeouts(kind)) { withTimeout(callTimeouts(kind)) }
 
@@ -248,7 +297,18 @@ class ServerAiActions(
     fun refreshNow() {
         snapshot = destinationSource.load()
         entitlements.refresh()
+        refreshCatalog()
         changed()
+    }
+
+    /**
+     * ADR 0040: the translation language catalogue, when online and not fetched lately (throttled by the store; `ETag`
+     * revalidation). Metadata only: no user text. Blocking: on [background] or a worker.
+     */
+    fun refreshCatalog(force: Boolean = false) {
+        val store = catalogStore ?: return
+        if (!connectivity.isOnline()) return
+        store.refresh(baseClient, baseUrl, force)
     }
 
     override fun addAvailabilityListener(listener: () -> Unit): AutoCloseable {
@@ -277,8 +337,9 @@ class ServerAiActions(
 
     companion object {
         /**
-         * Destinations listed besides the user's profiles: the languages the keyboard types, Arabic included (ADR 0034).
-         * A pair the server cannot translate yet fails as LanguageUnsupported, so nothing is faked.
+         * Destinations listed first besides the user's profiles: the languages the keyboard types, Arabic included (ADR
+         * 0034); the rest of the translation catalogue follows (ADR 0040). A pair the server cannot translate fails as
+         * LanguageUnsupported, so nothing is faked.
          */
         val PLAIN_LANGUAGES = listOf("en", "am", "ti", "om", "ar")
     }
