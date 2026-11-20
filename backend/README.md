@@ -1288,6 +1288,11 @@ nor a webhook body grants anything; the reconciliation task re-verifies open att
 | `ARIFPAY_SECRET_KEY` | ArifPay API key (`x-arifpay-key`); the adapter exists only when set. |
 | `QAL_ARIFPAY_ENVIRONMENT`, `QAL_ARIFPAY_BASE_URL` | `SANDBOX` (default, `https://gateway.arifpay.org`, `/api/sandbox/...` routes) or `PRODUCTION` (`https://gateway.arifpay.net`). |
 | `QAL_ARIFPAY_WEBHOOK_SECRET` | Key of the per-attempt notify token; required (>= 32 chars) under prod-like profiles, random per JVM otherwise. |
+| `CHAPA_SECRET_KEY` | Chapa secret key (`Authorization: Bearer`); the adapter exists only when set. A `CHASECK_TEST-` key needs `QAL_CHAPA_ENVIRONMENT=SANDBOX` (default), a live key `PRODUCTION` (A2). |
+| `CHAPA_WEBHOOK_SECRET` | Chapa dashboard webhook secret hash; required under prod-like profiles, otherwise webhooks are refused. `QAL_CHAPA_BASE_URL`, `QAL_CHAPA_ACCEPT_SECRET_HASH_SIGNATURE` (default true). |
+| `REVENUECAT_SECRET_API_KEY` | RevenueCat v1 secret key for `GET /v1/subscribers/{userId}`; the adapter exists only when set (ADR 0046). |
+| `REVENUECAT_WEBHOOK_AUTH`, `REVENUECAT_WEBHOOK_SIGNING_SECRET` | Exact webhook `Authorization` value (>= 32 chars under prod-like profiles); optional signing secret. |
+| `QAL_REVENUECAT_ENVIRONMENT` | `SANDBOX` (default: test purchases grant) or `PRODUCTION`; the other kind never grants. `QAL_BILLING_STORE_RENEWAL_PENDING` (6h). |
 
 Nothing is purchasable until an operator activates provider, merchant account, methods, products and the market/channel
 policy (named reviewer) — the SQL is in ADR 0045 "Go-live switches". The default provider per country and channel is
@@ -1303,6 +1308,15 @@ any other amount is a verification MISMATCH by design). Run the backend with `DE
 `GET /api/v1/billing/return/{attemptId}` (it queues the verification) and poll the order. Against the real ArifPay
 sandbox use the real sandbox key and no base-URL override; ArifPay must reach `QAL_PUBLIC_BASE_URL` for notifications
 (otherwise the return URL and the reconciliation task still settle the payment).
+
+**Chapa and RevenueCat (step A2, ADR 0045 / ADR 0046).** Chapa is a second hosted-checkout gateway (`CHAPA_CHECKOUT`,
+accounts `chapa-et-sandbox`/`chapa-et-production`, all off; webhook URL `/api/v1/billing/webhooks/CHAPA/{account}`;
+compose stubs `chapa-*.json` follow developer.chapa.co). RevenueCat is the global store option: the app configures the
+SDK with App User ID = `userId`, buys `qal_premium:monthly` etc., then calls `POST /api/v1/billing/store-purchases`
+`{"provider":"REVENUECAT","productId":...}`; RevenueCat webhooks go to `/api/v1/billing/store-notifications/REVENUECAT`.
+Both are verified server to server before anything is granted. Tests: `ChapaProviderTest`, `RevenueCatProviderTest`,
+`StorePurchaseStatesTest`, `BillingChapaRevenueCatIT`; opt-in `ChapaLiveSandboxIT` (`QAL_LIVE_SANDBOX=1` + a test
+`CHAPA_SECRET_KEY`). Duplicate-capture refunds and the provider-vs-ledger report are deferred.
 
 **Tests.** Unit: `CountryResolverTest`, `ProviderRoutingTest`, `BillingMathAndStatesTest`, `ArifPayProviderTest`
 (compose stubs + forced failures). Integration: `BillingPaymentsIT` (Testcontainers + WireMock: options, order, attempt,

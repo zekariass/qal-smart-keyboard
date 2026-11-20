@@ -284,5 +284,44 @@ captures, provider-vs-ledger reconciliation. B: Android paywall (send `X-Qal-Net
 Later: renewal reminders (M4.3; `/renew` and `renewable`), promotions/upgrades (M4.4), the billing data-export
 participant (ADR 0022: `payment_attempts`/`payment_transactions` are now written), admin UI for policies.
 
+## Step A2: Chapa adapter (2026-11-20)
+Docs: https://developer.chapa.co/ (read 2026-11-20; no live key yet, built against WireMock stubs written from the docs,
+`infra/compose/wiremock/mappings/chapa-*.json`). Package `billing.chapa`; the adapter exists only when `CHAPA_SECRET_KEY`
+is set. One host for both modes (`https://api.chapa.co`); the key decides (a `CHASECK_TEST-` key must run with
+`QAL_CHAPA_ENVIRONMENT=SANDBOX`, a live `CHASECK-` key with `PRODUCTION`, else the app refuses to start).
+
+- **Initialize** `POST /v1/transaction/initialize`, `Authorization: Bearer <key>`: `amount` ("299.00"), `currency` ETB,
+  `tx_ref` = attempt id (Chapa refuses a reused one: "Transaction reference has been used before"), `return_url` = our
+  return URL, `callback_url` = the return URL without query (Chapa calls it with a GET `?trx_ref&ref_id&status`; it
+  only queues a verification), `customization {title, description}` in plain characters. No e-mail, name or phone.
+  Answer `{status:"success", data:{checkout_url}}`; no session id, so `tx_ref` is the provider reference.
+- **Verify** `GET /v1/transaction/verify/{tx_ref}`: `data.status` success (with Chapa `reference`) / pending / failed /
+  cancelled; `mode` must be `test` for SANDBOX and `live` for PRODUCTION; the currency must be the order's; the core
+  compares the amount. 404 "Payment not paid yet" / "Transaction not found" = NOT_STARTED (expires after the attempt
+  expiry). refunded / reversed read UNKNOWN with a code.
+- **Webhooks** (dashboard URL `/api/v1/billing/webhooks/CHAPA/{chapa-et-sandbox|chapa-et-production}`, secret hash =
+  `CHAPA_WEBHOOK_SECRET`): valid when `x-chapa-signature` = hex HMAC-SHA256(secret, payload) (raw body, or its compact
+  re-serialisation because Chapa's sample hashes `JSON.stringify(req.body)`), or `chapa-signature` = the payload HMAC or
+  hex HMAC-SHA256(secret, secret) as documented (switch the latter off with
+  `QAL_CHAPA_ACCEPT_SECRET_HASH_SIGNATURE=false`). Dedupe key `chapa:<event>:<reference>:<status>` (Chapa sends no id).
+  Payout events are dropped. As for ArifPay, a webhook only triggers verification.
+- **Refunds** (`POST /v1/refund/{reference}`, `GET /v1/refund/{ref}/verify`) are implemented in the adapter
+  (`supportsRefunds`) but **not used yet**: duplicate-capture refunds and the provider-vs-ledger report are deferred
+  (OI-PAY-12). **Method discovery:** Chapa documents no pay-in method API (`/v1/banks` is for payouts).
+- Doc ambiguities: OI-PAY-11.
+
+**Chapa go-live** (after merchant onboarding; everything seeded off by V26):
+```sql
+UPDATE payment_providers SET provider_status = 'ACTIVE', is_active = TRUE WHERE provider_code = 'CHAPA';
+UPDATE payment_provider_accounts SET account_status = 'ACTIVE', is_active = TRUE WHERE account_code = 'chapa-et-production';
+UPDATE provider_payment_methods SET availability_status = 'AVAILABLE', is_enabled = TRUE, last_verified_at = NOW()
+ WHERE method_code = 'CHAPA_CHECKOUT';
+UPDATE payment_provider_account_methods SET availability_status = 'AVAILABLE', is_enabled = TRUE, last_verified_at = NOW()
+ WHERE provider_account_id = (SELECT id FROM payment_provider_accounts WHERE account_code = 'chapa-et-production');
+```
+Runtime: `CHAPA_SECRET_KEY` (live), `QAL_CHAPA_ENVIRONMENT=PRODUCTION`, `CHAPA_WEBHOOK_SECRET`, `QAL_PUBLIC_BASE_URL`.
+Chapa stays the ET alternative at priority 2; making it the default is the admin `PUT` in "Switching providers"
+(proved end to end by `BillingChapaRevenueCatIT`: options and the checkout provider follow, no deploy).
+
 ## Open items
-OI-PAY-1 … OI-PAY-10 in `docs/adr/0001-open-items.md`.
+OI-PAY-1 … OI-PAY-14 in `docs/adr/0001-open-items.md`. RevenueCat: ADR 0046.
