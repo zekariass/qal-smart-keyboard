@@ -1,0 +1,82 @@
+{
+  "name": "arifpay: get sandbox session ARP-<nonce> -> paid 299.00 ETB by telebirr (local happy path: Premium 30 days; any other amount is a verification MISMATCH, by design)",
+  "priority": 6,
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/arifpay/api/sandbox/checkout/session/ARP-.+",
+    "headers": {
+      "x-arifpay-key": {
+        "matches": ".+"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "error": false,
+      "msg": "No Errors",
+      "data": {
+        "id": 120581,
+        "uuid": "{{regexExtract request.path 'ARP-.+$'}}",
+        "paymentMethodTypes": [
+          {
+            "id": 13,
+            "type": "TELEBIRR_USSD",
+            "description": "Telebirr ussd payment",
+            "disabled": false
+          },
+          {
+            "id": 8,
+            "type": "CBE",
+            "description": "CBE USSD payment",
+            "disabled": false
+          }
+        ],
+        "beneficiaries": [],
+        "items": [
+          {
+            "id": 120881,
+            "productId": null,
+            "name": "Premium (30 days)",
+            "description": null,
+            "price": 299.0,
+            "quantity": 1,
+            "image": null
+          }
+        ],
+        "transaction": {
+          "id": 117284,
+          "transactionId": "SIM-{{randomValue length=8 type='ALPHANUMERIC' uppercase=true}}",
+          "transactionStatus": "SUCCESS",
+          "paymentType": "TELEBIRR_USSD",
+          "amount": 299.0,
+          "fee": 8.6112,
+          "type": "CREDIT",
+          "feeSource": "CUSTOMER",
+          "updatedAt": "2026-11-20T11:05:28.000+00:00",
+          "createdAt": "2026-11-20T11:04:46.000+00:00"
+        },
+        "nonce": "{{regexExtract request.path '[0-9a-f-]{36}$'}}",
+        "cancelUrl": "https://api.example.test/api/v1/billing/return/x?result=cancel",
+        "successUrl": "https://api.example.test/api/v1/billing/return/x?result=success",
+        "notifyUrl": "https://api.example.test/api/v1/billing/webhooks/ARIFPAY/arifpay-et-sandbox?t=x",
+        "totalAmount": 299.0,
+        "errorUrl": "https://api.example.test/api/v1/billing/return/x?result=error",
+        "phone": null,
+        "email": null,
+        "expireDate": "2026-11-20T14:34:46",
+        "test": true,
+        "lang": "EN",
+        "updatedAt": "2026-11-20T11:05:28.000+00:00",
+        "createdAt": "2026-11-20T11:04:46.000+00:00",
+        "currency": null
+      }
+    },
+    "transformers": [
+      "response-template"
+    ]
+  }
+}

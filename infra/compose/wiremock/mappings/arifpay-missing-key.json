@@ -1,0 +1,24 @@
+{
+  "name": "arifpay: any call without x-arifpay-key (live sandbox answers 404 API Key Not found)",
+  "priority": 3,
+  "request": {
+    "method": "ANY",
+    "urlPathPattern": "/arifpay/api/.*",
+    "headers": {
+      "x-arifpay-key": {
+        "absent": true
+      }
+    }
+  },
+  "response": {
+    "status": 404,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "msg": "API Key Not found",
+      "data": null,
+      "error": true
+    }
+  }
+}

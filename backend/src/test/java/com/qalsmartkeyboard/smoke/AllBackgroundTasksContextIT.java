@@ -30,7 +30,8 @@ import com.github.kagkarlsson.scheduler.task.helper.RecurringTask;
         "qal.usage.credit-expiry-enabled=true",
         "qal.privacy.deletion.executor-enabled=true",
         "qal.retention.enabled=true",
-        "qal.ai.idempotency.sweeper-enabled=true" })
+        "qal.ai.idempotency.sweeper-enabled=true",
+        "qal.billing.reconciliation.enabled=true" })
 @Testcontainers
 class AllBackgroundTasksContextIT {
 
@@ -49,7 +50,7 @@ class AllBackgroundTasksContextIT {
         assertFalse(tasks.isEmpty(), "recurring tasks are registered");
         List<String> names = tasks.values().stream().map(t -> t.getName()).toList();
         for (String expected : List.of("privacy-retention", "privacy-account-deletion", "usage-reservation-sweeper", "usage-credit-expiry",
-                "ai-replay-cache-sweeper")) {
+                "ai-replay-cache-sweeper", "billing-payment-reconciliation")) {
             assertTrue(names.contains(expected), () -> "missing recurring task " + expected + " in " + names);
         }
     }

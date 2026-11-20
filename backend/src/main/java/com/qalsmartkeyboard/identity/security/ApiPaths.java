@@ -38,7 +38,8 @@ final class ApiPaths {
 			post("/api/v1/auth/email/verify/resend"),
 			post("/api/v1/auth/password/reset"), post("/api/v1/auth/refresh"), post("/api/v1/auth/guest"),
 			post("/api/v1/billing/webhooks/{providerCode}/{accountCode}"),
-			post("/api/v1/billing/store-notifications/{providerCode}"), get("/.well-known/jwks.json"),
+			post("/api/v1/billing/store-notifications/{providerCode}"), get("/api/v1/billing/return/{attemptId}"),
+			get("/.well-known/jwks.json"),
 			PATHS.matcher("/actuator/health"), PATHS.matcher("/actuator/health/**")));
 
 	static final RequestMatcher PARTNER = PATHS.matcher("/partner/v1/**");

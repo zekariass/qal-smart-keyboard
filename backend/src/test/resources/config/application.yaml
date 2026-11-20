@@ -69,3 +69,16 @@ qal:
     publishing:
       signing:
         allow-ephemeral: true
+  # ADR 0045: tests never pick up the developer's ArifPay key or DEV_MOCK_COUNTRY; the billing ITs configure their own
+  # (WireMock base URL, trusted proxy) and run the reconciliation job by hand.
+  geo:
+    dev-mock-country: ""
+    trusted-proxies: ""
+    edge-secret: ""
+  billing:
+    reconciliation:
+      enabled: false
+    arifpay:
+      api-key: ""
+      base-url: ""
+      webhook-secret: ""

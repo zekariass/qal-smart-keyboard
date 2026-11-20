@@ -1,0 +1,31 @@
+{
+  "name": "arifpay: create sandbox checkout session (shape verified against the live sandbox 2026-11-20, ADR 0045)",
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "urlPath": "/arifpay/api/sandbox/checkout/session",
+    "headers": {
+      "x-arifpay-key": {
+        "matches": ".+"
+      }
+    },
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": "$.nonce"
+      },
+      {
+        "matchesJsonPath": "$.items[0].price"
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\"error\":false,\"msg\":\"No Errors\",\"data\":{\"sessionId\":\"ARP-{{jsonPath request.body '$.nonce'}}\",\"paymentUrl\":\"http://localhost:8089/arifpay/checkout/ARP-{{jsonPath request.body '$.nonce'}}\",\"cancelUrl\":\"http://localhost:8089/arifpay/v0/sandbox/checkout/session/cancel/ARP-{{jsonPath request.body '$.nonce'}}\",\"totalAmount\":{{jsonPath request.body '$.items[0].price'}} }}",
+    "transformers": [
+      "response-template"
+    ]
+  }
+}

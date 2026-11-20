@@ -2220,11 +2220,19 @@ paths:
         ⇒ `purchaseUiAllowed = false`, `purchaseFlow = NONE`). Methods are returned only when the
         provider, merchant account, base method, account method, adapter and policy gates all pass.
         Only public method codes are exposed — never merchant-account IDs or secret references.
-        The market is decided from account/storefront and user-selected country, not IP alone.
+
+        **Billing country (ADR 0045).** The server resolves it and is the final authority: the edge's
+        `CF-IPCountry` (trusted only from a configured edge), checked against the client hints
+        `X-Qal-Network-Country` / `X-Qal-Sim-Country`. Hints alone never unlock a country-specific
+        provider: without a trusted IP country the global default applies. The resolved country is
+        returned as `marketCountry` (`ZZ` = global default) with `marketResolution`; send that value
+        back as `CreateOrderRequest.marketCountry`. Options are ordered by provider priority (the
+        first method is the default). Existing entitlements never depend on the current country.
       parameters:
         - name: marketCountry
           in: query
-          required: true
+          required: false
+          description: Informational client guess; ignored for eligibility (the server resolves the billing country).
           schema: { $ref: '#/components/schemas/CountryCode' }
         - name: clientPlatform
           in: query
@@ -2238,6 +2246,8 @@ paths:
           in: query
           description: Store storefront country reported by the store SDK, when available.
           schema: { type: string, maxLength: 8 }
+        - $ref: '#/components/parameters/NetworkCountry'
+        - $ref: '#/components/parameters/SimCountry'
       responses:
         '200':
           description: Options.
@@ -2302,10 +2312,18 @@ paths:
         EXCLUSIVE)`. Upgrades (`upgradeFromSubscriptionId`) apply the unused value of the
         current term as a server-computed discount. Store purchases do **not** use orders — see
         `/billing/store-purchases`.
+
+        `marketCountry` must equal the billing country the server resolves for this request (ADR
+        0045, see `/billing/options`), otherwise 403 `BILLING_POLICY_DENIED`; `salesChannel` must
+        match `X-Client-Platform` when that header is sent. The resolved country and a summary of
+        the signals (never an IP address) are recorded on the order for audit. Guests get 403
+        `GUEST_NOT_ALLOWED`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/ClientPlatform'
         - $ref: '#/components/parameters/AppVersion'
+        - $ref: '#/components/parameters/NetworkCountry'
+        - $ref: '#/components/parameters/SimCountry'
       requestBody:
         required: true
         content:
@@ -2393,7 +2411,15 @@ paths:
       description: |
         The server resolves the provider, merchant account and account-enabled method from the
         public `methodCode` and the order's market/currency/environment. Retrying with another
-        method creates a new attempt on the same order (never a duplicate entitlement).
+        method creates a new attempt on the same order (never a duplicate entitlement). While a
+        hosted checkout of the same method is still open, a new key returns that open attempt
+        instead of creating a second provider session (ADR 0045).
+
+        Hosted checkout (`nextAction.type = REDIRECT`): open `checkoutUrl` in a WebView or custom
+        tab. The provider sends the payer back to `/api/v1/billing/return/{attemptId}`, which only
+        triggers a server-side verification and redirects (303) to the app's return URI
+        (`qalkeyboard://billing/return?orderId=…&attemptId=…&result=…`); the app intercepts either
+        URL, closes the checkout and polls the order. A return is never proof of payment.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -2426,6 +2452,36 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PaymentAttempt' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/billing/return/{attemptId}:
+    parameters:
+      - $ref: '#/components/parameters/AttemptId'
+    get:
+      tags: [Billing]
+      operationId: returnFromCheckout
+      summary: Landing URL the hosted checkout redirects the payer to
+      description: |
+        Used as the provider's success/cancel/error URL (ADR 0045). No bearer token (the payer's
+        browser arrives here). It never changes payment state: for an open attempt it queues a
+        server-to-server verification (at most once per 30 s per attempt), then answers 303 to the
+        app's allow-listed return URI with `orderId`, `attemptId` and `result`. Unknown attempts
+        are 404.
+      security: []
+      parameters:
+        - name: result
+          in: query
+          required: false
+          description: Which provider URL was used. UX only; never trusted.
+          schema:
+            type: string
+            enum: [success, cancel, error]
+      responses:
+        '303':
+          description: Redirect to the app's return URI.
+          headers:
+            Location:
+              description: e.g. `qalkeyboard://billing/return?orderId=…&attemptId=…&result=success`.
+              schema: { type: string }
         '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/billing/orders/{orderId}/manual-transfer-claims:
     parameters:
@@ -2648,7 +2704,18 @@ paths:
         4. Fetch the transaction from the provider API and match order reference, amount,
            currency, merchant account, method and environment before fulfilment. The webhook body
            alone never grants anything.
+
+        Providers that do not sign their callbacks (ArifPay, ADR 0045) are authenticated with the
+        per-attempt token `t` that the server put into the notify URL (an HMAC of the account and the
+        payment's merchant reference under the account's webhook secret); a missing or wrong token is
+        401 `WEBHOOK_SIGNATURE_INVALID`.
       security: []
+      parameters:
+        - name: t
+          in: query
+          required: false
+          description: Notification token embedded in the notify URL by the server (unsigned providers only). Never logged.
+          schema: { type: string, maxLength: 128 }
       requestBody:
         required: true
         content:
@@ -3578,6 +3645,67 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/v1/billing/provider-routes/{countryCode}/{clientPlatform}/{distributionChannel}:
+    parameters:
+      - name: countryCode
+        in: path
+        required: true
+        description: ISO 3166-1 alpha-2 billing country, or `ZZ` for the global default used by countries without routes.
+        schema: { $ref: '#/components/schemas/CountryCode' }
+      - name: clientPlatform
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/ClientPlatformEnum' }
+      - name: distributionChannel
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/DistributionChannel' }
+    get:
+      tags: [Admin]
+      operationId: getProviderRoutes
+      summary: Ordered payment providers for a country and channel (admin)
+      description: |
+        The provider resolution layer's configuration (ADR 0045): providers in priority order (the first
+        eligible one is the default), each with its live eligibility so an operator can see why one is
+        skipped. Permission `billing:read`. An unconfigured scope returns an empty list with revision 0.
+      x-internal: true
+      responses:
+        '200':
+          description: The route set.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderRouteSet' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Admin]
+      operationId: replaceProviderRoutes
+      summary: Replace the ordered providers for a country and channel (admin)
+      description: |
+        Switches the default provider (e.g. ArifPay ⇄ Chapa for Ethiopia) without a deploy: the list order
+        is the priority order. `expectedRevision` is the revision last read (0 for a new scope); a stale one
+        is 409 `REVISION_CONFLICT` with `currentRevision`. Providers must exist in `payment_providers`;
+        this does not activate a provider, merchant account or market policy (those gates still apply).
+        An empty list removes the scope (countries then fall back to `ZZ`). Permission
+        `providers:configure`; audited as `BILLING_PROVIDER_ROUTES_REPLACE`.
+      x-internal: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProviderRouteSetUpdate' }
+      responses:
+        '200':
+          description: The new route set.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderRouteSet' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
 components:
   securitySchemes:
@@ -3635,6 +3763,23 @@ components:
       required: false
       description: Semantic app version, e.g. `2.0.3`.
       schema: { type: string, maxLength: 40 }
+    NetworkCountry:
+      name: X-Qal-Network-Country
+      in: header
+      required: false
+      description: |
+        Client hint (ADR 0045): ISO 3166-1 alpha-2 country of the mobile network the device is on
+        (Android `TelephonyManager.networkCountryIso`). Case-insensitive; invalid or empty values are
+        ignored. Supporting evidence only: it never unlocks a payment method on its own.
+      schema: { type: string, maxLength: 8 }
+    SimCountry:
+      name: X-Qal-Sim-Country
+      in: header
+      required: false
+      description: |
+        Client hint (ADR 0045): ISO 3166-1 alpha-2 country of the SIM provider (Android
+        `TelephonyManager.simCountryIso`). Same rules as `X-Qal-Network-Country`.
+      schema: { type: string, maxLength: 8 }
     ClientSurface:
       name: X-Client-Surface
       in: header
@@ -5860,17 +6005,36 @@ components:
         displayName: { type: string }
         methodType:
           type: string
-          enum: [MOBILE_MONEY, BANK_TRANSFER, CARD, PAYPAL, APP_STORE, MANUAL]
+          description: '`HOSTED_CHECKOUT` = the provider''s own page lets the payer pick a wallet, bank or card (ADR 0045).'
+          enum: [MOBILE_MONEY, BANK_TRANSFER, CARD, PAYPAL, APP_STORE, MANUAL, HOSTED_CHECKOUT]
         supportsAutoRenew: { type: boolean }
         requiresRedirect: { type: boolean }
         minAmount: { $ref: '#/components/schemas/Money' }
         maxAmount: { $ref: '#/components/schemas/Money' }
         logoUrl: { type: string, format: uri }
+        priority: { type: integer, minimum: 1, description: 'Provider priority for this market and channel (1 = default).' }
+        isDefault: { type: boolean, description: True on the method the app should preselect. }
+    MarketResolution:
+      type: object
+      description: How the server resolved the billing country (ADR 0045). Never contains IP addresses.
+      required: [source, confidence, globalDefault]
+      properties:
+        source:
+          type: string
+          description: |
+            `IP_EDGE` trusted edge country header; `DEV_MOCK` development override; `CLIENT_HINTS` network and
+            SIM hints agree (no trusted IP country); `NONE` nothing usable.
+          enum: [IP_EDGE, DEV_MOCK, CLIENT_HINTS, NONE]
+        confidence:
+          type: string
+          enum: [HIGH, MEDIUM, LOW, NONE]
+        globalDefault: { type: boolean, description: True when the global (`ZZ`) providers apply. }
     BillingOptions:
       type: object
       required: [marketCountry, clientPlatform, distributionChannel, purchaseFlow, purchaseUiAllowed, products, paymentMethods, policyEvaluatedAt]
       properties:
         marketCountry: { $ref: '#/components/schemas/CountryCode' }
+        marketResolution: { $ref: '#/components/schemas/MarketResolution' }
         clientPlatform: { $ref: '#/components/schemas/ClientPlatformEnum' }
         distributionChannel: { $ref: '#/components/schemas/DistributionChannel' }
         purchaseFlow: { $ref: '#/components/schemas/PurchaseFlow' }
@@ -6161,6 +6325,43 @@ components:
       required: [received]
       properties:
         received: { type: boolean, const: true }
+    ProviderRoute:
+      type: object
+      required: [providerCode, priority, enabled]
+      properties:
+        providerCode: { type: string, maxLength: 40, pattern: '^[A-Z][A-Z0-9_]*$' }
+        priority: { type: integer, minimum: 1, readOnly: true }
+        enabled: { type: boolean }
+        notes: { type: string, maxLength: 1000 }
+        providerActive: { type: boolean, readOnly: true, description: 'payment_providers is_active and ACTIVE.' }
+        adapterRegistered: { type: boolean, readOnly: true, description: An adapter for this provider is running in this environment. }
+    ProviderRouteSet:
+      type: object
+      required: [countryCode, clientPlatform, distributionChannel, revision, routes]
+      properties:
+        countryCode: { $ref: '#/components/schemas/CountryCode' }
+        clientPlatform: { $ref: '#/components/schemas/ClientPlatformEnum' }
+        distributionChannel: { $ref: '#/components/schemas/DistributionChannel' }
+        revision: { type: integer, minimum: 0 }
+        routes:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderRoute' }
+    ProviderRouteSetUpdate:
+      type: object
+      required: [expectedRevision, routes]
+      properties:
+        expectedRevision: { type: integer, minimum: 0 }
+        routes:
+          type: array
+          maxItems: 20
+          description: In priority order (first = default).
+          items:
+            type: object
+            required: [providerCode]
+            properties:
+              providerCode: { type: string, maxLength: 40, pattern: '^[A-Z][A-Z0-9_]*$' }
+              enabled: { type: boolean, default: true }
+              notes: { type: string, maxLength: 1000 }
 
     # ------------------------------------------------------------ organizations
     OrgRole:
