@@ -1,0 +1,28 @@
+{
+  "name": "chapa: verify a refund (developer.chapa.co/refund: GET /v1/refund/{ref_id}/verify; status initiated|processing|refunded|reversed)",
+  "priority": 5,
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/chapa/v1/refund/[A-Za-z0-9-]+/verify",
+    "headers": { "Authorization": { "matches": "Bearer .+" } }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "message": "Refund verified successfully",
+      "status": "success",
+      "data": {
+        "amount": 299,
+        "currency": "ETB",
+        "ref_id": "{{request.path.[3]}}",
+        "payment_reference": "MOCKPAYMENT",
+        "merchant_reference": null,
+        "status": "refunded",
+        "created_at": "2026-11-20T15:45:46.000000Z",
+        "updated_at": "2026-11-20T15:45:46.000000Z"
+      }
+    },
+    "transformers": ["response-template"]
+  }
+}

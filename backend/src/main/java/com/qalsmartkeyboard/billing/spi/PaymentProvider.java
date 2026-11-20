@@ -54,4 +54,28 @@ public interface PaymentProvider {
 	default List<DiscoveredMethod> discoverMethods(MerchantAccount account) {
 		return List.of();
 	}
+
+	/**
+	 * Whether {@link #refund} and {@link #refundStatus} call a documented provider refund API. When false, a refund the
+	 * core needs (a duplicate capture) becomes a manual finance task (ADR 0045 step A2).
+	 */
+	default boolean supportsRefunds() {
+		return false;
+	}
+
+	/**
+	 * Starts a refund of a verified capture. Must be safe to repeat with the same {@code refundReference} where the
+	 * provider supports an idempotency key.
+	 *
+	 * @throws PaymentProviderException when the provider refuses or cannot be reached ({@code MISCONFIGURED
+	 *                                  REFUND_NOT_SUPPORTED} without a refund API)
+	 */
+	default RefundResult refund(RefundRequest request) {
+		throw new PaymentProviderException(PaymentProviderException.Kind.MISCONFIGURED, "REFUND_NOT_SUPPORTED");
+	}
+
+	/** The current state of a refund started with {@link #refund}. */
+	default RefundResult refundStatus(RefundStatusRequest request) {
+		throw new PaymentProviderException(PaymentProviderException.Kind.MISCONFIGURED, "REFUND_NOT_SUPPORTED");
+	}
 }

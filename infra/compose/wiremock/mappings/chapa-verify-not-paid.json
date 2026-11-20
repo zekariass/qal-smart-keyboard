@@ -1,0 +1,10 @@
+{
+  "name": "chapa: verify a transaction nobody paid yet (documented 404, status null, 'Payment not paid yet'); tx_ref notpaid-*",
+  "priority": 2,
+  "request": { "method": "GET", "urlPathPattern": "/chapa/v1/transaction/verify/notpaid-.*" },
+  "response": {
+    "status": 404,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "message": "Payment not paid yet", "status": null, "data": null }
+  }
+}

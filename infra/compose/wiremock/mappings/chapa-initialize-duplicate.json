@@ -1,0 +1,14 @@
+{
+  "name": "chapa: initialize with a tx_ref used before (documented 400 'Transaction reference has been used before'); tx_ref dup-*",
+  "priority": 2,
+  "request": {
+    "method": "POST",
+    "urlPath": "/chapa/v1/transaction/initialize",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.tx_ref =~ /dup-.*/)]" } ]
+  },
+  "response": {
+    "status": 400,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "message": "Transaction reference has been used before", "status": "failed", "data": null }
+  }
+}
