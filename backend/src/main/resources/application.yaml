@@ -186,6 +186,39 @@ qal:
       enabled: ${QAL_AI_HTTP:false}
       base-url: ${QAL_AI_HTTP_BASE_URL:http://localhost:8089}
       api-key: ${QAL_AI_HTTP_API_KEY:}
+  # Billing-country detection (ADR 0045). CF-IPCountry is trusted only from the configured edge: the direct peer inside
+  # QAL_GEO_TRUSTED_PROXIES (comma-separated CIDRs) and/or the shared secret header X-Qal-Edge-Secret = QAL_GEO_EDGE_SECRET
+  # (every configured check must pass; none configured = never trusted). DEV_MOCK_COUNTRY (e.g. ET) replaces the IP
+  # country in development; the prod/production/staging profiles refuse to start with it.
+  geo:
+    trusted-proxies: ${QAL_GEO_TRUSTED_PROXIES:}
+    edge-secret: ${QAL_GEO_EDGE_SECRET:}
+    dev-mock-country: ${DEV_MOCK_COUNTRY:}
+  # Billing core (ADR 0045): provider routing per country and channel (billing_provider_routes), orders, hosted checkout,
+  # verify-then-grant. QAL_PUBLIC_BASE_URL is the API origin providers call back (notify and return URLs).
+  billing:
+    environment: ${QAL_BILLING_ENVIRONMENT:SANDBOX}
+    public-base-url: ${QAL_PUBLIC_BASE_URL:}
+    app-return-uri: ${QAL_BILLING_APP_RETURN_URI:qalkeyboard://billing/return}
+    order-ttl: ${QAL_BILLING_ORDER_TTL:30m}
+    attempt-ttl: ${QAL_BILLING_ATTEMPT_TTL:30m}
+    min-country-confidence: ${QAL_BILLING_MIN_COUNTRY_CONFIDENCE:MEDIUM}
+    reconciliation:
+      enabled: ${QAL_BILLING_RECONCILIATION_ENABLED:true}
+      interval: ${QAL_BILLING_RECONCILIATION_INTERVAL:2m}
+      stuck-after: ${QAL_BILLING_RECONCILIATION_STUCK_AFTER:10m}
+      recheck-every: ${QAL_BILLING_RECONCILIATION_RECHECK_EVERY:5m}
+      give-up-after: ${QAL_BILLING_RECONCILIATION_GIVE_UP_AFTER:48h}
+    # ArifPay (Ethiopian default provider). The adapter exists only when ARIFPAY_SECRET_KEY is set; a sandbox key needs
+    # QAL_ARIFPAY_ENVIRONMENT=SANDBOX (the default; routes /api/sandbox/...). Production also needs
+    # QAL_ARIFPAY_WEBHOOK_SECRET (>= 32 characters) for the notify-URL token.
+    arifpay:
+      api-key: ${ARIFPAY_SECRET_KEY:}
+      environment: ${QAL_ARIFPAY_ENVIRONMENT:SANDBOX}
+      base-url: ${QAL_ARIFPAY_BASE_URL:}
+      webhook-secret: ${QAL_ARIFPAY_WEBHOOK_SECRET:}
+      connect-timeout: ${QAL_ARIFPAY_CONNECT_TIMEOUT:3s}
+      read-timeout: ${QAL_ARIFPAY_READ_TIMEOUT:10s}
   # Crash reporting (ADR 0024, ADR 0007 D47): the environment tag; blank = the active Spring profiles ("default").
   observability:
     sentry:
