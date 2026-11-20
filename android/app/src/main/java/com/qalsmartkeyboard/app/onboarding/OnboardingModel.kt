@@ -87,21 +87,27 @@ data class LanguageDraft(
         if (mode in LanguageRules.allowedModes(code)) copy(modes = modes + (code to mode)) else this
 
     /**
-     * Writes the draft into [s]. A language whose mode was changed forgets its remembered layout and writing mode, so
-     * the keyboard opens in the chosen mode (the IME prefers the remembered layout over the setting).
+     * Writes the draft into [s]. The draft's modes are the modes in force ([KeyboardSettings.modeInForce]: what the keyboard
+     * opens in); a language whose mode the user changed here gets it through [KeyboardSettings.withLanguageMode], which
+     * also replaces the keyboard's remembered layout and writing mode, so the keyboard opens in the chosen mode (ADR 0044).
+     * A language left as it was keeps everything.
      */
     fun applyTo(s: KeyboardSettings): KeyboardSettings {
         val byCode = s.languages.associateBy { it.languageCode }
-        val languages = order.mapNotNull { c -> byCode[c]?.let { l -> l.copy(enabled = c in enabled, inputMode = modes[c] ?: l.inputMode) } }
-        val changedMode = languages.filter { byCode[it.languageCode]?.inputMode != it.inputMode }.map { it.languageCode }.toSet()
-        return s.copy(languages = languages, lastModes = s.lastModes - changedMode, writingModes = s.writingModes - changedMode)
+        val languages = order.mapNotNull { c -> byCode[c]?.copy(enabled = c in enabled) }
+        var out = s.copy(languages = languages)
+        for (c in order) {
+            val m = modes[c] ?: continue
+            if (m != s.modeInForce(c)) out = out.withLanguageMode(c, m)
+        }
+        return out
     }
 
     companion object {
         fun from(s: KeyboardSettings) = LanguageDraft(
             order = s.languages.map { it.languageCode },
             enabled = s.enabledLanguages.toSet(),
-            modes = s.languages.associate { it.languageCode to it.inputMode },
+            modes = s.languages.associate { it.languageCode to (s.modeInForce(it.languageCode) ?: it.inputMode) },
         )
     }
 }

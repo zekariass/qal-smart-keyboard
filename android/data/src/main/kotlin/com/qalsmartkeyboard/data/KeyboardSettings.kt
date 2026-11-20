@@ -213,6 +213,40 @@ data class KeyboardSettings(
 
     val keyHeightScale: Float get() = keyHeightPercent / 100f
 
+    /**
+     * ADR 0044: the input mode [code] opens in on the keyboard, the same order the IME resolves it in: the writing mode last
+     * picked on the keyboard (am/ti: Fidel, Phonetic or English = ABC), else its last native layout there, else the
+     * language's setting ([TypingLanguageSetting.inputMode], Phonetic by default). The app shows and edits this value, so
+     * what it says is what the keyboard does. Null for an unknown language.
+     */
+    fun modeInForce(code: String): InputMode? {
+        val l = language(code) ?: return null
+        val allowed = LanguageRules.allowedModes(code)
+        if (allowed.size < 2) return l.inputMode
+        fun of(kind: String?, abc: Boolean) = when (kind) {
+            "FIDEL" -> InputMode.DIRECT_SCRIPT_LAYOUT
+            "PHONETIC" -> InputMode.PHONETIC_LATIN_TO_NATIVE
+            "ABC" -> if (abc) InputMode.LATIN_PASSTHROUGH else null
+            else -> null
+        }?.takeIf { it in allowed }
+        return of(writingModes[code], abc = true) ?: of(lastModes[code], abc = false) ?: l.inputMode
+    }
+
+    /**
+     * ADR 0044: the user picked [mode] for [code] in the app (the language page or onboarding). It becomes the language's
+     * setting and replaces what the keyboard remembered (its writing mode and last native layout), so the keyboard opens
+     * in it; English (Latin) in am/ti is the keyboard's ABC writing mode. A mode the language does not have changes nothing.
+     */
+    fun withLanguageMode(code: String, mode: InputMode): KeyboardSettings {
+        if (language(code) == null || mode !in LanguageRules.allowedModes(code)) return this
+        val multi = LanguageRules.allowedModes(code).size > 1
+        return copy(
+            languages = languages.map { if (it.languageCode == code) it.copy(inputMode = mode) else it },
+            lastModes = lastModes - code,
+            writingModes = if (multi && mode == InputMode.LATIN_PASSTHROUGH) writingModes + (code to "ABC") else writingModes - code,
+        )
+    }
+
     /** The numeral style in force (ADR 0043 / 0044): the user's choice, else the default (Western first). */
     val effectiveNumeralStyle: NumeralStyle get() = if (numeralStyleChosen) numeralStyle else DEFAULT_NUMERAL_STYLE
 

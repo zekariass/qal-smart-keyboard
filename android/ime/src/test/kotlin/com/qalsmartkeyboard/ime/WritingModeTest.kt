@@ -163,9 +163,13 @@ class WritingModeTest {
         stored = stored.copy(writingModes = mapOf("am" to "ABC"))
         c.onPreferencesChanged()
         assertEquals(LayoutKind.ABC, c.writingMode)
-        // Later loads do not override what the user picks in this session.
+        // Later loads do not override what the user picks in this session (a layout picked in the app does, at once:
+        // ADR 0044, AmharicDefaultLayoutTest).
         c.selectWritingMode(LayoutKind.FIDEL)
-        stored = stored.copy(writingModes = mapOf("am" to "PHONETIC"))
+        stored = stored.copy(hapticsEnabled = false)
+        c.onPreferencesChanged()
+        assertEquals(LayoutKind.FIDEL, c.writingMode)
+        stored = stored.copy(writingModes = mapOf("am" to "FIDEL")) // the store's echo of the pick
         c.onPreferencesChanged()
         assertEquals(LayoutKind.FIDEL, c.writingMode)
     }

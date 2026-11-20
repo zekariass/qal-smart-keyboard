@@ -334,6 +334,23 @@ class SettingsScreenTest {
         compose.onNodeWithText("Amharic · Fidel grid").assertExists()
     }
 
+    /**
+     * ADR 0044: the page shows the layout the keyboard opens in (a layout picked on the keyboard is remembered and wins
+     * over the setting), and picking Phonetic there replaces that memory, so Amharic opens in Phonetic again.
+     */
+    @Test fun aLanguagePageShowsTheKeyboardsLayoutAndItsPickWins() {
+        runBlocking { repository.update { it.copy(writingModes = mapOf("am" to "FIDEL"), lastModes = mapOf("am" to "FIDEL")) } }
+        show()
+        compose.onNodeWithText("Languages").performClick()
+        compose.onNodeWithText("Amharic · Fidel grid").assertExists()
+        compose.onNodeWithText("አማርኛ").performClick()
+        compose.onNodeWithText("Fidel grid").assertIsSelected() // was: Phonetic, the stale setting
+        compose.onNodeWithText("Phonetic QWERTY").performClick()
+        waitFor { it.modeInForce("am") == InputMode.PHONETIC_LATIN_TO_NATIVE && it.writingModes["am"] == null && it.lastModes["am"] == null }
+        compose.waitForIdle()
+        compose.onNodeWithText("Phonetic QWERTY").assertIsSelected()
+    }
+
     @Test fun aSingleLayoutLanguageNamesItsOwnLayoutNotLatin() {
         show()
         compose.onNodeWithText("Languages").performClick()

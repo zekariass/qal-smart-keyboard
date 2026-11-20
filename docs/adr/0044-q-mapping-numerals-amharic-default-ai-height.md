@@ -32,3 +32,30 @@ numeral support is never removed. Migration: `effectiveNumeralStyle` is ETHIOPIC
 true and the stored style is ETHIOPIC; everyone else (never chose, or a pre-ADR-0043 file without the flag, whose stored
 ETHIOPIC meant "on long-press") is Western first. Details in the ADR 0043 amendment. Settings labels: "Western first" /
 "Ethiopic first" with samples `1 2 3 · ፩ ፪ ፫` / `፩ ፪ ፫ · 1 2 3`.
+
+## 3. Amharic opens in Phonetic, and a deliberate choice sticks
+**What was checked.** Every first-run path already gives Phonetic and is now pinned by tests: fresh install (settings
+defaults, before and after the core loads, nothing remembered on the user's behalf), onboarding (its default draft, a
+state restored after process death, the saved result), Amharic enabled later in Languages or made primary, the first
+switch to it by the space-bar picker or the globe, the typing-language sync's first-run base (Phonetic). `LanguageCatalog`
+lists Fidel first only for the writing-mode chooser; nothing picks its `first()`. Latin → Ge'ez works in the resulting
+default (`selam` → ሰላም, core and controller tests).
+
+**Cause found.** The keyboard remembers the layout picked on it (`writingModes`, `lastModes`, ADR 0007) and that wins over
+the language's setting (`inputMode`). The app showed and edited only the setting: once Fidel or English (the ABC toggle)
+had been picked on the keyboard, the language page and an onboarding re-run still showed "Phonetic", picking Phonetic
+there changed nothing (already selected, or `inputMode` only), and a running keyboard ignored setting changes after its
+first load anyway. So Amharic kept opening in Fidel / English with no way back from the app.
+
+**Decision.**
+- `KeyboardSettings.modeInForce(code)`: the mode the keyboard opens in, resolved in the IME's order (writing mode, last
+  native layout, setting). The language list, the language page and the onboarding draft show it.
+- `KeyboardSettings.withLanguageMode(code, mode)`: a pick in the app (language page, onboarding) sets the setting and
+  replaces the keyboard's memory for that language (English/Latin in am/ti = the ABC writing mode). Onboarding applies it
+  only to languages whose mode the user changed there; everything else keeps its memory.
+- `KeyboardController.onPreferencesChanged`: when the settings give the current language another layout than at the last
+  change, and it is neither the layout in force nor the store's echo of a switch made on this keyboard, it was picked in
+  the app: the keyboard commits any composition and follows at once (one switch, no loop). Its own switches are never
+  undone by late echoes, unrelated setting changes leave the layout alone.
+- A layout picked deliberately on the keyboard (writing-mode chooser, globe long-press, ABC toggle) still persists across
+  restarts; the latest deliberate choice wins wherever it was made. ti, om, en, ar defaults are unchanged.
