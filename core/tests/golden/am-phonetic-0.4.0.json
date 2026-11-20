@@ -1,6 +1,6 @@
 {
   "profile": "am-phonetic",
-  "profile_version": "0.3.0",
+  "profile_version": "0.4.0",
   "status": "DRAFT",
   "profile_source": "language-data/profiles/am-phonetic-draft.json",
   "notation": "keystrokes: one character = Char key; Backspace / Space / Enter / Commit; Select:<n> = select_candidate(n). steps[].after = number of keystrokes applied; composing/commit/delete_before(default 0)/alternatives (candidates without the default) are checked after that keystroke. Per vector: composing, alternatives and committed are checked after the last keystroke; committed is the text left after applying all commits and deletions.",
@@ -437,6 +437,19 @@
       "composing": "ኸ",
       "alternatives": ["ከ"],
       "committed": "ኽ "
+    },
+    {
+      "name": "capital-q-is-qh-in-every-order",
+      "keystrokes": ["Q", "e", "Space", "Q", "u", "Space", "Q", "i", "Space", "Q", "a", "Space", "Q", "e", "e", "Space", "Q", "Space", "Q", "o", "Space", "Q", "W", "a", "Space", "q", "e", "Space", "k", "'", "e"],
+      "steps": [
+        {"after": 2, "composing": "ቐ", "commit": "", "alternatives": ["ቀ"]},
+        {"after": 17, "composing": "ቕ", "commit": "", "alternatives": ["ቅ"]},
+        {"after": 23, "composing": "ቝ", "commit": ""},
+        {"after": 27, "composing": "ቀ", "commit": ""}
+      ],
+      "composing": "ቀ",
+      "alternatives": [],
+      "committed": "ቐ ቑ ቒ ቓ ቔ ቕ ቖ ቛ ቀ "
     },
     {
       "name": "capitals-are-their-own-letters-and-digraphs-still-work",

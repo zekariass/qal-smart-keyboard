@@ -1,11 +1,12 @@
 # Golden vectors
 
-## Phonetic (C1.4): `am-phonetic-0.3.0.json`, `ti-phonetic-0.4.0.json`
+## Phonetic (C1.4): `am-phonetic-0.4.0.json`, `ti-phonetic-0.4.0.json`
 Profile 0.2.0 (coverage audit, `docs/specs/phonetic-coverage-am-ti.md`) retired 0.1.0: its vectors
 were carried over unchanged except for alternatives the new rules add (and `x`, now ሸ in Amharic);
 0.1.0 was never released outside INTERNAL DRAFT packs, so its files were removed (see git history).
 Tigrinya 0.3.0 (language audit, `docs/specs/language-audit-om-ti.md`) retired ti 0.2.0 the same way: a
 vowel-initial `a` gives ኣ instead of አ (one vector changed, three added); the coverage matrix moved with it.
+Amharic 0.4.0 (capital `Q` is the ቐ series, ADR 0044) retired am 0.3.0: every vector carried over unchanged, one added.
 `am-phonetic-coverage.json` / `ti-phonetic-coverage.json` (run by `tests/phonetic_coverage.rs`) list
 every required Fidel form with the key sequences that reach it, as default or strip alternative.
 Run by `tests/phonetic.rs`: the profile `language-data/profiles/<lang>-phonetic-draft.json` is loaded

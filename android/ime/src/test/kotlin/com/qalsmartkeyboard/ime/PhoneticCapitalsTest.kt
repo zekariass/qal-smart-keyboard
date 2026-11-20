@@ -7,7 +7,7 @@ import org.junit.Test
 
 /**
  * Product owner 2026-11-19 (am 0.3.0, ti 0.4.0): in Phonetic mode capitals are their own letters (N ኝ, T ጥ, K ኽ, P ጵ;
- * Tigrinya Q ቐ), so the keyboard must never capitalise on its own there (a sentence-initial `n` stays ን), while a
+ * Q ቐ in Tigrinya and, from am 0.4.0 / ADR 0044, in Amharic too), so the keyboard must never capitalise on its own there (a sentence-initial `n` stays ን), while a
  * manual Shift or caps lock gives the capital's letter and the shifted keys show it. Real core and bundled packs.
  */
 class PhoneticCapitalsTest {
@@ -64,16 +64,34 @@ class PhoneticCapitalsTest {
     }
 
     @Test fun tigrinyaCapitalQIsQhInEveryOrder() {
-        val s = session(TypingMode("ti", LayoutKind.PHONETIC))
+        val s = shiftQInEveryOrder("ti")
+        s.type("qhe ")
+        assertEquals("ቐ ቑ ቒ ቓ ቔ ቕ ቖ ቐ ", s.ed.text.toString())
+    }
+
+    /** ADR 0044 (am 0.4.0): Amharic Phonetic gets the same capital Q as Tigrinya; lowercase q stays ቀ (k' too: core golden). */
+    @Test fun amharicCapitalQIsQhInEveryOrderAndLowercaseQIsUnchanged() {
+        val s = shiftQInEveryOrder("am")
+        s.type("qe qa q ")
+        assertEquals("ቐ ቑ ቒ ቓ ቔ ቕ ቖ ቀ ቃ ቅ ", s.ed.text.toString())
+        // Labialised by the W convention.
+        s.tap(s.key(KeyKind.SHIFT)); s.tap(s.letter('q'))
+        s.tap(s.key(KeyKind.SHIFT)); s.tap(s.letter('w'))
+        s.type("a ")
+        assertEquals("ቐ ቑ ቒ ቓ ቔ ቕ ቖ ቀ ቃ ቅ ቛ ", s.ed.text.toString())
+    }
+
+    /** Shift + q then each vowel: ቐ…ቖ, and the shifted q key's hint is ቕ. */
+    private fun shiftQInEveryOrder(lang: String): CoreTestEnv.Session {
+        val s = session(TypingMode(lang, LayoutKind.PHONETIC))
         val shift = s.key(KeyKind.SHIFT)
-        assertEquals("ቕ", CoreComposer.deriveHints(CoreTestEnv.freshEngine()).getValue("ti").upper('q'))
+        assertEquals(lang, "ቕ", CoreComposer.deriveHints(CoreTestEnv.freshEngine()).getValue(lang).upper('q'))
         for (v in listOf("e", "u", "i", "a", "ee", "", "o")) {
             s.tap(shift)
             s.tap(s.letter('q'))
             s.type("$v ")
         }
-        assertEquals("ቐ ቑ ቒ ቓ ቔ ቕ ቖ ", s.ed.text.toString())
-        s.type("qhe ")
-        assertEquals("ቐ ቑ ቒ ቓ ቔ ቕ ቖ ቐ ", s.ed.text.toString())
+        assertEquals(lang, "ቐ ቑ ቒ ቓ ቔ ቕ ቖ ", s.ed.text.toString())
+        return s
     }
 }

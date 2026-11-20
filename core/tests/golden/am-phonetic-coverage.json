@@ -2,12 +2,12 @@
  "format": "qal-phonetic-coverage",
  "language": "am",
  "profile": "am-phonetic",
- "profile_version": "0.3.0",
+ "profile_version": "0.4.0",
  "status": "DRAFT",
- "notation": "Required forms: every series in `series` in orders 1-7, the eighth ('wa') order of every series in `wa`, and orders 1/3/4/5/6 of every labiovelar series in `labiovelar`. For each form, `default` lists key sequences whose composition is exactly that form, `alternative` sequences that offer it in the candidate strip (no dictionary, max_candidates 5). Checked end to end by core/tests/phonetic_coverage.rs; documented in docs/specs/phonetic-coverage-am-ti.md.",
+ "notation": "Required forms: every series in `series` in orders 1-7, the eighth ('wa') order of every series in `wa`, and orders 1/3/4/5/6 of every labiovelar series in `labiovelar`. For each form, `default` lists key sequences whose composition is exactly that form, `alternative` sequences that offer it in the candidate strip (no dictionary, max_candidates 5). Forms listed beyond `required` (0.4.0: the ቐ series typed with capital `Q`, not part of Amharic orthography) are checked the same way. Checked end to end by core/tests/phonetic_coverage.rs; documented in docs/specs/phonetic-coverage-am-ti.md.",
  "summary": {
   "required": 282,
-  "default": 280,
+  "default": 292,
   "alternative_only": 2
  },
  "required": {
@@ -362,6 +362,18 @@
   {"form": "ጒ", "series": "GW", "order": 3, "default": ["gWi"], "alternative": ["gwi"]},
   {"form": "ጓ", "series": "GW", "order": 4, "default": ["gWa"], "alternative": ["gwa"]},
   {"form": "ጔ", "series": "GW", "order": 5, "default": ["gWee"], "alternative": ["gwee", "gwie"]},
-  {"form": "ጕ", "series": "GW", "order": 6, "default": ["gW"], "alternative": ["gw"]}
+  {"form": "ጕ", "series": "GW", "order": 6, "default": ["gW"], "alternative": ["gw"]},
+  {"form": "ቐ", "series": "QH", "order": 1, "default": ["Qe"], "alternative": []},
+  {"form": "ቑ", "series": "QH", "order": 2, "default": ["Qu"], "alternative": []},
+  {"form": "ቒ", "series": "QH", "order": 3, "default": ["Qi"], "alternative": []},
+  {"form": "ቓ", "series": "QH", "order": 4, "default": ["Qa"], "alternative": []},
+  {"form": "ቔ", "series": "QH", "order": 5, "default": ["Qee"], "alternative": []},
+  {"form": "ቕ", "series": "QH", "order": 6, "default": ["Q"], "alternative": []},
+  {"form": "ቖ", "series": "QH", "order": 7, "default": ["Qo"], "alternative": []},
+  {"form": "ቘ", "series": "QHW", "order": 1, "default": ["QWe"], "alternative": []},
+  {"form": "ቚ", "series": "QHW", "order": 3, "default": ["QWi"], "alternative": []},
+  {"form": "ቛ", "series": "QHW", "order": 4, "default": ["QWa"], "alternative": []},
+  {"form": "ቜ", "series": "QHW", "order": 5, "default": ["QWee"], "alternative": []},
+  {"form": "ቝ", "series": "QHW", "order": 6, "default": ["QW"], "alternative": []}
  ]
 }
