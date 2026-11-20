@@ -25,6 +25,8 @@ data class TransportConfig(
     val writeTimeoutMs: Long = 30_000,
     val callTimeoutMs: Long = 60_000,
     val logger: CallLogger = CallLogger { _, _, _ -> },
+    /** The phone's network/SIM country hints for billing calls (ADR 0045); null sends none. */
+    val countryHints: CountryHintSource? = null,
 ) {
     init {
         val url = baseUrl.toHttpUrl()
@@ -62,7 +64,8 @@ data class TransportConfig(
 /**
  * Wires the OkHttp stack and the generated APIs for one process.
  *
- * Main client interceptors, in order: client headers, bearer, correlation-id capture; the
+ * Main client interceptors, in order: client headers, country hints (billing paths only, ADR 0045), bearer,
+ * correlation-id capture; the
  * [TokenAuthenticator] handles 401. Refresh calls use a second client with the same headers and
  * logging but neither bearer nor authenticator, so a refresh can never recurse. [anonymousAuth] is the auth API over
  * that bearer-free client: sign-in calls that must not carry the stored session (ADR 0035).
@@ -92,6 +95,7 @@ class ApiClients(val config: TransportConfig, val session: SessionManager) {
 
     val okHttpClient: OkHttpClient = base.newBuilder()
         .addInterceptor(ClientHeadersInterceptor(config.client))
+        .apply { config.countryHints?.let { addInterceptor(CountryHintsInterceptor(it)) } }
         .addInterceptor(BearerInterceptor(session))
         .addInterceptor(CorrelationIdInterceptor(config.logger))
         .authenticator(TokenAuthenticator(session, AuthApi(config.baseUrl, refreshClient)))

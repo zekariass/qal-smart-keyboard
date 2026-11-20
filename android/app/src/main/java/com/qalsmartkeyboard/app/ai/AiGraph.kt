@@ -57,7 +57,8 @@ class AiGraph private constructor(context: Context) {
     // Plan hints and the token refresh are metadata calls: a few seconds of timeout is plenty.
     private val metaClient = clients.okHttpClient.newBuilder().callTimeout(15, TimeUnit.SECONDS).build()
 
-    private val entitlements = EntitlementManager(
+    /** Also refreshed by the paywall after a verified purchase (ADR 0047), so the keyboard unlocks at once. */
+    val entitlements = EntitlementManager(
         http = metaClient,
         baseUrl = BuildConfig.API_BASE_URL,
         session = session,
