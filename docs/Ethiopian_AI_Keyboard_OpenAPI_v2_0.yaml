@@ -2563,6 +2563,17 @@ paths:
         obfuscated account ID matches the caller, acknowledges Google purchases (within 3 days or
         Google refunds them) and fulfils the same internal subscription/credit records.
         Re-submitting the same purchase is idempotent.
+
+        **`provider: REVENUECAT`** (ADR 0046, the global store option): the app buys through the
+        RevenueCat SDK, configured with the caller's RevenueCat App User ID = the caller's `userId`
+        (lower-case UUID, never an e-mail or phone number), then reports `productId` (the RevenueCat
+        product identifier, Play `subscriptionId:basePlanId`). The server never trusts the client: it
+        reads the caller's customer from the RevenueCat REST API (secret key) and links every mapped,
+        current store subscription it finds (`store_purchases`, STORE_MANAGED terms). No token is sent.
+        The store acknowledges Google purchases through RevenueCat. Registered users only (guests 403
+        `GUEST_NOT_ALLOWED`). `STORE_PURCHASE_INVALID` (422) when RevenueCat has no such purchase for the
+        caller, the product is not mapped to a plan, or the purchase environment (sandbox / production)
+        is not the one this server honours. RevenueCat unreachable: 503 `PROVIDER_UNAVAILABLE`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -2577,6 +2588,8 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/StorePurchaseResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
@@ -2709,6 +2722,13 @@ paths:
         per-attempt token `t` that the server put into the notify URL (an HMAC of the account and the
         payment's merchant reference under the account's webhook secret); a missing or wrong token is
         401 `WEBHOOK_SIGNATURE_INVALID`.
+
+        Chapa (ADR 0045, step A2) signs with the dashboard webhook secret (`CHAPA_WEBHOOK_SECRET`):
+        `x-chapa-signature` = hex HMAC-SHA256 of the payload, and/or `chapa-signature` = hex
+        HMAC-SHA256 of the secret itself (as documented by Chapa). One valid header is enough; none or
+        only wrong ones ⇒ 401. Chapa sends no event id: the event is stored under
+        `event:reference:status`. Chapa's `callback_url` (a GET) is pointed at
+        `/billing/return/{attemptId}`, which only queues a verification.
       security: []
       parameters:
         - name: t
@@ -2740,16 +2760,26 @@ paths:
         required: true
         schema:
           type: string
-          enum: [GOOGLE_PLAY, APPLE_APP_STORE]
+          enum: [GOOGLE_PLAY, APPLE_APP_STORE, REVENUECAT]
     post:
       tags: [Webhooks]
       operationId: receiveStoreNotification
-      summary: Receive Google Play RTDN or App Store Server Notifications V2
+      summary: Receive Google Play RTDN, App Store Server Notifications V2 or RevenueCat webhooks
       description: |
         Google: Pub/Sub push with OIDC-authenticated push subscription (verify the Google-signed
         JWT audience). Apple: `signedPayload` JWS verified against Apple's certificate chain.
         Stored idempotently, acknowledged with 200, then verified against the Play Developer API /
         App Store Server API before any `store_purchases` or subscription change.
+
+        **REVENUECAT** (ADR 0046): the `Authorization` header must equal the value configured in the
+        RevenueCat dashboard (`REVENUECAT_WEBHOOK_AUTH`, compared in constant time); when a signing
+        secret is configured (`REVENUECAT_WEBHOOK_SIGNING_SECRET`), `X-RevenueCat-Webhook-Signature`
+        (`t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`, at most 5 minutes old) must be valid too.
+        Wrong or missing ⇒ 401, stored as INVALID. Deduplicated on the event `id`; the event (minus
+        subscriber attributes) is kept in `store_purchase_events`. Processing never trusts the body: it
+        re-reads the customer from the RevenueCat REST API and applies the current state, so retries
+        and out-of-order delivery are safe. Always answers exactly 200 for a stored or duplicate event
+        (RevenueCat treats any other 2xx as a failure). 404 when the store provider has no adapter.
       security: []
       requestBody:
         required: true
@@ -2767,6 +2797,7 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ---------------------------------------------------------------- Organizations
   /api/v1/me/organizations:
@@ -3701,6 +3732,78 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ProviderRouteSet' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/v1/billing/reconciliation/discrepancies:
+    get:
+      tags: [Admin]
+      operationId: listReconciliationDiscrepancies
+      summary: Provider-vs-ledger discrepancies and finance tasks (admin)
+      description: |
+        Plan M4.5 (ADR 0045, step A2). The daily reconciliation compares each gateway payment's
+        provider-verified state with the ledger (`payment_transactions`, `payment_refunds`) for a
+        window and records one item per discrepancy: money taken but not recorded
+        (`MISSING_INTERNAL`), recorded but not taken (`MISSING_PROVIDER`, `STATUS_MISMATCH`),
+        amount / currency mismatches, duplicate captures whose refund is not complete
+        (`DUPLICATE_CAPTURE`, `REFUND_PENDING`) and refunds a person must make in the provider's
+        dashboard because the provider has no refund API (`MANUAL_REFUND_REQUIRED`). An open item is
+        reported once until resolved. Newest first. Permission `reconciliation:manage` (FINANCE,
+        SUPER_ADMIN). Ids, amounts and codes only: no payer data.
+      x-internal: true
+      parameters:
+        - name: resolution
+          in: query
+          required: false
+          description: Filter by resolution (default OPEN).
+          schema: { type: string, enum: [OPEN, RESOLVED, WRITTEN_OFF], default: OPEN }
+        - name: providerCode
+          in: query
+          required: false
+          schema: { type: string, maxLength: 40, pattern: '^[A-Z][A-Z0-9_]*$' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Discrepancies.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReconciliationDiscrepancyList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/v1/billing/reconciliation/discrepancies/{discrepancyId}/resolve:
+    parameters:
+      - name: discrepancyId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Admin]
+      operationId: resolveReconciliationDiscrepancy
+      summary: Resolve a discrepancy or record a completed manual refund (admin)
+      description: |
+        Marks the item RESOLVED or WRITTEN_OFF with a note. For `MANUAL_REFUND_REQUIRED`,
+        `providerRefundReference` (the refund id shown in the provider's dashboard) records the refund
+        as done: a REFUND row is appended to the ledger against the duplicate capture and the refund
+        becomes SUCCEEDED (permission `refunds:execute` as well). Resolving an already resolved item
+        returns it unchanged. Permission `reconciliation:manage`; audited as
+        `BILLING_RECONCILIATION_RESOLVE`.
+      x-internal: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReconciliationResolution' }
+      responses:
+        '200':
+          description: The item.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReconciliationDiscrepancy' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -6227,11 +6330,15 @@ components:
     StorePurchaseRequest:
       type: object
       required: [provider, productId]
-      description: Google requires `purchaseToken` (+ `packageName`); Apple requires `signedTransactionInfo`.
+      description: |
+        Google requires `purchaseToken` (+ `packageName`); Apple requires `signedTransactionInfo`;
+        RevenueCat (ADR 0046) requires neither: the server reads the caller's RevenueCat customer
+        (App User ID = the caller's `userId`). `productId` is the store / RevenueCat product identifier
+        (Play: `subscriptionId:basePlanId`, e.g. `qal_premium:monthly`).
       properties:
         provider:
           type: string
-          enum: [GOOGLE_PLAY, APPLE_APP_STORE]
+          enum: [GOOGLE_PLAY, APPLE_APP_STORE, REVENUECAT]
         productId: { type: string, maxLength: 255 }
         purchaseToken: { type: string, maxLength: 4096, writeOnly: true }
         packageName: { type: string, maxLength: 255 }
@@ -6239,12 +6346,20 @@ components:
         appAccountToken: { type: string, format: uuid, description: Must equal the account token the app set at purchase (StoreKit appAccountToken / Play obfuscatedAccountId). }
       oneOf:
         - required: [purchaseToken, packageName]
+          properties:
+            provider: { enum: [GOOGLE_PLAY] }
         - required: [signedTransactionInfo]
+          properties:
+            provider: { enum: [APPLE_APP_STORE] }
+        - properties:
+            provider: { enum: [REVENUECAT] }
     StorePurchaseResult:
       type: object
       required: [storePurchaseId, status, environment]
       properties:
         storePurchaseId: { type: string, format: uuid }
+        productId: { type: string, description: The store product identifier the purchase is for (without a Play base plan suffix). }
+        autoRenewing: { type: boolean }
         status:
           type: string
           enum: [PENDING, ACTIVE, IN_GRACE_PERIOD, ON_HOLD, PAUSED, CANCELLED, EXPIRED, REVOKED, REFUNDED]
@@ -6325,6 +6440,54 @@ components:
       required: [received]
       properties:
         received: { type: boolean, const: true }
+    ReconciliationDiscrepancy:
+      type: object
+      required: [discrepancyId, runId, providerCode, kind, resolution, detectedAt]
+      properties:
+        discrepancyId: { type: string, format: uuid }
+        runId: { type: string, format: uuid, description: The reconciliation run that first reported it. }
+        providerCode: { type: string }
+        accountCode: { type: string }
+        kind:
+          type: string
+          enum: [MISSING_INTERNAL, MISSING_PROVIDER, AMOUNT_MISMATCH, CURRENCY_MISMATCH, STATUS_MISMATCH,
+                 DUPLICATE_CAPTURE, REFUND_PENDING, MANUAL_REFUND_REQUIRED]
+        resolution:
+          type: string
+          enum: [OPEN, RESOLVED, WRITTEN_OFF]
+        orderId: { type: string, format: uuid }
+        attemptId: { type: string, format: uuid }
+        refundId: { type: string, format: uuid }
+        providerTransactionReference: { type: string }
+        providerStatus: { type: string, description: What the provider reported when the item was found. }
+        internalAmount: { $ref: '#/components/schemas/Money' }
+        providerAmount: { $ref: '#/components/schemas/Money' }
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        detectedAt: { type: string, format: date-time }
+        resolvedAt: { type: string, format: date-time }
+        note: { type: string, maxLength: 500 }
+    ReconciliationDiscrepancyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ReconciliationDiscrepancy' }
+        nextCursor: { type: string }
+    ReconciliationResolution:
+      type: object
+      required: [resolution, note]
+      properties:
+        resolution:
+          type: string
+          enum: [RESOLVED, WRITTEN_OFF]
+        note: { type: string, minLength: 1, maxLength: 500, description: What was done (no payer data). }
+        providerRefundReference:
+          type: string
+          maxLength: 255
+          pattern: '^[A-Za-z0-9._:-]+$'
+          description: MANUAL_REFUND_REQUIRED only; the refund id in the provider's dashboard.
     ProviderRoute:
       type: object
       required: [providerCode, priority, enabled]
