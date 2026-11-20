@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 const AM_PROFILE: &str = include_str!("../../language-data/profiles/am-phonetic-draft.json");
 const TI_PROFILE: &str = include_str!("../../language-data/profiles/ti-phonetic-draft.json");
-const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.3.0.json");
+const AM_GOLDEN: &str = include_str!("golden/am-phonetic-0.4.0.json");
 const TI_GOLDEN: &str = include_str!("golden/ti-phonetic-0.4.0.json");
 
 fn profile_pack(lang: &str, version: &str, artifact: &[u8]) -> Vec<u8> {
@@ -150,7 +150,7 @@ fn golden_ti() {
 
 #[test]
 fn source_profiles_are_valid_and_draft() {
-    for (lang, src, version) in [("am", AM_PROFILE, "0.3.0"), ("ti", TI_PROFILE, "0.4.0")] {
+    for (lang, src, version) in [("am", AM_PROFILE, "0.4.0"), ("ti", TI_PROFILE, "0.4.0")] {
         let p = Profile::parse(src.as_bytes()).unwrap();
         assert_eq!(p.language(), lang);
         // N9: unreviewed profiles stay DRAFT until the G0 panel approves them.
@@ -236,7 +236,7 @@ fn profile_validation() {
         ("\"status\": \"DRAFT\"", "\"status\": \"FINAL\"", "status"),
         ("\"language\": \"am\"", "\"language\": \"om\"", "language"),
         (
-            "\"profileVersion\": \"0.3.0\"",
+            "\"profileVersion\": \"0.4.0\"",
             "\"profileVersion\": \"x\"",
             "semver",
         ),

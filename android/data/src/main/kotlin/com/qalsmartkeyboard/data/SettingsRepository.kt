@@ -211,9 +211,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             return KeyboardSettings(
                 languages = languages,
                 numeralStyle = enumOrNull<NumeralStyle>(p[NUMERALS]) ?: d.numeralStyle,
-                // Additive key (schema stays 1, ADR 0043). Older files stored the style on every write, so a stored WESTERN
-                // (the old default) is not a choice; ETHIOPIC was never a default, so it is one.
-                numeralStyleChosen = p[NUMERALS_CHOSEN] ?: (p[NUMERALS] == NumeralStyle.ETHIOPIC.name),
+                // Additive key (schema stays 1, ADR 0043). ADR 0044: a file without it was never written by a build where
+                // Ethiopic was the primary output, so nobody there chose Ethiopic first (their stored ETHIOPIC meant "Ethiopic
+                // on long-press", today's WESTERN default): not a choice. Only a recorded choice keeps Ethiopic first.
+                numeralStyleChosen = p[NUMERALS_CHOSEN] ?: false,
                 theme = ThemeIds.normalize(p[THEME]),
                 hapticsEnabled = p[HAPTICS] ?: d.hapticsEnabled,
                 keyPreviewEnabled = p[KEY_PREVIEW] ?: d.keyPreviewEnabled,

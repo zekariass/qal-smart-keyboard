@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -73,9 +74,9 @@ class SettingsRepositoryTest {
         assertEquals(InputMode.PHONETIC_LATIN_TO_NATIVE, s.language("ti")!!.inputMode)
         assertEquals("am", s.enabledLanguages.first())
         assertEquals(NumeralStyle.WESTERN, s.numeralStyle)
-        // ADR 0043: nothing picked yet, so am/ti type Ethiopic numerals.
+        // ADR 0044: nothing picked yet, so am/ti type Western digits first (Ethiopic on long-press).
         assertFalse(s.numeralStyleChosen)
-        assertEquals(NumeralStyle.ETHIOPIC, s.effectiveNumeralStyle)
+        assertEquals(NumeralStyle.WESTERN, s.effectiveNumeralStyle)
         assertTrue(s.hapticsEnabled)
         assertTrue(s.keyPreviewEnabled)
         assertEquals(100, s.keyHeightPercent)
@@ -111,24 +112,34 @@ class SettingsRepositoryTest {
         assertEquals(110, s.keyHeightPercent)
     }
 
-    /** ADR 0043: how a file written before `numeral_style_chosen` decodes. */
+    /**
+     * ADR 0044 (amends ADR 0043): only a recorded choice of Ethiopic keeps Ethiopic first; everyone else is Western first.
+     * Files written before `numeral_style_chosen` (pre-ADR-0043 builds) never had Ethiopic as the primary output.
+     */
     @Test fun numeralStyleMigration() = runBlocking {
-        fun old(name: String, style: String?) = runBlocking {
+        fun old(name: String, style: String?, chosen: Boolean? = null) = runBlocking {
             val store = newStore(CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }, "$name.preferences_pb")
             store.edit {
                 it[intPreferencesKey("schema_version")] = 1
                 if (style != null) it[stringPreferencesKey("numeral_style")] = style
+                if (chosen != null) it[booleanPreferencesKey("numeral_style_chosen")] = chosen
             }
             SettingsRepository(store).current()
         }
-        // The old default WESTERN was written on every save: it cannot be told from a choice, so the new default applies.
-        old("old-western", "WESTERN").let {
-            assertFalse(it.numeralStyleChosen)
-            assertEquals(NumeralStyle.ETHIOPIC, it.effectiveNumeralStyle)
+        // Pre-ADR-0043 files: WESTERN (the old default), nothing, or ETHIOPIC (then "Ethiopic on long-press", today's
+        // default) all start Western first.
+        for ((name, style) in listOf("old-western" to "WESTERN", "old-none" to null, "old-ethiopic" to "ETHIOPIC")) {
+            old(name, style).let {
+                assertFalse(name, it.numeralStyleChosen)
+                assertEquals(name, NumeralStyle.WESTERN, it.effectiveNumeralStyle)
+            }
         }
-        old("old-none", null).let { assertEquals(NumeralStyle.ETHIOPIC, it.effectiveNumeralStyle) }
-        // ETHIOPIC was never a default: it was picked, and stays.
-        old("old-ethiopic", "ETHIOPIC").let {
+        // ADR 0043 builds: never chose (they were on the Ethiopic default) -> back to Western first.
+        old("r2-unchosen", "WESTERN", chosen = false).let { assertEquals(NumeralStyle.WESTERN, it.effectiveNumeralStyle) }
+        old("r2-unchosen-eth", "ETHIOPIC", chosen = false).let { assertEquals(NumeralStyle.WESTERN, it.effectiveNumeralStyle) }
+        // Picked Western explicitly -> Western; picked Ethiopic explicitly -> stays Ethiopic first.
+        old("r2-western", "WESTERN", chosen = true).let { assertEquals(NumeralStyle.WESTERN, it.effectiveNumeralStyle) }
+        old("r2-ethiopic", "ETHIOPIC", chosen = true).let {
             assertTrue(it.numeralStyleChosen)
             assertEquals(NumeralStyle.ETHIOPIC, it.effectiveNumeralStyle)
         }

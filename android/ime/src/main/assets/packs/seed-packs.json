@@ -56,8 +56,8 @@
    "resourceType": "TRANSLITERATION_RULES",
    "version": "0.1.0",
    "releaseChannel": "INTERNAL",
-   "sizeBytes": 3252,
-   "sha256": "c8c67381851dff047c067ac57b1a9040099ac783fb61ba2c5739837822643917",
+   "sizeBytes": 3310,
+   "sha256": "e65a025b9a1c7616f21470aa54470867c2e6fc9a68040c1c58c45c1ced3830f3",
    "licenseCode": "LicenseRef-Qal-Original",
    "datasets": [
     "am-phonetic-draft-profile"

@@ -283,7 +283,8 @@ class KeyboardController(
         val all = availableLanguages()
         val first = languages.enabled().firstOrNull()
         // The first settings load decides the starting language and its saved writing mode (the
-        // controller may have been built from the defaults); later edits only move away from a disabled one.
+        // controller may have been built from the defaults); later edits only move away from a disabled one,
+        // or apply a layout the user picked in the app for the current language (ADR 0044).
         val firstLoad = !settled && !userSwitched
         val moveToFirst = firstLoad && first != null && first != language
         settled = true
@@ -301,7 +302,12 @@ class KeyboardController(
             send(ComposerKey.Commit)
             kind = startKind(language)
             afterSwitch()
+        } else if (pickedInApp()) {
+            send(ComposerKey.Commit)
+            kind = startKind(language)
+            afterSwitch()
         }
+        settingsStarts[language] = startKind(language)
         sentOptions = null // the prediction settings may have changed
         syncPredictionOptions()
         onChanged()
@@ -491,11 +497,38 @@ class KeyboardController(
     }
 
     private fun setKind(newKind: LayoutKind) {
+        val stored = startKind(language)
         kind = newKind
         userSwitched = true
         if (newKind != LayoutKind.ABC) prefs.setLastNative(language, newKind)
         // am/ti remember the selected writing mode, English (ABC) included; om keeps ABC temporary.
         if (newKind in LanguageCatalog.writingModes(language)) prefs.setWritingMode(language, newKind)
+        if (stored != newKind) {
+            ownWrites += language to newKind // its echo is ours, not a pick in the app
+            if (ownWrites.size > 8) ownWrites.removeAt(0)
+        }
+    }
+
+    /** The layout the settings gave each language when the keyboard last looked ([pickedInApp]). */
+    private val settingsStarts = HashMap<String, LayoutKind>()
+
+    /** Layouts this keyboard saved itself ([setKind]) whose settings echo has not been seen yet. */
+    private val ownWrites = ArrayList<Pair<String, LayoutKind>>()
+
+    /**
+     * ADR 0044: the settings now give the current language another layout than at the last change, and it is neither the
+     * one in force nor the echo of a switch made on this keyboard: the user picked it in the app (the language page or
+     * onboarding, `KeyboardSettings.withLanguageMode`), so the keyboard follows at once instead of at the next restart.
+     */
+    private fun pickedInApp(): Boolean {
+        val now = startKind(language)
+        val own = ownWrites.indexOf(language to now)
+        if (own >= 0) {
+            repeat(own + 1) { ownWrites.removeAt(0) }
+            return false
+        }
+        val before = settingsStarts[language] ?: return false
+        return before != now && now != kind
     }
 
     private fun afterSwitch() {
@@ -513,6 +546,7 @@ class KeyboardController(
         language = lang
         userSwitched = true
         kind = landingKind(lang)
+        settingsStarts[lang] = startKind(lang)
         afterSwitch()
         onChanged()
     }

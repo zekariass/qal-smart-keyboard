@@ -93,7 +93,7 @@ fun PreferencesPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: Se
                 val ethiopic = n == NumeralStyle.ETHIOPIC
                 SettingsRadioRow(
                     title = stringResource(if (ethiopic) R.string.settings_numerals_ethiopic else R.string.settings_numerals_western),
-                    // ADR 0043: the style in force (Ethiopic until one is picked); picking one records the choice.
+                    // ADR 0043 / 0044: the style in force (Western first until one is picked); picking one records the choice.
                     selected = settings.effectiveNumeralStyle == n,
                     onSelect = { onUpdate { it.copy(numeralStyle = n, numeralStyleChosen = true) } },
                     summary = stringResource(if (ethiopic) R.string.settings_numerals_ethiopic_sample else R.string.settings_numerals_western_sample),

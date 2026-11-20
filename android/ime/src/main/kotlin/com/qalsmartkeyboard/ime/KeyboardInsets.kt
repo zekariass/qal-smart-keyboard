@@ -96,4 +96,47 @@ object KeyboardMetrics {
         }
         return max(base * s, MIN_ROW_DP)
     }
+
+    /** ADR 0044: the AI panels add this share of the key area (portrait), kept between [AI_EXTRA_MIN_DP] and [AI_EXTRA_MAX_DP]. */
+    const val AI_EXTRA_SHARE = 0.18f
+    const val AI_EXTRA_MIN_DP = 56f
+    const val AI_EXTRA_MAX_DP = 72f
+
+    /** Landscape: a smaller share, at most [AI_LANDSCAPE_EXTRA_MAX_DP] (the screen is short). */
+    const val AI_LANDSCAPE_EXTRA_SHARE = 0.10f
+    const val AI_LANDSCAPE_EXTRA_MAX_DP = 32f
+
+    /** The whole keyboard with an AI panel (bar, panel, insets) stays within this share of the window height. */
+    const val AI_PORTRAIT_WINDOW_SHARE = 0.60f
+    const val AI_LANDSCAPE_WINDOW_SHARE = 0.50f
+
+    /**
+     * ADR 0044: the height (px) of an AI panel shown in place of the keys (the AI tools grid, AI Assist and Write Email): the
+     * key area [keyAreaPx] plus a little more ([AI_EXTRA_SHARE] of it, 56–72 dp; less in landscape), capped so the keyboard
+     * ([chromePx] = the bar and the inset padding, plus the panel) stays within [AI_PORTRAIT_WINDOW_SHARE] /
+     * [AI_LANDSCAPE_WINDOW_SHARE] of [windowHeightPx]. Never shorter than the key area (switching to AI never shrinks the
+     * keyboard). A pure function of stable inputs, so a mode switch changes the height once and never loops.
+     */
+    fun aiPanelHeightPx(keyAreaPx: Int, density: Float, windowHeightPx: Int, landscape: Boolean, chromePx: Int = 0): Int {
+        if (keyAreaPx <= 0) return keyAreaPx
+        val dens = if (density > 0f) density else 1f
+        val keyDp = keyAreaPx / dens
+        val extraDp = if (landscape) min(keyDp * AI_LANDSCAPE_EXTRA_SHARE, AI_LANDSCAPE_EXTRA_MAX_DP)
+        else (keyDp * AI_EXTRA_SHARE).coerceIn(AI_EXTRA_MIN_DP, AI_EXTRA_MAX_DP)
+        val wanted = keyAreaPx + Math.round(extraDp * dens)
+        if (windowHeightPx <= 0) return wanted
+        val cap = (windowHeightPx * (if (landscape) AI_LANDSCAPE_WINDOW_SHARE else AI_PORTRAIT_WINDOW_SHARE)).toInt() - chromePx.coerceAtLeast(0)
+        return max(keyAreaPx, min(wanted, cap))
+    }
+
+    /**
+     * [aiPanelHeightPx] for the input view in a [windowWidthPx] x [windowHeightPx] window: landscape when wider than tall,
+     * the chrome being the bar ([CandidateStripView.HEIGHT_DP]) plus the column's inset padding [insetPaddingPx] (navigation
+     * bar, cutout and the bottom gap, [KeyboardInsets.padding]), so the panel never pushes the keyboard past the cap.
+     */
+    fun aiPanelHeightInWindowPx(keyAreaPx: Int, density: Float, windowWidthPx: Int, windowHeightPx: Int, insetPaddingPx: Int): Int =
+        aiPanelHeightPx(
+            keyAreaPx, density, windowHeightPx, landscape = windowWidthPx > windowHeightPx,
+            chromePx = Math.round(CandidateStripView.HEIGHT_DP * density) + insetPaddingPx.coerceAtLeast(0),
+        )
 }

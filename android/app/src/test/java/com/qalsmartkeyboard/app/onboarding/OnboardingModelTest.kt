@@ -199,6 +199,39 @@ class OnboardingModelTest {
         assertEquals("FIDEL", s.writingModes["ti"])
     }
 
+    /** ADR 0044: Amharic starts in Phonetic; onboarding shows the mode the keyboard opens in and its pick wins. */
+    @Test fun amharicStartsPhoneticAndTheDraftShowsTheModeInForce() = runBlocking {
+        val phonetic = InputMode.PHONETIC_LATIN_TO_NATIVE
+        // Fresh install, the flow's own default and a state restored after process death: Phonetic.
+        assertEquals(phonetic, LanguageDraft.from(KeyboardSettings.DEFAULT).modes["am"])
+        assertEquals(phonetic, OnboardingState().draft.modes["am"])
+        assertEquals(phonetic, OnboardingState().draft.modes["ti"])
+        val fresh = open()
+        val first = OnboardingModel(fresh)
+        first.start()
+        first.onSystemState(both)
+        first.next() // PRIVACY -> LANGUAGES (enable and select already done)
+        first.next() // LANGUAGES -> ACCOUNT, untouched
+        assertEquals(phonetic, fresh.current().modeInForce("am"))
+        restart()
+
+        // The keyboard was used before (Fidel picked there): a re-run shows Fidel, not the stale setting.
+        val repo = open()
+        repo.update { it.copy(writingModes = mapOf("am" to "FIDEL"), lastModes = mapOf("am" to "FIDEL")) }
+        val m = OnboardingModel(repo)
+        m.start()
+        m.onSystemState(both)
+        assertEquals(InputMode.DIRECT_SCRIPT_LAYOUT, m.state.value.draft.modes["am"])
+        m.edit { it.withMode("am", phonetic) }
+        m.next()
+        m.next()
+        val s = repo.current()
+        assertEquals(phonetic, s.modeInForce("am")) // the keyboard opens in Phonetic now
+        assertEquals(phonetic, s.language("am")!!.inputMode)
+        assertEquals(null, s.writingModes["am"])
+        assertEquals(null, s.lastModes["am"])
+    }
+
     @Test fun backNavigationStaysInRange() = runBlocking {
         val m = OnboardingModel(open())
         m.start()

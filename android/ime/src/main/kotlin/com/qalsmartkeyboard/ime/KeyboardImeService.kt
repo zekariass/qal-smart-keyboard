@@ -668,7 +668,7 @@ class KeyboardImeService : InputMethodService() {
         val panel = AiPanelView(ui).also {
             it.workspace = ws
             it.visibility = View.GONE
-            it.heightProvider = { keys.preferredHeightPx() }
+            it.heightProvider = { aiPanelHeightPx(keys) }
             it.onLink = ::openCompanion
             it.onClose = { closeAiPanels() }
             it.onApplied = ::onAiApplied
@@ -985,7 +985,7 @@ class KeyboardImeService : InputMethodService() {
         }
         val aiToolsView = AiToolsPanelView(ui).also {
             it.visibility = View.GONE
-            it.heightProvider = { k.preferredHeightPx() }
+            it.heightProvider = { aiPanelHeightPx(k) }
             it.tiles = { tools.aiTools() }
             it.availability = { aiToolbar?.availability }
             it.onTool = { t -> tools.activateAi(t) }
@@ -1062,6 +1062,18 @@ class KeyboardImeService : InputMethodService() {
         }
         styleNavigationBar(k)
         return root
+    }
+
+    /**
+     * ADR 0044: the height of the AI panels in place of the keys (the AI tools grid, AI Assist, Write Email): the key area
+     * plus a little more, the whole keyboard capped to a share of the window ([KeyboardMetrics.aiPanelHeightPx]). Read on
+     * every measure from stable values (the keys' layout height, the bar's fixed height, the inset padding already applied
+     * to the column, the display size), never from the panel's own size: one height change per switch, no layout loop.
+     */
+    private fun aiPanelHeightPx(keys: KeyboardSurface): Int {
+        val dm = ui.resources.displayMetrics
+        val padding = column?.let { it.paddingTop + it.paddingBottom } ?: 0
+        return KeyboardMetrics.aiPanelHeightInWindowPx(keys.preferredHeightPx(), dm.density, dm.widthPixels, dm.heightPixels, padding)
     }
 
     private fun applyInsetPadding(root: View, column: View, insets: WindowInsetsCompat) {

@@ -73,7 +73,10 @@ data class LayoutContext(
     /** The enabled languages for the space-bar picker. */
     val picker: List<PopupItem> = emptyList(),
     val draft: Boolean = false,
-    /** numeralStyle ETHIOPIC (ADR 0043): the digit keys of am/ti typed natively type Ethiopic numerals ([ethiopicDigits]). */
+    /**
+     * numeralStyle ETHIOPIC (ADR 0043 as amended by ADR 0044): the digit keys of am/ti typed natively type Ethiopic numerals
+     * ([ethiopicDigits]). False (WESTERN, the default): they type Western digits with the Ethiopic numeral on long-press.
+     */
     val ethiopicNumerals: Boolean = false,
     /** Phonetic mode: the native output of each letter key (secondary key labels). */
     val hints: PhoneticHints? = null,
@@ -103,12 +106,18 @@ data class LayoutContext(
         get() = LanguageCatalog.isEthiopic(mode.language) && (mode.kind == LayoutKind.FIDEL && grid != null || mode.kind == LayoutKind.PHONETIC)
 
     /**
-     * ADR 0043: the digit keys type Ethiopic numerals (፩…፱, ፲ on the 0 key), the Western digit on long-press. Only while
-     * Amharic or Tigrinya is typed natively (Fidel or Phonetic) with numeralStyle ETHIOPIC: never in the English (ABC)
-     * writing mode, other languages or the number pad of number, phone and date fields.
+     * ADR 0043 / 0044: the digit keys offer Ethiopic numerals (፩…፱, ፲ on the 0 key, the tens, ፻ and ፼) while Amharic or
+     * Tigrinya is typed natively (Fidel or Phonetic): never in the English (ABC) writing mode, other languages or the
+     * number pad of number, phone and date fields. Which one a tap types is [ethiopicDigits].
      */
-    val ethiopicDigits: Boolean
-        get() = ethiopicNumerals && LanguageCatalog.isEthiopic(mode.language) && (mode.kind == LayoutKind.FIDEL || mode.kind == LayoutKind.PHONETIC)
+    val ethiopicNumeralKeys: Boolean
+        get() = LanguageCatalog.isEthiopic(mode.language) && (mode.kind == LayoutKind.FIDEL || mode.kind == LayoutKind.PHONETIC)
+
+    /**
+     * numeralStyle ETHIOPIC: the digit keys type the Ethiopic numeral, the Western digit on long-press. Otherwise (WESTERN,
+     * the default since ADR 0044) [ethiopicNumeralKeys] type the Western digit with the Ethiopic numeral on long-press.
+     */
+    val ethiopicDigits: Boolean get() = ethiopicNumerals && ethiopicNumeralKeys
 
     /** The Arabic letter layout is in force (ADR 0034): Arabic punctuation, Arabic-Indic digits and the marks. */
     val arabic: Boolean get() = mode.kind == LayoutKind.ARABIC
@@ -258,15 +267,25 @@ object Layouts {
                 hint = indic,
             )
         }
-        if (ctx.ethiopicDigits) {
-            // ADR 0043: the Ethiopic numeral types; long-press offers the Western digit first (the hint), then the rest of
-            // the layout pack's alternatives (the tens on 1-9, hundred and ten thousand on the ፲ key).
-            val primary = EthiopicNumerals.primary(d)
-            val others = (ctx.grid?.digits?.get(d.toString()) ?: EthiopicNumerals.alternatives(d)).filter { it != primary }
+        if (ctx.ethiopicNumeralKeys) {
+            // The Ethiopic numeral of the key (፩…፱, ፲ on 0) and the rest of the layout pack's alternatives (the tens on 1-9,
+            // hundred and ten thousand on the ፲ key).
+            val numeral = EthiopicNumerals.primary(d)
+            val others = (ctx.grid?.digits?.get(d.toString()) ?: EthiopicNumerals.alternatives(d)).filter { it != numeral }
+            fun ethiopic(n: String) = PopupItem(n, description = L.keyEthiopicNumeral.format(n))
+            if (ctx.ethiopicDigits) {
+                // numeralStyle ETHIOPIC (ADR 0043): the numeral types; long-press offers the Western digit first (the hint).
+                return Key(
+                    KeyKind.CHAR, numeral, numeral,
+                    popup = listOf(PopupItem(d.toString())) + others.map(::ethiopic),
+                    popupColumns = 3, hint = d.toString(), description = L.keyEthiopicNumeral.format(numeral),
+                )
+            }
+            // Default (ADR 0044): the Western digit types; long-press offers the Ethiopic numeral first (the corner hint).
             return Key(
-                KeyKind.CHAR, primary, primary,
-                popup = listOf(PopupItem(d.toString())) + others.map { PopupItem(it, description = L.keyEthiopicNumeral.format(it)) },
-                popupColumns = 3, hint = d.toString(), description = L.keyEthiopicNumeral.format(primary),
+                KeyKind.CHAR, d.toString(), d.toString(),
+                popup = (listOf(numeral) + others).map(::ethiopic),
+                popupColumns = 3, hint = numeral,
             )
         }
         return ch(d.toString())

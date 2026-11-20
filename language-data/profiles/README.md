@@ -4,7 +4,7 @@
 (`qal-transliteration-profile` v1, parsed and validated by `core/src/translit/profile.rs`). Status is
 **DRAFT** until the native-speaker panel (gate G0) approves them; they must never be shown to users as
 verified (rule N9; hosts read the status through `KeyboardEngine::translit_profile`). The L1.1 pack build
-tool wraps them into signed packs. Golden corpora: `core/tests/golden/am-phonetic-0.3.0.json`, `core/tests/golden/ti-phonetic-0.4.0.json`; coverage matrices (every required
+tool wraps them into signed packs. Golden corpora: `core/tests/golden/am-phonetic-0.4.0.json`, `core/tests/golden/ti-phonetic-0.4.0.json`; coverage matrices (every required
 Fidel form and the sequences that reach it, checked end to end by `core/tests/phonetic_coverage.rs`):
 `core/tests/golden/{am,ti}-phonetic-coverage.json`, explained in `docs/specs/phonetic-coverage-am-ti.md`.
 Syllable forms come from the generated Fidel table (`../generated/fidel-table-v1.json`); profiles only
@@ -31,9 +31,10 @@ name series ids and order numbers.
 - Case is folded, except the explicit `I`, the labial marker `W` and the **capital letters** below.
 - **Capitals are their own letters** (am 0.3.0, ti 0.4.0, product owner's request): `N` ኝ series (`Na` ኛ), `T` ጥ
   series (`Te` ጠ), `K` ኽ series (`Ke` ኸ), `P` ጵ series (`Pa` ጳ) by default, with the plain letter (ን ት ክ ፕ) as the
-  alternative; Tigrinya also `Q` ቐ series (`Qe` ቐ … `Qo` ቖ, `QWa` ቛ). The lowercase digraphs keep working (`ny`,
-  `t'`, `kh` / ti `x`, `p'`, ti `qh`). `K` is ኽ and `Q` is ቐ (the common Ge'ez keyboard convention; the owner also
-  wrote "K" for ቕ, but one key cannot do both). Amharic has no `Q` rule: its profile and Fidel grid have no ቐ series.
+  alternative; `Q` ቐ series (`Qe` ቐ … `Qo` ቖ, `QWa` ቛ, alternative ቀ) in Tigrinya (ti 0.4.0) and Amharic (am
+  0.4.0, ADR 0044; the Amharic Fidel grid still has no ቐ key). The lowercase digraphs keep working (`ny`,
+  `t'`, `kh` / ti `x`, `p'`, ti `qh`); Amharic lowercase `q` and `k'` stay ቀ. `K` is ኽ and `Q` is ቐ (the common
+  Ge'ez keyboard convention; the owner also wrote "K" for ቕ, but one key cannot do both).
   Still folded with the SERA reading as an alternative: `C` (ቸ, alt ጭ), `S` (ስ, alt ሥ/ጽ), `Z` (ዝ, alt ዥ), so names
   such as Selam or Zewdu keep their letter; the panel decides whether these follow. Because capitals now change the
   letter, the keyboard never auto-capitalises in Phonetic mode (only a manual Shift gives a capital).

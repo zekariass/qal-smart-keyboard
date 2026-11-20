@@ -128,7 +128,7 @@ fun LanguagesPage(
             val downTo = if (pos < enabled.lastIndex) settings.languages.indexOfFirst { it.languageCode == enabled[pos + 1].languageCode } else -1
             ListItem(
                 headlineContent = { Text(native) },
-                supportingContent = languageLine(native, uiName, layoutLabel(code, l.inputMode, LatinLayout.fromName(settings.latinLayouts[code]) ?: LatinLayout.DEFAULT))?.let { { Text(it) } },
+                supportingContent = languageLine(native, uiName, layoutLabel(code, settings.modeInForce(code) ?: l.inputMode, LatinLayout.fromName(settings.latinLayouts[code]) ?: LatinLayout.DEFAULT))?.let { { Text(it) } },
                 trailingContent = {
                     Row {
                         IconButton(onClick = { onMove(code, upTo) }, enabled = upTo >= 0) {
@@ -213,6 +213,8 @@ fun LanguagePage(
     onLatinLayout: (LatinLayout) -> Unit = {},
     fidelVariant: FidelVariant = FidelVariant.DEFAULT,
     onFidelVariant: (FidelVariant) -> Unit = {},
+    /** ADR 0044: the mode the keyboard opens in ([KeyboardSettings.modeInForce]); the language's setting when not given. */
+    modeInForce: InputMode = language.inputMode,
 ) {
     val code = language.languageCode
     SettingsScaffold(nativeLanguageName(code), onBack, modifier) {
@@ -227,12 +229,12 @@ fun LanguagePage(
             SettingsHeader(stringResource(R.string.settings_layout_title))
             Column(Modifier.selectableGroup()) {
                 modes.forEach { m ->
-                    SettingsRadioRow(modeLabel(m), selected = language.inputMode == m, onSelect = { onMode(m) }, summary = modeHint(m))
+                    SettingsRadioRow(modeLabel(m), selected = modeInForce == m, onSelect = { onMode(m) }, summary = modeHint(m))
                 }
             }
         }
         KeyLayoutSection(code, latinLayout, onLatinLayout, fidelVariant, onFidelVariant)
-        if (language.inputMode == InputMode.PHONETIC_LATIN_TO_NATIVE) {
+        if (modeInForce == InputMode.PHONETIC_LATIN_TO_NATIVE) {
             SettingsHeader(stringResource(R.string.settings_phonetic_title))
             SettingsSwitchRow(stringResource(R.string.settings_show_candidates), language.showTransliterationCandidates, onShowSuggestions)
             SettingsNote(stringResource(R.string.settings_translit_profile))

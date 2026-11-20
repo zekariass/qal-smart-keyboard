@@ -15,7 +15,8 @@ import com.qalsmartkeyboard.ime.toolbar.TileGridView
 
 /**
  * The AI tools grid (ADR 0041): opened by the "AI" entry (the bar's shortcut or the tools panel's tile), it takes the key
- * area at the keyboard's height like the tools and clipboard panels (ADR 0035), the bar showing a back arrow and "AI tools".
+ * area, a little taller than the keys (ADR 0044: the AI panels' height, `KeyboardMetrics.aiPanelHeightPx`, given by the
+ * service through [heightProvider]), the bar showing a back arrow and "AI tools".
  * One tile per AI feature that works today ([AiToolSet]); a tile the cached plan excludes carries the lock and still opens
  * so it can say why (ADR 0031). Signed out, offline or an update needed are one compact line with its action above the
  * tiles ([notice]); otherwise the remaining translation allowance, when the plan state knows it. Opening the grid reads only

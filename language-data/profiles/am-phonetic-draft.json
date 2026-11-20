@@ -3,14 +3,14 @@
  "formatVersion": 1,
  "language": "am",
  "profileId": "am-phonetic",
- "profileVersion": "0.3.0",
+ "profileVersion": "0.4.0",
  "status": "DRAFT",
  "foldCase": true,
  "collapseGemination": true,
  "labialMarker": "W",
  "labialAltMarker": "w",
  "separator": "_",
- "labializedSeries": {"H": "XW", "G": "GW", "Q": "QW", "K": "KW", "KX": "KXW", "X": "XW"},
+ "labializedSeries": {"H": "XW", "G": "GW", "Q": "QW", "K": "KW", "KX": "KXW", "X": "XW", "QH": "QHW"},
  "initial": {
   "series": "GLOTTAL",
   "altSeries": ["PHARYNGEAL"],
@@ -65,6 +65,7 @@
   {"in": "S", "series": "S", "alt": ["SZ", "TS"]},
   {"in": "K", "series": "KX", "alt": ["K"]},
   {"in": "N", "series": "NY", "alt": ["N"]},
+  {"in": "Q", "series": "QH", "alt": ["Q"]},
   {"in": "Z", "series": "Z", "alt": ["ZH"]}
  ],
  "vowels": [

@@ -165,7 +165,9 @@ fun SettingsScreen(
                 LanguagePage(
                     language = language,
                     onBack = back,
-                    onMode = { m -> scope.launch { repository.updateLanguage(code) { it.copy(inputMode = m) } } },
+                    // ADR 0044: the page shows the mode the keyboard opens in, and a pick there is what the keyboard uses.
+                    modeInForce = settings.modeInForce(code) ?: language.inputMode,
+                    onMode = { m -> scope.launch { repository.update { it.withLanguageMode(code, m) } } },
                     onShowSuggestions = { on -> scope.launch { repository.updateLanguage(code) { it.copy(showTransliterationCandidates = on) } } },
                     modifier = modifier,
                     latinLayout = LatinLayout.fromName(settings.latinLayouts[code]) ?: LatinLayout.DEFAULT,

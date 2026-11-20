@@ -1,7 +1,7 @@
 # Phonetic (Latin to Ge'ez) coverage, Amharic and Tigrinya
 
 Status: **DRAFT** for the native-speaker panel (gate G0, rule N9). Describes profiles
-`am-phonetic` **0.3.0** and `ti-phonetic` **0.4.0** (`language-data/profiles/*-phonetic-draft.json`), engine
+`am-phonetic` **0.4.0** and `ti-phonetic` **0.4.0** (`language-data/profiles/*-phonetic-draft.json`), engine
 `core/src/translit/`. Everything here is provisional: the panel may change any mapping, and every
 change is a data edit plus a new golden/coverage version, not code.
 
@@ -11,7 +11,7 @@ Machine-checked sources (this page mirrors them):
   (signed test pack, `KeyboardEngine`, no dictionary, `max_candidates` 5) by
   `core/tests/phonetic_coverage.rs`, which also derives checks from every rule of the profile
   (input alone, input + each vowel, input + `W` + each vowel), so a dropped or broken rule fails CI.
-- `core/tests/golden/am-phonetic-0.3.0.json`, `core/tests/golden/ti-phonetic-0.4.0.json`: behaviour vectors (live composition,
+- `core/tests/golden/am-phonetic-0.4.0.json`, `core/tests/golden/ti-phonetic-0.4.0.json`: behaviour vectors (live composition,
   alternatives, commits, backspace).
 
 ## 1. The report: "ሽ and ኽ are missing"
@@ -53,6 +53,7 @@ Tigrinya adds the ቐ series and the labiovelar series ዀ and ቘ.
 | ti 0.3.0 | 299 | 297 | 2 (አ ኧ) | 0 |
 | am 0.3.0 | 282 | 280 | 2 (ኣ ኧ) | 0 |
 | ti 0.4.0 | 299 | 297 | 2 (አ ኧ) | 0 |
+| am 0.4.0 | 282 (+12 listed ቐ forms) | 280 (+12) | 2 (ኣ ኧ) | 0 |
 
 "Default" = some sequence gives exactly that letter as the composition; "alternative only" = it is
 offered in the candidate strip (the lexicon ranks known words first, ADR 0004 U6).
@@ -71,10 +72,17 @@ Tigrinya word needed a correction. Amharic is unchanged (`a` አ, alt ኣ). Ever
 series, `K` → ኽ series, `P` → ጵ series as the default (the plain ን/ት/ክ/ፕ is the alternative); Tigrinya `Q` → ቐ
 series (ቐ ቑ ቒ ቓ ቔ ቕ ቖ for `Qe Qu Qi Qa Qee Q Qo`, labialised `QWe` ቘ, `QWi` ቚ, `QWa` ቛ, `QWee` ቜ, `QW` ቝ).
 Decision recorded: **`K` = ኽ, `Q` = ቐ** (the owner also wrote "K" for ቕ; the common Ge'ez keyboard convention is
-followed). Amharic gets no `Q`: neither its profile nor its Fidel grid has the ቐ series. `C`, `S`, `Z` stay folded
+followed). (am 0.3.0 had no `Q`; superseded by am 0.4.0 below.) `C`, `S`, `Z` stay folded
 (SERA reading as alternative) so names typed with a capital keep their letter; for the panel. Lowercase digraphs
 (`ny t' kh x p' qh`) are unchanged, so the coverage counts are the same. The keyboard never auto-capitalises in
 Phonetic mode; Shift shows each capital's letter as the key's hint. Golden vectors `capital-*` in both corpora.
+
+**am 0.4.0** (product owner, 2026-11-19, ADR 0044): Amharic Phonetic gets Tigrinya's capital `Q` → ቐ series
+(`Qe Qu Qi Qa Qee Q Qo` → ቐ ቑ ቒ ቓ ቔ ቕ ቖ, labialised `QWe` ቘ, `QWi` ቚ, `QWa` ቛ, `QWee` ቜ, `QW` ቝ), with the
+plain ቀ series as the alternative; the shifted `q` key shows ቕ. Lowercase `q` and `k'` stay ቀ (no new
+alternative, so no existing Amharic output or strip changes). The ቐ forms are not Amharic orthography, so they are
+listed in the am matrix beyond `required` (checked the same way) and the Amharic Fidel grid still has no ቐ key.
+Golden vector `capital-q-is-qh-in-every-order`.
 
 Out of scope (not required, not mapped): the ninth-order "oa" forms (ሇ, ⶀ...), ፘ ፙ ፚ, the
 Sebatbeit/Gurage/Bench letters (ᎀ..., ⶠ..., ꬁ..., 𞟠...), ዸ and ጘ series.
@@ -111,7 +119,7 @@ noise on the dev box).
 |---|---|---|
 | `x`: ሸ (am convention) or ኸ (ti profile 0.1.0) | am `x` = ሸ (was unmapped); ti keeps `x` = ኸ | No existing am output changes; ti ኸ is frequent and `x` was a deliberate ti choice. Panel to confirm the split. |
 | `c`: ቸ or ክ (English "cat") | `c` = ቸ | SERA and common keyboards; `c` was unmapped. |
-| Capitals: SERA meanings vs names typed with a capital (`Tesfaye`, `Selam`) | 0.2.0: default stayed the folded lowercase. **am 0.3.0 / ti 0.4.0: `N T K P` (ti also `Q`) are their own letters by default**; `C S Z` still folded | Owner's request; no auto-capitalisation in Phonetic, so only a deliberate Shift gives the capital letter. |
+| Capitals: SERA meanings vs names typed with a capital (`Tesfaye`, `Selam`) | 0.2.0: default stayed the folded lowercase. **am 0.3.0 / ti 0.4.0: `N T K P` (ti also `Q`; am `Q` from 0.4.0) are their own letters by default**; `C S Z` still folded | Owner's request; no auto-capitalisation in Phonetic, so only a deliberate Shift gives the capital letter. |
 | Lowercase `w` after a consonant: ወ or labialisation | Default stays ወ (`gwa` ግዋ); labialised letter first alternative | `w` is also the consonant ወ and 0.1.0 output must not change; the lexicon promotes known words such as ኳስ, ኋላ. |
 | Homophones ሰ/ሠ, ሀ/ሐ/ኀ, ጸ/ፀ, አ/ዐ | Common letter by default, others as alternatives, plus deterministic backtick sequences | Backtick is rare in text; on the phone it is on the symbols page (slow but certain). |
 | ኋ: labialised ሀ or ኀ | `hWa` gives ኋ (the ኀ-series labiovelar; `h` now maps to it), `hwa` offers it first; ሗ as alternative | ኋ is the standard spelling (ኋላ). |
@@ -142,6 +150,8 @@ for what the test checks. Generated from `core/tests/golden/{am,ti}-phonetic-cov
 ### Amharic (`am-phonetic` 0.2.0)
 
 282 required forms: 280 reachable as the default composition, 2 only as a strip alternative, 0 unreachable.
+am 0.4.0 also lists (beyond the required forms) `QH` ቐ `Qe` · ቑ `Qu` · ቒ `Qi` · ቓ `Qa` · ቔ `Qee` · ቕ `Q` · ቖ `Qo` and
+`QHW` ቘ `QWe` · ቚ `QWi` · ቛ `QWa` · ቜ `QWee` · ቝ `QW`, all as the default composition.
 
 | Series | 1st (e) | 2nd (u) | 3rd (i) | 4th (a) | 5th (ee) | 6th (bare / I) | 7th (o) |
 |---|---|---|---|---|---|---|---|

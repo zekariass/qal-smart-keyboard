@@ -453,9 +453,9 @@
     <string name="settings_suggestions_title">Suggestions</string>
     <string name="settings_word_suggestions_note">Words from the Afaan Oromoo dictionary (draft) for the word you are typing. Your text changes only when you tap a suggestion.</string>
     <string name="settings_numerals_title">Numerals</string>
-    <string name="settings_numerals_ethiopic">Ethiopic</string>
-    <string name="settings_numerals_western">Western</string>
-    <string name="settings_numerals_note">Ethiopic numerals type in Amharic and Tigrinya (Fidel and Phonetic); hold a number key for 1 2 3. Number, phone and date fields, English and the other languages always use 1 2 3.</string>
+    <string name="settings_numerals_ethiopic">Ethiopic first</string>
+    <string name="settings_numerals_western">Western first</string>
+    <string name="settings_numerals_note">In Amharic and Tigrinya (Fidel and Phonetic) the number keys type the style you pick here; hold a number key for the other one (its corner shows it). Number, phone and date fields, English and the other languages always use 1 2 3.</string>
     <string name="settings_haptics">Haptic feedback</string>
     <string name="settings_key_preview">Key press preview</string>
     <string name="settings_pack_mobile_data">Update language packs on mobile data</string>
@@ -517,8 +517,8 @@
         <item quantity="one">%1$d word</item>
         <item quantity="other">%1$d words</item>
     </plurals>
-    <string name="settings_numerals_western_sample" translatable="false">1 2 3</string>
-    <string name="settings_numerals_ethiopic_sample" translatable="false">፩ ፪ ፫</string>
+    <string name="settings_numerals_western_sample" translatable="false">1 2 3 · ፩ ፪ ፫</string>
+    <string name="settings_numerals_ethiopic_sample" translatable="false">፩ ፪ ፫ · 1 2 3</string>
     <!-- ADR 0035: the keyboard's clipboard panel. -->
     <string name="settings_clipboard_history">Clipboard history</string>
     <string name="settings_clipboard_history_summary">Recent copies, kept for 1 hour in memory only</string>

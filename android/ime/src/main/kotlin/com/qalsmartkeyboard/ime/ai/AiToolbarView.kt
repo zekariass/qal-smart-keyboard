@@ -181,9 +181,13 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
         ellipsize = TextUtils.TruncateAt.END
     }
 
-    private fun buttons(vararg views: View): View = HorizontalScrollView(context).apply {
-        isHorizontalScrollBarEnabled = false
-        addView(LinearLayout(context).apply { orientation = HORIZONTAL; views.forEach { addView(it) } })
+    /**
+     * A panel's buttons. They wrap onto a second line instead of scrolling sideways (ADR 0044: at 360 dp the review's last
+     * button, Cancel, was cut off at the right edge with nothing saying the row scrolls).
+     */
+    private fun buttons(vararg views: View): View = WrapRow(context).apply {
+        tag = BUTTONS_TAG
+        views.forEach { addView(it) }
     }
 
     private fun chip(res: Int, on: Boolean = false, enabled: Boolean = true, small: Boolean = false, click: () -> Unit) =
@@ -196,8 +200,9 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
             textSize = if (small) 13f else 14f
             setTextColor(if (enabled) fg else muted)
             gravity = Gravity.CENTER
-            // One line, never ellipsized: every chip row scrolls sideways instead.
+            // One line; button rows wrap (a chip wider than the whole row would ellipsize), the alternatives row scrolls.
             isSingleLine = true
+            ellipsize = TextUtils.TruncateAt.END
             minHeight = (CHIP_DP * d).toInt()
             setPadding((14f * d).toInt(), 0, (14f * d).toInt(), 0)
             background = GradientDrawable().apply {
@@ -236,8 +241,13 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
         }
     }
 
+    /** The button row of the panel shown now (tests: every button fits), or null. */
+    internal fun buttonRow(): WrapRow? = panelBox.findViewWithTag(BUTTONS_TAG)
+
     companion object {
         /** Chip height (dp). */
         const val CHIP_DP = 34f
+
+        private const val BUTTONS_TAG = "ai-quick-buttons"
     }
 }

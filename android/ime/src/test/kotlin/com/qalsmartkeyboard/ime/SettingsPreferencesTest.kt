@@ -38,7 +38,8 @@ class SettingsPreferencesTest {
         assertEquals(LayoutKind.FIDEL, p.lastNative("am"))
         assertNull(p.lastNative("om")) // ABC is never a remembered native layout
         assertNull(p.lastNative("ti")) // a layout the language does not have is ignored
-        assertTrue(p.ethiopicNumerals)
+        assertFalse(p.ethiopicNumerals) // ADR 0044: a stored ETHIOPIC that was never chosen is not in force
+        assertTrue(prefs(s.copy(numeralStyleChosen = true)).ethiopicNumerals)
         assertFalse(p.hapticsEnabled)
         assertFalse(p.keyPreviewEnabled)
         assertTrue(prefs(KeyboardSettings.DEFAULT).keyPreviewEnabled)
@@ -103,22 +104,29 @@ class SettingsPreferencesTest {
         assertEquals("ti", sess.c.language)
     }
 
-    @Test fun numeralStyleEthiopicPutsEthiopicDigitsOnTheKeysWesternDoesNot() {
+    @Test fun numeralStyleEthiopicPutsEthiopicDigitsOnTheKeysWesternIsTheDefault() {
         fun firstDigit(st: KeyboardSettings): Key {
             val sess = CoreTestEnv.Session(languages = prefs(st), prefs = prefs(st))
             return sess.c.layout.rows.first().first()
         }
-        // ADR 0043: Ethiopic by default (nothing chosen) and when chosen; Western only when chosen.
-        for (st in listOf(KeyboardSettings.DEFAULT, KeyboardSettings.DEFAULT.copy(numeralStyle = NumeralStyle.ETHIOPIC, numeralStyleChosen = true))) {
+        // ADR 0044: Western first by default (nothing chosen), when Western is chosen, and for an ETHIOPIC never chosen.
+        for (st in listOf(
+            KeyboardSettings.DEFAULT,
+            KeyboardSettings.DEFAULT.copy(numeralStyle = NumeralStyle.WESTERN, numeralStyleChosen = true),
+            KeyboardSettings.DEFAULT.copy(numeralStyle = NumeralStyle.ETHIOPIC, numeralStyleChosen = false),
+        )) {
             val k = firstDigit(st)
-            assertEquals("፩", k.text)
-            assertEquals("1", k.popup.first().text)
+            assertEquals("1", k.text)
+            assertEquals("፩", k.popup.first().text)
+            assertEquals("፩", k.hint)
         }
-        val western = firstDigit(KeyboardSettings.DEFAULT.copy(numeralStyle = NumeralStyle.WESTERN, numeralStyleChosen = true))
-        assertEquals("1", western.text)
-        assertTrue(western.popup.isEmpty())
+        // Ethiopic first only when the user chose it.
+        val ethiopic = firstDigit(KeyboardSettings.DEFAULT.copy(numeralStyle = NumeralStyle.ETHIOPIC, numeralStyleChosen = true))
+        assertEquals("፩", ethiopic.text)
+        assertEquals("1", ethiopic.popup.first().text)
+        assertFalse(prefs(KeyboardSettings.DEFAULT).ethiopicNumerals)
         assertFalse(prefs(KeyboardSettings.DEFAULT.copy(numeralStyleChosen = true)).ethiopicNumerals)
-        assertTrue(prefs(KeyboardSettings.DEFAULT).ethiopicNumerals)
+        assertTrue(prefs(KeyboardSettings.DEFAULT.copy(numeralStyle = NumeralStyle.ETHIOPIC, numeralStyleChosen = true)).ethiopicNumerals)
     }
 
     @Test fun keyHeightScalesRowsAndCandidatesCanBeHidden() {

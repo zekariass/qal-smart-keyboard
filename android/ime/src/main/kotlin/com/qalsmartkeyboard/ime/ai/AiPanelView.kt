@@ -19,8 +19,9 @@ import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 
 /**
- * The AI panels (ADR 0031): AI Assist and Write Email, shown in place of the keys at the keyboard's height (like the
- * emoji and voice panels). A fixed header (back, title, open full editor, back to keyboard), a scrolling body and a
+ * The AI panels (ADR 0031): AI Assist and Write Email, shown in place of the keys, a little taller than them (ADR 0044:
+ * [heightProvider] gives `KeyboardMetrics.aiPanelHeightPx`, the same height as the AI tools grid, so moving between them
+ * never changes the keyboard's height). A fixed header (back, title, open full editor, back to keyboard), a scrolling body and a
  * fixed footer with the step's buttons, so small phones and landscape scroll instead of cramming. Plain Views, built
  * only when a panel is first opened (nothing on the keyboard's start-up path), re-rendered on state changes (taps,
  * results), never per key. State changes are announced to accessibility services.
@@ -30,7 +31,7 @@ import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 class AiPanelView(context: Context) : LinearLayout(context) {
     var workspace: AiWorkspace? = null
 
-    /** The keyboard height (the panel takes the key area at the same height). */
+    /** The panel's height: the key area plus the AI extra (ADR 0044); 0 = as measured. */
     var heightProvider: () -> Int = { 0 }
 
     /** Open the companion app at [AiLink] (plans, sign-in, settings, the full e-mail editor). */
@@ -55,7 +56,16 @@ class AiPanelView(context: Context) : LinearLayout(context) {
     private val header = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
     private val bodyScroll = ScrollView(context).apply { isFillViewport = false }
     private val body = LinearLayout(context).apply { orientation = VERTICAL }
-    private val footer = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; isFillViewport = true }
+    private val footer = HorizontalScrollView(context).apply {
+        isHorizontalScrollBarEnabled = false
+        isFillViewport = true
+        // Buttons that do not fit fade out at the edge, so the row reads as "scroll for more" (ADR 0044).
+        isHorizontalFadingEdgeEnabled = true
+        setFadingEdgeLength((32f * resources.displayMetrics.density).toInt())
+    }
+
+    /** The footer's sideways scroller (tests: its last button is reachable). */
+    internal val footerScroll: HorizontalScrollView get() = footer
 
     /** Sideways scroll positions of the chip rows, kept across re-renders (keyed by row). */
     private val rowScroll = HashMap<String, Int>()

@@ -111,6 +111,11 @@ class KeyLayoutsTest {
         assertEquals("q", q.text)
         assertEquals("ቅ", q.hint) // the phonetic hint stays
         assertEquals(listOf("፩", "1", "፲"), q.popup.map { it.text })
+        // ADR 0044, the default (Western first): the digit leads, the Ethiopic numerals follow.
+        val def = Layouts.forPage(Page.LETTERS, text, ctx.copy(ethiopicNumerals = false)).rows[0]
+        assertEquals("ቅ", def.first().hint)
+        assertEquals(listOf("1", "፩", "፲"), def.first().popup.map { it.text })
+        assertEquals(listOf("0", "፲", "፻", "፼"), def[9].popup.take(4).map { it.text })
     }
 
     @Test fun arabicNumberRowOff() {
