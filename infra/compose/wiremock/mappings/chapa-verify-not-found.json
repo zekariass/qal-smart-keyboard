@@ -1,0 +1,10 @@
+{
+  "name": "chapa: verify an unknown tx_ref (documented 404 'Invalid transaction or Transaction not found', trailing TAB as in the docs); tx_ref missing-*",
+  "priority": 2,
+  "request": { "method": "GET", "urlPathPattern": "/chapa/v1/transaction/verify/missing-.*" },
+  "response": {
+    "status": 404,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "message": "Invalid transaction or Transaction not found\t", "status": "failed", "data": null }
+  }
+}

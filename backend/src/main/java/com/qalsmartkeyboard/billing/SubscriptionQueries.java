@@ -1,11 +1,14 @@
 package com.qalsmartkeyboard.billing;
 
 import java.nio.charset.StandardCharsets;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,10 +26,38 @@ final class SubscriptionQueries {
 	static final int DEFAULT_LIMIT = 20;
 	static final int MAX_LIMIT = 100;
 
+	/**
+	 * The {@code Subscription} columns. A STORE_MANAGED subscription reports the store's management URL
+	 * ({@code manageUrl}): it is cancelled in the store, never here.
+	 */
+	private static final String SELECT = """
+			SELECT s.id, p.plan_code, s.subscription_status, s.source_type, s.billing_mode, pp.provider_code,
+			       m.method_code, s.payment_mandate_id, s.current_period_start, s.current_period_end,
+			       s.auto_renew_enabled, s.cancel_at_period_end, s.next_billing_at, s.created_at,
+			       CASE WHEN s.billing_mode = 'STORE_MANAGED' THEN sp.metadata->>'managementUrl' END
+			FROM user_subscriptions s
+			JOIN subscription_plans p ON p.id = s.plan_id
+			LEFT JOIN payment_providers pp ON pp.id = s.provider_id
+			LEFT JOIN provider_payment_methods m ON m.id = s.provider_payment_method_id
+			LEFT JOIN store_purchases sp ON sp.id = s.store_purchase_id""";
+
 	private final JdbcTemplate jdbc;
 
 	SubscriptionQueries(JdbcTemplate jdbc) {
 		this.jdbc = jdbc;
+	}
+
+	/** One of the user's subscriptions. */
+	Optional<SubscriptionDto> one(UUID userId, UUID subscriptionId) {
+		return jdbc.query(SELECT + " WHERE s.user_id = ? AND s.id = ?", SubscriptionQueries::row, userId,
+				subscriptionId).stream().map(r -> (SubscriptionDto) r[0]).findFirst();
+	}
+
+	private static Object[] row(ResultSet rs, int i) throws SQLException {
+		return new Object[] { new SubscriptionDto(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3),
+				rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getObject(8, UUID.class),
+				JdbcRoutingData.instant(rs, 9), JdbcRoutingData.instant(rs, 10), rs.getBoolean(11), rs.getBoolean(12),
+				JdbcRoutingData.instant(rs, 13), false, rs.getString(15)), JdbcRoutingData.instant(rs, 14) };
 	}
 
 	SubscriptionListDto list(UUID userId, String cursor, Integer limitParam) {
@@ -55,21 +86,8 @@ final class SubscriptionQueries {
 			args.add(afterId);
 		}
 		args.add(limit + 1);
-		List<Object[]> rows = jdbc.query("""
-				SELECT s.id, p.plan_code, s.subscription_status, s.source_type, s.billing_mode, pp.provider_code,
-				       m.method_code, s.payment_mandate_id, s.current_period_start, s.current_period_end,
-				       s.auto_renew_enabled, s.cancel_at_period_end, s.next_billing_at, s.created_at
-				FROM user_subscriptions s
-				JOIN subscription_plans p ON p.id = s.plan_id
-				LEFT JOIN payment_providers pp ON pp.id = s.provider_id
-				LEFT JOIN provider_payment_methods m ON m.id = s.provider_payment_method_id
-				WHERE s.user_id = ?""" + keyset + " ORDER BY s.created_at DESC, s.id DESC LIMIT ?",
-				(rs, i) -> new Object[] { new SubscriptionDto(rs.getObject(1, UUID.class), rs.getString(2),
-						rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7),
-						rs.getObject(8, UUID.class), JdbcRoutingData.instant(rs, 9), JdbcRoutingData.instant(rs, 10),
-						rs.getBoolean(11), rs.getBoolean(12), JdbcRoutingData.instant(rs, 13), false, null),
-						JdbcRoutingData.instant(rs, 14) },
-				args.toArray());
+		List<Object[]> rows = jdbc.query(SELECT + " WHERE s.user_id = ?" + keyset
+				+ " ORDER BY s.created_at DESC, s.id DESC LIMIT ?", SubscriptionQueries::row, args.toArray());
 		List<SubscriptionDto> items = new ArrayList<>();
 		String next = null;
 		for (int i = 0; i < rows.size() && i < limit; i++) {

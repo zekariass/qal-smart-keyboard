@@ -219,6 +219,32 @@ qal:
       webhook-secret: ${QAL_ARIFPAY_WEBHOOK_SECRET:}
       connect-timeout: ${QAL_ARIFPAY_CONNECT_TIMEOUT:3s}
       read-timeout: ${QAL_ARIFPAY_READ_TIMEOUT:10s}
+    # Chapa (Ethiopian alternative, ADR 0045 step A2). The adapter exists only when CHAPA_SECRET_KEY is set; a test key
+    # (CHASECK_TEST-...) needs QAL_CHAPA_ENVIRONMENT=SANDBOX (the default), a live key PRODUCTION. CHAPA_WEBHOOK_SECRET is
+    # the dashboard webhook "secret hash" (required in prod/production/staging; without it webhooks are refused).
+    chapa:
+      secret-key: ${CHAPA_SECRET_KEY:}
+      webhook-secret: ${CHAPA_WEBHOOK_SECRET:}
+      environment: ${QAL_CHAPA_ENVIRONMENT:SANDBOX}
+      base-url: ${QAL_CHAPA_BASE_URL:}
+      connect-timeout: ${QAL_CHAPA_CONNECT_TIMEOUT:3s}
+      read-timeout: ${QAL_CHAPA_READ_TIMEOUT:10s}
+      accept-secret-hash-signature: ${QAL_CHAPA_ACCEPT_SECRET_HASH_SIGNATURE:true}
+    # RevenueCat (global store billing, ADR 0046). The adapter exists only when REVENUECAT_SECRET_API_KEY (v1 secret key)
+    # is set. REVENUECAT_WEBHOOK_AUTH = the exact Authorization header value configured for the webhook in the
+    # RevenueCat dashboard (>= 32 characters in prod/production/staging); optional REVENUECAT_WEBHOOK_SIGNING_SECRET.
+    # QAL_REVENUECAT_ENVIRONMENT: which purchases grant (SANDBOX test purchases or PRODUCTION).
+    revenuecat:
+      secret-api-key: ${REVENUECAT_SECRET_API_KEY:}
+      webhook-auth: ${REVENUECAT_WEBHOOK_AUTH:}
+      webhook-signing-secret: ${REVENUECAT_WEBHOOK_SIGNING_SECRET:}
+      environment: ${QAL_REVENUECAT_ENVIRONMENT:SANDBOX}
+      base-url: ${QAL_REVENUECAT_BASE_URL:}
+      connect-timeout: ${QAL_REVENUECAT_CONNECT_TIMEOUT:3s}
+      read-timeout: ${QAL_REVENUECAT_READ_TIMEOUT:10s}
+    store-renewal-pending: ${QAL_BILLING_STORE_RENEWAL_PENDING:6h}
+    # Store adapter that verifies GOOGLE_PLAY / APPLE_APP_STORE purchase reports while no direct store adapter exists.
+    store-verification-provider: ${QAL_BILLING_STORE_VERIFICATION_PROVIDER:REVENUECAT}
   # Crash reporting (ADR 0024, ADR 0007 D47): the environment tag; blank = the active Spring profiles ("default").
   observability:
     sentry:

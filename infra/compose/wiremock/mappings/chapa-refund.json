@@ -1,0 +1,31 @@
+{
+  "name": "chapa: refund a payment by Chapa reference (developer.chapa.co/refund: POST /v1/refund/{reference}, form fields)",
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/chapa/v1/refund/[A-Za-z0-9]+",
+    "headers": { "Authorization": { "matches": "Bearer .+" } }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "message": "Refund initiated successfully. Processing time: 1-3 business days",
+      "status": "success",
+      "data": {
+        "id": 730,
+        "chapa_reference": "{{request.path.[3]}}",
+        "bank_reference": "BLC9JI3G21",
+        "amount": "299.00",
+        "ref": "MERC-DIS-REF-MOCK{{randomValue length=8 type='ALPHANUMERIC'}}",
+        "currency": "ETB",
+        "status": "Refund Initiated",
+        "reason": null,
+        "merchant_reference": null,
+        "created_at": "2026-11-20T17:33:27.000000Z",
+        "updated_at": "2026-11-20T17:33:27.000000Z"
+      }
+    },
+    "transformers": ["response-template"]
+  }
+}

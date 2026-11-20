@@ -1,15 +1,19 @@
 {
-  "name": "chapa: initialize transaction",
+  "name": "chapa: initialize transaction (developer.chapa.co/integrations/accept-payments: 200 {message: Hosted Link, status: success, data.checkout_url})",
   "priority": 5,
-  "request": { "method": "POST", "urlPath": "/chapa/v1/transaction/initialize" },
+  "request": {
+    "method": "POST",
+    "urlPath": "/chapa/v1/transaction/initialize",
+    "headers": { "Authorization": { "matches": "Bearer .+" } }
+  },
   "response": {
     "status": 200,
-    "headers":{"Content-Type":"application/json; charset=utf-8"},
+    "headers": { "Content-Type": "application/json" },
     "jsonBody": {
       "message": "Hosted Link",
       "status": "success",
       "data": {
-        "checkout_url": "http://localhost:8089/chapa/checkout/{{jsonPath request.body '$.tx_ref'}}"
+        "checkout_url": "https://checkout.chapa.co/checkout/payment/MOCK-{{jsonPath request.body '$.tx_ref'}}"
       }
     },
     "transformers": ["response-template"]

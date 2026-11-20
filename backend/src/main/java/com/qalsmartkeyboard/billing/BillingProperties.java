@@ -24,12 +24,18 @@ import com.qalsmartkeyboard.platform.geo.CountryResolution.Confidence;
  *                             routes; below it the global ({@code ZZ}) routes apply. MEDIUM = a trusted IP country is
  *                             needed (client hints alone never unlock a country)
  * @param reconciliation       the stuck-attempt re-verification job
+ * @param storeRenewalPending  how long after its period end a store subscription that is still set to renew stays
+ *                             ACTIVE while the store has not reported the renewal yet (RevenueCat's Play renewal gap;
+ *                             ADR 0046)
+ * @param storeVerificationProvider the store-billing adapter that verifies GOOGLE_PLAY / APPLE_APP_STORE purchase reports
+ *                             while no direct store adapter exists (ADR 0046)
  */
 @ConfigurationProperties("qal.billing")
 record BillingProperties(@DefaultValue("SANDBOX") PaymentEnvironment environment, URI publicBaseUrl,
 		@DefaultValue("qalkeyboard://billing/return") URI appReturnUri, @DefaultValue("30m") Duration orderTtl,
 		@DefaultValue("30m") Duration attemptTtl, @DefaultValue("MEDIUM") Confidence minCountryConfidence,
-		@DefaultValue Reconciliation reconciliation) {
+		@DefaultValue Reconciliation reconciliation, @DefaultValue("6h") Duration storeRenewalPending,
+		@DefaultValue("REVENUECAT") String storeVerificationProvider) {
 
 	/**
 	 * @param enabled        run the db-scheduler task
@@ -55,6 +61,9 @@ record BillingProperties(@DefaultValue("SANDBOX") PaymentEnvironment environment
 		}
 		if (minCountryConfidence == Confidence.NONE) {
 			throw new IllegalArgumentException("qal.billing.min-country-confidence must be LOW, MEDIUM or HIGH");
+		}
+		if (storeRenewalPending == null || storeRenewalPending.isNegative()) {
+			storeRenewalPending = Duration.ofHours(6);
 		}
 		if (reconciliation.batchSize() < 1) {
 			throw new IllegalArgumentException("qal.billing.reconciliation.batch-size must be positive");

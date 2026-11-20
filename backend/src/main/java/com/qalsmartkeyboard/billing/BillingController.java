@@ -36,6 +36,8 @@ import com.qalsmartkeyboard.billing.BillingDtos.PaymentOrderDto;
 import com.qalsmartkeyboard.billing.BillingDtos.ProductListDto;
 import com.qalsmartkeyboard.billing.BillingDtos.ProviderRouteSetDto;
 import com.qalsmartkeyboard.billing.BillingDtos.ProviderRouteSetUpdate;
+import com.qalsmartkeyboard.billing.BillingDtos.StorePurchaseRequest;
+import com.qalsmartkeyboard.billing.BillingDtos.StorePurchaseResultDto;
 import com.qalsmartkeyboard.billing.BillingDtos.SubscriptionListDto;
 import com.qalsmartkeyboard.billing.BillingDtos.WebhookAckDto;
 import com.qalsmartkeyboard.identity.AuthenticatedUser;
@@ -48,7 +50,8 @@ import jakarta.validation.Valid;
  * The billing operations of the contract (tags Billing, Webhooks, Admin) implemented in ADR 0045:
  * {@code getBillingOptions}, {@code listBillingProducts}, {@code createPaymentOrder}, {@code getPaymentOrder},
  * {@code cancelPaymentOrder}, {@code createPaymentAttempt}, {@code getPaymentAttempt}, {@code returnFromCheckout},
- * {@code listSubscriptions}, {@code receiveGatewayWebhook}, {@code getProviderRoutes}, {@code replaceProviderRoutes}.
+ * {@code listSubscriptions}, {@code receiveGatewayWebhook}, {@code getProviderRoutes}, {@code replaceProviderRoutes};
+ * and in ADR 0046 {@code verifyStorePurchase} and {@code receiveStoreNotification} (RevenueCat).
  * Responses are {@code no-store}.
  */
 @RestController
@@ -62,10 +65,12 @@ class BillingController {
 	private final SubscriptionQueries subscriptions;
 	private final WebhookIntake webhooks;
 	private final ProviderRouteAdmin routes;
+	private final StorePurchases storePurchases;
+	private final StoreNotificationIntake storeNotifications;
 
 	BillingController(CountryResolver countries, BillingCatalog catalog, OrderService orders, AttemptService attempts,
 			CheckoutReturn returns, SubscriptionQueries subscriptions, WebhookIntake webhooks,
-			ProviderRouteAdmin routes) {
+			ProviderRouteAdmin routes, StorePurchases storePurchases, StoreNotificationIntake storeNotifications) {
 		this.countries = countries;
 		this.catalog = catalog;
 		this.orders = orders;
@@ -74,6 +79,8 @@ class BillingController {
 		this.subscriptions = subscriptions;
 		this.webhooks = webhooks;
 		this.routes = routes;
+		this.storePurchases = storePurchases;
+		this.storeNotifications = storeNotifications;
 	}
 
 	@GetMapping("/api/v1/billing/options")
@@ -164,10 +171,7 @@ class BillingController {
 		try (InputStream in = request.getInputStream()) {
 			body = in.readNBytes(WebhookIntake.MAX_BODY_BYTES + 1);
 		}
-		Map<String, List<String>> headers = new LinkedHashMap<>();
-		for (String name : Collections.list(request.getHeaderNames())) {
-			headers.put(name.toLowerCase(Locale.ROOT), new ArrayList<>(Collections.list(request.getHeaders(name))));
-		}
+		Map<String, List<String>> headers = headers(request);
 		Map<String, String> query = new LinkedHashMap<>();
 		String raw = request.getQueryString();
 		if (raw != null) {
@@ -180,6 +184,35 @@ class BillingController {
 		}
 		webhooks.receive(providerCode, accountCode, body, headers, query);
 		return noStore(new WebhookAckDto(true));
+	}
+
+	@PostMapping(path = "/api/v1/billing/store-purchases", consumes = MediaType.APPLICATION_JSON_VALUE)
+	ResponseEntity<StorePurchaseResultDto> storePurchase(@AuthenticationPrincipal AuthenticatedUser user,
+			@RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
+			@Valid @RequestBody StorePurchaseRequest body) {
+		return noStore(storePurchases.report(user, idempotencyKey, body));
+	}
+
+	@PostMapping("/api/v1/billing/store-notifications/{providerCode}")
+	ResponseEntity<WebhookAckDto> storeNotification(@PathVariable String providerCode, HttpServletRequest request)
+			throws IOException {
+		if (!providerCode.matches("[A-Z][A-Z0-9_]{0,39}")) {
+			throw BillingErrors.notFound();
+		}
+		byte[] body;
+		try (InputStream in = request.getInputStream()) {
+			body = in.readNBytes(StoreNotificationIntake.MAX_BODY_BYTES + 1);
+		}
+		storeNotifications.receive(providerCode, body, headers(request));
+		return noStore(new WebhookAckDto(true));
+	}
+
+	private static Map<String, List<String>> headers(HttpServletRequest request) {
+		Map<String, List<String>> headers = new LinkedHashMap<>();
+		for (String name : Collections.list(request.getHeaderNames())) {
+			headers.put(name.toLowerCase(Locale.ROOT), new ArrayList<>(Collections.list(request.getHeaders(name))));
+		}
+		return headers;
 	}
 
 	@GetMapping("/admin/v1/billing/provider-routes/{countryCode}/{clientPlatform}/{distributionChannel}")

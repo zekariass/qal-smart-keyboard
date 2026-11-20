@@ -118,6 +118,20 @@ class ProviderRoutingTest {
 			public boolean supports(PaymentEnvironment environment) {
 				return true;
 			}
+
+			public com.qalsmartkeyboard.billing.spi.WebhookAuthentication authenticateNotification(
+					com.qalsmartkeyboard.billing.spi.StoreNotificationRequest request) {
+				throw new UnsupportedOperationException();
+			}
+
+			public com.qalsmartkeyboard.billing.spi.StoreNotification parseNotification(
+					com.qalsmartkeyboard.billing.spi.StoreNotificationRequest request) {
+				throw new UnsupportedOperationException();
+			}
+
+			public com.qalsmartkeyboard.billing.spi.StoreCustomer customer(String appUserId) {
+				throw new UnsupportedOperationException();
+			}
 		};
 	}
 

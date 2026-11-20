@@ -31,7 +31,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Wires the billing core (ADR 0045): provider registry, routing, catalogue, orders, attempts, verification and
- * fulfilment, webhook intake, the checkout return URL, the two outbox consumers and the reconciliation task.
+ * fulfilment, webhook intake, the checkout return URL, store purchases and notifications (ADR 0046), the outbox
+ * consumers and the reconciliation task.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(BillingProperties.class)
@@ -103,6 +104,41 @@ class BillingConfiguration {
 	@Bean
 	SubscriptionQueries billingSubscriptionQueries(JdbcTemplate jdbc) {
 		return new SubscriptionQueries(jdbc);
+	}
+
+	@Bean
+	StorePurchases billingStorePurchases(JdbcTemplate jdbc, TransactionTemplate transactions,
+			ProviderRegistry registry, OutboxPublisher outbox, SubscriptionQueries subscriptions,
+			BillingProperties properties, JsonMapper json, ObjectProvider<Clock> clock) {
+		return new StorePurchases(jdbc, transactions, registry, outbox, subscriptions, properties, json, clock(clock));
+	}
+
+	@Bean
+	StoreNotificationIntake billingStoreNotificationIntake(JdbcTemplate jdbc, TransactionTemplate transactions,
+			ProviderRegistry registry, OutboxPublisher outbox, StorePurchases purchases, JsonMapper json,
+			ObjectProvider<Clock> clock) {
+		return new StoreNotificationIntake(jdbc, transactions, registry, outbox, purchases, json, clock(clock));
+	}
+
+	/** Processes a stored store notification: re-read the customer from the store provider, then apply. */
+	@Bean
+	OutboxEventHandler billingStoreNotificationHandler(StoreNotificationIntake intake) {
+		return new OutboxEventHandler() {
+			@Override
+			public String consumerName() {
+				return "billing.sync-on-store-notification";
+			}
+
+			@Override
+			public String eventType() {
+				return BillingEvents.STORE_NOTIFICATION_RECEIVED;
+			}
+
+			@Override
+			public void handle(OutboxEvent event) {
+				intake.process(event);
+			}
+		};
 	}
 
 	@Bean

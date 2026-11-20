@@ -123,6 +123,27 @@ final class BillingDtos {
 	record SubscriptionListDto(List<SubscriptionDto> items, String nextCursor) {
 	}
 
+	/**
+	 * {@code StorePurchaseRequest}. Tokens are write-only and never printed. Only {@code REVENUECAT} is verified by this
+	 * server (ADR 0046); the server reads the caller's customer instead of trusting a token.
+	 */
+	record StorePurchaseRequest(@NotNull @Pattern(regexp = "^(GOOGLE_PLAY|APPLE_APP_STORE|REVENUECAT)$") String provider,
+			@NotBlank @Size(max = 255) String productId, @Size(max = 4096) String purchaseToken,
+			@Size(max = 255) String packageName, @Size(max = 16384) String signedTransactionInfo,
+			UUID appAccountToken) {
+
+		@Override
+		public String toString() {
+			return "StorePurchaseRequest[provider=" + provider + ", productId=" + productId + "]";
+		}
+	}
+
+	/** {@code StorePurchaseResult}. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	record StorePurchaseResultDto(UUID storePurchaseId, String productId, String status, String environment,
+			Boolean autoRenewing, Instant acknowledgedAt, Instant expiresAt, SubscriptionDto subscription) {
+	}
+
 	/** {@code WebhookAck}. */
 	record WebhookAckDto(boolean received) {
 	}
