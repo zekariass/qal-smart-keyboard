@@ -212,8 +212,8 @@ interface ModePreferences {
 
     /**
      * numeralStyle ETHIOPIC (ADR 0043): am/ti typed natively (Fidel, Phonetic) put Ethiopic numerals on the digit keys,
-     * Western digits on long-press. The product default (Ethiopic) comes from the settings ([SettingsPreferences]); this
-     * in-memory default stays Western so the plain layout tests keep ASCII digit keys.
+     * Western digits on long-press. False (WESTERN, the product default since ADR 0044, read from the settings by
+     * [SettingsPreferences]): Western digits on the keys, Ethiopic numerals on long-press.
      */
     val ethiopicNumerals: Boolean get() = false
 

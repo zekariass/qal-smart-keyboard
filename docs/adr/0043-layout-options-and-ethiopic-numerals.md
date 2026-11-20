@@ -120,3 +120,24 @@ the Fidel variants, every Latin mode the arrangements.
 - Strings: the panel, descriptions and settings have DRAFT am/ti/om translations (ADR 0032, rule N9).
 - Device checks still needed: Ethiopic numeral glyphs at key size on low-end devices (Noto Sans Ethiopic), long-press
   popups on the top row with the number row off, the Layout panel's height and scrolling at 360 dp, and TalkBack on it.
+
+## Amendment (2026-11-20, ADR 0044): Western digits first by default
+The product owner reversed the default of §1–§2 after device QA: **Western digits are the primary output everywhere**,
+Ethiopic numerals secondary. What changed, and what did not:
+- `numeralStyle` keeps its two values with these meanings on the am/ti native layouts (Phonetic and Fidel; letters page,
+  both symbols pages, and the top letter row's long-press with the number row off):
+  - **WESTERN (the default)**: the keys type 1…9, 0; long-press offers the Ethiopic numeral first (፩…፱, ፲ on 0; also the
+    corner hint), then the pack's tens (፲…፺) and ፻ ፼ on 0, as before.
+  - **ETHIOPIC**: exactly §1 (the numeral types, the Western digit first on long-press and as the hint).
+  The old "WESTERN = plain digits, no popup" mode is gone on am/ti native layouts: Ethiopic numerals are always one
+  long-press away there. English (ABC) of am/ti, om, en, ar and the number / phone / date pads are unchanged.
+- `KeyboardSettings.DEFAULT_NUMERAL_STYLE` is WESTERN; `effectiveNumeralStyle = if (numeralStyleChosen) numeralStyle else
+  WESTERN`. Migration: only a recorded choice of ETHIOPIC (`numeral_style_chosen` = true and `numeral_style` = ETHIOPIC)
+  keeps Ethiopic first. Everyone who never picked a style (the ADR 0043 default users) is back on Western first. Files
+  without the flag (written before ADR 0043) now count as **not chosen**, whatever they store: their stored ETHIOPIC
+  meant "Ethiopic offered on long-press", which is exactly today's WESTERN. A file written by an ADR 0043 build that
+  inferred the flag from a stored ETHIOPIC and saved it is indistinguishable from an explicit pick and keeps Ethiopic first
+  (one tap on the settings page changes it).
+- Sync is unchanged (WESTERN | ETHIOPIC; a different value adopted from the server counts as a choice).
+- Settings → Preferences → Numerals: "Western first" (1 2 3 · ፩ ፪ ፫) and "Ethiopic first" (፩ ፪ ፫ · 1 2 3), with a note
+  that the other style is on long-press and in the key's corner (DRAFT am/ti/om strings).

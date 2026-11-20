@@ -58,7 +58,7 @@ class SettingsPreferences(
 
     override val learnWords: Boolean get() = settings().learnWords
 
-    /** ADR 0043: the effective style (Ethiopic until the user picks one). */
+    /** ADR 0043 / 0044: the effective style is ETHIOPIC only when the user picked it (Western first by default). */
     override val ethiopicNumerals: Boolean get() = settings().effectiveNumeralStyle == NumeralStyle.ETHIOPIC
     /**
      * Layout choices saved from the keyboard but not yet back from the store (value, and the stored value when it was

@@ -119,12 +119,16 @@ data class TypingLanguageSyncItem(
  */
 data class KeyboardSettings(
     val languages: List<TypingLanguageSetting> = defaultLanguages(),
-    /** The style the user last picked; only in force when [numeralStyleChosen] (see [effectiveNumeralStyle]). Synced. */
+    /**
+     * The style the user last picked; only in force when [numeralStyleChosen] (see [effectiveNumeralStyle]). Synced. On the
+     * am/ti native layouts (ADR 0044) WESTERN = Western digits on the keys, Ethiopic numerals on long-press; ETHIOPIC = the
+     * other way round.
+     */
     val numeralStyle: NumeralStyle = NumeralStyle.WESTERN,
     /**
      * ADR 0043: the user picked [numeralStyle] themselves (the settings page, or another device through sync). Until then the
-     * keyboard uses [DEFAULT_NUMERAL_STYLE]. Device-local. Files written before this key: true only for a stored ETHIOPIC
-     * (never the default, so always a choice); a stored WESTERN cannot be told from the old default and counts as not chosen.
+     * keyboard uses [DEFAULT_NUMERAL_STYLE]. Device-local. ADR 0044: files written before this key count as not chosen (a
+     * stored ETHIOPIC there meant "Ethiopic on long-press", which is today's WESTERN default).
      */
     val numeralStyleChosen: Boolean = false,
     /** Id of the chosen keyboard theme ([ThemeIds]); stored under `theme`, synced as `keyboardTheme`. */
@@ -209,7 +213,7 @@ data class KeyboardSettings(
 
     val keyHeightScale: Float get() = keyHeightPercent / 100f
 
-    /** The numeral style in force (ADR 0043): the user's choice, else the default (Ethiopic). */
+    /** The numeral style in force (ADR 0043 / 0044): the user's choice, else the default (Western first). */
     val effectiveNumeralStyle: NumeralStyle get() = if (numeralStyleChosen) numeralStyle else DEFAULT_NUMERAL_STYLE
 
     /** The list as `/me/typing-languages` items (sortOrder 10, 20, ...; primary = first enabled). */
@@ -274,8 +278,11 @@ data class KeyboardSettings(
         const val EMOJI_RECENT_MAX = 32
         const val EMOJI_TONES_MAX = 400
 
-        /** ADR 0043: am/ti typed natively show Ethiopic numerals until the user picks a style. */
-        val DEFAULT_NUMERAL_STYLE = NumeralStyle.ETHIOPIC
+        /**
+         * ADR 0044 (reverses ADR 0043's default): am/ti typed natively put Western digits on the keys and Ethiopic numerals
+         * on long-press until the user picks Ethiopic first.
+         */
+        val DEFAULT_NUMERAL_STYLE = NumeralStyle.WESTERN
 
         /** An emoji sequence as stored: short, and free of the separators the store uses. */
         private fun emojiToken(s: String) = s.isNotEmpty() && s.length <= 40 && s.none { it == '|' || it == '\n' || it == '\r' }
