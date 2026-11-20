@@ -15,6 +15,8 @@ plugins {
 //   qal.mockAttestation            true/false, debug builds only: use MockAttestationProvider (default true for debug)
 //   qal.sentryDsn                  Sentry DSN for content-free crash reports (ADR 0024); also env QAL_SENTRY_DSN_ANDROID.
 //                                  Blank (the default: local, CI, tests): Sentry is never started and nothing is sent.
+//   qal.revenuecatAndroidKey       RevenueCat **public** Android SDK key (`goog_...`, ADR 0047), play flavour only. Blank (the
+//                                  default): store billing is hidden. A secret key (`sk_...`) fails the build.
 val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.isFile) f.inputStream().use { load(it) }
@@ -24,6 +26,12 @@ fun deployProp(name: String): String? = providers.gradleProperty(name).orNull ?:
 val entitlementJwks: String = deployProp("qal.entitlementJwksFile")?.let { rootProject.file(it).readText() } ?: "{\"keys\":[]}"
 // A DSN is not a secret (it only allows sending events), but it differs per environment and must stay out of git.
 val sentryDsn: String = (deployProp("qal.sentryDsn") ?: providers.environmentVariable("QAL_SENTRY_DSN_ANDROID").orNull).orEmpty().trim()
+// ADR 0047: only a public SDK key may ship in the app; a secret API key would let anyone act on the RevenueCat project.
+val revenuecatKey: String = deployProp("qal.revenuecatAndroidKey").orEmpty().trim().also { key ->
+    if (key.startsWith("sk_") || key.startsWith("atk_")) {
+        throw GradleException("qal.revenuecatAndroidKey must be the PUBLIC Android SDK key (goog_...), never a secret key")
+    }
+}
 fun quoted(v: String) = "\"" + v.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
@@ -51,8 +59,15 @@ android {
 
     flavorDimensions += "distribution"
     productFlavors {
-        create("play") { dimension = "distribution" }
-        create("direct") { dimension = "distribution" }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("String", "REVENUECAT_ANDROID_KEY", quoted(revenuecatKey))
+        }
+        create("direct") {
+            dimension = "distribution"
+            // No store SDK in the direct APK (the :billing-play module is play-only).
+            buildConfigField("String", "REVENUECAT_ANDROID_KEY", quoted(""))
+        }
     }
 
     // ABI splits: one APK per ABI (Play/CI) plus a universal APK for sideloading the `direct`
