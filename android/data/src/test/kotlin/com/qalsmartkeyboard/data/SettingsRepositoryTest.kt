@@ -137,19 +137,23 @@ class SettingsRepositoryTest {
         // ADR 0043 builds: never chose (they were on the Ethiopic default) -> back to Western first.
         old("r2-unchosen", "WESTERN", chosen = false).let { assertEquals(NumeralStyle.WESTERN, it.effectiveNumeralStyle) }
         old("r2-unchosen-eth", "ETHIOPIC", chosen = false).let { assertEquals(NumeralStyle.WESTERN, it.effectiveNumeralStyle) }
-        // Picked Western explicitly -> Western; picked Ethiopic explicitly -> stays Ethiopic first.
+        // ADR 0043 builds could record a "choice" without a real pick (the owner's test phone had ETHIOPIC + chosen): every
+        // file written before the Western-first policy starts over at Western first, once, whatever it recorded.
         old("r2-western", "WESTERN", chosen = true).let { assertEquals(NumeralStyle.WESTERN, it.effectiveNumeralStyle) }
         old("r2-ethiopic", "ETHIOPIC", chosen = true).let {
-            assertTrue(it.numeralStyleChosen)
-            assertEquals(NumeralStyle.ETHIOPIC, it.effectiveNumeralStyle)
+            assertFalse(it.numeralStyleChosen)
+            assertEquals(NumeralStyle.WESTERN, it.effectiveNumeralStyle)
         }
-        // From now on an explicit Western is kept across a restart.
-        val repo = open()
-        repo.update { it.copy(numeralStyle = NumeralStyle.WESTERN, numeralStyleChosen = true) }
-        closeAll()
-        val s = open().current()
-        assertTrue(s.numeralStyleChosen)
-        assertEquals(NumeralStyle.WESTERN, s.effectiveNumeralStyle)
+        // From now on an explicit choice is kept across a restart: Western, and Ethiopic first.
+        for (style in listOf(NumeralStyle.WESTERN, NumeralStyle.ETHIOPIC)) {
+            val repo = open()
+            repo.update { it.copy(numeralStyle = style, numeralStyleChosen = true) }
+            closeAll()
+            val s = open().current()
+            assertTrue(style.name, s.numeralStyleChosen)
+            assertEquals(style.name, style, s.effectiveNumeralStyle)
+            closeAll() // one DataStore per file at a time
+        }
     }
 
     /** ADR 0043: layout choices and the number row persist; bad entries are dropped; old files decode to the defaults. */

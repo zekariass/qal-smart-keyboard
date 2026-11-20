@@ -123,6 +123,14 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val LANGUAGES = stringPreferencesKey("languages")
         private val NUMERALS = stringPreferencesKey("numeral_style")
         private val NUMERALS_CHOSEN = booleanPreferencesKey("numeral_style_chosen")
+
+        /**
+         * The numeral policy a file was written under. ADR 0044 policy 2: Western digits first by default. ADR 0043 builds
+         * (never released; owner's test device only) could record `numeral_style_chosen` without a real pick, so a file
+         * without policy 2 starts over at Western first, once; a later explicit choice is written with policy 2 and kept.
+         */
+        private val NUMERALS_POLICY = intPreferencesKey("numeral_policy")
+        private const val NUMERAL_POLICY_WESTERN_FIRST = 2
         private val THEME = stringPreferencesKey("theme")
         private val HAPTICS = booleanPreferencesKey("haptics_enabled")
         private val KEY_PREVIEW = booleanPreferencesKey("key_preview_enabled")
@@ -163,6 +171,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             }
             p[NUMERALS] = s.numeralStyle.name
             p[NUMERALS_CHOSEN] = s.numeralStyleChosen
+            p[NUMERALS_POLICY] = NUMERAL_POLICY_WESTERN_FIRST
             p[THEME] = s.theme
             p[HAPTICS] = s.hapticsEnabled
             p[KEY_PREVIEW] = s.keyPreviewEnabled
@@ -208,13 +217,15 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 )
             }
             val lastModes = decodeMap(p[LAST_MODES])
+            // ADR 0044: a file not written under the Western-first policy starts over at the default (once).
+            val numeralPolicyCurrent = p[NUMERALS_POLICY] == NUMERAL_POLICY_WESTERN_FIRST
             return KeyboardSettings(
                 languages = languages,
-                numeralStyle = enumOrNull<NumeralStyle>(p[NUMERALS]) ?: d.numeralStyle,
+                numeralStyle = if (numeralPolicyCurrent) enumOrNull<NumeralStyle>(p[NUMERALS]) ?: d.numeralStyle else d.numeralStyle,
                 // Additive key (schema stays 1, ADR 0043). ADR 0044: a file without it was never written by a build where
                 // Ethiopic was the primary output, so nobody there chose Ethiopic first (their stored ETHIOPIC meant "Ethiopic
                 // on long-press", today's WESTERN default): not a choice. Only a recorded choice keeps Ethiopic first.
-                numeralStyleChosen = p[NUMERALS_CHOSEN] ?: false,
+                numeralStyleChosen = numeralPolicyCurrent && (p[NUMERALS_CHOSEN] ?: false),
                 theme = ThemeIds.normalize(p[THEME]),
                 hapticsEnabled = p[HAPTICS] ?: d.hapticsEnabled,
                 keyPreviewEnabled = p[KEY_PREVIEW] ?: d.keyPreviewEnabled,
