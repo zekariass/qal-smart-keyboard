@@ -1261,6 +1261,56 @@ Off unless `QAL_SENTRY_DSN` is set (`sentry.dsn`, blank by default: local, CI an
 - Tests: `SentryScrubberTest` (unit), `SentryContextIT` (blank DSN: disabled), `SentryEnabledContextIT` (fake DSN on a
   local socket: enabled, hardened, no connection at startup).
 
+## Billing: payments core, country detection, ArifPay (ADR 0045)
+
+Plan steps M4.1/M4.6 and the ArifPay part of M4.9. Packages: `platform.geo` (country detection), `billing` (routing,
+orders, attempts, verification, fulfilment, webhooks, reconciliation), `billing.spi` (provider SPI), `billing.arifpay`.
+Migration V25 (`billing_provider_routes`, `billing_receipt_sequences`, seeds — all switched off).
+
+**Flow.** `GET /api/v1/billing/options` (resolved market, ordered methods, products) → `POST /billing/orders` (server
+price, `Idempotency-Key`, `marketCountry` must equal the resolved one) → `POST /billing/orders/{id}/attempts`
+(`methodCode: ARIFPAY_CHECKOUT` → `nextAction.checkoutUrl`) → payer pays on ArifPay → ArifPay redirects to
+`/api/v1/billing/return/{attemptId}` (303 to `qalkeyboard://billing/return?...`) and notifies
+`/api/v1/billing/webhooks/ARIFPAY/{accountCode}?t=<token>` → the server verifies with ArifPay and only then marks the
+order PAID, creates the MANUAL_RENEW term (30 days / 1 year, stacked on an active one) and the receipt → poll
+`GET /billing/orders/{id}`; `/me/entitlements` shows the plan at once (outbox cache invalidation). Neither the return URL
+nor a webhook body grants anything; the reconciliation task re-verifies open attempts older than 10 minutes.
+
+**Configuration** (`qal.geo.*`, `qal.billing.*`; full list in `application.yaml`):
+
+| Env | Meaning |
+|---|---|
+| `QAL_GEO_TRUSTED_PROXIES` / `QAL_GEO_EDGE_SECRET` | When `CF-IPCountry` is trusted (edge CIDRs and/or `X-Qal-Edge-Secret`). Unset = never. |
+| `DEV_MOCK_COUNTRY` | Development billing country (e.g. `ET`); the prod/production/staging profiles refuse to start with it. |
+| `QAL_BILLING_ENVIRONMENT` | `SANDBOX` (default) or `PRODUCTION`: which merchant accounts checkout uses. |
+| `QAL_PUBLIC_BASE_URL` | Public API origin used in the notify/return URLs given to providers (required for checkout). |
+| `QAL_BILLING_MIN_COUNTRY_CONFIDENCE` | `MEDIUM` (default: a trusted IP country unlocks a country's routes; hints alone never do). |
+| `ARIFPAY_SECRET_KEY` | ArifPay API key (`x-arifpay-key`); the adapter exists only when set. |
+| `QAL_ARIFPAY_ENVIRONMENT`, `QAL_ARIFPAY_BASE_URL` | `SANDBOX` (default, `https://gateway.arifpay.org`, `/api/sandbox/...` routes) or `PRODUCTION` (`https://gateway.arifpay.net`). |
+| `QAL_ARIFPAY_WEBHOOK_SECRET` | Key of the per-attempt notify token; required (>= 32 chars) under prod-like profiles, random per JVM otherwise. |
+
+Nothing is purchasable until an operator activates provider, merchant account, methods, products and the market/channel
+policy (named reviewer) — the SQL is in ADR 0045 "Go-live switches". The default provider per country and channel is
+data: `GET/PUT /admin/v1/billing/provider-routes/{country}/{platform}/{channel}` (FINANCE, `revision` concurrency) or
+the SQL in ADR 0045 "Switching providers".
+
+**Local testing.** Start the compose stack (WireMock on 8089 serves `infra/compose/wiremock/mappings/arifpay-*.json`,
+shapes from the live sandbox: a created session `ARP-<nonce>` always reads as paid 299.00 ETB, i.e. Premium 30 days;
+any other amount is a verification MISMATCH by design). Run the backend with `DEV_MOCK_COUNTRY=ET`,
+`ARIFPAY_SECRET_KEY=any-local-value`, `QAL_ARIFPAY_BASE_URL=http://localhost:8089/arifpay`,
+`QAL_PUBLIC_BASE_URL=http://localhost:<port>`, then apply the go-live SQL to the sandbox account
+`arifpay-et-sandbox` and the `ET/ANDROID/DIRECT_DOWNLOAD` policy. Create an order and an attempt, open
+`GET /api/v1/billing/return/{attemptId}` (it queues the verification) and poll the order. Against the real ArifPay
+sandbox use the real sandbox key and no base-URL override; ArifPay must reach `QAL_PUBLIC_BASE_URL` for notifications
+(otherwise the return URL and the reconciliation task still settle the payment).
+
+**Tests.** Unit: `CountryResolverTest`, `ProviderRoutingTest`, `BillingMathAndStatesTest`, `ArifPayProviderTest`
+(compose stubs + forced failures). Integration: `BillingPaymentsIT` (Testcontainers + WireMock: options, order, attempt,
+return URL, valid/forged/duplicate/out-of-order webhooks, failed and mismatching verification, reconciliation,
+idempotency, admin switch). Opt-in live sandbox smoke test (never in CI): with `ARIFPAY_SECRET_KEY` loaded from the
+git-ignored dev secrets file and `QAL_LIVE_SANDBOX=1`,
+`./mvnw -B -ntp -Djava.version=21 -Dit.test=ArifPayLiveSandboxIT -Dtest=NONE -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false verify`.
+
 ## Contract tests
 
 Controller tests validate every response against `contracts/openapi.yaml` (OpenAPI 3.1) by adding one annotation:
