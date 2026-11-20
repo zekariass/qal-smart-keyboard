@@ -2574,6 +2574,12 @@ paths:
         `GUEST_NOT_ALLOWED`). `STORE_PURCHASE_INVALID` (422) when RevenueCat has no such purchase for the
         caller, the product is not mapped to a plan, or the purchase environment (sandbox / production)
         is not the one this server honours. RevenueCat unreachable: 503 `PROVIDER_UNAVAILABLE`.
+
+        **`provider: GOOGLE_PLAY` / `APPLE_APP_STORE`** keep their shape. While the server has no direct
+        Play / App Store adapter they are verified the same way, through the configured store-verification
+        provider (`qal.billing.store-verification-provider`, default REVENUECAT) by the caller's user id:
+        `purchaseToken` / `signedTransactionInfo` are accepted but neither trusted, stored nor logged.
+        The RevenueCat App User ID is the access token's `sub` (= `userId`).
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:

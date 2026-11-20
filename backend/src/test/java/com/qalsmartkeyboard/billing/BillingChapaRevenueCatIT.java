@@ -457,6 +457,23 @@ class BillingChapaRevenueCatIT {
 		assertThat(count("SELECT COUNT(*) FROM store_purchases WHERE user_id = ?", u.id())).isEqualTo(1);
 		assertThat(count("SELECT COUNT(*) FROM user_subscriptions WHERE user_id = ?", u.id())).isEqualTo(1);
 
+		// the A1 Play shape (token + package) is verified the same way, through RevenueCat by the caller's user id;
+		// the token is neither trusted nor stored
+		User play = registered();
+		rcSubscriber(play.id(), future(), null, null, true);
+		mvc.perform(MockMvcRequestBuilders.post("/api/v1/billing/store-purchases").header("Authorization", play.bearer())
+				.header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"provider":"GOOGLE_PLAY","productId":"qal_premium","purchaseToken":"play-token-it-123",
+						"packageName":"com.qalsmartkeyboard.app"}"""))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACTIVE"))
+				.andExpect(jsonPath("$.subscription.billingMode").value("STORE_MANAGED"));
+		WM.verify(getRequestedFor(urlPathEqualTo("/rc/v1/subscribers/" + play.id())));
+		assertThat(count("""
+				SELECT COUNT(*) FROM store_purchases WHERE user_id = ?
+				AND (metadata::text LIKE '%play-token-it-123%' OR latest_transaction_id = 'play-token-it-123')""",
+				play.id())).isZero();
+
 		// a production purchase is not honoured by this (sandbox) server; an unmapped product is not a plan
 		User other = registered();
 		rcSubscriber(other.id(), future(), null, null, false);

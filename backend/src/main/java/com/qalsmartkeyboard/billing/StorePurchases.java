@@ -99,8 +99,12 @@ final class StorePurchases {
 			throw BillingErrors.problem(ApiErrorCode.GUEST_NOT_ALLOWED, "Sign in to buy a plan.");
 		}
 		BillingErrors.idempotencyKey(idempotencyKey);
-		StoreBillingProvider provider = registry.store(body.provider()).orElseThrow(() -> BillingErrors.problem(
-				ApiErrorCode.STORE_PURCHASE_INVALID, "Purchases of this store are not verified by this server."));
+		// A store without a direct adapter (GOOGLE_PLAY, APPLE_APP_STORE today) is verified through the configured
+		// store-verification provider (RevenueCat) by the caller's user id; its token is never trusted, stored or logged.
+		StoreBillingProvider provider = registry.store(body.provider())
+				.or(() -> registry.store(properties.storeVerificationProvider()))
+				.orElseThrow(() -> BillingErrors.problem(ApiErrorCode.STORE_PURCHASE_INVALID,
+						"Purchases of this store are not verified by this server."));
 		SyncResult result;
 		try {
 			result = sync(user.userId(), provider, "CLIENT_REPORT", null, null);

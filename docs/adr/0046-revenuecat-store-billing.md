@@ -14,7 +14,7 @@ https://www.revenuecat.com/docs/integrations/webhooks (+ event types, sample eve
 https://www.revenuecat.com/docs/api-v1 (customers), https://www.revenuecat.com/docs/customers/identifying-customers.
 
 ## Identity and products
-- **App User ID = our `users.id`**, the lower-case UUID (random v4: not guessable, no e-mail or phone, no `/`, under 100
+- **App User ID = our `users.id`** (= the access token `sub`; the server always reads `GET /v1/subscribers/{userId}` of the authenticated caller), the lower-case UUID (random v4: not guessable, no e-mail or phone, no `/`, under 100
   characters). The app configures the SDK with it after sign-in and never calls `logOut()` (no anonymous ids). Guests
   cannot buy. Event references that are not our user ids (`$RCAnonymousID:…`) are ignored.
 - **Products → plans are data** (`external_product_mappings`, provider REVENUECAT, per environment; V26 seeds them
@@ -29,7 +29,10 @@ https://www.revenuecat.com/docs/api-v1 (customers), https://www.revenuecat.com/d
    (Idempotency-Key). The server calls `GET https://api.revenuecat.com/v1/subscribers/{userId}`
    (`Authorization: Bearer REVENUECAT_SECRET_API_KEY`) and syncs every mapped subscription; 200 with the purchase and
    its subscription, 422 `STORE_PURCHASE_INVALID` when RevenueCat does not list that product for the caller (or it is of
-   the other environment), 503 when RevenueCat is down.
+   the other environment), 503 when RevenueCat is down. The A1 Play shape `{"provider":"GOOGLE_PLAY","productId":…,
+   "purchaseToken":…,"packageName":…}` (what the Android step sends) is accepted unchanged and verified the same way
+   through `qal.billing.store-verification-provider` (`QAL_BILLING_STORE_VERIFICATION_PROVIDER`, default REVENUECAT)
+   while no direct Play adapter exists; the token is never trusted, stored or logged.
 2. RevenueCat webhooks: `POST /api/v1/billing/store-notifications/REVENUECAT`. `Authorization` must equal
    `REVENUECAT_WEBHOOK_AUTH` (constant time); with `REVENUECAT_WEBHOOK_SIGNING_SECRET` set, `X-RevenueCat-Webhook-Signature`
    (`t=…,v1=hex HMAC-SHA256("<t>.<raw body>")`, ≤ 5 min) too. Stored once per event `id` in `payment_webhook_events`
@@ -55,7 +58,8 @@ REST API v1 is used because the webhook docs recommend `GET /subscribers` after 
 ## Config / env
 `REVENUECAT_SECRET_API_KEY` (adapter on when set), `REVENUECAT_WEBHOOK_AUTH` (≥ 32 chars under prod-like profiles),
 `REVENUECAT_WEBHOOK_SIGNING_SECRET` (optional), `QAL_REVENUECAT_ENVIRONMENT`, `QAL_REVENUECAT_BASE_URL`,
-`QAL_REVENUECAT_CONNECT_TIMEOUT` / `_READ_TIMEOUT`, `QAL_BILLING_STORE_RENEWAL_PENDING`.
+`QAL_REVENUECAT_CONNECT_TIMEOUT` / `_READ_TIMEOUT`, `QAL_BILLING_STORE_RENEWAL_PENDING`,
+`QAL_BILLING_STORE_VERIFICATION_PROVIDER`.
 
 ## Go-live checklist
 1. Publisher merchant profile in a merchant-supported country (OI-PAY-7).
@@ -77,6 +81,6 @@ REST API v1 is used because the webhook docs recommend `GET /subscribers` after 
    (ZZ/DIRECT_DOWNLOAD stays unapproved: a sideloaded APK has no Play Billing; OI-PAY-13.)
 
 ## Not in this step
-Direct Play / App Store verification (`provider: GOOGLE_PLAY|APPLE_APP_STORE` answers 422), non-subscription store
+Direct Play / App Store verification (those shapes go through RevenueCat), non-subscription store
 products, a live RevenueCat test (no keys yet, OI-PAY-14), refunds and the provider-vs-ledger report (OI-PAY-12).
 Open items: OI-PAY-7, OI-PAY-13, OI-PAY-14.

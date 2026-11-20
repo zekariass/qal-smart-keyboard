@@ -27,12 +27,15 @@ import com.qalsmartkeyboard.platform.geo.CountryResolution.Confidence;
  * @param storeRenewalPending  how long after its period end a store subscription that is still set to renew stays
  *                             ACTIVE while the store has not reported the renewal yet (RevenueCat's Play renewal gap;
  *                             ADR 0046)
+ * @param storeVerificationProvider the store-billing adapter that verifies GOOGLE_PLAY / APPLE_APP_STORE purchase reports
+ *                             while no direct store adapter exists (ADR 0046)
  */
 @ConfigurationProperties("qal.billing")
 record BillingProperties(@DefaultValue("SANDBOX") PaymentEnvironment environment, URI publicBaseUrl,
 		@DefaultValue("qalkeyboard://billing/return") URI appReturnUri, @DefaultValue("30m") Duration orderTtl,
 		@DefaultValue("30m") Duration attemptTtl, @DefaultValue("MEDIUM") Confidence minCountryConfidence,
-		@DefaultValue Reconciliation reconciliation, @DefaultValue("6h") Duration storeRenewalPending) {
+		@DefaultValue Reconciliation reconciliation, @DefaultValue("6h") Duration storeRenewalPending,
+		@DefaultValue("REVENUECAT") String storeVerificationProvider) {
 
 	/**
 	 * @param enabled        run the db-scheduler task

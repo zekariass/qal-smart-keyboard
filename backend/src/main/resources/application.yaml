@@ -243,6 +243,8 @@ qal:
       connect-timeout: ${QAL_REVENUECAT_CONNECT_TIMEOUT:3s}
       read-timeout: ${QAL_REVENUECAT_READ_TIMEOUT:10s}
     store-renewal-pending: ${QAL_BILLING_STORE_RENEWAL_PENDING:6h}
+    # Store adapter that verifies GOOGLE_PLAY / APPLE_APP_STORE purchase reports while no direct store adapter exists.
+    store-verification-provider: ${QAL_BILLING_STORE_VERIFICATION_PROVIDER:REVENUECAT}
   # Crash reporting (ADR 0024, ADR 0007 D47): the environment tag; blank = the active Spring profiles ("default").
   observability:
     sentry:
