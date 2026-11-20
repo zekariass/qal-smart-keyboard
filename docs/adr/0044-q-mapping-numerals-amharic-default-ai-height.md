@@ -59,3 +59,29 @@ first load anyway. So Amharic kept opening in Fidel / English with no way back f
   undone by late echoes, unrelated setting changes leave the layout alone.
 - A layout picked deliberately on the keyboard (writing-mode chooser, globe long-press, ABC toggle) still persists across
   restarts; the latest deliberate choice wins wherever it was made. ti, om, en, ar defaults are unchanged.
+
+## 4. AI panels a little taller than the keyboard; quick-action buttons always fit
+**Cause.** The AI tools grid and the AI Assist / Write Email panels measured exactly `KeyboardSurface.preferredHeightPx()`
+(the key area). The quick actions' review put its five buttons (Replace, Insert, Copy, Retry, Cancel) in a sideways
+`HorizontalScrollView` with no scroll hint, so at 360 dp the last one ("Cancel") was cut at the right edge.
+
+**Decision.**
+- `KeyboardMetrics.aiPanelHeightPx`: key area + 18 % of it, kept within **56–72 dp** in portrait; landscape 10 % (at
+  most 32 dp). The whole keyboard (bar + panel + inset padding: navigation bar, cutout, bottom gap) stays within **60 %**
+  of the window height in portrait and **50 %** in landscape; the panel is never shorter than the key area. Typical
+  phones: +56 dp at 411 × 891 dp; a 360 × 640 dp phone gets what the cap leaves (≈ +24 dp with 3-button navigation, +48 dp with gestures); a phone on its side gets
+  nothing extra. `aiPanelHeightInWindowPx` adds the bar and the column's inset padding.
+- Applied to the AI tools grid (ADR 0041) and to AI Assist and Write Email in every step (compose, working, result): they
+  share one height, so moving between them never resizes the keyboard; keys ↔ AI is one height change. The height is a
+  pure function of stable values (key layout, fixed bar height, padding already applied by `KeyboardInsets`, display
+  size), never of the panel's own size: no layout loop, insets applied once as before. The typing keyboard, the tools,
+  clipboard, layout, emoji and voice panels keep the key area's height.
+- Content scrolls: the grid's scroll view and the panels' body (header and footer fixed). The AI panels' footer keeps its
+  sideways scroll and now shows a fading edge where buttons continue.
+- The quick actions' review panel sits **above** the bar with the keys still below it (it is not in place of the keys),
+  and with it the keyboard already exceeds the 60 % cap on 360–411 dp phones, so its height is unchanged. Its button rows
+  now **wrap** (`WrapRow`) instead of scrolling: every button is visible at 360 dp in English, Amharic, Tigrinya and
+  Afaan Oromoo (tested), a chip wider than the whole row would ellipsize.
+- The translate panel (above the keys, keys visible) is unchanged, like the quick actions.
+- No new animation: the height changes at once; the panels' existing reveal (`Motion`) already honours "Remove
+  animations".

@@ -24,6 +24,16 @@ import com.qalsmartkeyboard.ime.Suggestion
 import com.qalsmartkeyboard.ime.SuggestionKind
 import com.qalsmartkeyboard.ime.TextSink
 import com.qalsmartkeyboard.ime.ai.AiAlternative
+import com.qalsmartkeyboard.ime.ai.AiLanguagePrefs
+import com.qalsmartkeyboard.ime.ai.AiPanelView
+import com.qalsmartkeyboard.ime.ai.AiQuickAction
+import com.qalsmartkeyboard.ime.ai.AiWorkspace
+import com.qalsmartkeyboard.ime.ai.ClipAvailability
+import com.qalsmartkeyboard.ime.ai.FakeAiEditor
+import com.qalsmartkeyboard.ime.ai.FakeClipboard
+import com.qalsmartkeyboard.ime.KeyboardInsets
+import com.qalsmartkeyboard.ime.KeyboardMetrics
+import com.qalsmartkeyboard.ime.PopupOverlay
 import com.qalsmartkeyboard.ime.ai.AiAvailability
 import com.qalsmartkeyboard.ime.ai.AiBlock
 import com.qalsmartkeyboard.ime.ai.AiFailure
@@ -301,10 +311,95 @@ class ToolbarRenderTest {
         shoot(listOf(bar(theme) { st, _ -> st.panelTitle = "Tools" }, tools), File(out, "tools-layout-${theme.id}.png"))
     }
 
+    /**
+     * ADR 0044 at 360 and 411 dp: am Phonetic with Shift (the q key shows ቕ), the digit row with Western digits and the
+     * Ethiopic numerals in the corner and in the long-press popup, then the AI tools grid, AI Assist (compose and result)
+     * at the AI height next to the keys at theirs, and the quick actions' review with every button visible.
+     */
+    private fun renderR3(theme: KeyboardTheme, out: File) {
+        for ((wdp, hdp) in listOf(360 to 780, 411 to 891)) {
+            val width = (wdp * d).toInt()
+            val p = SettingsPreferences({ KeyboardSettings.DEFAULT })
+            // With the phonetic key hints, as the service hands them over with the engine.
+            val hints = com.qalsmartkeyboard.ime.CoreComposer.deriveHints(CoreTestEnv.freshEngine())
+            fun hinted() = CoreTestEnv.Session(languages = p, prefs = p).also { it.c.composer = com.qalsmartkeyboard.ime.CoreComposer(CoreTestEnv.engine, hints) }
+            val shifted = hinted().also { it.tap(it.key(KeyKind.SHIFT)) }
+            val plain = hinted()
+            fun keys(sess: CoreTestEnv.Session) = KeyboardSurface(ctx).also { it.controller = sess.c; it.theme = theme }
+            fun popup(index: Int): View {
+                val k = plain.c.layout.rows.first()[index]
+                val cell = 48f * d
+                return PopupOverlay(ctx).also {
+                    it.theme = theme
+                    it.minimumHeight = (60 * d).toInt()
+                    val cols = minOf(k.popupColumns, k.popup.size)
+                    val left = ((width / 10f) * index + width / 20f - cell * cols / 2).coerceIn(4 * d, width - cell * cols - 4 * d)
+                    it.show(k.popup, cols, cell, cell, left, 6 * d, -1)
+                }
+            }
+            shoot(listOf(bar(theme) { _, _ -> }, keys(shifted), popup(0), popup(9), keys(plain)), File(out, "r3-keys-$wdp-${theme.id}.png"), width)
+
+            val sizer = keys(plain)
+            val inset = KeyboardInsets.padding(intArrayOf(0, 0, 0, (24 * d).toInt()), intArrayOf(0, 0, 0, 0), density = d).bottom
+            val ai = KeyboardMetrics.aiPanelHeightInWindowPx(sizer.preferredHeightPx(), d, width, (hdp * d).toInt(), inset)
+            val grid = AiToolsPanelView(ctx).also {
+                it.theme = theme
+                it.heightProvider = { ai }
+                it.tiles = { AiToolSet.tiles(AiAvailability()) }
+                it.availability = { AiAvailability() }
+                it.render()
+            }
+            fun assist(result: Boolean): View {
+                val actions = FakeAiActions()
+                val panel = AiPanelView(ctx).also { it.theme = theme; it.heightProvider = { ai } }
+                val ws = AiWorkspace(
+                    actions, FakeAiEditor("teh cat sat on the mat", "field"), FakeClipboard(ClipAvailability.NONE, null), AiLanguagePrefs.InMemory(),
+                    post = { it() }, keyboardLanguage = { "en" }, translateDefault = { "en" }, onChanged = { panel.render() },
+                )
+                panel.workspace = ws
+                panel.visibility = View.VISIBLE
+                ws.openAssist()
+                if (result) {
+                    fun views(v: View): List<View> = if (v is android.view.ViewGroup) listOf(v) + (0 until v.childCount).flatMap { views(v.getChildAt(it)) } else listOf(v)
+                    views(panel).filterIsInstance<android.widget.TextView>().first { it.text.toString() == "Rewrite" }.performClick()
+                    (panel.footerRow!!.getChildAt(0) as android.widget.TextView).performClick()
+                    actions.answer(0, FakeAiActions.ok("The cat sat on the mat. ".repeat(12)))
+                }
+                return panel
+            }
+            val title = { t: String -> { st: CandidateStripView, _: KeyboardBar -> st.panelTitle = t } }
+            shoot(listOf(bar(theme, setup = title("AI tools")), grid), File(out, "r3-ai-grid-$wdp-${theme.id}.png"), width)
+            shoot(listOf(bar(theme, setup = title("AI Assist")), assist(false)), File(out, "r3-ai-assist-$wdp-${theme.id}.png"), width)
+            shoot(listOf(bar(theme, setup = title("AI Assist")), assist(true)), File(out, "r3-ai-result-$wdp-${theme.id}.png"), width)
+            shoot(listOf(bar(theme) { _, _ -> }, keys(plain)), File(out, "r3-keys-height-$wdp-${theme.id}.png"), width)
+            for (lang in listOf("en", "am", "om")) {
+                val ui = localized(lang)
+                val actions = FakeAiActions()
+                val ed = FakeEditor("Hello. How are you")
+                val adapter = InputConnectionAdapter { ed }.also { it.startSession(false, ed.text.length, ed.text.length) }
+                val strip = CandidateStripView(ui).also { it.theme = theme }
+                val quick = AiToolbarView(ui).also { it.theme = theme }
+                val c = AiToolbarController(actions, EditorAiAccess(adapter) {}, { it() }, {}, onChanged = { quick.render() })
+                quick.controller = c
+                c.onFieldStarted(InputProfile.DEFAULT, "x")
+                c.run(AiQuickAction.REWRITE)
+                actions.answer(0, AiOutcome.Success(AiResult("እንዴት ነህ? ዛሬ ምን ታደርጋለህ?", listOf(AiAlternative("formal", "እንዴት ነዎት?")))))
+                // As in the input view: the quick actions' panel above the bar, the keys below.
+                val bar = KeyboardBar(ui, strip, quick)
+                shoot(listOf(quick, bar, keys(plain)), File(out, "r3-quick-result-$lang-$wdp-${theme.id}.png"), width)
+            }
+        }
+    }
+
     @Test fun render() {
         val dir = System.getenv("QAL_RENDER_DIR")
         assumeTrue("set QAL_RENDER_DIR to render", !dir.isNullOrEmpty())
         val out = File(dir!!).also { it.mkdirs() }
+        // QAL_RENDER_ONLY=r3 renders only the ADR 0044 set (light and dark).
+        if (System.getenv("QAL_RENDER_ONLY") == "r3") {
+            for (theme in listOf(ThemeCatalog.classicLight, ThemeCatalog.classicDark)) renderR3(theme, out)
+            return
+        }
         // QAL_RENDER_NEW=1 renders the 20 gallery themes (ADR 0042) as well: keys, tools and clipboard (no translate set).
         val gallery = if (System.getenv("QAL_RENDER_NEW") == "1") ThemeCatalog.all.drop(20) else emptyList()
         val base = listOf(ThemeCatalog.classicLight, ThemeCatalog.classicDark) + ThemeCatalog.all.take(20).filter { it.isGradient || it.hasBorder }.take(3)
@@ -343,7 +438,10 @@ class ToolbarRenderTest {
                 renderTranslate(theme, keys, out)
             }
             shoot(listOf(bar(theme) { s, _ -> s.panelTitle = "Clipboard" }, clips), File(out, "clipboard-${theme.id}.png"))
-            if (theme === ThemeCatalog.classicLight || theme === ThemeCatalog.classicDark) renderLayouts(theme, out)
+            if (theme === ThemeCatalog.classicLight || theme === ThemeCatalog.classicDark) {
+                renderLayouts(theme, out)
+                renderR3(theme, out)
+            }
         }
     }
 }
