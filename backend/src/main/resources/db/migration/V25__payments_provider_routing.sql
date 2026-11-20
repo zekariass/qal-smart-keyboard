@@ -118,17 +118,19 @@ ON CONFLICT (provider_account_id, provider_payment_method_id) DO NOTHING;
 
 -- 6. Routes (product owner, 2026-11-20): Ethiopia -> ArifPay (default, priority 1), Chapa (alternative, priority 2;
 --    inactive until its adapter exists, step A2) for the direct APK and the Play build; everything else -> RevenueCat.
---    RELEASE BLOCKER: ET on the Play build needs Google Play payments-policy confirmation (OI-06, ADR 0045); its
---    market policy below stays REVIEW_REQUIRED until then.
+--    ET on the Play build is allowed while Google Play's billing system is unavailable in Ethiopia (Google's Payments
+--    policy FAQ: the Play billing requirement does not apply where Play billing is unavailable; Ethiopia is listed).
+--    MONITORED CONDITION (ADR 0045, OI-PAY-6): when Google announces Play billing for Ethiopia, switch ET/ANDROID/
+--    GOOGLE_PLAY to REVENUECAT with STORE_BILLING (config only). Its market policy below still needs a named reviewer.
 INSERT INTO billing_provider_routes (country_code, client_platform, distribution_channel, provider_id, priority, notes)
 SELECT v.country_code, v.client_platform, v.distribution_channel, p.id, v.priority, v.notes
 FROM (VALUES
         ('ET', 'ANDROID', 'DIRECT_DOWNLOAD', 'ARIFPAY', 1, 'ADR 0045: Ethiopian default.'),
         ('ET', 'ANDROID', 'DIRECT_DOWNLOAD', 'CHAPA', 2, 'ADR 0045: alternative; adapter in step A2.'),
         ('ET', 'ANDROID', 'GOOGLE_PLAY', 'ARIFPAY', 1,
-         'ADR 0045 RELEASE BLOCKER: local gateway in the Play build needs Google Play payments-policy confirmation (OI-06).'),
+         'ADR 0045: allowed while Google Play billing is unavailable in Ethiopia; monitored, switch to REVENUECAT when it launches (OI-PAY-6).'),
         ('ET', 'ANDROID', 'GOOGLE_PLAY', 'CHAPA', 2,
-         'ADR 0045 RELEASE BLOCKER: see ARIFPAY row; adapter in step A2.'),
+         'ADR 0045: alternative; adapter in step A2. Same monitored Play-billing condition as ARIFPAY.'),
         ('ZZ', 'ANDROID', 'GOOGLE_PLAY', 'REVENUECAT', 1, 'ADR 0045: global default (store-managed); adapter in step A2.'),
         ('ZZ', 'ANDROID', 'DIRECT_DOWNLOAD', 'REVENUECAT', 1,
          'ADR 0045: global default; a sideloaded APK has no Play Billing, step A2 decides (RevenueCat Web Billing?).'),
@@ -148,7 +150,7 @@ VALUES
      'ADR 0045: ArifPay hosted checkout in the direct APK (SD 16.8: the direct flavour MAY use local gateways, subject to local law).'),
     ('ET', 'ANDROID', 'GOOGLE_PLAY', 'LOCAL_GATEWAY_IN_APP', 'REVIEW_REQUIRED', FALSE, FALSE,
      'https://support.google.com/googleplay/android-developer/answer/10281818',
-     'ADR 0045 RELEASE BLOCKER: product owner wants ArifPay in the Play build too; needs Google Play payments-policy confirmation for Ethiopian buyers (OI-06, SD 16.8) before approval.'),
+     'ADR 0045: ArifPay in the Play build is allowed while Google Play billing is unavailable in Ethiopia (Payments policy FAQ answer/10281818; countries answer/12201481; no merchant registration answer/9306917). Monitored: when Google notifies that Play billing launches in ET, switch this scope to REVENUECAT + STORE_BILLING (OI-PAY-6).'),
     ('ZZ', 'ANDROID', 'GOOGLE_PLAY', 'STORE_BILLING', 'REVIEW_REQUIRED', FALSE, FALSE, NULL,
      'ADR 0045: global default through RevenueCat (step A2).'),
     ('ZZ', 'ANDROID', 'DIRECT_DOWNLOAD', 'STORE_BILLING', 'REVIEW_REQUIRED', FALSE, FALSE, NULL,
