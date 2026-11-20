@@ -42,7 +42,28 @@ val normalizeContract = tasks.register("normalizeContract") {
     doLast {
         var text = contractFile.asFile.readText()
         text = text.replace(Regex(""", const: true \}"""), " }")
-        text = text.replace(Regex("""(?m)^ +oneOf:\r?\n(?: +- required: \[[^\]]*\]\r?\n)+"""), "")
+        // Drop the whole `oneOf:` block (every line indented deeper than the key) when its items are
+        // inline `required:` / `properties:` schemas; a line regex left nested item properties behind.
+        val lines = text.split("\n")
+        val kept = ArrayList<String>(lines.size)
+        var i = 0
+        while (i < lines.size) {
+            val m = Regex("""^( +)oneOf:\s*$""").find(lines[i].trimEnd('\r'))
+            val next = lines.getOrNull(i + 1)?.trimEnd('\r').orEmpty()
+            if (m != null && Regex("""^ +- (required|properties):""").containsMatchIn(next)) {
+                val indent = m.groupValues[1].length
+                i++
+                while (i < lines.size) {
+                    val l = lines[i].trimEnd('\r')
+                    if (l.isNotBlank() && l.length - l.trimStart().length <= indent) break
+                    i++
+                }
+                continue
+            }
+            kept += lines[i]
+            i++
+        }
+        text = kept.joinToString("\n")
         val out = normalizedContract.get().asFile
         out.parentFile.mkdirs()
         out.writeText(text)
