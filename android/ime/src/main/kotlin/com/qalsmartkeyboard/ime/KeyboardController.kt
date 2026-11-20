@@ -307,7 +307,7 @@ class KeyboardController(
             kind = startKind(language)
             afterSwitch()
         }
-        settingsStart = language to startKind(language)
+        settingsStarts[language] = startKind(language)
         sentOptions = null // the prediction settings may have changed
         syncPredictionOptions()
         onChanged()
@@ -509,8 +509,8 @@ class KeyboardController(
         }
     }
 
-    /** The layout the settings gave the current language at the last settings change ([pickedInApp]). */
-    private var settingsStart: Pair<String, LayoutKind>? = null
+    /** The layout the settings gave each language when the keyboard last looked ([pickedInApp]). */
+    private val settingsStarts = HashMap<String, LayoutKind>()
 
     /** Layouts this keyboard saved itself ([setKind]) whose settings echo has not been seen yet. */
     private val ownWrites = ArrayList<Pair<String, LayoutKind>>()
@@ -527,8 +527,8 @@ class KeyboardController(
             repeat(own + 1) { ownWrites.removeAt(0) }
             return false
         }
-        val before = settingsStart ?: return false
-        return before.first == language && before.second != now && now != kind
+        val before = settingsStarts[language] ?: return false
+        return before != now && now != kind
     }
 
     private fun afterSwitch() {
@@ -546,6 +546,7 @@ class KeyboardController(
         language = lang
         userSwitched = true
         kind = landingKind(lang)
+        settingsStarts[lang] = startKind(lang)
         afterSwitch()
         onChanged()
     }

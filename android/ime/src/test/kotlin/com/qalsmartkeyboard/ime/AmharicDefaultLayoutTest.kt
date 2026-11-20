@@ -149,6 +149,17 @@ class AmharicDefaultLayoutTest {
         }
     }
 
+    @Test fun anAppPickForALanguageSwitchedToLaterAlsoAppliesAtOnce() {
+        val store = Store(order("en", "am").copy(writingModes = mapOf("am" to "FIDEL")))
+        val s = session(store)
+        s.c.onPreferencesChanged()
+        assertEquals("en", s.c.language)
+        s.pick(s.key(KeyKind.SPACE).popup.first { it.language == "am" })
+        assertEquals(TypingMode("am", LayoutKind.FIDEL), s.c.effectiveMode)
+        store.app(s.c) { it.withLanguageMode("am", InputMode.PHONETIC_LATIN_TO_NATIVE) }
+        assertEquals(am, s.c.effectiveMode)
+    }
+
     @Test fun otherLanguagesKeepTheirDefaults() {
         val store = Store(order("ti", "om", "en", "ar", "am"))
         val s = session(store)
