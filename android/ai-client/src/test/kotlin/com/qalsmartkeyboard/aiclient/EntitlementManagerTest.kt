@@ -229,6 +229,29 @@ class EntitlementManagerTest {
         assertNull("a feature the plan does not include has no hint", m.quota[AiTaskKind.GRAMMAR])
     }
 
+    @Test fun aVerifiedPurchaseFetchesTheNewTokenAtOnceDespiteTheThrottle() {
+        // The keyboard fetched a FREE token a minute ago; then the server verifies a payment (ADR 0047).
+        server.enqueue(tokenResponse(mint(features = """{"ON_DEVICE_AI_MODELS":false}""")))
+        server.enqueue(MockResponse().setBody(entitlementsBody))
+        val m = manager()
+        var changes = 0
+        m.onChanged = { changes++ }
+        m.refresh()
+        assertFalse(m.gates(online = true).onDeviceModels)
+        now += 60_000
+        server.enqueue(MockResponse().setBody(entitlementsBody))
+        m.refresh(force = true) // inside the 5-minute token retry window: no token call
+        assertEquals(3, server.requestCount)
+        server.enqueue(tokenResponse(mint(iat = now / 1000 - 10)))
+        server.enqueue(MockResponse().setBody(entitlementsBody.replace("\"FREE\",\"displayName\":\"Free\"", "\"PREMIUM\",\"displayName\":\"Premium\"")))
+        val before = changes
+        m.planChanged()
+        assertEquals(5, server.requestCount)
+        assertTrue(m.gates(online = false).onDeviceModels)
+        assertEquals("Premium", m.planLabel)
+        assertTrue(changes > before)
+    }
+
     @Test fun theTokenStoreKeepsTheTimeFloorAcrossDropsAndIsEncrypted() {
         val s = store()
         s.save("a.b.c", 1_000, 5_000)

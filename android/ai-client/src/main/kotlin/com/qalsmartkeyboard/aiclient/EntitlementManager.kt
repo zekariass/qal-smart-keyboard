@@ -119,6 +119,17 @@ class EntitlementManager(
         }
     }
 
+    /**
+     * Blocking. The plan changed on the server (a payment or store purchase it verified, ADR 0047): fetch the token and
+     * the plan hints now, past the client-side throttles, so the keyboard's Premium gates open at once. The server's
+     * own rate limit still applies; a failure keeps the old token and the next [refresh] tries again.
+     */
+    fun planChanged() {
+        lastTokenAttempt = 0
+        lastQuotaFetch = 0
+        refresh(force = true)
+    }
+
     /** The usage block of an AI answer (the freshest figure; no extra call). */
     fun recordUsage(kind: AiTaskKind, remaining: Int?, resetsAtMs: Long?) {
         if (remaining == null) return
