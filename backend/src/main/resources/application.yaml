@@ -230,6 +230,19 @@ qal:
       connect-timeout: ${QAL_CHAPA_CONNECT_TIMEOUT:3s}
       read-timeout: ${QAL_CHAPA_READ_TIMEOUT:10s}
       accept-secret-hash-signature: ${QAL_CHAPA_ACCEPT_SECRET_HASH_SIGNATURE:true}
+    # RevenueCat (global store billing, ADR 0046). The adapter exists only when REVENUECAT_SECRET_API_KEY (v1 secret key)
+    # is set. REVENUECAT_WEBHOOK_AUTH = the exact Authorization header value configured for the webhook in the
+    # RevenueCat dashboard (>= 32 characters in prod/production/staging); optional REVENUECAT_WEBHOOK_SIGNING_SECRET.
+    # QAL_REVENUECAT_ENVIRONMENT: which purchases grant (SANDBOX test purchases or PRODUCTION).
+    revenuecat:
+      secret-api-key: ${REVENUECAT_SECRET_API_KEY:}
+      webhook-auth: ${REVENUECAT_WEBHOOK_AUTH:}
+      webhook-signing-secret: ${REVENUECAT_WEBHOOK_SIGNING_SECRET:}
+      environment: ${QAL_REVENUECAT_ENVIRONMENT:SANDBOX}
+      base-url: ${QAL_REVENUECAT_BASE_URL:}
+      connect-timeout: ${QAL_REVENUECAT_CONNECT_TIMEOUT:3s}
+      read-timeout: ${QAL_REVENUECAT_READ_TIMEOUT:10s}
+    store-renewal-pending: ${QAL_BILLING_STORE_RENEWAL_PENDING:6h}
   # Crash reporting (ADR 0024, ADR 0007 D47): the environment tag; blank = the active Spring profiles ("default").
   observability:
     sentry:

@@ -37,6 +37,11 @@ final class ProviderRegistry {
 		return p != null && p.supports(environment) ? Optional.of(p) : Optional.empty();
 	}
 
+	/** The store-billing adapter for {@code code}, whatever environment it honours (it checks each purchase). */
+	Optional<StoreBillingProvider> store(String code) {
+		return Optional.ofNullable(stores.get(code));
+	}
+
 	/** Whether any adapter (gateway or store) for {@code code} runs for {@code environment}. */
 	boolean registered(String code, PaymentEnvironment environment) {
 		PaymentProvider p = gateways.get(code);
