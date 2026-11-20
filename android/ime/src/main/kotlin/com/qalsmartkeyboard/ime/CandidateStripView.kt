@@ -356,13 +356,18 @@ class CandidateStripView(context: Context) : View(context) {
                 }
             }
             else -> {
-                // The pinned shortcuts: as many as fit at 48 dp each, evenly spread (at most 72 dp apart), centred.
+                // The pinned shortcuts: as many as fit at 48 dp each, evenly spread (at most 72 dp apart), centred. The
+                // settings gear is always on the bar: when it does not fit (e.g. beside the am/ti writing-mode pill) it
+                // takes the last slot; what it displaces stays one tap away in the Tools grid.
                 val room = end - x
                 val n = min(shortcuts.size, floor(room / target).toInt())
                 if (n > 0) {
+                    var shown = shortcuts.take(n)
+                    val gear = shortcuts.firstOrNull { it.tool == Tool.SETTINGS }
+                    if (gear != null && gear !in shown) shown = shown.dropLast(1) + gear
                     val sw = min(room / n, MAX_SHORTCUT_DP * d)
                     var sx = x + (room - sw * n) / 2
-                    for (e in shortcuts.take(n)) {
+                    for (e in shown) {
                         val r = RectF(sx, 0f, sx + sw, h)
                         out += Slot(Target.Shortcut(e.tool), r, r, toolLabel(context, e.tool), e.locked)
                         sx += sw

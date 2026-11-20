@@ -116,6 +116,22 @@ class KeyboardBarTest {
         assertTrue(shortcutTools(h).size < 6)
     }
 
+    /** Owner request: the settings gear is always on the am/ti Phonetic bar, beside the pill, even on narrow phones. */
+    @Test fun theSettingsGearStaysOnTheBarBesideThePill() {
+        for (dp in listOf(320, 360, 384, 411)) {
+            val h = H()
+            h.strip.micShown = true
+            val w = (dp * d).toInt()
+            h.bar.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            h.bar.layout(0, 0, w, h.bar.measuredHeight)
+            assertTrue("$dp dp: pill shown", Target.Pill in h.targets())
+            assertTrue("$dp dp: ${shortcutTools(h)}", Tool.SETTINGS in shortcutTools(h))
+            assertEquals("$dp dp", listOf(Tool.TRANSLATE, Tool.AI), shortcutTools(h).take(2))
+            // Every shortcut keeps its 48 dp touch target.
+            for (s in h.strip.slots().filter { it.target is Target.Shortcut }) assertTrue("$dp dp", s.hit.width() >= 48 * d - 0.5f)
+        }
+    }
+
     @Test fun withoutAPillTheShortcutsFollowTheToolsButton() {
         val h = H()
         h.strip.setModes(emptyList(), LayoutKind.ENGLISH)
