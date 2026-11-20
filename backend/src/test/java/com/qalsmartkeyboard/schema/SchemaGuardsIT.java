@@ -94,6 +94,8 @@ class SchemaGuardsIT {
                 INSERT INTO ctx SELECT 'account_method', id FROM am""");
         exec("UPDATE billing_products SET product_status = 'ACTIVE' WHERE product_code = 'PLAN_PREMIUM'");
         exec("INSERT INTO ctx SELECT 'product', id FROM billing_products WHERE product_code = 'PLAN_PREMIUM'");
+        // V25 seeds provisional ET prices (ADR 0045); the guards below need their own price rows in that scope.
+        exec("DELETE FROM billing_prices WHERE metadata->>'source' = 'ADR 0045'");
         exec("""
                 WITH p AS (
                     INSERT INTO billing_prices

@@ -159,7 +159,14 @@ public final class ArifPayProvider implements PaymentProvider {
 				.body(JSON.writeValueAsBytes(body)).exchange((req, res) -> read(res), false));
 		JsonNode data = response.path("data");
 		if (response.path("error").asBoolean(true) || !data.isObject()) {
-			throw new PaymentProviderException(Kind.REJECTED, "CREATE_REFUSED");
+			String msg = text(response.path("msg"));
+			String lower = msg == null ? "" : msg.toLowerCase(Locale.ROOT);
+			if (lower.contains("api key")) {
+				// "API Key Not found", or "Test API Key found" (a sandbox key on a production route)
+				throw new PaymentProviderException(Kind.MISCONFIGURED, "API_KEY_REFUSED");
+			}
+			throw new PaymentProviderException(Kind.REJECTED,
+					lower.contains("already exist") ? "DUPLICATE_NONCE" : "CREATE_REFUSED");
 		}
 		String sessionId = text(data.path("sessionId"));
 		String paymentUrl = text(data.path("paymentUrl"));

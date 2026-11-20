@@ -1,0 +1,24 @@
+{
+  "name": "arifpay: get sandbox session that does not exist (live sandbox: HTTP 404 with error=true)",
+  "priority": 4,
+  "request": {
+    "method": "GET",
+    "urlPath": "/arifpay/api/sandbox/checkout/session/SBX-UNKNOWN",
+    "headers": {
+      "x-arifpay-key": {
+        "matches": ".+"
+      }
+    }
+  },
+  "response": {
+    "status": 404,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "error": true,
+      "msg": "session not found with the given id",
+      "data": null
+    }
+  }
+}

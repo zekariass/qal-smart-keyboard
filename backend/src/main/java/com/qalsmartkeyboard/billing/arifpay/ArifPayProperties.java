@@ -44,6 +44,11 @@ public record ArifPayProperties(String apiKey, @DefaultValue("SANDBOX") PaymentE
 		createPath = blankToNull(createPath);
 		sessionPath = blankToNull(sessionPath);
 		noncePath = blankToNull(noncePath);
+		environment = environment == null ? PaymentEnvironment.SANDBOX : environment;
+		connectTimeout = positiveOr(connectTimeout, Duration.ofSeconds(3));
+		readTimeout = positiveOr(readTimeout, Duration.ofSeconds(10));
+		timeZone = timeZone == null ? ZoneId.of("Africa/Addis_Ababa") : timeZone;
+		lang = lang == null || lang.isBlank() ? "EN" : lang.strip();
 		if (baseUrl != null && baseUrl.toString().isBlank()) {
 			baseUrl = null;
 		}
@@ -69,6 +74,10 @@ public record ArifPayProperties(String apiKey, @DefaultValue("SANDBOX") PaymentE
 	/** Null when lookup by nonce is not available. */
 	String effectiveNoncePath() {
 		return noncePath != null ? noncePath : sandbox() ? null : "/api/checkout/getSessionByNonce/{nonce}";
+	}
+
+	private static Duration positiveOr(Duration d, Duration fallback) {
+		return d == null || d.isZero() || d.isNegative() ? fallback : d;
 	}
 
 	private static String blankToNull(String s) {
