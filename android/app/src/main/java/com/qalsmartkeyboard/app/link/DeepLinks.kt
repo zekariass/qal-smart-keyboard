@@ -20,7 +20,7 @@ enum class DeepLinkAction {
      */
     SHOW_SIGN_IN,
 
-    /** The plans screen (a placeholder until billing screens exist). */
+    /** The plans screen (paywall and checkout, ADR 0047); leaving it returns to the app the user was typing in. */
     SHOW_PLANS,
 
     /** The store page of the app (a 426 / update-required answer). */
@@ -57,7 +57,7 @@ enum class DeepLinkAction {
  * |---|---|
  * | `SIGN_IN` | sign-in pane over the keyboard settings; the keyboard settings when already signed in with an account |
  * | `AI_SETTINGS` | privacy dashboard (consents, AI history, export, deletion; A2.6) |
- * | `UPGRADE` | plans screen |
+ * | `UPGRADE` | plans screen (paywall; a keyboard lock badge or "See plans"), returning to typing when left |
  * | `UPDATE_APP` | store page (even during first-run setup) |
  * | `SETTINGS` | keyboard settings, opened from the keyboard's gear (with a way back to typing) |
  * | `EMAIL_WRITER` | the e-mail writer with the keyboard's inputs (ADR 0031) |

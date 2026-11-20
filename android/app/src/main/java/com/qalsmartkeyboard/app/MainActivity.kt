@@ -46,6 +46,9 @@ import com.qalsmartkeyboard.app.auth.SignInStep
 import com.qalsmartkeyboard.app.auth.SignInViewModel
 import com.qalsmartkeyboard.app.auth.UpdateRequiredScreen
 import com.qalsmartkeyboard.app.auth.openStorePage
+import com.qalsmartkeyboard.app.billing.BillingGraph
+import com.qalsmartkeyboard.app.billing.PlansRoute
+import com.qalsmartkeyboard.app.billing.PlansViewModel
 import com.qalsmartkeyboard.app.onboarding.ImeStatusReader
 import com.qalsmartkeyboard.app.link.DeepLinkAction
 import com.qalsmartkeyboard.app.link.DeepLinks
@@ -55,6 +58,7 @@ import com.qalsmartkeyboard.app.privacy.PrivacyHost
 import com.qalsmartkeyboard.app.privacy.PrivacyRoute
 import com.qalsmartkeyboard.app.privacy.PrivacyViewModel
 import com.qalsmartkeyboard.app.settings.SettingsPage
+import com.qalsmartkeyboard.app.settings.SettingsRow
 import com.qalsmartkeyboard.app.settings.rememberSettingsNavigator
 import com.qalsmartkeyboard.app.sync.DictionarySyncRow
 import com.qalsmartkeyboard.app.sync.DictionarySyncSection
@@ -105,6 +109,16 @@ class MainActivity : ComponentActivity() {
 
     private val privacy: PrivacyViewModel by viewModels {
         viewModelFactory { initializer { PrivacyViewModel(PrivacyGraph.get(applicationContext)) } }
+    }
+
+    // Plans and checkout (ADR 0047): created when the plans screen first shows; polling survives leaving that screen.
+    private val plans: PlansViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val billing = BillingGraph.get(applicationContext)
+                PlansViewModel(billing.newModel(), billing.session)
+            }
+        }
     }
 
     // Write Email with AI (ADR 0031): the sender name is remembered in the device-local settings.
@@ -193,6 +207,8 @@ class MainActivity : ComponentActivity() {
             var updateDismissed by rememberSaveable { mutableStateOf(false) }
             var showSignIn by rememberSaveable { mutableStateOf(false) }
             var showPlans by rememberSaveable { mutableStateOf(false) }
+            // Opened from the keyboard (a lock badge or "See plans", AiLink.UPGRADE): leaving returns to the app the user was typing in.
+            var plansFromKeyboard by rememberSaveable { mutableStateOf(false) }
             // The privacy area (A2.6): null = closed, else a PrivacyRoute name.
             var privacyRoute by rememberSaveable { mutableStateOf<String?>(null) }
             // Opened from the keyboard's gear: settings offer "Back to typing" (and Back) to return to the app.
@@ -217,42 +233,42 @@ class MainActivity : ComponentActivity() {
                 pendingLink = null
                 when (DeepLinks.route(link, graph.repository.currentStatus(), completed == true)) {
                     DeepLinkAction.NONE -> Unit
-                    DeepLinkAction.SHOW_PRIVACY -> { showSignIn = false; showPlans = false; rerun = false; privacyRoute = PrivacyRoute.DASHBOARD.name }
+                    DeepLinkAction.SHOW_PRIVACY -> { showSignIn = false; showPlans = false; plansFromKeyboard = false; rerun = false; privacyRoute = PrivacyRoute.DASHBOARD.name }
                     // ADR 0035: the keyboard's "Sign in to use AI": the sign-in pane over the keyboard settings ("Back to typing").
                     DeepLinkAction.SHOW_SIGN_IN -> {
-                        signIn.reset(); showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        signIn.reset(); showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset() // after the sign-in: the settings home, account first
                         fromKeyboard = true
                         showSignIn = true
                     }
-                    DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true }
+                    DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true; plansFromKeyboard = true }
                     DeepLinkAction.OPEN_STORE -> openStorePage(this@MainActivity)
                     DeepLinkAction.SHOW_KEYBOARD_SETTINGS -> {
-                        showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()
                         fromKeyboard = true
                     }
                     DeepLinkAction.SHOW_KEYBOARD_LANGUAGES -> {
-                        showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()
                         settingsNav.open(SettingsPage.LANGUAGES)
                         fromKeyboard = true
                     }
                     DeepLinkAction.SHOW_KEYBOARD_TRANSLATION -> {
-                        showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()
                         settingsNav.open(SettingsPage.TRANSLATION)
                         fromKeyboard = true
                     }
                     DeepLinkAction.SHOW_KEYBOARD_THEMES -> {
-                        showSignIn = false; showPlans = false; privacyRoute = null; wordArtOpen = false; emailOpen = false; rerun = false
+                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; wordArtOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()
                         themesPreview = null
                         themesOpen = true
                         themesFromKeyboard = true
                     }
                     DeepLinkAction.SHOW_EMAIL_WRITER -> {
-                        showSignIn = false; showPlans = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; rerun = false
+                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; rerun = false
                         emailOpen = true
                         emailFromKeyboard = true
                     }
@@ -310,10 +326,6 @@ class MainActivity : ComponentActivity() {
                             onDismiss = { updateDismissed = true },
                             modifier = Modifier.padding(innerPadding),
                         )
-                        showPlans && !showFlow -> {
-                            BackHandler { showPlans = false }
-                            PlansScreen(onBack = { showPlans = false }, modifier = Modifier.padding(innerPadding))
-                        }
                         showSignIn && !showFlow -> Column(
                             Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
                         ) {
@@ -323,6 +335,23 @@ class MainActivity : ComponentActivity() {
                             if (signInState.step != SignInStep.DONE) {
                                 OutlinedButton(onClick = { signIn.reset(); showSignIn = false }) { Text(stringResource(R.string.onb_back)) }
                             }
+                        }
+                        // ADR 0047: the paywall and checkout draw their own bars. Leaving (Back, or Done after a purchase)
+                        // returns to where the user came from: the keyboard's app, the themes, the privacy pages, ...
+                        showPlans && !showFlow -> {
+                            val closePlans = {
+                                showPlans = false
+                                if (plansFromKeyboard) {
+                                    plansFromKeyboard = false
+                                    finishAndRemoveTask()
+                                }
+                            }
+                            PlansRoute(
+                                vm = plans,
+                                onBack = closePlans,
+                                onSignIn = { signIn.reset(); showSignIn = true },
+                                onDone = closePlans,
+                            )
                         }
                         privacyRoute != null && !showFlow -> PrivacyHost(
                             route = PrivacyRoute.entries.firstOrNull { it.name == privacyRoute } ?: PrivacyRoute.DASHBOARD,
@@ -431,6 +460,11 @@ class MainActivity : ComponentActivity() {
                                     onSignIn = { signIn.reset(); showSignIn = true },
                                     onSignOut = { signIn.reset(); signIn.signOut() },
                                 )
+                                SettingsRow(
+                                    stringResource(R.string.plans_title),
+                                    onClick = { plansFromKeyboard = false; showPlans = true },
+                                    summary = stringResource(R.string.plans_account_summary),
+                                )
                             },
                             coreVersion = coreVersion,
                             translationCatalog = ::loadTranslationCatalog,
@@ -461,15 +495,5 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) onboarding.onSystemState(ImeStatusReader.read(this))
-    }
-}
-
-/** Placeholder for the plans screen the toolbar's "See plans" link opens (billing UI comes with the payments steps). */
-@Composable
-fun PlansScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text(stringResource(R.string.plans_title), style = MaterialTheme.typography.headlineSmall)
-        Text(stringResource(R.string.plans_body))
-        OutlinedButton(onClick = onBack) { Text(stringResource(R.string.onb_back)) }
     }
 }

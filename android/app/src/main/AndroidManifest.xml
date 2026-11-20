@@ -51,6 +51,11 @@
             </intent-filter>
         </activity>
 
+        <!-- ADR 0047: the hosted-checkout WebView checks every page against Google Safe Browsing. -->
+        <meta-data
+            android:name="android.webkit.WebView.EnableSafeBrowsing"
+            android:value="true" />
+
         <!-- ADR 0024: Sentry starts only from QalApplication (a DSN in the build AND the privacy switch on), never by
              itself. Auto-init off, and the SDK's start-up providers are removed from the merged manifest. -->
         <meta-data

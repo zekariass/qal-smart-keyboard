@@ -6,9 +6,11 @@ import com.qalsmartkeyboard.api.ApiClients
 import com.qalsmartkeyboard.api.CallLogger
 import com.qalsmartkeyboard.api.ClientInfo
 import com.qalsmartkeyboard.api.ClientSurface
+import com.qalsmartkeyboard.api.DistributionChannel
 import com.qalsmartkeyboard.api.SessionManager
 import com.qalsmartkeyboard.api.TransportConfig
 import com.qalsmartkeyboard.app.BuildConfig
+import com.qalsmartkeyboard.app.billing.TelephonyCountryHints
 import com.qalsmartkeyboard.data.secure.EncryptedFileStore
 import com.qalsmartkeyboard.data.secure.KeystoreKeys
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,8 +36,10 @@ class AuthGraph private constructor(context: Context) {
     val clients = ApiClients(
         TransportConfig(
             baseUrl = BuildConfig.API_BASE_URL,
-            client = ClientInfo(BuildConfig.VERSION_NAME, ClientSurface.COMPANION),
+            // ADR 0047: the flavour's channel (billing query/body) and the network/SIM country hints (billing calls only).
+            client = ClientInfo(BuildConfig.VERSION_NAME, ClientSurface.COMPANION, distributionChannel = DistributionChannel.ofFlavor(BuildConfig.FLAVOR)),
             logger = CallLogger { _, status, _ -> if (status == 426) _updateRequired.value = true },
+            countryHints = TelephonyCountryHints(context.applicationContext),
         ),
         session,
     )
