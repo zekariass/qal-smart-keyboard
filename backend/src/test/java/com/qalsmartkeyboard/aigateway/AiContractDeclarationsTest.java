@@ -56,6 +56,9 @@ class AiContractDeclarationsTest {
 		assertThat(draft.get("draft").getMaxLength()).isEqualTo(8000);
 		assertThat(draft.get("instructions").getMaxLength()).isEqualTo(2000);
 		assertThat(draft.get("mode").getEnum()).containsExactly("NEW", "REPLY", "IMPROVE");
+		// ADR 0048: the four served document types join EMAIL; the rest stay declared but unserved
+		assertThat(draft.get("documentType").getEnum()).containsExactly("EMAIL", "LETTER", "APPLICATION",
+				"ANNOUNCEMENT", "OTHER", "JOB_APPLICATION", "CV", "COVER_LETTER", "BUSINESS_MESSAGE");
 		assertThat(schemas.get("EmailTone").getEnum()).containsExactly("PROFESSIONAL", "FORMAL", "FRIENDLY", "CASUAL",
 				"POLITE", "PERSUASIVE", "APOLOGETIC", "CONCISE");
 		assertThat(props("DraftResponse")).containsKeys("subject", "body", "placeholders", "mode", "language",
@@ -63,11 +66,20 @@ class AiContractDeclarationsTest {
 		Map<String, Schema> replies = props("RepliesRequest");
 		assertThat(replies).containsKeys("contextText", "replyLanguage", "instructions", "variation", "count");
 		assertThat(replies.get("contextText").getMaxLength()).isEqualTo(5000);
+		assertThat(String.valueOf(replies.get("intent").getEnum())).contains("AGREE", "DISAGREE_POLITELY",
+				"ASK_CLARIFICATION", "ACCEPT_INVITATION", "DECLINE_POLITELY", "THANK_SENDER");
 		assertThat(props("RepliesResponse")).containsKeys("suggestions", "language", "qualityTier", "usage");
 		Map<String, Schema> transform = props("TransformRequest");
 		assertThat(transform).containsKey("outputLanguage");
 		Schema<?> options = transform.get("options");
 		assertThat(String.valueOf(((Schema<?>) options.getProperties().get("mode")).getEnum())).contains("SIMPLIFY");
+		assertThat(String.valueOf(((Schema<?>) options.getProperties().get("format")).getEnum()))
+				.contains("BULLETS", "NUMBERED_LIST", "PARAGRAPHS", "REPORT", "MEETING_NOTES");
+		assertThat(String.valueOf(schemas.get("TransformTask").getEnum())).contains("FORMAT_TEXT");
+		assertThat(String.valueOf(schemas.get("Tone").getEnum())).contains("ROMANTIC", "CONFIDENT", "FUNNY",
+				"PERSUASIVE");
+		assertThat(String.valueOf(schemas.get("FeatureCode").getEnum())).contains("FORMAT_TEXT", "AI_CHAT",
+				"SOCIAL_POST", "FORM_ASSIST", "OCR_SCAN", "DRAW_SKETCH", "QR_GENERATE");
 		assertThat(post("/api/v1/ai/transform").getDescription()).contains("SIMPLIFY", "PROFESSIONAL",
 				"outputLanguage");
 		assertThat(post("/api/v1/ai/drafts").getDescription()).contains("placeholders", "variation", "Re: ");

@@ -78,6 +78,11 @@ final class RequestFingerprint {
 					e.add("variation");
 					e.add(t.variation());
 				}
+				if (t.format() != null) {
+					// appended only when present (ADR 0048): keys of requests without it keep their digest
+					e.add("format");
+					e.add(t.format());
+				}
 			}
 			case AiCommand.Reply r -> {
 				e.add(r.contextLanguage());
@@ -87,6 +92,11 @@ final class RequestFingerprint {
 				addressee(e, r.addressee());
 				e.add(r.variation());
 				e.add(r.instructions());
+				if (r.intent() != null) {
+					// appended only when present (ADR 0048): keys of requests without it keep their digest
+					e.add("intent");
+					e.add(r.intent());
+				}
 			}
 			case AiCommand.Draft d -> {
 				e.add(d.documentType());

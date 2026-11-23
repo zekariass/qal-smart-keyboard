@@ -48,6 +48,8 @@ import com.qalsmartkeyboard.aigateway.spi.UserText;
  * <li>DRAFT_DOCUMENT: {@code Subject: ...} (mode REPLY: {@code Re: ...}; IMPROVE: none), a greeting with the recipient
  * name or the {@code [recipient name]} placeholder, the user's text, a {@code [date]} placeholder line (mode NEW) and
  * a closing with the sender name or the {@code [your name]} placeholder.</li>
+ * <li>FORMAT_TEXT (ADR 0048): the input lines in the shape the rendered template names (bullets, numbered list,
+ * paragraphs, report, meeting notes).</li>
  * </ul>
  */
 public final class MockAiProvider implements AiProvider {
@@ -157,6 +159,7 @@ public final class MockAiProvider implements AiProvider {
 			case EXPLAIN_TEXT -> phrase(language, Phrase.EXPLANATION) + " " + text;
 			case SMART_REPLY -> replies(request, language);
 			case DRAFT_DOCUMENT -> email(request, language);
+			case FORMAT_TEXT -> format(request);
 			default -> otherLanguage ? phrase(output, Phrase.MOCK) + " " + text
 					: "[mock:" + request.task().name().toLowerCase(Locale.ROOT) + "] " + text;
 		};
@@ -225,6 +228,29 @@ public final class MockAiProvider implements AiProvider {
 			tokens.add(m.group());
 		}
 		return tokens.isEmpty() ? "" : " " + String.join(" ", tokens);
+	}
+
+	/**
+	 * FORMAT_TEXT (ADR 0048): the rendered template names the shape ({@code "Format: BULLETS."}); the mock renders it
+	 * with one item per input line.
+	 */
+	private static String format(TransformRequest r) {
+		Matcher m = Pattern.compile("Format: ([A-Z_]+)").matcher(r.instructions() == null ? "" : r.instructions());
+		String f = m.find() ? m.group(1) : "BULLETS";
+		List<String> items = r.text().value().lines().map(String::strip).filter(s -> !s.isEmpty()).toList();
+		StringBuilder numbered = new StringBuilder();
+		StringBuilder bullets = new StringBuilder();
+		for (int i = 0; i < items.size(); i++) {
+			numbered.append(i + 1).append(". ").append(items.get(i)).append('\n');
+			bullets.append("- ").append(items.get(i)).append('\n');
+		}
+		return switch (f) {
+			case "NUMBERED_LIST" -> numbered.toString().strip();
+			case "PARAGRAPHS" -> String.join(" ", items);
+			case "REPORT" -> "Report\n\n" + bullets.toString().strip();
+			case "MEETING_NOTES" -> "Meeting notes\n\nPoints discussed\n" + bullets.toString().strip();
+			default -> bullets.toString().strip();
+		};
 	}
 
 	private static String replies(TransformRequest r, String language) {

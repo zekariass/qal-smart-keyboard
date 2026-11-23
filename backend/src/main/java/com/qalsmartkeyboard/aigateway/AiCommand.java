@@ -111,10 +111,19 @@ public sealed interface AiCommand
 	 * @param outputLanguage the request's {@code outputLanguage} (or {@code options.explainIn} for EXPLAIN_TEXT); null =
 	 *                       the language of the text (ADR 0027)
 	 * @param variation      0..20, null = 0; a higher number asks for a different version (regenerate)
+	 * @param format         contract {@code options.format} (ADR 0048); required for FORMAT_TEXT, refused for the
+	 *                       other tasks
 	 */
 	record Transform(Caller caller, AiFeature task, UserText text, String language, String mode, String tone,
 			String targetLength, Addressee addressee, UUID glossaryId, boolean saveToHistory, String outputLanguage,
-			Integer variation) implements AiCommand {
+			Integer variation, String format) implements AiCommand {
+
+		public Transform(Caller caller, AiFeature task, UserText text, String language, String mode, String tone,
+				String targetLength, Addressee addressee, UUID glossaryId, boolean saveToHistory,
+				String outputLanguage, Integer variation) {
+			this(caller, task, text, language, mode, tone, targetLength, addressee, glossaryId, saveToHistory,
+					outputLanguage, variation, null);
+		}
 
 		public Transform(Caller caller, AiFeature task, UserText text, String language, String mode, String tone,
 				String targetLength, Addressee addressee, UUID glossaryId, boolean saveToHistory,
@@ -163,10 +172,17 @@ public sealed interface AiCommand
 	 * @param instructions    the user's own notes on what to say (any language); null = suggest freely
 	 * @param variation       0..20, null = 0; a higher number asks for a different set (regenerate)
 	 * @param saveToHistory   see {@link Translate}
+	 * @param intent          contract {@code intent} (ADR 0048): a preset stance every reply takes; null = varied
 	 */
 	record Reply(Caller caller, UserText text, String contextLanguage, String replyLanguage, Integer count,
-			String tone, Addressee addressee, UserText instructions, Integer variation, boolean saveToHistory)
-			implements AiCommand {
+			String tone, Addressee addressee, UserText instructions, Integer variation, boolean saveToHistory,
+			String intent) implements AiCommand {
+
+		public Reply(Caller caller, UserText text, String contextLanguage, String replyLanguage, Integer count,
+				String tone, Addressee addressee, UserText instructions, Integer variation, boolean saveToHistory) {
+			this(caller, text, contextLanguage, replyLanguage, count, tone, addressee, instructions, variation,
+					saveToHistory, null);
+		}
 
 		public Reply {
 			Objects.requireNonNull(caller, "caller");

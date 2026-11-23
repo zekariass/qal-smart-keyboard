@@ -1476,7 +1476,7 @@ paths:
       summary: Grammar, rewrite, tone, summarise, explain or script-convert text
       description: |
         One endpoint for writing tasks; `task` selects the feature code
-        (`GRAMMAR_CORRECTION`, `REWRITE`, `TONE_ADJUST`, `SUMMARIZE`, `EXPLAIN_TEXT`,
+        (`GRAMMAR_CORRECTION`, `REWRITE`, `TONE_ADJUST`, `SUMMARIZE`, `EXPLAIN_TEXT`, `FORMAT_TEXT`,
         `SCRIPT_CONVERSION`). User text is treated strictly as data, never as instructions.
 
         Text actions (ADR 0027): "Simplify" is `REWRITE` with `options.mode: SIMPLIFY`, "Make more
@@ -1485,7 +1485,9 @@ paths:
         text's (every task except `GRAMMAR_CORRECTION`, which keeps the text's language and answers 400
         `VALIDATION_FAILED` on `outputLanguage` for a different one). `SUMMARIZE` and `EXPLAIN_TEXT` run
         on a longer server time budget (about 12 s per provider attempt, 20 s in total) than the other
-        tasks (4 s / 8 s): clients should wait accordingly.
+        tasks (4 s / 8 s): clients should wait accordingly. `FORMAT_TEXT` restructures `text` into the
+        `options.format` shape (`BULLETS`, `NUMBERED_LIST`, `PARAGRAPHS`, `REPORT`, `MEETING_NOTES`)
+        without adding facts; placeholders such as `[owner]` cover details the text does not give.
 
         `SCRIPT_CONVERSION` is AI-assisted whole-sentence conversion of romanised Amharic/Tigrinya
         to Ge'ez with context; it is distinct from local keystroke transliteration.
@@ -1544,7 +1546,9 @@ paths:
 
         ADR 0027: the replies are written in `replyLanguage`, whatever the language of the message.
         `instructions` are the user's own notes on what to answer, in any supported language; every
-        suggestion then says that. Missing details are never invented: a suggestion may hold a
+        suggestion then says that. `intent` picks a preset stance (`AGREE`, `DISAGREE_POLITELY`,
+        `ASK_CLARIFICATION`, `ACCEPT_INVITATION`, `DECLINE_POLITELY`, `THANK_SENDER`) that every
+        suggestion takes; omitted, the suggestions are varied. Missing details are never invented: a suggestion may hold a
         bracketed placeholder such as `[time]`. To regenerate, send the same body with a higher
         `variation` and a new `Idempotency-Key` (the same key replays the first answer). Server time
         budget about 12 s per provider attempt, 20 s in total. 403 codes are those of
@@ -1590,12 +1594,13 @@ paths:
         Feature `DRAFT_DOCUMENT`. Supports SSE streaming as described for `/ai/transform` (not
         served yet: the server answers JSON; a follow-up of ADR 0027).
 
-        Write e-mail with AI (ADR 0027), `documentType: EMAIL` (the other types answer 400
-        `VALIDATION_FAILED` `NOT_AVAILABLE` on `documentType`), selected by `mode`:
-        - `NEW`: `instructions` describe what the e-mail must say, in the user's language; the server
-          writes a complete e-mail with a subject line in `language`.
-        - `REPLY`: `originalEmail` is the e-mail received, `instructions` what to answer; the subject
-          starts with `Re: `.
+        Write e-mail and other documents with AI (ADR 0027, ADR 0048). Served document types:
+        `EMAIL`, `JOB_APPLICATION`, `CV`, `COVER_LETTER`, `BUSINESS_MESSAGE` (the remaining enum
+        values answer 400 `VALIDATION_FAILED` `NOT_AVAILABLE` on `documentType`), selected by `mode`:
+        - `NEW`: `instructions` describe what the document must say, in the user's language; the server
+          writes a complete draft — for e-mail-like types with a subject line — in `language`.
+        - `REPLY`: `originalEmail` is the e-mail or message received, `instructions` what to answer;
+          the subject starts with `Re: `.
         - `IMPROVE`: `draft` is the user's draft (grammar, clarity, tone); `instructions` optional.
           The subject is returned only when the draft had one.
         The input and output languages may differ. Names, dates, numbers and facts are kept; nothing
@@ -4171,6 +4176,22 @@ components:
         - CUSTOM_GLOSSARY
         - ON_DEVICE_AI_MODELS
         - PREMIUM_THEMES
+        - FORMAT_TEXT
+        - AI_CHAT
+        - SOCIAL_POST
+        - FORM_ASSIST
+        - OCR_SCAN
+        - SKETCH_ENHANCE
+        - DOODLE_TO_IMAGE
+        - HANDWRITING_RECOGNITION
+        - AI_STICKER_GEN
+        - AI_IMAGE_GEN
+        - DRAW_SKETCH
+        - STICKER_MAKER
+        - GIF_MAKER
+        - CARD_MAKER
+        - IMAGE_ANNOTATOR
+        - QR_GENERATE
     MeteringUnit:
       type: string
       description: REQUEST; SECOND (audio, rounded up per request to a whole second); CHARACTER (TTS); NONE (boolean access).
@@ -5055,7 +5076,8 @@ components:
       description: |
         The database default `NATURAL` (no tone chosen) is deliberately not a value: a profile
         without a tone omits `defaultTone` in responses, and requests must omit it too.
-      enum: [FRIENDLY, POLITE, PROFESSIONAL, CONCISE, APOLOGETIC, HONORIFIC]
+      enum: [FRIENDLY, POLITE, PROFESSIONAL, CONCISE, APOLOGETIC, HONORIFIC, ROMANTIC, CONFIDENT,
+        FUNNY, PERSUASIVE]
     EmailTone:
       type: string
       description: |
@@ -5326,7 +5348,7 @@ components:
         usage: { $ref: '#/components/schemas/UsageSummary' }
     TransformTask:
       type: string
-      enum: [GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST, SUMMARIZE, EXPLAIN_TEXT, SCRIPT_CONVERSION]
+      enum: [GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST, SUMMARIZE, EXPLAIN_TEXT, FORMAT_TEXT, SCRIPT_CONVERSION]
     TransformRequest:
       type: object
       required: [task, text]
@@ -5362,6 +5384,10 @@ components:
             explainIn:
               $ref: '#/components/schemas/LanguageCode'
               description: EXPLAIN_TEXT output language (same as `outputLanguage`).
+            format:
+              type: string
+              enum: [BULLETS, NUMBERED_LIST, PARAGRAPHS, REPORT, MEETING_NOTES]
+              description: Required for FORMAT_TEXT; other tasks take no format.
             sourceRomanization:
               type: string
               enum: [AUTO, SERA, INFORMAL_CHAT]
@@ -5420,6 +5446,11 @@ components:
         contextLanguage: { $ref: '#/components/schemas/LanguageCode' }
         replyLanguage: { $ref: '#/components/schemas/LanguageCode' }
         count: { type: integer, minimum: 1, maximum: 5, default: 3 }
+        intent:
+          type: string
+          enum: [AGREE, DISAGREE_POLITELY, ASK_CLARIFICATION, ACCEPT_INVITATION, DECLINE_POLITELY,
+            THANK_SENDER]
+          description: A preset stance every suggestion takes; omit for varied options (ADR 0048).
         tone: { $ref: '#/components/schemas/Tone' }
         addressee: { $ref: '#/components/schemas/Addressee' }
         instructions:
@@ -5460,7 +5491,7 @@ components:
     DraftRequest:
       type: object
       description: |
-        ADR 0027. `language` is the language of the e-mail; `instructions` (or the older `purpose`,
+        ADR 0027. `language` is the language of the document; `instructions` (or the older `purpose`,
         not both) may be in any supported language. Which texts a `mode` needs: NEW `instructions`;
         REPLY `originalEmail` and `instructions`; IMPROVE `draft` (`instructions` optional).
         `originalEmail` outside REPLY and `draft` outside IMPROVE are 400.
@@ -5468,9 +5499,12 @@ components:
       properties:
         documentType:
           type: string
-          enum: [EMAIL, LETTER, APPLICATION, ANNOUNCEMENT, OTHER]
+          enum: [EMAIL, LETTER, APPLICATION, ANNOUNCEMENT, OTHER, JOB_APPLICATION, CV, COVER_LETTER,
+            BUSINESS_MESSAGE]
           default: EMAIL
-          description: Only EMAIL is served; the others answer 400 `NOT_AVAILABLE`.
+          description: |
+            Served: EMAIL, JOB_APPLICATION, CV, COVER_LETTER, BUSINESS_MESSAGE. The others
+            (LETTER, APPLICATION, ANNOUNCEMENT, OTHER) answer 400 `NOT_AVAILABLE`.
         mode:
           type: string
           enum: [NEW, REPLY, IMPROVE]

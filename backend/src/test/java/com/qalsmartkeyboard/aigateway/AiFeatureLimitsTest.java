@@ -36,7 +36,8 @@ class AiFeatureLimitsTest {
 		}
 		assertThat(s.deadlineFor(AiFeature.TRANSLATE)).isEqualTo(Duration.ofSeconds(12));
 		assertThat(s.attemptTimeoutFor(AiFeature.TRANSLATE)).isEqualTo(Duration.ofSeconds(8));
-		for (AiFeature f : new AiFeature[] { AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE, AiFeature.TONE_ADJUST }) {
+		for (AiFeature f : new AiFeature[] { AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE, AiFeature.TONE_ADJUST,
+				AiFeature.FORMAT_TEXT }) {
 			assertThat(s.deadlineFor(f)).as(f.name()).isEqualTo(Duration.ofSeconds(10));
 			assertThat(s.attemptTimeoutFor(f)).as(f.name()).isEqualTo(Duration.ofSeconds(6));
 		}

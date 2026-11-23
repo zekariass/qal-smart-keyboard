@@ -80,11 +80,12 @@ class AiController {
 	static final int CLIENT_CLOSED_REQUEST = 499;
 
 	private static final Set<AiFeature> TRANSFORM_TASKS = EnumSet.of(AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE,
-			AiFeature.TONE_ADJUST, AiFeature.SUMMARIZE, AiFeature.EXPLAIN_TEXT, AiFeature.SCRIPT_CONVERSION);
+			AiFeature.TONE_ADJUST, AiFeature.SUMMARIZE, AiFeature.EXPLAIN_TEXT, AiFeature.FORMAT_TEXT,
+			AiFeature.SCRIPT_CONVERSION);
 	/** The features this gateway serves today (the rest of {@link AiFeature} answers NOT_AVAILABLE or has no endpoint). */
 	private static final Set<AiFeature> SERVED = EnumSet.of(AiFeature.TRANSLATE, AiFeature.DETECT_LANGUAGE,
 			AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE, AiFeature.TONE_ADJUST, AiFeature.SUMMARIZE,
-			AiFeature.EXPLAIN_TEXT, AiFeature.SMART_REPLY, AiFeature.DRAFT_DOCUMENT);
+			AiFeature.EXPLAIN_TEXT, AiFeature.FORMAT_TEXT, AiFeature.SMART_REPLY, AiFeature.DRAFT_DOCUMENT);
 
 	private final AiPipeline pipeline;
 	private final RateLimiter limiter;

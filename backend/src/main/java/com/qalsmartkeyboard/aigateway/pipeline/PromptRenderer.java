@@ -19,8 +19,10 @@ public final class PromptRenderer {
 
 	/** Every name a template may use. */
 	public static final Set<String> PLACEHOLDERS = Set.of(
-			// task (count: SMART_REPLY replies; variation: 0 = first answer, higher = regenerate, ADR 0027)
+			// task (count: SMART_REPLY replies; variation: 0 = first answer, higher = regenerate, ADR 0027;
+			// format/intent/documentType: the option codes of ADR 0048)
 			"feature", "mode", "tone", "style", "targetLength", "explainIn", "count", "variation",
+			"format", "intent", "documentType",
 			// the language the result must be written in (ADR 0027) and a ready-made sentence for it
 			"outputLanguage", "outputLanguageName", "outputLanguageInstruction",
 			// languages (codes and English names from supported_languages)

@@ -168,23 +168,35 @@ class AiTextActionsIT {
 	// ======================================================================================= V20 seeds
 
 	@Test
-	void v21ReplacesTheEmailAndReplyTemplatesWithV2() {
+	void v28BumpsTheEmailReplyAndToneTemplates() {
 		Map<String, Object> draft = jdbc.queryForMap("""
 				SELECT template_version, template_body FROM ai_prompt_templates
 				 WHERE feature_code = 'DRAFT_DOCUMENT' AND is_active AND language_scope = '*' AND model_family = '*'""");
-		assertThat(draft.get("template_version")).isEqualTo(2);
+		assertThat(draft.get("template_version")).isEqualTo(3);
 		assertThat((String) draft.get("template_body"))
-				.contains("use the sender's name only in the sign-off, never in the greeting")
+				.contains("use the sender's name only in the sign-off, never in the greeting",
+						"Document type: {{documentType}}", "- JOB_APPLICATION:", "- CV:", "- COVER_LETTER:",
+						"- BUSINESS_MESSAGE:")
 				.doesNotContain("use them in the greeting and the signature");
 		Map<String, Object> reply = jdbc.queryForMap("""
 				SELECT template_version, template_body FROM ai_prompt_templates
 				 WHERE feature_code = 'SMART_REPLY' AND is_active AND language_scope = '*' AND model_family = '*'""");
-		assertThat(reply.get("template_version")).isEqualTo(2);
-		assertThat((String) reply.get("template_body")).contains("Do not number the replies");
-		// v1 is kept (feedback and history rows point at it) but no longer served
+		assertThat(reply.get("template_version")).isEqualTo(3);
+		assertThat((String) reply.get("template_body")).contains("Do not number the replies", "Intent: {{intent}}",
+				"DECLINE_POLITELY", "ASK_CLARIFICATION");
+		Map<String, Object> tone = jdbc.queryForMap("""
+				SELECT template_version, template_body FROM ai_prompt_templates
+				 WHERE feature_code = 'TONE_ADJUST' AND is_active AND language_scope = '*' AND model_family = '*'""");
+		assertThat(tone.get("template_version")).isEqualTo(2);
+		assertThat((String) tone.get("template_body")).contains("- ROMANTIC:", "- CONFIDENT:", "- FUNNY:",
+				"- PERSUASIVE:");
+		// the older versions are kept (feedback and history rows point at them) but no longer served
 		assertThat(jdbc.queryForObject("""
 				SELECT count(*) FROM ai_prompt_templates WHERE feature_code IN ('DRAFT_DOCUMENT', 'SMART_REPLY')
-				   AND template_version = 1 AND NOT is_active""", Integer.class)).isEqualTo(2);
+				   AND template_version IN (1, 2) AND NOT is_active""", Integer.class)).isEqualTo(4);
+		assertThat(jdbc.queryForObject("""
+				SELECT count(*) FROM ai_prompt_templates WHERE feature_code = 'TONE_ADJUST'
+				   AND template_version = 1 AND NOT is_active""", Integer.class)).isEqualTo(1);
 	}
 
 	@Test
@@ -193,13 +205,16 @@ class AiTextActionsIT {
 				SELECT feature_code FROM ai_prompt_templates
 				 WHERE is_active AND evaluation_status = 'APPROVED'
 				   AND language_scope = '*' AND model_family = '*' ORDER BY feature_code""", String.class);
-		assertThat(features).containsExactly("DRAFT_DOCUMENT", "EXPLAIN_TEXT", "GRAMMAR_CORRECTION", "REWRITE",
-				"SMART_REPLY", "SUMMARIZE", "TONE_ADJUST");
+		assertThat(features).containsExactly("DRAFT_DOCUMENT", "EXPLAIN_TEXT", "FORMAT_TEXT", "GRAMMAR_CORRECTION",
+				"REWRITE", "SMART_REPLY", "SUMMARIZE", "TONE_ADJUST");
 
 		Map<String, String> values = PromptValues.of(new PromptValues.Inputs(AiFeature.DRAFT_DOCUMENT, "REPLY",
 				"PERSUASIVE", null, "MEDIUM", "en", "English", "am", "Amharic", "en", "English",
 				Addressee.Formality.FORMAL, Addressee.Gender.FEMININE, "GREGORIAN", "INTERNATIONAL", "WESTERN", true,
 				true, LocalDate.of(2026, 11, 18), "am", "Amharic", 3, 2));
+		values.put("format", "MEETING_NOTES");
+		values.put("intent", "DECLINE_POLITELY");
+		values.put("documentType", "JOB_APPLICATION");
 		for (String feature : features) {
 			// served to the production LLM (family openai) and to the dev mocks alike, with no unknown placeholder
 			PromptTemplates.Template t = templates.select(feature, "am", "openai", "openai-llm").orElseThrow();
@@ -219,7 +234,7 @@ class AiTextActionsIT {
 
 		String email = renderer.render(templates.select("DRAFT_DOCUMENT", "en", null, null).orElseThrow().body(),
 				values);
-		assertThat(email).contains("Mode: REPLY", "- NEW:", "- REPLY:", "- IMPROVE:",
+		assertThat(email).contains("Document type: JOB_APPLICATION", "Mode: REPLY", "- NEW:", "- REPLY:", "- IMPROVE:",
 				"Tone: PERSUASIVE", "PROFESSIONAL =", "FORMAL =", "FRIENDLY =", "CASUAL =", "POLITE =", "PERSUASIVE =",
 				"APOLOGETIC =", "CONCISE =", "[date]", "Subject:", "\"Subject: Re: \"", "Variation 2",
 				"Never invent facts, promises, deadlines, prices, attachments or commitments",
@@ -228,14 +243,19 @@ class AiTextActionsIT {
 		String replies = renderer.render(templates.select("SMART_REPLY", "en", null, null).orElseThrow().body(),
 				values);
 		assertThat(replies).contains("suggest 3 different replies", "exactly 3 replies, with a line that "
-				+ "contains only ---", "Do not number the replies", "the user's own notes", "Variation 2", "[time]");
+				+ "contains only ---", "Do not number the replies", "the user's own notes", "Variation 2", "[time]",
+				"Intent: DECLINE_POLITELY");
 		String rewrite = renderer.render(templates.select("REWRITE", "en", null, null).orElseThrow().body(),
 				PromptValues.of(new PromptValues.Inputs(AiFeature.REWRITE, "SIMPLIFY", null, null, null, null, null,
 						null, null, "en", "English", null, null, null, null, null, true, true, null)));
 		assertThat(rewrite).contains("Mode: SIMPLIFY", "- SIMPLIFY: short sentences and common everyday words",
 				"Write the result in English (en).");
 		String tone = renderer.render(templates.select("TONE_ADJUST", "en", null, null).orElseThrow().body(), values);
-		assertThat(tone).contains("- PROFESSIONAL: clear, courteous and businesslike");
+		assertThat(tone).contains("- PROFESSIONAL: clear, courteous and businesslike", "- ROMANTIC:", "- CONFIDENT:",
+				"- FUNNY:", "- PERSUASIVE:");
+		String format = renderer.render(templates.select("FORMAT_TEXT", "en", null, null).orElseThrow().body(),
+				values);
+		assertThat(format).contains("Format: MEETING_NOTES", "- MEETING_NOTES:", "Never add facts", "[owner]");
 	}
 
 	@Test
@@ -247,7 +267,8 @@ class AiTextActionsIT {
 				   AND c.destination_language_id IS NULL AND c.supports_auto_detection""";
 		for (String provider : List.of("openai", "mock", "wiremock-http")) {
 			// 4 languages of V20 + ar (V23)
-			for (String feature : List.of("SMART_REPLY", "SUMMARIZE", "EXPLAIN_TEXT", "DRAFT_DOCUMENT")) {
+			for (String feature : List.of("SMART_REPLY", "SUMMARIZE", "EXPLAIN_TEXT", "DRAFT_DOCUMENT",
+					"FORMAT_TEXT")) {
 				assertThat(jdbc.queryForObject(count, Integer.class, provider, feature)).as(provider + " " + feature)
 						.isEqualTo(5);
 			}
@@ -256,15 +277,17 @@ class AiTextActionsIT {
 		assertThat(jdbc.queryForObject(count, Integer.class, "google-translate", "DRAFT_DOCUMENT")).isZero();
 		assertThat(jdbc.queryForList("""
 				SELECT DISTINCT c.feature_code || ':' || c.max_input_characters FROM ai_language_capabilities c
-				 WHERE c.feature_code IN ('SMART_REPLY', 'SUMMARIZE', 'EXPLAIN_TEXT', 'DRAFT_DOCUMENT') ORDER BY 1""",
-				String.class)).containsExactly("DRAFT_DOCUMENT:12000", "EXPLAIN_TEXT:5000", "SMART_REPLY:6000",
-						"SUMMARIZE:5000");
+				 WHERE c.feature_code IN ('SMART_REPLY', 'SUMMARIZE', 'EXPLAIN_TEXT', 'DRAFT_DOCUMENT', 'FORMAT_TEXT')
+				 ORDER BY 1""",
+				String.class)).containsExactly("DRAFT_DOCUMENT:12000", "EXPLAIN_TEXT:5000", "FORMAT_TEXT:5000",
+						"SMART_REPLY:6000", "SUMMARIZE:5000");
 		assertThat(jdbc.queryForList("""
 				SELECT r.feature_code || ':' || p.provider_code || ':' || r.priority || ':' || r.is_enabled
 				  FROM ai_routing_policies r JOIN ai_models m ON m.id = r.model_id JOIN ai_providers p ON p.id = m.provider_id
-				 WHERE r.feature_code IN ('SMART_REPLY', 'SUMMARIZE', 'EXPLAIN_TEXT', 'DRAFT_DOCUMENT') ORDER BY 1""",
+				 WHERE r.feature_code IN ('SMART_REPLY', 'SUMMARIZE', 'EXPLAIN_TEXT', 'DRAFT_DOCUMENT', 'FORMAT_TEXT')
+				 ORDER BY 1""",
 				String.class)).containsExactly("DRAFT_DOCUMENT:openai:1:false", "EXPLAIN_TEXT:openai:1:false",
-						"SMART_REPLY:openai:1:false", "SUMMARIZE:openai:1:false");
+						"FORMAT_TEXT:openai:1:false", "SMART_REPLY:openai:1:false", "SUMMARIZE:openai:1:false");
 	}
 
 	// ======================================================================================= transform
@@ -312,6 +335,40 @@ class AiTextActionsIT {
 		send(user, "transform", key(), """
 				{"task":"SUMMARIZE","text":"abc","outputLanguage":"xx"}""").andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("LANGUAGE_NOT_SUPPORTED"));
+	}
+
+	/** ADR 0048: FORMAT_TEXT needs options.format, restructures the text and takes the new tones. */
+	@Test
+	void formatTextRestructuresTheTextAndNeedsAFormat() throws Exception {
+		UUID user = user("PREMIUM");
+		send(user, "transform", key(), """
+				{"task":"FORMAT_TEXT","text":"Buy milk\\nCall mom","language":"en","options":{"format":"BULLETS"}}""")
+				.andExpect(status().isOk()).andExpect(jsonPath("$.task").value("FORMAT_TEXT"))
+				.andExpect(jsonPath("$.resultText").value("- Buy milk\n- Call mom"))
+				.andExpect(jsonPath("$.usage.featureCode").value("FORMAT_TEXT"))
+				.andExpect(jsonPath("$.qualityTier").value("BETA"));
+		send(user, "transform", key(), """
+				{"task":"FORMAT_TEXT","text":"Buy milk\\nCall mom","language":"en",
+				 "options":{"format":"NUMBERED_LIST"}}""").andExpect(status().isOk())
+				.andExpect(jsonPath("$.resultText").value("1. Buy milk\n2. Call mom"));
+		send(user, "transform", key(), """
+				{"task":"TONE_ADJUST","text":"miss you","language":"en","options":{"tone":"ROMANTIC"}}""")
+				.andExpect(status().isOk());
+		assertThat(used(user, "FORMAT_TEXT")).isEqualTo(2);
+
+		send(user, "transform", key(), """
+				{"task":"FORMAT_TEXT","text":"abc","language":"en"}""").andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors[0].field").value("options.format"))
+				.andExpect(jsonPath("$.errors[0].code").value("REQUIRED"));
+		send(user, "transform", key(), """
+				{"task":"FORMAT_TEXT","text":"abc","language":"en","options":{"format":"JSON"}}""")
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("options.format"))
+				.andExpect(jsonPath("$.errors[0].code").value("INVALID_VALUE"));
+		send(user, "transform", key(), """
+				{"task":"REWRITE","text":"abc","language":"en","options":{"format":"BULLETS"}}""")
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("options.format"))
+				.andExpect(jsonPath("$.errors[0].code").value("NOT_ALLOWED"));
+		assertThat(used(user, "FORMAT_TEXT")).isEqualTo(2); // the refused calls charged nothing
 	}
 
 	@Test
@@ -408,6 +465,24 @@ class AiTextActionsIT {
 		assertThat(used(user, "SMART_REPLY")).isZero();
 	}
 
+	/** ADR 0048: a reply intent is a preset stance; it reaches the instructions, not the user text. */
+	@Test
+	void aReplyIntentIsValidatedAndSteersEverySuggestion() throws Exception {
+		UUID user = user("PREMIUM");
+		onlyTheRecordingProvider();
+		send(user, "replies", key(), """
+				{"contextText":"Can you come to the wedding on Saturday?","replyLanguage":"en",
+				 "intent":"DECLINE_POLITELY"}""").andExpect(status().isOk());
+		TransformRequest sent = fallback.lastTransform.get();
+		assertThat(sent.task()).isEqualTo(AiFeature.SMART_REPLY);
+		assertThat(sent.instructions()).contains("Intent: DECLINE_POLITELY", "every reply takes that stance");
+		send(user, "replies", key(), """
+				{"contextText":"Hi","replyLanguage":"en","intent":"ANGRY"}""").andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors[0].field").value("intent"))
+				.andExpect(jsonPath("$.errors[0].code").value("INVALID_VALUE"));
+		assertThat(used(user, "SMART_REPLY")).isOne();
+	}
+
 	// ======================================================================================= drafts
 
 	@Test
@@ -484,6 +559,33 @@ class AiTextActionsIT {
 				ContextPart.Kind.RECIPIENT_NAME, ContextPart.Kind.RECIPIENT_ROLE, ContextPart.Kind.SENDER_NAME);
 		assertThat(sent.instructions()).contains("Mode: REPLY", "Tone: PROFESSIONAL", "Write the result in English (en).")
 				.doesNotContain(SECRET).doesNotContain(NOTES_AM).doesNotContain("Sarah").doesNotContain("Abebe");
+	}
+
+	/** ADR 0048: JOB_APPLICATION, CV, COVER_LETTER and BUSINESS_MESSAGE are served next to EMAIL. */
+	@Test
+	void theNewDocumentTypesAreServedAndTheOthersStayUnavailable() throws Exception {
+		UUID user = user("PREMIUM");
+		onlyTheRecordingProvider();
+		send(user, "drafts", key(), """
+				{"documentType":"CV","language":"en","instructions":"nurse, 5 years at Black Lion hospital"}""")
+				.andExpect(status().isOk());
+		TransformRequest sent = fallback.lastTransform.get();
+		assertThat(sent.instructions()).contains("Document type: CV", "- JOB_APPLICATION:", "- COVER_LETTER:",
+				"- BUSINESS_MESSAGE:", "no greeting and no sign-off");
+		send(user, "drafts", key(), """
+				{"documentType":"BUSINESS_MESSAGE","language":"en","instructions":"ask about invoice 118"}""")
+				.andExpect(status().isOk());
+		assertThat(used(user, "DRAFT_DOCUMENT")).isEqualTo(2);
+		// the still-unserved types answer NOT_AVAILABLE on documentType and charge nothing
+		send(user, "drafts", key(), """
+				{"documentType":"LETTER","language":"en","instructions":"a"}""").andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors[0].field").value("documentType"))
+				.andExpect(jsonPath("$.errors[0].code").value("NOT_AVAILABLE"));
+		send(user, "drafts", key(), """
+				{"documentType":"RESIGNATION","language":"en","instructions":"a"}""")
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("documentType"))
+				.andExpect(jsonPath("$.errors[0].code").value("INVALID_VALUE"));
+		assertThat(used(user, "DRAFT_DOCUMENT")).isEqualTo(2);
 	}
 
 	@Test

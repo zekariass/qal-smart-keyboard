@@ -416,6 +416,8 @@ public final class Guardrails {
 					case "IMPROVE" -> new LengthBounds(3.0, 2000, 0.3);
 					default -> new LengthBounds(30.0, 5000, 0.0); // a short description becomes a whole e-mail
 				};
+				// restructured but not rewritten: titles, bullets and section lines add a little
+				case FORMAT_TEXT -> new LengthBounds(3.0, 60, 0.1);
 				default -> new LengthBounds(4.0, 80, 0.05);
 			};
 		}

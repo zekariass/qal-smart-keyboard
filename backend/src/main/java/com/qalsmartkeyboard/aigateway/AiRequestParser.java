@@ -83,7 +83,8 @@ final class AiRequestParser {
 				options == null ? null : string(options, "options.tone", "tone"),
 				options == null ? null : string(options, "options.targetLength", "targetLength"),
 				addressee(n.get("addressee"), "addressee"), uuid(n, "glossaryId"),
-				Boolean.TRUE.equals(bool(n, "saveToHistory")), output, integer(n, "variation"));
+				Boolean.TRUE.equals(bool(n, "saveToHistory")), output, integer(n, "variation"),
+				options == null ? null : string(options, "options.format", "format"));
 	}
 
 	/** Contract {@code RepliesRequest}. */
@@ -96,7 +97,7 @@ final class AiRequestParser {
 		return new AiCommand.Reply(caller, UserText.of(context), string(n, "contextLanguage"),
 				string(n, "replyLanguage"), integer(n, "count"), string(n, "tone"),
 				addressee(n.get("addressee"), "addressee"), text(string(n, "instructions")), integer(n, "variation"),
-				Boolean.TRUE.equals(bool(n, "saveToHistory")));
+				Boolean.TRUE.equals(bool(n, "saveToHistory")), string(n, "intent"));
 	}
 
 	/** Contract {@code DraftRequest}. */

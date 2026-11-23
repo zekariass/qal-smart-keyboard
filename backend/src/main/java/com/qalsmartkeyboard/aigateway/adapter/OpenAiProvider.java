@@ -202,6 +202,7 @@ public final class OpenAiProvider implements AiProvider {
 					+ "separated by a line containing only ---.";
 			case DRAFT_DOCUMENT -> "write a complete e-mail (" + (hasText(r.mode()) ? r.mode() : "NEW")
 					+ "). Start with the line 'Subject: ' followed by the subject, then a blank line, then the body.";
+			case FORMAT_TEXT -> "format the text into the requested structure; keep every fact and add nothing.";
 			default -> r.task().name() + ".";
 		});
 		if (hasText(r.mode())) {

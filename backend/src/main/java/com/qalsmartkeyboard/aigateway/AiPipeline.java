@@ -119,15 +119,25 @@ public class AiPipeline {
 	private static final String ON_DEVICE_ONLY = "ON_DEVICE_ONLY";
 
 	private static final Set<AiFeature> TRANSFORM_TASKS = EnumSet.of(AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE,
-			AiFeature.TONE_ADJUST, AiFeature.SUMMARIZE, AiFeature.EXPLAIN_TEXT);
+			AiFeature.TONE_ADJUST, AiFeature.SUMMARIZE, AiFeature.EXPLAIN_TEXT, AiFeature.FORMAT_TEXT);
 	private static final Set<String> STYLES = Set.of("LITERAL", "NATURAL", "POLITE", "PROFESSIONAL", "FRIENDLY");
 	private static final Set<String> TONES = Set.of("FRIENDLY", "POLITE", "PROFESSIONAL", "CONCISE", "APOLOGETIC",
-			"HONORIFIC");
+			"HONORIFIC", "ROMANTIC", "CONFIDENT", "FUNNY", "PERSUASIVE");
 	/** Contract {@code EmailTone} (DRAFT_DOCUMENT). */
 	private static final Set<String> EMAIL_TONES = Set.of("PROFESSIONAL", "FORMAL", "FRIENDLY", "CASUAL", "POLITE",
 			"PERSUASIVE", "APOLOGETIC", "CONCISE");
 	private static final Set<String> DRAFT_MODES = Set.of("NEW", "REPLY", "IMPROVE");
-	private static final Set<String> DOCUMENT_TYPES = Set.of("EMAIL", "LETTER", "APPLICATION", "ANNOUNCEMENT", "OTHER");
+	private static final Set<String> DOCUMENT_TYPES = Set.of("EMAIL", "LETTER", "APPLICATION", "ANNOUNCEMENT",
+			"OTHER", "JOB_APPLICATION", "CV", "COVER_LETTER", "BUSINESS_MESSAGE");
+	/** The document types this gateway serves today (ADR 0048); the rest answer {@code NOT_AVAILABLE}. */
+	private static final Set<String> SERVED_DOCUMENT_TYPES = Set.of("EMAIL", "JOB_APPLICATION", "CV",
+			"COVER_LETTER", "BUSINESS_MESSAGE");
+	/** Contract {@code TransformRequest.options.format} (FORMAT_TEXT, ADR 0048). */
+	private static final Set<String> FORMATS = Set.of("BULLETS", "NUMBERED_LIST", "PARAGRAPHS", "REPORT",
+			"MEETING_NOTES");
+	/** Contract {@code RepliesRequest.intent} (ADR 0048). */
+	private static final Set<String> INTENTS = Set.of("AGREE", "DISAGREE_POLITELY", "ASK_CLARIFICATION",
+			"ACCEPT_INVITATION", "DECLINE_POLITELY", "THANK_SENDER");
 	private static final Set<String> GRAMMAR_MODES = Set.of("GRAMMAR", "SPELLING_ONLY");
 	private static final Set<String> REWRITE_MODES = Set.of("NATURAL", "SHORTEN", "EXPAND", "CLARIFY", "SIMPLIFY");
 	private static final Set<String> LENGTHS = Set.of("SHORT", "MEDIUM", "LONG");
@@ -172,7 +182,8 @@ public class AiPipeline {
 			AiFeature.TRANSLATE, new Timeouts(Duration.ofSeconds(8), Duration.ofSeconds(12)),
 			AiFeature.GRAMMAR_CORRECTION, new Timeouts(Duration.ofSeconds(6), Duration.ofSeconds(10)),
 			AiFeature.REWRITE, new Timeouts(Duration.ofSeconds(6), Duration.ofSeconds(10)),
-			AiFeature.TONE_ADJUST, new Timeouts(Duration.ofSeconds(6), Duration.ofSeconds(10)));
+			AiFeature.TONE_ADJUST, new Timeouts(Duration.ofSeconds(6), Duration.ofSeconds(10)),
+			AiFeature.FORMAT_TEXT, new Timeouts(Duration.ofSeconds(6), Duration.ofSeconds(10)));
 
 	/**
 	 * @param deadline                   time budget for all provider calls of one request: route, guardrail retry and
@@ -502,6 +513,14 @@ public class AiPipeline {
 			throw validation("options.tone", "REQUIRED", "TONE_ADJUST needs a tone.");
 		}
 		check(t.tone(), TONES, "options.tone");
+		if (t.task() == AiFeature.FORMAT_TEXT) {
+			if (t.format() == null) {
+				throw validation("options.format", "REQUIRED", "FORMAT_TEXT needs a format.");
+			}
+			check(t.format(), FORMATS, "options.format");
+		} else if (t.format() != null) {
+			throw validation("options.format", "NOT_ALLOWED", "This task takes no format.");
+		}
 		check(t.targetLength(), LENGTHS, "options.targetLength");
 		AiUserContext.Defaults defaults = users.defaults(t.caller().userId());
 		Addressee addressee = addressee(t.addressee(), null, defaults);
@@ -518,6 +537,9 @@ public class AiPipeline {
 				lang == null ? null : lang.englishName(), addressee.formality(), addressee.gender(), null, null, null,
 				true, true, today, out == null ? null : out.code(), out == null ? null : out.englishName(), null,
 				variation));
+		if (t.format() != null) {
+			values.put("format", t.format());
+		}
 		// a summary or an explanation need not repeat every number or link of the text
 		boolean keepsTokens = t.task() != AiFeature.SUMMARIZE && t.task() != AiFeature.EXPLAIN_TEXT;
 		Extras extras = new Extras(t.text(), keepsTokens ? t.text() : null, cross, List.of(), 0, variation, true);
@@ -546,6 +568,7 @@ public class AiPipeline {
 		}
 		int variation = variation(r.variation());
 		check(r.tone(), TONES, "tone");
+		check(r.intent(), INTENTS, "intent");
 		AiUserContext.Defaults defaults = users.defaults(r.caller().userId());
 		Addressee addressee = addressee(r.addressee(), null, defaults);
 		UnicodeScript inputScript = ctx != null ? ctx.script() : dominantScript(context.value());
@@ -556,6 +579,9 @@ public class AiPipeline {
 				out.englishName(), ctx == null ? null : ctx.code(), ctx == null ? null : ctx.englishName(),
 				addressee.formality(), addressee.gender(), null, null, null, true, true, today, out.code(),
 				out.englishName(), count, variation));
+		if (r.intent() != null) {
+			values.put("intent", r.intent());
+		}
 		List<ContextPart> parts = notes == null ? List.of() : List.of(new ContextPart(ContextPart.Kind.USER_NOTES, notes));
 		// the replies are checked against everything the user gave; only the user's own notes must keep their numbers
 		Extras extras = new Extras(joined(context, notes), notes, cross, parts, count, variation, true);
@@ -567,8 +593,8 @@ public class AiPipeline {
 	private Prepared prepareDraft(AiCommand.Draft d) {
 		String type = d.documentType() == null ? "EMAIL" : d.documentType();
 		check(type, DOCUMENT_TYPES, "documentType");
-		if (!"EMAIL".equals(type)) {
-			throw validation("documentType", "NOT_AVAILABLE", "Only EMAIL drafts are available.");
+		if (!SERVED_DOCUMENT_TYPES.contains(type)) {
+			throw validation("documentType", "NOT_AVAILABLE", "This document type is not available.");
 		}
 		String mode = d.modeOrDefault();
 		check(mode, DRAFT_MODES, "mode");
@@ -629,6 +655,7 @@ public class AiPipeline {
 				null, length, null, null, out.code(), out.englishName(), null, null, addressee.formality(),
 				addressee.gender(), calendar, time, numerals, true, true, today, out.code(), out.englishName(), null,
 				variation));
+		values.put("documentType", type);
 		List<ContextPart> parts = new ArrayList<>();
 		if (notes != null) {
 			parts.add(new ContextPart(ContextPart.Kind.USER_NOTES, notes));
