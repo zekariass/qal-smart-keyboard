@@ -458,7 +458,7 @@ class EntitlementResolverTest {
 	}
 
 	private void assertGatedFeaturesDenied(ResolvedEntitlements r) {
-		assertThat(r.features()).hasSize(25);
+		assertThat(r.features()).hasSize(41);
 		for (FeatureEntitlement f : r.features().values()) {
 			if (f.gated()) {
 				assertThat(f.accessEnabled()).as(f.featureCode()).isFalse();

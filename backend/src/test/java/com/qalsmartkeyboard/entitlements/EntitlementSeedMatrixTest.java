@@ -34,10 +34,10 @@ class EntitlementSeedMatrixTest {
 		SeedSql seed = SeedSql.load();
 		assertThat(seed.plans).extracting(SeedSql.Plan::code)
 				.containsExactly("GUEST", "FREE", "PREMIUM", "PREMIUM_PLUS", "BUSINESS");
-		assertThat(seed.catalog).hasSize(25);
-		assertThat(seed.catalog.stream().filter(SeedSql.Feature::gated)).hasSize(20);
-		assertThat(seed.enabled).hasSize(4 + 9 + 18 + 20 + 20); // GUEST, FREE, PREMIUM, PREMIUM_PLUS, BUSINESS rows
-		assertThat(planByFeature().count()).isEqualTo(5 * 25);
+		assertThat(seed.catalog).hasSize(41);
+		assertThat(seed.catalog.stream().filter(SeedSql.Feature::gated)).hasSize(35);
+		assertThat(seed.enabled).hasSize(4 + 12 + 33 + 35 + 35); // GUEST, FREE, PREMIUM, PREMIUM_PLUS, BUSINESS rows
+		assertThat(planByFeature().count()).isEqualTo(5 * 41);
 	}
 
 	@ParameterizedTest(name = "{0} / {1}")
@@ -54,7 +54,7 @@ class EntitlementSeedMatrixTest {
 
 		assertThat(resolved.access()).isEqualTo(AccessState.GRANTED);
 		assertThat(resolved.plan().orElseThrow().planCode()).isEqualTo(planCode);
-		assertThat(resolved.features()).hasSize(25);
+		assertThat(resolved.features()).hasSize(41);
 		FeatureEntitlement actual = resolved.feature(featureCode).orElseThrow();
 		SeedSql.Feature catalog = seed.feature(featureCode);
 		assertThat(actual.unit()).isEqualTo(catalog.unit());

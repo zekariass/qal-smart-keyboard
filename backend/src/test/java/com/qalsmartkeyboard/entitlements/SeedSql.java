@@ -12,7 +12,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Reads the seed straight out of {@code V1__baseline.sql} and {@code V18__premium_themes.sql} (plans, feature catalogue and the PROVISIONAL_V2 allowances),
+ * Reads the seed straight out of {@code V1__baseline.sql}, {@code V18__premium_themes.sql} and
+ * {@code V27__extended_tools_feature_catalog.sql} (plans, feature catalogue and the PROVISIONAL_V2 allowances),
  * so the tests compare the resolver with the migration itself and cannot drift from it. The migration states the
  * rule for the rest: rows listed in {@code enabled_seed} are enabled, every other (plan, gated feature) pair is
  * inserted disabled (included 0 for metered features, NULL for NONE, reset NONE).
@@ -39,6 +40,7 @@ final class SeedSql {
 		if (cached == null) {
 			cached = new SeedSql(readMigration("V1__baseline.sql"));
 			cached.parseFeatures(readMigration("V18__premium_themes.sql"));
+			cached.parseFeatures(readMigration("V27__extended_tools_feature_catalog.sql"));
 		}
 		return cached;
 	}
@@ -55,10 +57,10 @@ final class SeedSql {
 		parseFeatures(sql);
 	}
 
-	/** Adds the feature rows and enabled allowances of one migration (V1, then V18 adds PREMIUM_THEMES). */
+	/** Adds the feature rows and enabled allowances of one migration (V1, V18 adds PREMIUM_THEMES, V27 the extended tools). */
 	private void parseFeatures(String sql) {
 		Matcher feature = Pattern.compile(
-				"\\('([A-Z_]+)',\\s*'(?:[^']|'')*',\\s*'(?:TYPING|TEXT_AI|VOICE|REALTIME|PLATFORM)',\\s*'([A-Z]+)',\\s*(TRUE|FALSE),\\s*([0-9.]+),")
+				"\\('([A-Z_]+)',\\s*'(?:[^']|'')*',\\s*'(?:TYPING|TEXT_AI|VOICE|REALTIME|PLATFORM|MEDIA_AI)',\\s*'([A-Z]+)',\\s*(TRUE|FALSE),\\s*([0-9.]+),")
 				.matcher(section(sql, "INSERT INTO feature_catalog", "ON CONFLICT"));
 		while (feature.find()) {
 			catalog.add(new Feature(feature.group(1), MeteringUnit.valueOf(feature.group(2)),
