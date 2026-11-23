@@ -266,6 +266,29 @@ The schema, the OpenAPI contract and the System Design must use exactly these na
 | `CUSTOM_GLOSSARY` | PLATFORM | NONE | Yes | Boolean access |
 | `ON_DEVICE_AI_MODELS` | PLATFORM | NONE | Yes | Boolean access, offline-checked by entitlement token |
 
+**Added 23 November 2026 (ADR 0048, requirements from `Implementation_notes.md`):**
+
+| Code | Category | Unit | Entitlement-gated | Notes |
+|---|---|---|---|---|
+| `FORMAT_TEXT` | TEXT_AI | REQUEST | Yes | Notes → bullets, lists, paragraphs, reports, meeting notes |
+| `AI_CHAT` | TEXT_AI | REQUEST | Yes | Stateless writing-assistant chat; client-supplied turns |
+| `SOCIAL_POST` | TEXT_AI | REQUEST | Yes | Platform-aware posts, captions, hashtags |
+| `FORM_ASSIST` | TEXT_AI | REQUEST | Yes | Form/application answers; always flagged verify-first (R-7) |
+| `OCR_SCAN` | TEXT_AI | REQUEST | Yes | Server OCR incl. Ethiopic script, handwriting, complex layouts |
+| `SKETCH_ENHANCE` | MEDIA_AI | REQUEST | Yes | AI cleanup/enhancement of a user sketch |
+| `DOODLE_TO_IMAGE` | MEDIA_AI | REQUEST | Yes | Sketch → generated image |
+| `HANDWRITING_RECOGNITION` | MEDIA_AI | REQUEST | Yes | Handwritten text → typed text (`/ai/ocr` `HANDWRITING`) |
+| `AI_STICKER_GEN` | MEDIA_AI | REQUEST | Yes | AI sticker generation |
+| `AI_IMAGE_GEN` | MEDIA_AI | REQUEST | Yes | AI card designs and general image generation |
+| `DRAW_SKETCH` | PLATFORM | NONE | No | On-device drawing; always free (R-8) |
+| `STICKER_MAKER` | PLATFORM | NONE | Yes | Boolean access to **premium** sticker packs; basic making is free |
+| `GIF_MAKER` | PLATFORM | NONE | Yes | Boolean access to premium editing; basic is free |
+| `CARD_MAKER` | PLATFORM | NONE | Yes | Boolean access to premium templates; basic is free |
+| `IMAGE_ANNOTATOR` | PLATFORM | NONE | Yes | Boolean access to advanced tools; basic annotation is free |
+| `QR_GENERATE` | PLATFORM | NONE | Yes | Boolean access to branded designs; basic QR is free |
+
+The `MEDIA_AI` category is new; the `feature_catalog.category` CHECK is extended by a forward migration (never by editing the applied baseline, D1).
+
 ### 5.2 Plans
 
 - `GUEST` (rank −10, not sellable): applied automatically to attested anonymous accounts. It has a small daily text-AI trial and no voice.

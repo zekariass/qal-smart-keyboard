@@ -75,7 +75,8 @@
 | Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
 | Phase 6 | Differentiation (M6) | 8 | 0 | 0 | 0 | 8 | 0% |
 | Phase 7 | Expansion + B2B (M7) | 5 | 0 | 0 | 0 | 5 | 0% |
-| **Total** | | **109** | 66 | 0 | 0 | 43 | 61% |
+| Phase 8 | Extended tools (ADR 0048) | 11 | 0 | 0 | 0 | 11 | 0% |
+| **Total** | | **120** | 66 | 0 | 0 | 54 | 55% |
 
 ### Human gates
 
@@ -439,6 +440,30 @@ Read SD §16 and the billing tags in API. Always fail closed.
 | E7.5 | Partner API: API keys with scopes `translate, transform, transliterate, detect_language, speech, usage_read`, per-key rate limits, contract metering (`PARTNER_CONTRACT`), docs portal. | B4.2 | Scope + isolation tests; SLA tests. | ⬜ TODO |
 
 **Exit M7:** per-language gates; partner SLA and isolation tests pass.
+
+---
+
+## Phase 8 — Extended tools (ADR 0048; requirements `Implementation_notes.md`)
+
+Added 2026-11-23. Covers the extended AI writing suite, on-device creative and productivity tools, prepaid credit
+packs and media AI. Steps are scheduled across M5–M7 by their §4 phases; they do not reorder earlier phases.
+
+| ID | Step | Depends on | Done when | Status |
+|---|---|---|---|---|
+| T8.1 | Feature-catalogue forward migration: new codes (Review §5.1, ADR 0048) incl. `MEDIA_AI` category CHECK extension, PROVISIONAL_V2 entitlement seeds per SD §15.2, credit costs per unit. | B4.1 | Seed matrix test extended and passing. | ⬜ TODO |
+| T8.2 | `FORMAT_TEXT` transform task + formats; `SMART_REPLY` `intent`; `TONE_ADJUST` +ROMANTIC/CONFIDENT/FUNNY/PERSUASIVE; `DRAFT_DOCUMENT` +JOB_APPLICATION/CV/COVER_LETTER/BUSINESS_MESSAGE. Contract first (plan rule 3); prompt templates seeded per ADR 0027 §3. | B5.3 | Contract + template tests. | ⬜ TODO |
+| T8.3 | Productivity utilities: QR encode, `keyboard-core` `calc` evaluator, `/tools/fx-rates` snapshot + client cache, calendar converter surface, unit converter; tools-panel tiles per ADR 0035. | A2.5 | Deterministic unit tests; zero network on key path. | ⬜ TODO |
+| T8.4 | Draw & Sketch phase 1: canvas at keyboard height (Android) + companion, pen/colour/thickness/eraser/undo-redo, PNG export, `commitContent` insert + share-sheet fallback, on-device gallery. | — | Stroke/undo/export tests; budgets §17.1 met. | ⬜ TODO |
+| T8.5 | `POST /ai/chat` (`AI_CHAT`, stateless turns) + companion chat UI and keyboard Ask-AI handoff (§6.4 pending-insert). | B5.5 | Contract tests; no server-side content persistence proven. | ⬜ TODO |
+| T8.6 | `POST /ai/social-posts` and `POST /ai/form-assist` + UI; R-7 verify/disclaimer notices in the review UI (snapshot-tested incl. legal/immigration variant). | B5.5 | Contract + UI tests; notice always present. | ⬜ TODO |
+| T8.7 | Creative tools: sticker maker (WebP pack + strip), quote/card maker, image annotator; premium-tier boolean entitlements gating; basic tiers free. | T8.4 | Entitlement + render tests. | ⬜ TODO |
+| T8.8 | GIF maker: trim/image-sequence → animated WebP (GIF fallback); codec/encoder licence checked first (N10, open question SD §26.2). | T8.7 | Licence recorded; export tests. | ⬜ TODO |
+| T8.9 | OCR: on-device recognition (basic scripts, free) + `POST /ai/ocr` (`OCR_SCAN`, PRINTED/HANDWRITING) for Ethiopic/handwriting/layouts; transient-image rule tested. | B5.5 | Transience test; contract tests. | ⬜ TODO |
+| T8.10 | Prepaid credit packs: `AI_CREDIT_PACK` products/prices seeded (SD §15.6 packages), purchase through §16 pipeline, guest-buy guard, balance/expiry UI ("no subscription" copy), `QUOTA_EXCEEDED` buy-credits path. | M4.4 | End-to-end sandbox purchase → lot; ledger tests. | ⬜ TODO |
+| T8.11 | Media AI (P3): `POST /ai/images` for SKETCH_ENHANCE/DOODLE_TO_IMAGE/AI_STICKER_GEN/AI_IMAGE_GEN + `HANDWRITING` mode of `/ai/ocr`; task-based route classes per SD §11.2. | T8.4, E7.2 | Route/cost tests; image lifecycle (transient output objects). | ⬜ TODO |
+
+**Exit Phase 8:** every new feature code served through the §11.1 pipeline or proven local; R-7/R-8 honoured; no
+content persisted outside opt-in history.
 
 ---
 

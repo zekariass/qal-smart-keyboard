@@ -5,6 +5,7 @@
 | **Document status** | Implementation baseline |
 | **Version** | 2.0 (consolidated redesign; supersedes v1.4) |
 | **Date** | 17 November 2026 |
+| **Amended** | 23 November 2026 — extended AI writing tools (chat assistant, social posts, form help, reply intents, formatting, more tones and document types), on-device creative and productivity tools (draw & sketch, stickers, GIFs, cards, annotator, QR, OCR, calculator, calendar, units), prepaid AI credit packs, explicit task-based model routing (ADR 0048; requirements from `Implementation_notes.md`) |
 | **Product name** | Qal Smart Keyboard (code package `com.qalsmartkeyboard`; design files keep the `Ethiopian_AI_Keyboard_*` names) |
 | **Companion documents** | `Ethiopian_AI_Keyboard_Database_Design_v2_0.sql` (Flyway `V1__baseline.sql`), `Ethiopian_AI_Keyboard_OpenAPI_v2_0.yaml`, `Ethiopian_AI_Keyboard_Architecture_Review_v2_0.md` (findings and decision record D1–D32) |
 
@@ -42,6 +43,10 @@ Five architectural principles shape everything else:
 8. Subscriptions, credits and payments through Ethiopian rails (Chapa, ArifPay, Telebirr) and the app stores, all converging on one entitlement model.
 9. Enterprise and partner products: organisation seats, glossaries and a metered language API.
 10. Expansion to more Ethiopian and African languages, and to on-device AI models, without schema or app rewrites.
+11. An extended AI writing suite: a writing-assistant chat, social media post generation, form-filling help, one-tap reply intents and text formatting.
+12. On-device creative tools: draw & sketch, sticker maker, GIF maker, quote/greeting cards and image annotation, with free offline basics.
+13. On-device productivity utilities: QR generator, text scanner (OCR), quick calculator, Ethiopian calendar converter and unit converter.
+14. Prepaid AI credit packs purchasable on local payment rails, with no recurring subscription required.
 
 ### 2.2 Non-goals
 
@@ -50,6 +55,7 @@ Five architectural principles shape everything else:
 - Storing keystrokes, drafts, transcripts or audio for analytics or model training.
 - Training foundation MT, ASR or LLM models from scratch before launch.
 - Supporting every Ethiopian language on day one.
+- A full drawing/design suite or a social-publishing platform. The creative and productivity tools stay lightweight keyboard utilities that hand results to the host app.
 - Microservices, Kubernetes or an event-streaming platform before scale justifies them.
 
 ### 2.3 Product rules (normative)
@@ -60,6 +66,8 @@ Five architectural principles shape everything else:
 - **R-4:** Every AI result is shown for review before insertion. Nothing is auto-inserted or auto-sent.
 - **R-5:** Transliteration is not translation. It runs locally and never calls the backend.
 - **R-6:** A language or task is advertised only after it passes its quality gate (§21.5). Accepting a language code is not the same as supporting the language.
+- **R-7:** AI informational output is assistance, not authority. `FORM_ASSIST`, `AI_CHAT` and `EXPLAIN_TEXT` results carry a verify-before-relying notice, and legal, immigration, medical or financial topics add an explicit "not professional advice" disclaimer in the review UI (§11.10).
+- **R-8:** User-created media (sketches, stickers, GIFs, cards, annotated images) is stored on the device only. Sharing is always an explicit user action through the host app (rich-content insert or the platform share sheet); nothing is uploaded unless the user invokes a server AI feature on it.
 
 ## 3. Users, markets and journeys
 
@@ -129,6 +137,17 @@ Five architectural principles shape everything else:
 4. A webhook arrives, and the server verifies the payment server-to-server.
 5. The entitlement starts. Renewal is manual by default, with reminders.
 
+**J10 — Draw and share a sketch.**
+1. In the tools panel the user taps **Sketch**. A canvas replaces the keys at the keyboard's height (Android; iOS runs the same flow in the companion app).
+2. They draw with the pen, pick a colour and thickness, erase and undo as needed. Everything is local and free (R-8).
+3. They tap **Insert image**. Where the host field accepts rich content, the keyboard hands over a PNG through `InputConnection.commitContent`; otherwise it offers the system share sheet or saves to the on-device gallery.
+4. The user presses Send in the host app. The keyboard never sends (R-1).
+
+**J11 — Reply intent.**
+1. The user copies a message from a chat app and opens **AI Assist → Reply** (the copied text is read only at that tap, never monitored).
+2. They pick an intent chip — *Agree, Disagree politely, Ask for clarification, Accept invitation, Decline politely, Thank the sender* — or write their own instruction, and the reply language.
+3. `SMART_REPLY` returns 1–3 suggestions. The user picks one, reviews it and inserts it.
+
 ## 4. Feature scope, phasing and traceability
 
 Phases: **P0** first useful release (Android). **P1** early follow-up. **P2** differentiation. **P3** expansion and B2B.
@@ -171,6 +190,25 @@ Phases: **P0** first useful release (Android). **P1** early follow-up. **P2** di
 | 34 | Additional African languages | P3 | All | Data-driven | languages | supported_languages and related | — |
 | 35 | On-device AI models | P3 | Clients | Local | languages, ai-gateway | language_resources (model types) | `/language-resources`, `/ai/capabilities` |
 | 36 | Enterprise and language API products | P3 | Partner API, org admin | Server | organizations, partner-api | organizations, api_clients, api_keys, glossaries | `/organizations/*`, `/partner/v1/*` |
+| 37 | Text formatter | P1 | Keyboard, companion | Server | text-services | — | `/ai/transform` (`FORMAT_TEXT`) |
+| 38 | Reply intents | P1 | Keyboard, companion | Server | text-services | — | `/ai/replies` (`intent`) |
+| 39 | Expanded tones and document types | P1 | Keyboard, companion | Server | text-services | — | `/ai/transform`, `/ai/drafts` |
+| 40 | Draw & Sketch (phase 1: draw, save, share) | P1 | Keyboard (Android), companion | Local | — | on-device gallery | — |
+| 41 | QR generator | P1 | Keyboard, companion | Local | — | — | — |
+| 42 | Quick calculator and currency conversion | P1 | Keyboard | Local + rate snapshot | configuration | app_configurations (FX snapshot) | `/tools/fx-rates` |
+| 43 | Ethiopian calendar converter | P1 | Keyboard, companion | Local (`keyboard-core`) | — | — | — |
+| 44 | Unit converter | P1 | Keyboard | Local | — | — | — |
+| 45 | AI writing-assistant chat | P2 | Companion, keyboard | Server | text-services | ai_requests (metadata) | `/ai/chat` |
+| 46 | Social media assistant | P2 | Companion, keyboard | Server | text-services | — | `/ai/social-posts` |
+| 47 | Form-filling assistant | P2 | Companion | Server | text-services | — | `/ai/form-assist` |
+| 48 | Sticker maker | P2 | Keyboard, companion | Local | — | on-device sticker store | — |
+| 49 | Quote and greeting card maker | P2 | Companion | Local | — | on-device gallery | — |
+| 50 | Image annotator | P2 | Companion | Local | — | on-device gallery | — |
+| 51 | GIF maker | P2 | Companion | Local | — | on-device gallery | — |
+| 52 | Text scanner (OCR) | P2 | Companion | Local + server | media-services | — | `/ai/ocr` |
+| 53 | Prepaid AI credit packs | P1 | Companions, web | Server | billing, usage | billing_products, ai_credit_lots | `/billing/orders`, `/me/credits` |
+| 54 | Media AI (sketch enhance, doodle-to-image, handwriting recognition, AI stickers/images) | P3 | Companion | Server | media-services, ai-gateway | — | `/ai/images`, `/ai/ocr` |
+| 55 | Draw & Sketch phases 2–3 (gallery sync, shapes, AI features) | P2–P3 | All | Local + server | media-services | on-device gallery; optional encrypted sync | `/ai/images` |
 
 ## 5. System architecture
 
@@ -334,6 +372,44 @@ A Next.js app with its own deployment. It authenticates with workforce OIDC + MF
 
 High-risk changes go through a four-eyes approval flow (D25).
 
+### 6.6 On-device creative tools
+
+Creative tools are implemented in the client only (R-8). Basic creation, saving and sharing are **free, unmetered and fully offline**; premium packs, templates and AI generation are the paid layer (§15). Each tool is a tile in the keyboard tools panel where the form factor allows it, and a screen in the companion app always.
+
+| Tool | Engine | Output | Monetisation |
+|---|---|---|---|
+| Draw & Sketch | Stroke-capture canvas: pen/marker with adjustable thickness, colour palette + custom picker, eraser, undo/redo (bounded stack), clear, canvas backgrounds | PNG (optional transparent) → rich-content insert, share sheet or gallery | Free; later AI enhancement and doodle-to-image via `MEDIA_AI` tasks (§11.3) |
+| Sticker maker | Image crop/cut-out (on-device subject detection where available), captions and emoji, freehand layer | WebP 512×512 stickers in an on-device pack; `commitContent` insert or share sheet | `STICKER_MAKER` premium packs; `AI_STICKER_GEN` generation |
+| GIF maker | Video trim (≤ 15 s) or image sequence → animated export; text/caption overlay | Animated WebP preferred, GIF for compatibility (share sheet) | `GIF_MAKER` premium editing (frames, stickers, effects) |
+| Quote & greeting cards | Bundled template layouts + custom backgrounds, styled text | PNG/JPEG | `CARD_MAKER` premium templates; `AI_IMAGE_GEN` designs |
+| Image annotator | Import a screenshot/photo → pen, arrows, shapes, highlight, pixelate/blur, text labels | PNG/JPEG over original | `IMAGE_ANNOTATOR` advanced tools |
+
+Rules:
+
+- **Surfaces.** Android: the draw & sketch canvas and the sticker strip run inside the keyboard as tool panels at keyboard height (the established panel pattern); the heavier editors (GIF, cards, annotator, full gallery) run in the companion app and hand results back through the pending-insert mechanism (§6.4). iOS: creative tools are companion-app features; keyboard extension use is reviewed per tool against the extension memory ceiling.
+- **Rich-content insert.** Android shares images into the host field with `InputConnection.commitContent` (`image/png`, `image/webp`, `image/gif`) where the `EditorInfo` content-MIME types allow it, falling back to the system share sheet, or to copy/save. Inserting this way still leaves sending to the host app and the user (R-1).
+- **Gallery.** Sketches, stickers, GIFs, cards and annotated images are saved to an app-private on-device gallery (the "personal gallery"). Cloud synchronisation is a later phase and, if built, MUST use the same encrypted-per-user-key model as history (D17), opt-in only.
+- **Privacy.** Importing a photo never uploads it. Blur/redaction is applied locally before export. Creative assets are excluded from backups only where the platform marks app-private storage as no-backup; gallery contents are wiped on uninstall like other app data.
+- **Performance.** Canvas stroke-to-render ≤ 16 ms; the canvas and editors respect the §17.1 memory budgets — bitmap work is sampled down and done off the key path, never inside the typing session's memory budget.
+
+**Draw & Sketch phases (from the product requirement):** Phase 1 — canvas, pen/colours/eraser, undo/redo, save as PNG, share as image. Phase 2 — personal gallery, text and shapes, more brushes and backgrounds, optional cloud backup. Phase 3 — `SKETCH_ENHANCE`, `DOODLE_TO_IMAGE` and `HANDWRITING_RECOGNITION` through the AI gateway and credit system (§11.3).
+
+### 6.7 On-device productivity utilities
+
+Deterministic utilities run locally; none of them calls the AI gateway.
+
+| Utility | Implementation | Monetisation |
+|---|---|---|
+| QR generator | Local QR encoding (shared implementation, e.g. `qrcodegen`-class, vendored into `keyboard-core` or a platform library with the licence recorded); types: URL, text, Wi-Fi, contact (vCard/MeCard), payment/business URI where defined | `QR_GENERATE` premium: branded frames, colours, logo overlay (error-correction level H kept so logos stay scannable) |
+| Quick calculator | Deterministic expression evaluator in `keyboard-core` (`calc` component): arithmetic, percentages, parentheses; result inserts at the cursor or into the result row | Free |
+| Currency conversion | Same evaluator, converting with a cached FX snapshot from `GET /tools/fx-rates` (refreshed at most daily, unmetered, tiny payload); offline use falls back to the last snapshot with a "rates as of …" staleness note | Free |
+| Ethiopian calendar converter | `keyboard-core` `numerals_calendar` (already shipped): Ethiopian ↔ Gregorian both directions, Ethiopian month display, formatted-date insert | Free — a deliberate free utility for the Ethiopian market |
+| Unit converter | Static conversion tables shipped with the app (mass, length, temperature, volume, speed, area, data); result inserts at the cursor | Free |
+| Text scanner (OCR) | On-device recognition (ML Kit-class on Android, Vision framework on iOS) for scripts it covers; `POST /ai/ocr` (`OCR_SCAN`, metered) adds Ethiopic-script, handwriting and complex-layout coverage. Recognised text is copied into the field or fed to an AI action | Basic on-device free; advanced server OCR and translate-on-scan premium |
+
+- Images for scanning are transient: they exist only for the duration of the scan, are never added to the gallery unless the user saves them, and server OCR keeps the §19.2 "AI request content" class (not persisted).
+- Utilities appear as tiles in the tools panel (ADR 0035 grid) and the companion app; they never run on the key path and never require an account.
+
 ## 7. Language engine
 
 ### 7.1 Input modes
@@ -467,6 +543,7 @@ A language or mode is marked GA only when it has:
 | `ai-gateway` | Provider/model registry, routing policies, prompt templates, guardrails, cost tracking, evaluation and feedback |
 | `text-services` | Translate, transform tasks, replies, drafts, detect-language; glossary enforcement; cultural options |
 | `speech` | Upload sessions, transcription and speech translation jobs, synthesis, voices |
+| `media-services` | Server OCR (`OCR_SCAN`) and AI image tasks (`/ai/images`: sketch enhancement, doodle-to-image, sticker and card generation, P3); image inputs are transient and never persisted |
 | `realtime` | WebSocket sessions, streaming ASR → MT → TTS pipeline, turn-taking, server-measured billing |
 | `entitlements` | Plan resolution, entitlement token signing, allowance checks |
 | `usage` | Reservations and settlement, counters, credits ledger and lots |
@@ -477,7 +554,7 @@ A language or mode is marked GA only when it has:
 | `partner-api` | `/partner/v1` façade over text-services, speech, languages (server-side transliteration via `keyboard-core` JNI) |
 | `privacy` | Consents, history, data export, deletion, crypto-shredding, retention purges |
 | `notifications` | Push (FCM/APNs), SMS (OTP and reminders), email; templated and localised |
-| `configuration` | Feature flags, remote config, minimum supported app versions |
+| `configuration` | Feature flags, remote config, minimum supported app versions, FX-rate snapshot for on-device currency conversion (`/tools/fx-rates`) |
 | `administration` | Admin RBAC, four-eyes approvals, audit |
 | `platform` | Outbox, scheduler, idempotency, rate limiting, correlation IDs, error mapping |
 
@@ -585,6 +662,17 @@ On failure, usage is RELEASEd and the client receives a typed Problem response (
 - Models are recorded in `ai_models`, with kind `LLM | MT | ASR | TTS | LID`, deployment `SERVER | ON_DEVICE`, and licence.
 - **Capability matrix** (`ai_language_capabilities`): which model supports which feature for which language pair, at which `quality_tier` (`UNVERIFIED | EXPERIMENTAL | BETA | PRODUCTION`). Only `BETA` and `PRODUCTION` capabilities are exposed to users. `BETA` capabilities carry a visible quality notice.
 - **Routing policies** (`ai_routing_policies`): priority, `traffic_weight` (for A/B tests and gradual migration), a `requires_zero_retention` flag, and validity windows. Organisation data policies (§13) further restrict the eligible routes.
+- **Task-based model routing (backend-owned).** The platform — never the user — selects the model, from the request's feature code and context. Users do not see, name or configure models. The mapping lives in data (`ai_language_capabilities` × `ai_routing_policies`), so a task's model can be changed without an Android/iOS release; the admin console manages it (§6.5) and changes are audited. Route selection weighs, in order: **data-policy constraints** (hard filter) → **task** (feature code) → **language pair** (a route must cover the pair at the required tier — an Amharic translation uses a model validated for Amharic even when a cheaper one exists) → **complexity** (request size/shape: a short grammar fix needs an economical model, a cover letter or long form answer needs an advanced one) → **quality tier** (the cheapest route meeting the capability's tier) → **unit cost** (`ai_provider_prices` per provider/feature; equal routes prefer the cheaper, and `ai_provider_budgets` hard-caps daily spend per provider) → **health/availability** (circuit-breaker state, then fallback of equal-or-better tier only). Illustrative task→class mapping:
+
+| Task | Route class |
+|---|---|
+| `GRAMMAR_CORRECTION`, `REWRITE`, `TONE_ADJUST`, `SMART_REPLY`, `FORMAT_TEXT`, spelling | Economical model |
+| `TRANSLATE` en↔am/ti/om/so/ar and other pairs | Best validated translation model for that pair |
+| `DRAFT_DOCUMENT` (cover letter, CV, application), `FORM_ASSIST`, long `AI_CHAT` | Advanced model |
+| `AI_CHAT`, `SOCIAL_POST`, `EXPLAIN_TEXT`, `SUMMARIZE` | Mid-tier model, upgraded by complexity |
+| `OCR_SCAN`, `HANDWRITING_RECOGNITION` | Vision-capable model validated for the script |
+| `DOODLE_TO_IMAGE`, `SKETCH_ENHANCE`, `AI_STICKER_GEN`, `AI_IMAGE_GEN` | Image-generation model |
+
 - **Candidate provider classes to evaluate:** commercial MT APIs with Amharic/Tigrinya/Oromo support, frontier LLMs (strong on rewriting, tone and drafting; Amharic quality varies by model and MUST be measured), and commercial ASR/TTS with `am-ET` support.
 - Open-weight models MAY be self-hosted only after a **licence check**. Several well-known multilingual MT and speech models (for example NLLB-200, MMS and SeamlessM4T) are released under **non-commercial** licences and are not eligible for commercial use.
 
@@ -594,13 +682,19 @@ On failure, usage is RELEASEd and the client receives a typed Problem response (
 |---|---|---|---|
 | `TRANSLATE` | `POST /ai/translate` | text ≤ 5,000 chars (keyboard UI caps at 2,000), source (or auto), destination, style, addressee, cultural options, glossary, destination profile | translation, detected source, alternatives, notes |
 | `GRAMMAR_CORRECTION` | `POST /ai/transform` | text, mode `GRAMMAR \| SPELLING_ONLY` | corrected text plus edit spans |
-| `REWRITE` | `POST /ai/transform` | text, mode `NATURAL \| SHORTEN \| EXPAND \| CLARIFY` | rewritten text |
-| `TONE_ADJUST` | `POST /ai/transform` | text, tone `FRIENDLY \| POLITE \| PROFESSIONAL \| CONCISE \| APOLOGETIC \| HONORIFIC` | rewritten text |
+| `REWRITE` | `POST /ai/transform` | text, mode `NATURAL \| SHORTEN \| EXPAND \| CLARIFY \| SIMPLIFY` | rewritten text |
+| `TONE_ADJUST` | `POST /ai/transform` | text, tone `FRIENDLY \| POLITE \| PROFESSIONAL \| CONCISE \| APOLOGETIC \| HONORIFIC \| ROMANTIC \| CONFIDENT \| FUNNY \| PERSUASIVE` | rewritten text |
+| `FORMAT_TEXT` | `POST /ai/transform` | rough notes/text ≤ 10,000 chars, format `BULLETS \| NUMBERED_LIST \| PARAGRAPHS \| REPORT \| MEETING_NOTES`, output language | formatted text |
 | `SUMMARIZE` | `POST /ai/transform` | text ≤ 20,000 chars (companion), target length | summary |
 | `EXPLAIN_TEXT` | `POST /ai/transform` | text, explanation language | meaning, idioms and cultural notes |
 | `SCRIPT_CONVERSION` | `POST /ai/transform` | romanised Amharic/Tigrinya sentence | Ge'ez text plus per-token alternatives |
-| `SMART_REPLY` | `POST /ai/replies` | user-supplied context text, reply language, count 1–5 | short replies |
-| `DRAFT_DOCUMENT` | `POST /ai/drafts` | document type, language, purpose, key points, recipient formality | subject (optional) and body |
+| `SMART_REPLY` | `POST /ai/replies` | user-supplied context text, reply language, count 1–5, optional `intent` (`AGREE \| DISAGREE_POLITELY \| ASK_CLARIFICATION \| ACCEPT_INVITATION \| DECLINE_POLITELY \| THANK_SENDER`) or free instructions | short replies |
+| `DRAFT_DOCUMENT` | `POST /ai/drafts` | document type (`EMAIL \| JOB_APPLICATION \| CV \| COVER_LETTER \| BUSINESS_MESSAGE`), language, purpose/instructions, key points, recipient formality | subject (optional) and body |
+| `AI_CHAT` | `POST /ai/chat` | client-supplied turns (≤ 12 messages, ≤ 4,000 chars total), work language, optional context text | assistant reply (plain text/markdown-lite) |
+| `SOCIAL_POST` | `POST /ai/social-posts` | brief ≤ 2,000 chars, platform (`FACEBOOK \| INSTAGRAM \| TIKTOK \| X \| GENERIC`), kind (`CAPTION \| POST \| HASHTAGS \| ANNOUNCEMENT`), language, optional tone/audience, count 1–3 | post/caption variants + hashtags |
+| `FORM_ASSIST` | `POST /ai/form-assist` | form question ≤ 2,000 chars, optional context ≤ 4,000, `maxChars`, answer language, mode (`ANSWER \| EXPLAIN \| IMPROVE_ANSWER`) | answer, plain-language explanation, `verificationNotice` |
+| `OCR_SCAN` | `POST /ai/ocr` | image (≤ 10 MB), language hints, mode `PRINTED \| HANDWRITING` | recognised text + block layout |
+| `SKETCH_ENHANCE` / `DOODLE_TO_IMAGE` / `AI_STICKER_GEN` / `AI_IMAGE_GEN` (P3) | `POST /ai/images` | task, prompt or sketch PNG (≤ 10 MB), style, size | generated image reference (short-lived object) |
 | `DETECT_LANGUAGE` | `POST /ai/detect-language` | text | ranked languages and scripts |
 
 `GET /ai/capabilities` tells clients which tasks and pairs are currently available, at which tier and with which execution mode (server or on-device), so the UI never offers what cannot be served.
@@ -663,6 +757,18 @@ This replaces v1.4, where the original-result promise contradicted the no-conten
 - **Routing:** `/ai/capabilities` advertises `execution: ON_DEVICE | SERVER | HYBRID` per task. With `PREFER_ON_DEVICE`, on-device runs first and falls back to server only with the user's consent per action. With `ON_DEVICE_ONLY`, server AI is never called.
 - **Entitlement:** `ON_DEVICE_AI_MODELS` is checked offline with the signed entitlement token (§15.5). On-device inference is not metered.
 - Downloads are Wi-Fi-only by default, resumable, show their size upfront, and can be deleted.
+
+### 11.10 Extended AI writing tools
+
+These features extend the task catalogue (§11.3) for the writing-tools surface in the keyboard AI grid and the companion app. All of them run the §11.1 pipeline (entitlement → reserve → route → guardrails → settle) and share the §11.6 idempotency rules.
+
+- **Writing-assistant chat (`AI_CHAT`).** A stateless chat endpoint: the client sends the visible turns, and the server stores none of them (content is transient; only `ai_requests` metadata remains, plus optional opt-in history). The companion app offers a full chat surface; the keyboard offers a compact "Ask AI" that hands off to the app for long exchanges (§6.4 pending-insert). Uses: write anything on request, explain words and phrases mid-typing, generate captions, brainstorm. Credit cost is per request; long threads are charged per call, which the UI states.
+- **Social media assistant (`SOCIAL_POST`).** Generates platform-aware content — Facebook posts, Instagram captions, TikTok descriptions, hashtags and announcements — in any supported language, with optional tone and audience. Variants are returned for review; nothing is published (R-1).
+- **Form-filling assistant (`FORM_ASSIST`).** Helps answer application, immigration, education and employment questions; improves a drafted answer; rewrites within a character limit (`maxChars` is a hard guardrail check); and explains complicated questions in simple language (`EXPLAIN` mode). **Normative (R-7):** every response carries `verificationNotice = TRUE` and the review UI shows "AI-generated answer — verify before relying on it"; legal, immigration, medical and financial topics add "not professional advice" wording, localised.
+- **Reply intents (`SMART_REPLY` extension).** `RepliesRequest.intent` presets the instruction (`AGREE`, `DISAGREE_POLITELY`, `ASK_CLARIFICATION`, `ACCEPT_INVITATION`, `DECLINE_POLITELY`, `THANK_SENDER`); free `instructions` remain. Intents map to fixed prompt-fragment keys in the feature's template — user text is still data, never instructions (§11.4).
+- **Text formatter (`FORMAT_TEXT`).** A transform task that turns rough notes into `BULLETS`, `NUMBERED_LIST`, `PARAGRAPHS`, `REPORT` or `MEETING_NOTES`. Guardrails additionally check that no facts were added relative to the input.
+- **Expanded tones and document types.** `TONE_ADJUST` adds `ROMANTIC`, `CONFIDENT`, `FUNNY` and `PERSUASIVE` to the shared `Tone` enum (the e-mail writer already exposes `PERSUASIVE` via `EmailTone`; destination-profile `defaultTone` keeps its smaller subset). `DRAFT_DOCUMENT` adds `JOB_APPLICATION`, `CV`, `COVER_LETTER` and `BUSINESS_MESSAGE` next to `EMAIL`.
+- **Received-message translation.** Translating a received message stays the §3.3 J7 / AI Assist pattern: the user explicitly selects, copies or shares the message, and the clipboard is read only inside that action's tap handler — never monitored.
 
 ## 12. Voice and realtime
 
@@ -766,7 +872,8 @@ The OpenAPI file is authoritative. This table is an overview.
 | Config | `GET /config`, `GET /ai/capabilities` |
 | Languages | `GET /languages`, `GET /languages/{languageCode}/transliteration-profiles`, `GET /language-resources`, `GET /language-resources/{resourceId}`, `GET /resource-signing-keys` |
 | Preferences | `GET/PUT /me/preferences`, `GET/PUT /me/typing-languages`, `/me/destination-profiles` (CRUD), `GET/PUT /me/app-destination-rules`, `GET/PUT /me/style-profiles/{languageCode}`, `GET/POST /me/dictionary/changes` |
-| AI | `POST /ai/translate`, `/ai/transform`, `/ai/replies`, `/ai/drafts`, `/ai/detect-language`, `/ai/feedback` |
+| AI | `POST /ai/translate`, `/ai/transform`, `/ai/replies`, `/ai/drafts`, `/ai/detect-language`, `/ai/chat`, `/ai/social-posts`, `/ai/form-assist`, `/ai/ocr`, `/ai/images`, `/ai/feedback` |
+| Tools | `GET /tools/fx-rates` |
 | History | `GET/DELETE /me/history`, `GET/PATCH/DELETE /me/history/{itemId}` |
 | Speech | `POST /speech/upload-sessions`, `/speech/transcriptions`, `GET /speech/transcriptions/{jobId}`, `POST /speech/translations`, `/speech/synthesis`, `GET /speech/voices` |
 | Realtime | `POST /realtime/sessions`, `GET /realtime/sessions/{sessionId}`, `POST /realtime/sessions/{sessionId}/end`; WebSocket `/realtime/v1` |
@@ -845,7 +952,7 @@ These stable `code` values are part of the contract, and clients switch on `code
 - **GUEST:** a small daily trial of text AI for attested anonymous installs.
 - **FREE:** daily text-AI allowance, a little dictation and TTS, history and dictionary sync.
 - **PREMIUM / PREMIUM_PLUS:** larger allowances, tone, replies, summaries, drafting, voice translation, voice-to-voice, personal style and on-device models. PREMIUM_PLUS adds live conversation and glossaries.
-- **AI credit packs:** top-ups that are used after the plan allowance runs out. They are digital goods, so store billing rules apply wherever the store policy does.
+- **AI credit packs:** prepaid top-ups that are used after the plan allowance runs out. They can be bought **without any subscription** through the same rails (local gateways in Ethiopia, store billing where policy requires) — see §15.6. They are digital goods, so store billing rules apply wherever the store policy does.
 - **BUSINESS:** per-seat organisation plan with glossaries, zero-retention routing, and pooled partner-API usage under contract.
 
 ### 15.2 Starter entitlement matrix (provisional)
@@ -873,8 +980,23 @@ Seeded with `quotaPolicyVersion = PROVISIONAL_V2`. These values MUST be re-valid
 | `PERSONAL_STYLE` | — | — | ✓ | ✓ | ✓ |
 | `CUSTOM_GLOSSARY` | — | — | — | ✓ | ✓ |
 | `ON_DEVICE_AI_MODELS` | — | — | ✓ | ✓ | ✓ |
+| `FORMAT_TEXT` (req) | — | 3/day | 300/mo | 1,000/mo | 2,000/mo |
+| `AI_CHAT` (req) | — | — | 100/mo | 400/mo | 1,000/mo |
+| `SOCIAL_POST` (req) | — | — | 100/mo | 300/mo | 1,000/mo |
+| `FORM_ASSIST` (req) | — | 3/day | 100/mo | 300/mo | 500/mo |
+| `OCR_SCAN` (req) | — | 3/day | 100/mo | 300/mo | 1,000/mo |
+| `SKETCH_ENHANCE` (req) | — | — | 20/mo | 60/mo | 200/mo |
+| `DOODLE_TO_IMAGE` (req) | — | — | 20/mo | 60/mo | 200/mo |
+| `HANDWRITING_RECOGNITION` (req) | — | — | 30/mo | 100/mo | 300/mo |
+| `AI_STICKER_GEN` (req) | — | — | 30/mo | 100/mo | 300/mo |
+| `AI_IMAGE_GEN` (req) | — | — | 30/mo | 100/mo | 300/mo |
+| `STICKER_MAKER` | — | — | ✓ | ✓ | ✓ |
+| `GIF_MAKER` | — | — | ✓ | ✓ | ✓ |
+| `CARD_MAKER` | — | — | ✓ | ✓ | ✓ |
+| `IMAGE_ANNOTATOR` | — | — | ✓ | ✓ | ✓ |
+| `QR_GENERATE` | — | — | ✓ | ✓ | ✓ |
 
-`DETECT_LANGUAGE` and every typing feature are unmetered and not in this table. Speech is metered internally in seconds, so 10 min = 600 s.
+`DETECT_LANGUAGE`, `DRAW_SKETCH` and every typing feature are unmetered and not in this table. Speech is metered internally in seconds, so 10 min = 600 s. The `*_MAKER`/`QR_GENERATE` boolean rows grant the **premium tier** of each tool (premium packs, templates, advanced editing); basic creation stays free for every plan including guests (§6.6, §6.7).
 
 ### 15.3 Metering algorithm
 
@@ -907,6 +1029,27 @@ Seeded with `quotaPolicyVersion = PROVISIONAL_V2`. These values MUST be re-valid
   - A JWS signed with Ed25519 (`kid` from a rotating key set published at `/.well-known/jwks.json`).
   - Claims (names as in the contract's `EntitlementToken`; amended in B4.4, ADR 0013): `iss`, `aud`, `sub`, `deviceId`, `planCode`, `features` (booleans only), `policyVersion`, `ver`, `iat`, `exp` (+24 h), `offlineGraceUntil` (+72 h), `jti`. `GET /me/entitlements/token` issues a token on its own.
   - Clients use it **only** for offline gates, currently `ON_DEVICE_AI_MODELS` and premium on-device packs. Every server-metered feature is re-checked on the server.
+
+### 15.6 Prepaid AI credit packs
+
+Prepaid credits are a first-class purchase, not a subscription add-on (product requirement): the user buys credits when needed, spends them on metered AI operations, and owes no recurring payment. They are the primary low-commitment monetisation path next to subscriptions.
+
+- **Sale.** Credit packs are ordinary `billing_products` (`product_type = AI_CREDIT_PACK`, e.g. the seeded `CREDITS_500` DRAFT) sold through the §16 order pipeline: server-priced per market and channel, eligible methods from the §16.3 predicate (Chapa/ArifPay/Telebirr in Ethiopia, store billing where store policy requires digital goods to use it). Fulfilment creates an `ai_credit_lots` row (§15.4).
+- **Suggested packages (provisional; priced per market like every product).**
+
+| Package | Credits | Guide price |
+|---|---:|---|
+| Starter | 100 | £0.99 (≈ market-priced ETB equivalent) |
+| Standard | 500 | £3.99 |
+| Pro | 1,500 | £9.99 |
+
+- **Rules.**
+  - Registered users only (guests cannot buy; a guest upgrading keeps its lots — §9.1).
+  - Credits are consumed only after the plan allowance is exhausted (§15.3 order of consumption), so a FREE user with credits still uses their free daily allowance first.
+  - Lots expire (default 365 days, per product); the expiry and the remaining balance are always visible next to the buy button and in `/me/credits`.
+  - No recurring charge is ever attached to a credit pack; there is no mandate and nothing to cancel.
+  - Refunds follow §15.4: the unconsumed remainder of the lot is reversed; consumed credits follow refund policy.
+  - The credit balance is returned on every `QUOTA_EXCEEDED` Problem so the client can offer "buy credits" inline.
 
 ## 16. Billing and payments
 
@@ -1047,6 +1190,9 @@ These are measured on named reference devices: low (2 GB RAM, Android 10), mid (
 | AI translate ≤ 500 chars, server time p95 | ≤ 2.5 s; client hard timeout 8 s |
 | Realtime end-of-speech → translated audio | ≤ 2.5 s p50, ≤ 4 s p95 |
 | API availability (monthly) | 99.9% for `/api/v1`; typing unaffected by outages |
+| Creative panel open (cold), p95 | ≤ 300 ms mid-range; ≤ 600 ms low-end |
+| Sketch stroke to render, p95 | ≤ 16 ms |
+| On-device utility result (calculator, converters, QR encode), p95 | ≤ 50 ms |
 
 There MUST NOT be synchronous disk or network access on the key path. Pack loading happens at input start, and the first-ever load is backgrounded with a fallback layout.
 
@@ -1103,6 +1249,8 @@ There MUST NOT be synchronous disk or network access on the key path. Pack loadi
 | Audio | Dictation, conversation | Memory / temporary object | Deleted after processing; ≤ 24 h lifecycle backstop |
 | Account and preferences | Profile, settings, consents | PostgreSQL | Life of account + 30 days |
 | Financial records | Orders, transactions, receipts | PostgreSQL | As required by tax law (assume 10 years until confirmed) |
+| User-created media | Sketches, stickers, GIFs, cards, annotated images | **Device only** (app-private gallery) | Until the user deletes them |
+| OCR source images | Photos/screenshots scanned for text | Transient in memory; server OCR is not persisted | Duration of the scan only |
 | Audit events | Admin and security actions | PostgreSQL | 2 years (security), 7 years (financial admin actions) |
 | Webhook payloads | Redacted provider events | PostgreSQL | 18 months |
 | Operational logs | Redacted | Log store | 30 days |
@@ -1176,6 +1324,7 @@ The full schema is in `Ethiopian_AI_Keyboard_Database_Design_v2_0.sql` (Flyway `
 | Usage and credits | ai_credit_accounts, ai_credit_lots, ai_credit_transactions, usage_counters, usage_events |
 | Configuration | feature_flags, user_feature_overrides, app_configurations |
 | Admin and operations | admin_roles, user_admin_roles, audit_events, outbox_events |
+| User creative assets | **None** — sketches, stickers, GIFs, cards and annotated images live only on the device (§6.6, R-8); an optional later sync uses `user_data_keys`-encrypted rows like history |
 
 ### 20.3 Migration policy
 
@@ -1206,6 +1355,7 @@ The full schema is in `Ethiopian_AI_Keyboard_Database_Design_v2_0.sql` (Flyway `
 - **Android:** IME lifecycle, rotation, split screen and foldables, OEM keyboards and gesture navigation; input types (password, email, URI, number, multiline); apps that reject composing text; low-memory kills.
 - **iOS:** extension lifecycle, Full Access on and off, bundled-pack-only mode, secure fields, host apps that refuse custom keyboards, memory pressure. Testing is on physical devices.
 - **Both:** offline operation, AI provider outages, return from companion app, pending-insert flow, accessibility (TalkBack/VoiceOver, large text, contrast).
+- **Creative and productivity tools:** stroke/undo integrity, export correctness, `commitContent` allow and deny paths with the share-sheet fallback, gallery isolation, OCR transient-image handling, and calculator/converter determinism (no network).
 
 ### 21.4 Language acceptance
 
@@ -1316,9 +1466,9 @@ Each milestone has exit criteria. Durations are indicative, assume a team of abo
 | **M2 — Backend + P0 AI** | Identity (phone OTP, Google, guest + attestation), devices, preferences sync, pack pipeline + admin publishing + signing, AI gateway, translate/grammar/rewrite, metering (GUEST/FREE), consents, export, deletion | Closed beta; R2–R5 passed for P0 features |
 | **M3 — P0 public launch (Android, Ethiopia + diaspora)** | Hardening, observability, Play listing, Data safety; free plans only | R1–R5, R8 passed; crash-free ≥ 99.5% |
 | **M4 — Monetisation** | Chapa hosted checkout (ETB), manual renewal + reminders, receipts, reconciliation, credits, Play Billing where eligible, `direct` flavour, ArifPay behind a flag | R6 passed; live real-money pilot; zero unverified grants |
-| **M5 — P1** | iOS keyboard + companion (StoreKit 2); Android streaming dictation; iOS companion voice; tone; smart replies; destination profiles + app rules; opt-in history; pack channels and deltas | iOS App Review approved; voice evaluation thresholds met |
-| **M6 — P2 differentiation** | `SCRIPT_CONVERSION`; cultural intelligence to PRODUCTION tier; explain, summarise, drafting; TTS + pronunciation; personal style; names/places programme (datasets + community suggestions); voice-to-voice and live conversation (companion) | Native-speaker honorific/gender evaluation passed; realtime latency budget met |
-| **M7 — P3 expansion and B2B** | New languages (candidates: Somali, Afar, Sidama, Wolaytta, Swahili), on-device models (language ID/spell first, then MT/ASR), organisations, seats, glossaries, partner API GA | Per-language gates R1/R2/R7; partner SLA and isolation tests passed |
+| **M5 — P1** | iOS keyboard + companion (StoreKit 2); Android streaming dictation; iOS companion voice; tone; smart replies + reply intents; destination profiles + app rules; opt-in history; pack channels and deltas; text formatter; expanded tones and document types; prepaid credit packs on sale; Draw & Sketch phase 1; productivity utilities (QR, calculator + FX, calendar, units) | iOS App Review approved; voice evaluation thresholds met |
+| **M6 — P2 differentiation** | `SCRIPT_CONVERSION`; cultural intelligence to PRODUCTION tier; explain, summarise, drafting; TTS + pronunciation; personal style; names/places programme (datasets + community suggestions); voice-to-voice and live conversation (companion); AI writing tools (chat assistant, social posts, form assist); creative tools (stickers, GIFs, cards, annotator); server OCR | Native-speaker honorific/gender evaluation passed; realtime latency budget met |
+| **M7 — P3 expansion and B2B** | New languages (candidates: Somali, Afar, Sidama, Wolaytta, Swahili), on-device models (language ID/spell first, then MT/ASR), organisations, seats, glossaries, partner API GA; media AI (sketch enhancement, doodle-to-image, handwriting recognition, AI sticker/image generation) | Per-language gates R1/R2/R7; partner SLA and isolation tests passed |
 
 ## 26. Decisions and open questions
 
@@ -1340,6 +1490,10 @@ The decision record is in the Architecture Review (D1–D32). These are the deci
 - Store purchases kept separate from gateway orders.
 - Per-user envelope encryption with crypto-shredding.
 - Four-eyes approval for high-risk admin actions.
+- Task-based, data-configured AI model routing owned by the backend — users never pick a model (§11.2).
+- On-device-first creative and productivity tools; creative assets never leave the device except through an explicit share (§6.6, R-8).
+- Prepaid AI credit packs as a first-class, no-subscription purchase on the same order pipeline (§15.6).
+- Extended AI writing tools as new feature-catalogue entries behind the same gateway pipeline (§11.10).
 
 ### 26.2 Open questions (owner → due by)
 
@@ -1357,6 +1511,12 @@ The decision record is in the Architecture Review (D1–D32). These are the deci
 | VAT/receipt obligations in Ethiopia and diaspora markets | Finance | M4 |
 | SMS/OTP aggregator for +251 and cost per message | Engineering | M2 |
 | Rust capacity (or D2 fallback) | Engineering manager | M0 |
+| Credit-pack price points per market (ETB/GBP/USD) and lot expiry per package | Product + finance | M4 |
+| `commitContent` rich-insert support across target host apps, and the share-sheet fallback UX | Mobile lead | M5 |
+| FX rate source, refresh cadence and licence for `/tools/fx-rates` | Engineering + legal | M5 |
+| On-device OCR coverage for Ethiopic script vs server `OCR_SCAN` scope | AI lead | M6 |
+| GIF/animated-WebP encoder licensing on Android | Mobile lead + legal | M6 |
+| Media-AI providers for sketch/doodle/sticker/image generation: quality, cost, licence and data policy | AI lead | M7 |
 
 ---
 
@@ -1374,6 +1534,8 @@ The decision record is in the Architecture Review (D1–D32). These are the deci
 | ZDR | Zero data retention (provider contract setting) |
 | Merchant account | A specific provider account scoped by country, currency and environment |
 | Mandate | Provider-approved, user-consented permission for recurring debits |
+| Prepaid credits | AI credit lots bought as a one-off purchase and spent per metered AI operation; no subscription required |
+| Rich-content insert | Handing an image or sticker to the host field via `InputConnection.commitContent` (Android); the host app still sends it |
 
 ## Appendix B — External references (checked 16 November 2026)
 
@@ -1390,6 +1552,9 @@ Re-check before release, because APIs, payment methods and store policies change
 - Play Integrity API — https://developer.android.com/google/play/integrity ; App Attest — https://developer.apple.com/documentation/devicecheck
 - Unicode Ethiopic charts — https://www.unicode.org/charts/ (Ethiopic, Supplement, Extended, Extended-A, Extended-B)
 - RFC 9457 Problem Details — https://www.rfc-editor.org/rfc/rfc9457
+- Android `InputConnection.commitContent` (rich-content insert) — https://developer.android.com/reference/android/view/inputmethod/InputConnection
+- ZXing barcode/QR library — https://github.com/zxing/zxing
+- ML Kit text recognition (on-device OCR baseline) — https://developers.google.com/ml-kit/vision/text-recognition
 
 ## Appendix C — Core product rule
 
