@@ -592,7 +592,10 @@
     <string name="pay_failed_expired">እዚ ትእዛዝ ቅድሚ ምኽፋሉ ግዜኡ ሓሊፉ።</string>
     <string name="pay_failed_cancelled">እዚ ትእዛዝ ተሰሪዙ።</string>
     <string name="pay_failed_other">እዚ ትእዛዝ ድሕሪ ሕጂ ክኽፈል ኣይክእልን።</string>
-    <string name="pay_checkout_title">ውሑስ ክፍሊት</string>
+    <string name="pay_checkout_waiting_title">ኣብ ገጽ ኣሪፍፔይ ክፍሊትኩም ወድኡ</string>
+    <string name="pay_checkout_waiting_body">ገጽ ክፍሊት ኣብ ብራውዘርኩም ተኸፊቱ ኣሎ። ምስ ወድኣኹም ናብዚ ተመለሱ።</string>
+    <string name="pay_checkout_paid">ከፊለ ኣለኹ</string>
+    <string name="pay_checkout_reopen">ገጽ ክፍሊት እንደገና ክፈት</string>
     <string name="pay_checkout_close">ክፍሊት ሰርዝ</string>
     <string name="pay_checkout_error_title">ገጽ ክፍሊት ኣይተጻዕነን</string>
     <string name="pay_checkout_error_body">ርክብኩም ኣረጋግጹ እሞ እንደገና ፈትኑ።</string>

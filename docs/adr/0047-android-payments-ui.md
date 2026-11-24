@@ -34,5 +34,26 @@
 
 ## Consequences / open
 The `play` APK gains `com.android.vending.BILLING` (Play Billing Library, needed for any store purchase). No intent
-filter for `qalkeyboard://` (the WebView intercepts it; a Custom Tab fallback would need one). Device test needed
+filter for `qalkeyboard://` in the original design; M4.11 adds `BillingReturnActivity` (see the amendment). Device test needed
 against the ArifPay sandbox via the dev backend.
+
+## Amendment (M4.11): Custom Tab
+
+**Why.** ArifPay's hosted checkout page asks for the device's geolocation and renders nothing when the in-app WebView
+declines. The app has no location permission and must not request one, so the WebView is replaced by a Chrome Custom
+Tab, where Chrome handles the page's location prompt itself. The WebView code, its settings and the URL-interception
+helpers (`CheckoutUrlPolicy.decide`, `ExternalLinks`) are removed; no permission is added.
+
+**Flow.** `CheckoutScreen` keeps its signature. Once per checkout URL (kept across rotation) it checks
+`CheckoutUrlPolicy.isAllowedStart` (https with a host) and opens the page with `CustomTabsIntent` (title shown, toolbar
+in the app theme colour); with no Custom Tabs provider it falls back to `ACTION_VIEW`; if nothing can open it the
+existing error state shows. While the tab is open the screen shows "Finish paying on the ArifPay page" with "I've paid",
+"Open payment page again" and "Cancel payment" (system Back = cancel).
+
+**Return.** The server's `GET /billing/return/{attemptId}` still queues the verification and 303-redirects to
+`qalkeyboard://billing/return?…`. A small exported `BillingReturnActivity` (translucent, `noHistory`, out of recents)
+owns that intent filter, checks scheme, host and path only (the query is ignored) and starts `MainActivity` with
+`CLEAR_TOP | SINGLE_TOP`, so the existing task and plans state come forward and no second `MainActivity` is created.
+When the screen resumes after the tab was left (lifecycle `ON_PAUSE` then `ON_RESUME`), or "I've paid" is tapped, it
+calls `onReturn(null)` once: the model signals the server and polls as before. This covers both ArifPay's done button
+(deep link) and the user simply closing the tab. Nothing in the URI marks anything paid; only the server's `PAID` counts.

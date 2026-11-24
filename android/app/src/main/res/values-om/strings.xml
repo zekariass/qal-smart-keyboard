@@ -592,7 +592,10 @@
     <string name="pay_failed_expired">Ajajni kun osoo hin kaffalamin yeroon isaa darbeera.</string>
     <string name="pay_failed_cancelled">Ajajni kun haqameera.</string>
     <string name="pay_failed_other">Ajajni kun kana booda kaffalamuu hin danda\'u.</string>
-    <string name="pay_checkout_title">Kaffaltii nageenya qabu</string>
+    <string name="pay_checkout_waiting_title">Fuula ArifPay irratti kaffaltii kee xumuri</string>
+    <string name="pay_checkout_waiting_body">Fuulli kaffaltii birawuzarii kee keessatti banameera. Yeroo xumurte as deebi\'i.</string>
+    <string name="pay_checkout_paid">Kaffaleera</string>
+    <string name="pay_checkout_reopen">Fuula kaffaltii irra deebi\'ii bani</string>
     <string name="pay_checkout_close">Kaffaltii haqi</string>
     <string name="pay_checkout_error_title">Fuulli kaffaltii hin feene</string>
     <string name="pay_checkout_error_body">Walqunnamtii kee mirkaneessii irra deebi\'ii yaali.</string>

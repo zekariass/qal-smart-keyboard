@@ -598,7 +598,10 @@
     <string name="pay_failed_expired">This order expired before it was paid.</string>
     <string name="pay_failed_cancelled">This order was cancelled.</string>
     <string name="pay_failed_other">This order can no longer be paid.</string>
-    <string name="pay_checkout_title">Secure payment</string>
+    <string name="pay_checkout_waiting_title">Finish paying on the ArifPay page</string>
+    <string name="pay_checkout_waiting_body">The payment page is open in your browser. Come back here when you are done.</string>
+    <string name="pay_checkout_paid">I\'ve paid</string>
+    <string name="pay_checkout_reopen">Open payment page again</string>
     <string name="pay_checkout_close">Cancel payment</string>
     <string name="pay_checkout_error_title">The payment page didn\'t load</string>
     <string name="pay_checkout_error_body">Check your connection and try again.</string>

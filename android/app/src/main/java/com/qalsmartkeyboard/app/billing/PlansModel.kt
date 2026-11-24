@@ -96,7 +96,7 @@ enum class CheckoutStep {
     /** Creating the order and the attempt. */
     STARTING,
 
-    /** The provider's page is open in the WebView. */
+    /** The provider's page is open in the browser (Custom Tab). */
     CHECKOUT,
 
     /** Polling the order (or reporting a store purchase). */
@@ -170,7 +170,7 @@ fun interface PlanRefresher {
  * The paywall and checkout logic (ADR 0047), plain Kotlin over [BillingClient] so every state is a JVM test.
  *
  * Gateway flow (ArifPay, Chapa): [buy] creates a server-priced order (idempotency key), starts an attempt for the chosen
- * method and shows its `checkoutUrl` in the checkout WebView. The WebView reports the return URL ([onReturned]) or the
+ * method and opens its `checkoutUrl` in a Custom Tab. The app coming back to the front ([onReturned]) or the
  * user closing it ([onCheckoutClosed]); the model then signals the return to the server and polls
  * `GET /billing/orders/{id}` with backoff until `PAID` or a final failure, or until [POLL_SCHEDULE_MS] runs out ("still
  * confirming"). Only the server's `PAID` counts: then the entitlement token is refreshed ([PlanRefresher]) so the
@@ -419,7 +419,7 @@ class PlansModel(
         }
     }
 
-    /** The checkout WebView reached the return URL (or the app's return URI): confirm with the server. */
+    /** The payer came back from the hosted checkout (deep link, closed tab or "I've paid"): confirm with the server. */
     suspend fun onReturned(result: String?) {
         val p = pending.load() ?: return
         pending.save(p.copy(returned = true, result = result))
