@@ -4798,7 +4798,7 @@ components:
         rates:
           type: object
           description: ISO 4217 code to the value of one unit of `base` in that currency.
-          additionalProperties: { type: number, exclusiveMinimum: 0 }
+          additionalProperties: { type: number, format: double, exclusiveMinimum: 0 }
         source: { type: string, maxLength: 100, description: Provider label; `seed` is the built-in development table. }
         stale: { type: boolean, description: '`asOf` is older than the server''s staleness threshold.' }
     AiCapabilities:
