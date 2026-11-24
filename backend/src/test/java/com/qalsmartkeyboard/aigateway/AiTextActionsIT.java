@@ -181,9 +181,14 @@ class AiTextActionsIT {
 		Map<String, Object> reply = jdbc.queryForMap("""
 				SELECT template_version, template_body FROM ai_prompt_templates
 				 WHERE feature_code = 'SMART_REPLY' AND is_active AND language_scope = '*' AND model_family = '*'""");
-		assertThat(reply.get("template_version")).isEqualTo(3);
+		assertThat(reply.get("template_version")).isEqualTo(4); // V29: the intent decides every reply's stance
 		assertThat((String) reply.get("template_body")).contains("Do not number the replies", "Intent: {{intent}}",
-				"DECLINE_POLITELY", "ASK_CLARIFICATION");
+				"DECLINE_POLITELY", "ASK_CLARIFICATION", "Without notes and without an intent",
+				"never add a reply with another stance")
+				.doesNotContain("Without notes, give");
+		assertThat(jdbc.queryForObject("""
+				SELECT count(*) FROM ai_prompt_templates WHERE feature_code = 'SMART_REPLY' AND template_version = 3
+				   AND NOT is_active""", Integer.class)).isEqualTo(1);
 		Map<String, Object> tone = jdbc.queryForMap("""
 				SELECT template_version, template_body FROM ai_prompt_templates
 				 WHERE feature_code = 'TONE_ADJUST' AND is_active AND language_scope = '*' AND model_family = '*'""");

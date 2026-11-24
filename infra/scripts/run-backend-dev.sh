@@ -86,7 +86,11 @@ if [[ -z "${QAL_DEV_SKIP_POSTGRES:-}" ]] && ! pg_up; then
 fi
 
 # --- run ---------------------------------------------------------------------------------------------------------
-java_major="$(java -version 2>&1 | sed -n '1s/.*version "\([0-9]*\).*/\1/p')"
+# The JDK mvnw runs on (JAVA_HOME when set), not whichever `java` comes first on PATH: a JDK 25 on PATH with
+# JAVA_HOME on 21 otherwise skips the override and javac 21 fails with "release version 25 not supported".
+java_bin="java"
+[[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]] && java_bin="$JAVA_HOME/bin/java"
+java_major="$("$java_bin" -version 2>&1 | sed -n '1s/.*version "\([0-9]*\).*/\1/p')"
 extra=()
 if [[ -n "$java_major" && "$java_major" -lt 25 ]]; then
   extra+=("-Djava.version=$java_major")   # the project targets Java 25; compile for the local JDK
