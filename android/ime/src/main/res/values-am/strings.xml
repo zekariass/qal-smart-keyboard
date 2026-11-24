@@ -624,4 +624,7 @@
     <string name="layout_desc_colemak">እንደ QWERTY፣ በብዛት የሚጠቀሙ ፊደላት ወደ መካከለኛው ረድፍ ተዛውረዋል</string>
     <string name="layout_desc_fidel_two_key">ተነባቢ ይንኩ፣ ቀጥሎ ቅጹን፤ ሁሉንም ቅጾች ለማግኘት ተነባቢውን ይያዙ</string>
     <string name="layout_desc_fidel_long_press">መንካት ሳድሱን (ስ) ይጽፋል፤ ሌሎቹን ቅጾች ለማግኘት ይያዙ፤ የአናባቢ ረድፍ የለም፣ ቁልፎቹ ይረዝማሉ</string>
+    <!-- Translate one-tap paste of a copied message (T8.13). DRAFT (N9). -->
+    <string name="translate_paste_message">የተቀዳውን መልእክት ይለጥፉ</string>
+    <string name="translate_paste_message_desc">የተቀዳውን መልእክት ለጥፎ ያስተርጉሙ</string>
 </resources>

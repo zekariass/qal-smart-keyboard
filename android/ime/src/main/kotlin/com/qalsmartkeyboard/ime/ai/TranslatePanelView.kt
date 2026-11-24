@@ -162,6 +162,19 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
         asButton(this)
     }
 
+    /** "Paste copied message" (T8.13): one tap fills the box from the clipboard and translates; rebuilt when its state changes. */
+    private val pasteRow = LinearLayout(context).apply {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(8f), 0, dp(8f), dp(4f))
+        visibility = GONE
+    }
+    private var pasteKey: Any? = null
+
+    /** The paste chip of the last [renderInput] for tests, or null. */
+    internal var pasteChip: View? = null
+        private set
+
     // ---------------------------------------------------------------- output (rebuilt per state)
     private val output = LinearLayout(context).apply { orientation = VERTICAL }
 
@@ -207,6 +220,7 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
         }
         addView(header, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         addView(inputRow, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        addView(pasteRow, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         addView(output, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         visibility = GONE
     }
@@ -286,6 +300,7 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
             cornerRadius = 16f * d
             setColor(theme.pressed)
         }
+        renderPaste(c, empty)
         val enabled = c.canTranslate
         translateButton.isEnabled = enabled
         translateButton.setTextColor(if (enabled) theme.onAccent else theme.hintText)
@@ -295,6 +310,34 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
             if (!enabled && theme.hasBorder) setStroke(dp(1f), theme.border)
         }
         translateButton.contentDescription = context.getString(R.string.ai_translate_to, c.destination.label)
+    }
+
+    /** The paste chip while the box is empty and the clip is text; the sensitive hint instead for a sensitive clip. */
+    private fun renderPaste(c: TranslateController, empty: Boolean) {
+        val shown = if (empty && c.step is TranslateStep.Idle) c.clip else ClipAvailability.NONE
+        val key = Triple(shown, theme, c.busy)
+        if (key == pasteKey) return
+        pasteKey = key
+        pasteRow.removeAllViews()
+        pasteChip = null
+        pasteRow.visibility = if (shown == ClipAvailability.NONE) GONE else VISIBLE
+        val ui = AiUi(context, theme)
+        when (shown) {
+            ClipAvailability.TEXT -> {
+                val chip = ui.chip(
+                    context.getString(R.string.translate_paste_message),
+                    AiIcons.PASTE,
+                    enabled = !c.busy,
+                    description = context.getString(R.string.translate_paste_message_desc),
+                ) { tap { controller?.pasteCopiedMessage() } }
+                chip.minHeight = dp(48f)
+                chip.minimumHeight = dp(48f)
+                pasteRow.addView(chip)
+                pasteChip = chip
+            }
+            ClipAvailability.SENSITIVE -> pasteRow.addView(ui.label(context.getString(R.string.ai_clipboard_sensitive), 12f, secondary = true))
+            ClipAvailability.NONE -> Unit
+        }
     }
 
     private fun renderOutput(c: TranslateController) {

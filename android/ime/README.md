@@ -205,6 +205,9 @@ port (pure Kotlin); `:ai-client` implements it and `:app` registers the factory 
   output. Three result actions: Copy (clipboard, "Copied" feedback), Replace (replaces the captured selection or
   last sentence in the host field — re-checks it is still there and is disabled when nothing was captured) and
   Insert (always inserts at the host cursor, preserving the text around it).
+  While the box is empty and the clipboard description says text, a "Paste copied message" chip (T8.13) reads the clip on
+  that tap only, fills the box and translates at once; a sensitive clip shows a hint and is never read. In AI Assist,
+  pasting from the clipboard preselects Reply (when no action was chosen) so the intent chips show right away.
 - **AI tools grid** (`AiTool` / `AiQuickAction`, ADR 0041): every served feature — Translate; the quick actions
   (Grammar, Rewrite, Simplify, Shorter / Expand / Clarify — `REWRITE` `options.mode`; the ten `TONE_ADJUST` tones);
   the Assist-opening tiles (Reply, Explain, Summarise, Format — `FORMAT_TEXT`); Write Email (`DRAFT_DOCUMENT` with the

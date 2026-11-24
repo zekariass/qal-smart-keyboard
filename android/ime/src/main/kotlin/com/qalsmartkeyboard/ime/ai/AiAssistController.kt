@@ -123,6 +123,9 @@ class AiAssistController(
         private set
     var action: AiAssistAction = AiAssistAction.TRANSLATE
         private set
+
+    /** The user picked an action in this panel session (a paste then keeps it instead of preselecting Reply). */
+    private var actionChosen = false
     var step: AiAssistStep = AiAssistStep.Compose
         private set
     var typing: AiAssistField? = null
@@ -185,6 +188,7 @@ class AiAssistController(
         notice = AiNotice.NONE
         picked.clear()
         replyIntent = null
+        actionChosen = false
         format = AiFormat.BULLETS
         lastRequest = null
         lastAction = null
@@ -204,6 +208,8 @@ class AiAssistController(
             sourceKind = AiSourceKind.CLIPBOARD
             selection = null
             notice = AiNotice.NONE
+            // A pasted clip is usually a received message: Reply (with its intent chips) unless an action was chosen.
+            if (!actionChosen && !isLocked(AiAssistAction.REPLY)) action = AiAssistAction.REPLY
         }
         onChanged()
     }
@@ -254,6 +260,7 @@ class AiAssistController(
     fun selectAction(a: AiAssistAction) {
         if (busy) return
         action = a
+        actionChosen = true
         outputPickerOpen = false
         notice = AiNotice.NONE
         if (step !is AiAssistStep.Compose) step = AiAssistStep.Compose

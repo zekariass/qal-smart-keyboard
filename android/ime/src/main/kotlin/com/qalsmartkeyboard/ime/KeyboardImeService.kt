@@ -572,6 +572,7 @@ class KeyboardImeService : InputMethodService() {
                         post = { block -> main.post(block) },
                         copyToClipboard = ::copyResult,
                         keyboardLanguage = { controller.language },
+                        clipboard = SystemAiClipboard(this),
                         prefs = aiPrefs,
                         refresh = { toolbar.onToolbarOpened() },
                         onChanged = {

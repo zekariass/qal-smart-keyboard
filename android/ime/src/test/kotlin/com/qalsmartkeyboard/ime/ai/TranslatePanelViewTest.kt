@@ -30,7 +30,7 @@ class TranslatePanelViewTest {
     private val d = ctx.resources.displayMetrics.density
     private val widthPx = (360 * d).toInt()
 
-    private inner class H(initial: String = "", val actions: FakeAiActions = FakeAiActions(), keyboard: String = "en") {
+    private inner class H(initial: String = "", val actions: FakeAiActions = FakeAiActions(), keyboard: String = "en", val clip: FakeClipboard = FakeClipboard()) {
         val ed = FakeEditor(initial)
         val adapter = InputConnectionAdapter { ed }.also { it.startSession(false, initial.length, initial.length) }
         val view = TranslatePanelView(ctx)
@@ -44,6 +44,7 @@ class TranslatePanelViewTest {
             post = { it() },
             copyToClipboard = {},
             keyboardLanguage = { keyboard },
+            clipboard = clip,
             onChanged = {
                 view.render()
                 list.render()
@@ -307,5 +308,42 @@ class TranslatePanelViewTest {
             h.list.draw(Canvas(Bitmap.createBitmap(widthPx, h.list.measuredHeight, Bitmap.Config.ARGB_8888)))
             assertNotNull(theme.id, h.list.rowView("አማርኛ"))
         }
+    }
+
+    // ------------------------------------------------------------ T8.13 paste copied message
+
+    @Test fun thePasteChipIsOfferedOnlyForATextClipWhileTheBoxIsEmpty() {
+        val h = H(clip = FakeClipboard(ClipAvailability.TEXT, "Are you coming?")).open()
+        val chip = h.view.pasteChip!!
+        assertEquals("Paste the copied message and translate it", chip.contentDescription.toString())
+        assertTrue("touch target is at least 48dp", chip.minimumHeight >= (48 * d).toInt())
+        assertEquals(button, roleOf(chip))
+        assertEquals("the content is not read until the tap", 0, h.clip.contentReads)
+        h.type("x")
+        assertNull("hidden once the box has text", h.view.pasteChip)
+        h.c.clearInput()
+        assertNotNull("back after clearing", h.view.pasteChip)
+    }
+
+    @Test fun theTapFillsTheBoxAndStartsTheTranslation() {
+        val h = H(clip = FakeClipboard(ClipAvailability.TEXT, "Are you coming?")).open()
+        h.view.pasteChip!!.performClick()
+        assertEquals(1, h.clip.contentReads)
+        assertEquals("Are you coming?", h.c.input.text)
+        assertEquals("Are you coming?", h.actions.submitted.last().request.text)
+        assertNull(h.view.pasteChip)
+    }
+
+    @Test fun aSensitiveClipShowsTheHintAndNoChip() {
+        val h = H(clip = FakeClipboard(ClipAvailability.SENSITIVE, "123456")).open()
+        assertNull(h.view.pasteChip)
+        assertTrue(h.texts().any { it.text.toString() == "Copied item is marked sensitive, so it is not offered here." })
+        assertEquals(0, h.clip.contentReads)
+    }
+
+    @Test fun anEmptyClipboardShowsNothing() {
+        val h = H().open()
+        assertNull(h.view.pasteChip)
+        assertFalse(h.texts().any { it.text.toString().contains("sensitive") })
     }
 }

@@ -25,6 +25,7 @@ class TranslateControllerTest {
         val actions: FakeAiActions = FakeAiActions(),
         val prefs: AiLanguagePrefs = AiLanguagePrefs.InMemory(),
         var keyboard: String = "en",
+        val clip: FakeClipboard = FakeClipboard(),
     ) {
         val ed = FakeEditor(initial)
         val adapter = InputConnectionAdapter { ed }.also { it.startSession(false, initial.length, initial.length) }
@@ -39,6 +40,7 @@ class TranslateControllerTest {
             post = { it() },
             copyToClipboard = { clipboard += it },
             keyboardLanguage = { keyboard },
+            clipboard = clip,
             prefs = prefs,
             refresh = { refreshes++ },
             newKey = { "key-${++n}" },
@@ -561,5 +563,81 @@ class TranslateControllerTest {
         kc.onKey(keys.first { it.kind == KeyKind.CHAR && it.isLetter })
         ed.deliver(adapter)
         assertNotEquals("after close the keys type into the field again", "Field", ed.text.toString())
+    }
+
+    // ------------------------------------------------------------ T8.13 paste copied message
+
+    @Test fun theClipboardIsProbedByDescriptionOnOpenAndNeverReadUntilTheTap() {
+        val h = H("", clip = FakeClipboard(ClipAvailability.TEXT, "Are you coming tonight?"))
+        h.c.open()
+        assertEquals(ClipAvailability.TEXT, h.c.clip)
+        assertEquals(1, h.clip.descriptionReads)
+        assertEquals(0, h.clip.contentReads)
+        assertEquals("", h.c.input.text)
+        assertTrue(h.actions.submitted.isEmpty())
+    }
+
+    @Test fun pastingFillsTheBoxAndTranslatesAtOnce() {
+        val h = H("", clip = FakeClipboard(ClipAvailability.TEXT, "Are you coming tonight?"))
+        h.c.open()
+        h.c.pasteCopiedMessage()
+        assertEquals(1, h.clip.contentReads)
+        assertEquals("Are you coming tonight?", h.c.input.text)
+        assertTrue(h.c.step is TranslateStep.Working)
+        assertEquals("Are you coming tonight?", h.sent().text)
+        h.actions.answer(0, FakeAiActions.ok("ዛሬ ማታ ትመጣለህ?"))
+        assertEquals("ዛሬ ማታ ትመጣለህ?", h.result().shownText)
+        assertEquals("nothing was inserted into the field", "", h.ed.text.toString())
+    }
+
+    @Test fun aSensitiveOrEmptyClipIsNeverRead() {
+        for (state in listOf(ClipAvailability.SENSITIVE, ClipAvailability.NONE)) {
+            val h = H("", clip = FakeClipboard(state, "123456"))
+            h.c.open()
+            h.c.pasteCopiedMessage()
+            assertEquals(state, h.c.clip)
+            assertEquals(0, h.clip.contentReads)
+            assertEquals("", h.c.input.text)
+            assertTrue(h.actions.submitted.isEmpty())
+        }
+    }
+
+    @Test fun aClipThatTurnedSensitiveBetweenProbeAndTapReadsNothing() {
+        val h = H("", clip = FakeClipboard(ClipAvailability.TEXT, "secret"))
+        h.c.open()
+        h.clip.state = ClipAvailability.SENSITIVE
+        h.c.pasteCopiedMessage() // the fake returns null for a sensitive clip, as the system implementation does
+        assertEquals("", h.c.input.text)
+        assertEquals(ClipAvailability.SENSITIVE, h.c.clip)
+        assertTrue(h.actions.submitted.isEmpty())
+    }
+
+    @Test fun pasteIsIgnoredWhileTheBoxHasText() {
+        val h = H("", clip = FakeClipboard(ClipAvailability.TEXT, "copied"))
+        h.c.open()
+        h.type("mine")
+        h.c.pasteCopiedMessage()
+        assertEquals("mine", h.c.input.text)
+        assertEquals(0, h.clip.contentReads)
+    }
+
+    @Test fun pastingWhileOfflineShowsTheBlockerAndSendsNothing() {
+        val h = H("", clip = FakeClipboard(ClipAvailability.TEXT, "copied"))
+        h.actions.availability = h.actions.availability.copy(block = AiBlock.OFFLINE)
+        h.c.open()
+        h.c.pasteCopiedMessage()
+        assertEquals("copied", h.c.input.text)
+        assertEquals(AiFailure.Offline, h.failure())
+        assertTrue(h.actions.submitted.isEmpty())
+    }
+
+    @Test fun clearingTheBoxProbesTheClipboardAgain() {
+        val h = H("", clip = FakeClipboard(ClipAvailability.NONE))
+        h.c.open()
+        h.clip.state = ClipAvailability.TEXT
+        h.type("x")
+        h.c.clearInput()
+        assertEquals(ClipAvailability.TEXT, h.c.clip)
+        assertEquals(0, h.clip.contentReads)
     }
 }

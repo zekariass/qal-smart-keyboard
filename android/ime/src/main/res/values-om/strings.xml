@@ -625,4 +625,7 @@
     <string name="layout_desc_colemak">Akka QWERTY, qubeewwan baay\'ee fayyadan gara sarara gidduutti ce\'an</string>
     <string name="layout_desc_fidel_two_key">Dubbifamaa tuqaa, itti aansuun sagalee isaa; unka hundaaf dubbifamaa qabadhaa</string>
     <string name="layout_desc_fidel_long_press">Tuquun unka dubbifamaa (ስ) barreessa; unkaalee biroof qabadhaa; sararri dubbachiiftuu hin jiru, furtuuleen dheeratu</string>
+    <!-- Translate one-tap paste of a copied message (T8.13). DRAFT (N9). -->
+    <string name="translate_paste_message">Ergaa garagalfame maxxansaa</string>
+    <string name="translate_paste_message_desc">Ergaa garagalfame maxxansiitii hiikaa</string>
 </resources>

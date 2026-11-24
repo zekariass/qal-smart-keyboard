@@ -392,4 +392,34 @@ class AiAssistControllerTest {
         assertTrue(h.c.source.isBlank)
         assertEquals(AiSourceKind.NONE, h.c.sourceKind)
     }
+
+    // ------------------------------------------------------------ T8.13 received message
+
+    @Test fun pastingWithNoActionChosenPreselectsReply() {
+        val h = H(clip = ClipAvailability.TEXT, clipText = "Can you join us on Friday?")
+        h.c.open()
+        assertEquals(AiAssistAction.TRANSLATE, h.c.action)
+        h.c.pasteFromClipboard()
+        assertEquals(AiAssistAction.REPLY, h.c.action)
+        assertEquals(AiSourceKind.CLIPBOARD, h.c.sourceKind)
+    }
+
+    @Test fun pastingKeepsAnActionTheUserAlreadyChose() {
+        val h = H(clip = ClipAvailability.TEXT, clipText = "copied")
+        h.c.open()
+        h.c.selectAction(AiAssistAction.TRANSLATE)
+        h.c.pasteFromClipboard()
+        assertEquals(AiAssistAction.TRANSLATE, h.c.action)
+        h.c.close()
+        h.c.open()
+        h.c.pasteFromClipboard() // a new panel session: nothing chosen yet
+        assertEquals(AiAssistAction.REPLY, h.c.action)
+    }
+
+    @Test fun anEmptyPasteDoesNotChangeTheAction() {
+        val h = H(clip = ClipAvailability.TEXT, clipText = "")
+        h.c.open()
+        h.c.pasteFromClipboard()
+        assertEquals(AiAssistAction.TRANSLATE, h.c.action)
+    }
 }
