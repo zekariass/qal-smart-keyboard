@@ -3,20 +3,15 @@
 <resources>
     <string name="ime_name">Qal Smart Keyboard</string>
     <string name="subtype_english_qwerty">እንግሊዝኛ (QWERTY)</string>
-    <string name="candidate_strip_draft">ረቂቅ</string>
-    <string name="candidate_strip_draft_description">ረቂቅ ጥቆማዎች፣ በቋንቋው ተወላጅ ተናጋሪዎች ያልተረጋገጡ</string>
     <!-- Top bar -->
     <string name="top_bar_settings">የቁልፍ ሰሌዳ ቅንብሮች</string>
     <string name="top_bar_mode">የአጻጻፍ ዘዴ፦ %1$s</string>
     <string name="top_bar_mode_change">የአጻጻፍ ዘዴ ይቀይሩ</string>
-    <string name="top_bar_mode_option">የ%1$s አጻጻፍ ዘዴ</string>
     <string name="top_bar_ai_open">የAI መሣሪያዎች</string>
     <string name="top_bar_candidate_add">ወደ መዝገበ ቃላትዎ ያክሉ</string>
     <string name="top_bar_candidate_autocorrect">%1$s፣ ራስ-ሰር እርማት</string>
-    <string name="top_bar_more_suggestions">ተጨማሪ ጥቆማዎች</string>
-    <string name="top_bar_fewer_suggestions">ያነሱ ጥቆማዎች</string>
+    <string name="top_bar_back_to_tools">ወደ መሣሪያዎች ተመለስ</string>
     <!-- Accessibility: keys -->
-    <string name="key_draft_description">ረቂቅ፣ በቋንቋው ተወላጅ ተናጋሪዎች ያልተረጋገጠ</string>
     <string name="key_globe_long_action">ሰሌዳውን ይቀይሩ</string>
     <string name="key_emoji_description">ኢሞጂ</string>
     <!-- Emoji panel -->
@@ -55,6 +50,31 @@
     <string name="ai_tone_concise">አጭር</string>
     <string name="ai_tone_apologetic">ይቅርታ ጠያቂ</string>
     <string name="ai_tone_honorific">አክብሮታዊ</string>
+    <string name="ai_tone_romantic">ፍቅረኛ</string>
+    <string name="ai_tone_confident">ደፋር</string>
+    <string name="ai_tone_funny">አስቂኝ</string>
+    <string name="ai_tone_persuasive">አሳምኝ</string>
+    <string name="ai_tool_shorten">ማጠር</string>
+    <string name="ai_tool_expand">ማራዝም</string>
+    <string name="ai_tool_clarify">ግልጽ ማድረግ</string>
+    <string name="ai_reply_intent_label">የመልስ አቋም (አማራጭ)</string>
+    <string name="ai_intent_agree">ስማም</string>
+    <string name="ai_intent_disagree">በትሁትነት አትስማም</string>
+    <string name="ai_intent_clarify">ማብራሪያ ጠይቅ</string>
+    <string name="ai_intent_accept">ግብዣውን ተቀበል</string>
+    <string name="ai_intent_decline">በትሁትነት እምቢ በል</string>
+    <string name="ai_intent_thank">አመሰግን</string>
+    <string name="ai_format_label">ቅርጸት</string>
+    <string name="ai_format_bullets">ነጥቦች</string>
+    <string name="ai_format_numbered">በቁጥር ዝርዝር</string>
+    <string name="ai_format_paragraphs">አንቀጾች</string>
+    <string name="ai_format_report">ሪፖርት</string>
+    <string name="ai_format_meeting_notes">የስብሰባ ማስታወሻ</string>
+    <string name="ai_doctype_email">ኢሜይል</string>
+    <string name="ai_doctype_job_application">የሥራ ማመልከቻ</string>
+    <string name="ai_doctype_cv">CV</string>
+    <string name="ai_doctype_cover_letter">የካቨር ደብዳቤ</string>
+    <string name="ai_doctype_business">የንግድ መልዕክት</string>
     <string name="ai_tile_tone_description">እንደገና መጻፍ፣ ቃና፦ %1$s</string>
     <string name="ai_grid_offline">ከመስመር ውጭ፦ AI ግንኙነት ያስፈልገዋል</string>
     <string name="ai_grid_quota">%1$s፦ %2$s</string>
@@ -154,6 +174,7 @@
     <string name="ai_action_simplify">ማቅለል</string>
     <string name="ai_action_reply">መልስ</string>
     <string name="ai_action_summarize">ማጠቃለያ</string>
+    <string name="ai_action_format">መቅረጽ</string>
     <string name="ai_action_locked">%1$s፣ Premium</string>
     <string name="ai_output_label">ውጤት</string>
     <string name="ai_output_change">የውጤት ቋንቋ %1$s። ይቀይሩ</string>
@@ -174,6 +195,8 @@
     <string name="ai_run_simplify_in">በ%1$s ያቅልሉ</string>
     <string name="ai_run_reply">በ%1$s መልሶችን ይጠቁሙ</string>
     <string name="ai_run_summarize">በ%1$s ያጠቃልሉ</string>
+    <string name="ai_run_format">ጽሑፉን ይቅርጹ</string>
+    <string name="ai_run_format_in">በ%1$s ይቅርጹ</string>
     <string name="ai_run_locked">Premium፦ %1$s ይክፈቱ</string>
     <string name="ai_working_translate">ወደ %1$s በመተርጎም ላይ…</string>
     <string name="ai_working_explain">በማብራራት ላይ…</string>
@@ -181,6 +204,7 @@
     <string name="ai_working_rewrite">እንደገና በመጻፍ ላይ…</string>
     <string name="ai_working_reply">መልሶችን በመጻፍ ላይ…</string>
     <string name="ai_working_summarize">በማጠቃለል ላይ…</string>
+    <string name="ai_working_format">በመቅረጽ ላይ…</string>
     <string name="ai_working_email">ኢሜይልዎን በመጻፍ ላይ…</string>
     <string name="ai_wait_long">ይህ እስከ %1$d ሰከንድ ሊወስድ ይችላል።</string>
     <string name="ai_pick_reply">መልስ ይምረጡ</string>

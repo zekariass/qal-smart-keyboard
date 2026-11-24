@@ -42,7 +42,7 @@ class BarAccessibilityTest {
         init {
             ai.controller = controller
             controller.onFieldStarted(InputProfile.DEFAULT, "com.example.chat")
-            strip.setModes(listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC, LayoutKind.ABC), LayoutKind.PHONETIC)
+            strip.setModes(listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL, LayoutKind.ABC), LayoutKind.PHONETIC)
             strip.onSelect = { events += "select $it" }
             strip.onLongSelect = { events += "add $it" }
             strip.onModeSelected = { events += "mode $it" }
@@ -77,7 +77,8 @@ class BarAccessibilityTest {
         )
     }
 
-    @Test fun pillIsAButtonNamingTheModeAndOpensTheChooser() {
+    @Test fun pillIsAButtonNamingTheModeAndCyclingIt() {
+        // The pill is a toggle (no dropdown): an accessibility click picks the next mode.
         val h = H()
         val n = h.node(Target.Pill)
         assertEquals(button, n.className)
@@ -85,18 +86,9 @@ class BarAccessibilityTest {
         assertTrue(n.isClickable)
         assertEquals("Change writing mode", n.actionLabel(AccessibilityNodeInfo.ACTION_CLICK))
         assertTrue(h.click(Target.Pill))
-        assertTrue(h.strip.isModeChooserOpen)
-        // The options are radio buttons, the active one checked; a click picks one.
-        val fidel = h.node(Target.Mode(LayoutKind.FIDEL))
-        val phonetic = h.node(Target.Mode(LayoutKind.PHONETIC))
-        assertEquals("android.widget.RadioButton", fidel.className)
-        assertEquals("Fidel writing mode", fidel.contentDescription.toString())
-        assertTrue(fidel.isCheckable)
-        assertFalse(fidel.isChecked)
-        assertTrue(phonetic.isChecked)
-        assertTrue(h.click(Target.Mode(LayoutKind.FIDEL)))
-        assertEquals(listOf("mode FIDEL"), h.events)
-        assertFalse(h.strip.isModeChooserOpen)
+        assertEquals(listOf("mode FIDEL"), h.events) // Phonetic → Fidel → English → Phonetic
+        // No option buttons open in the middle: the shortcuts stay.
+        assertTrue(h.strip.slots().any { it.target is Target.Shortcut })
     }
 
     @Test fun theAiMarkIsAButtonNamedAiToolsThatOpensTheGrid() {
@@ -118,8 +110,13 @@ class BarAccessibilityTest {
 
     @Test fun candidatesAreButtonsWithTheirTextAndAnAddToDictionaryLongClick() {
         val h = H()
-        h.strip.show(listOf(Suggestion("ሰላም", SuggestionKind.TRANSLITERATION), Suggestion("ሰላማ", SuggestionKind.COMPLETION)), isDraft = true)
+        h.strip.show(listOf(Suggestion("ሰላም", SuggestionKind.TRANSLITERATION), Suggestion("ሰላማ", SuggestionKind.COMPLETION)))
         h.layout()
+        // While composing, a back chevron takes the left end: a named button back to the tools bar.
+        val back = h.node(Target.Back)
+        assertEquals(button, back.className)
+        assertEquals("Back to tools", back.contentDescription.toString())
+        assertTrue(back.hasAction(AccessibilityNodeInfo.ACTION_CLICK))
         val c0 = h.node(Target.Candidate(0))
         assertEquals(button, c0.className)
         assertEquals("ሰላም", c0.text.toString())
@@ -128,11 +125,9 @@ class BarAccessibilityTest {
         assertTrue(h.provider.performAction(h.strip.idOf(Target.Candidate(1)), AccessibilityNodeInfo.ACTION_CLICK, null))
         assertTrue(h.provider.performAction(h.strip.idOf(Target.Candidate(0)), AccessibilityNodeInfo.ACTION_LONG_CLICK, null))
         assertEquals(listOf("select 1", "add 0"), h.events)
-        // The DRAFT tag is read, not clickable.
-        val tag = h.node(Target.DraftTag)
-        assertTrue(tag.contentDescription.toString().startsWith("Draft suggestions"))
-        assertFalse(tag.isClickable)
-        assertFalse(h.provider.performAction(h.strip.idOf(Target.DraftTag), AccessibilityNodeInfo.ACTION_CLICK, null))
+        // The chevron's accessibility click switches the bar back to the tools view.
+        assertTrue(h.click(Target.Back))
+        assertEquals(Target.Tools, h.strip.slots().first().target)
     }
 
     @Test fun toolsButtonAndShortcutsAreNamedButtons() {

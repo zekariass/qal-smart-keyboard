@@ -163,7 +163,9 @@ class SettingsPreferencesTest {
         assertEquals(".", period.popup.first().text)
         assertEquals("፣", period.popup[1].text)
         assertFalse(period.popup.drop(1).any { it.text == "." || it.text == "።" })
-        assertEquals(listOf(",", "፤"), comma.popup.map { it.text })
+        // The comma's long-press opens the emoji panel; the marks stay on the period key.
+        assertTrue(comma.popup.isEmpty())
+        assertEquals(LongAction.EMOJI, comma.longAction)
         s.tap(period)
         s.tap(comma)
         assertEquals("።፣", s.ed.text.toString())

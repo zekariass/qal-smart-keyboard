@@ -7,7 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The emoji key (ADR 0028): where it is, where it is hidden, and that it leaves the space bar usable. */
+/** The emoji access (ADR 0028): folded into the comma's long-press; where it is, where it is hidden. */
 class EmojiKeyLayoutTest {
     private fun profile(type: Int) = InputProfile.from(type, E.IME_ACTION_UNSPECIFIED, false, 0)
 
@@ -16,16 +16,19 @@ class EmojiKeyLayoutTest {
     @Test fun plainTextFieldsHaveTheEmojiKeyOnLettersAndSymbols() {
         val p = profile(T.TYPE_CLASS_TEXT)
         for (page in listOf(Page.LETTERS, Page.SYMBOLS, Page.SYMBOLS_2)) {
-            assertTrue("$page", keys(page, p).any { it.kind == KeyKind.EMOJI })
+            assertTrue("$page", keys(page, p).any { it.longAction == LongAction.EMOJI })
         }
         assertTrue(p.allowsEmoji)
     }
 
-    @Test fun theKeySitsNextToTheSpaceBar() {
+    @Test fun theEmojiActionLivesOnTheCommaKey() {
+        // A tap types the comma, a long-press opens the emoji panel; the ☺ corner hint marks it.
         val bottom = Layouts.forPage(Page.LETTERS, profile(T.TYPE_CLASS_TEXT)).rows.last()
-        val emoji = bottom.indexOfFirst { it.kind == KeyKind.EMOJI }
-        val space = bottom.indexOfFirst { it.kind == KeyKind.SPACE }
-        assertEquals(space - 1, emoji)
+        val comma = bottom.first { it.longAction == LongAction.EMOJI }
+        assertEquals(KeyKind.CHAR, comma.kind)
+        assertEquals(",", comma.text)
+        assertEquals("☺", comma.hint)
+        assertTrue(comma.actsOnRelease)
     }
 
     @Test fun hiddenWhereEmojiMakeNoSense() {
@@ -43,7 +46,10 @@ class EmojiKeyLayoutTest {
         for (type in hidden) {
             val p = profile(type)
             assertFalse("allowsEmoji for $type", p.allowsEmoji)
-            for (page in Page.entries) assertTrue("$type $page", keys(page, p).none { it.kind == KeyKind.EMOJI })
+            for (page in Page.entries) {
+                assertTrue("$type $page", keys(page, p).none { it.kind == KeyKind.EMOJI })
+                assertTrue("$type $page", keys(page, p).none { it.longAction == LongAction.EMOJI })
+            }
         }
     }
 
@@ -64,8 +70,8 @@ class EmojiKeyLayoutTest {
     }
 
     @Test fun theKeyIsDescribedForAccessibility() {
-        val key = keys(Page.LETTERS, profile(T.TYPE_CLASS_TEXT)).first { it.kind == KeyKind.EMOJI }
-        assertEquals("Emoji", key.spoken)
-        assertFalse(key.actsOnRelease)
+        val key = keys(Page.LETTERS, profile(T.TYPE_CLASS_TEXT)).first { it.longAction == LongAction.EMOJI }
+        assertEquals("Comma, Emoji", key.spoken)
+        assertTrue(key.actsOnRelease)
     }
 }

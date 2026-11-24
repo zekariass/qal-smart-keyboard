@@ -6,7 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** ADR 0035: the letters page's bottom row, after Gboard: ?123, comma, globe, emoji, space, period, Enter. */
+/** ADR 0035: the letters page's bottom row, after Gboard: ?123, comma (long-press: emoji), globe, space, period, Enter. */
 class BottomRowTest {
     private fun profile(type: Int) = InputProfile.from(type, E.IME_ACTION_UNSPECIFIED, false, 0)
     private val text = profile(T.TYPE_CLASS_TEXT)
@@ -22,13 +22,13 @@ class BottomRowTest {
         for (m in modes) {
             assertEquals(
                 "$m",
-                listOf(KeyKind.TO_SYMBOLS, KeyKind.CHAR, KeyKind.GLOBE, KeyKind.EMOJI, KeyKind.SPACE, KeyKind.CHAR, KeyKind.ENTER),
+                listOf(KeyKind.TO_SYMBOLS, KeyKind.CHAR, KeyKind.GLOBE, KeyKind.SPACE, KeyKind.CHAR, KeyKind.ENTER),
                 bottom(m).map { it.kind },
             )
             // Ge'ez typed natively (am/ti Phonetic) taps the Ethiopic comma and full stop (owner, 2026-11-19).
             val geez = m.kind == LayoutKind.PHONETIC
             assertEquals("$m", if (geez) "፣" else ",", bottom(m)[1].text)
-            assertEquals("$m", if (geez) "።" else ".", bottom(m)[5].text)
+            assertEquals("$m", if (geez) "።" else ".", bottom(m)[4].text)
         }
     }
 
@@ -45,7 +45,7 @@ class BottomRowTest {
         for (m in modes) {
             val row = bottom(m)
             assertEquals("$m", 10f, row.sumOf { it.weight.toDouble() }.toFloat(), 0.001f)
-            assertEquals("$m: space ${row[4].weight}", 3.25f, row[4].weight, 0.001f)
+            assertEquals("$m: space ${row[3].weight}", 4.25f, row[3].weight, 0.001f)
         }
         // A text field without emoji (raw key events) gives the emoji key's width to the space bar.
         val raw = bottom(TypingMode.abc("en"), profile(T.TYPE_NULL))
@@ -53,9 +53,9 @@ class BottomRowTest {
         assertEquals(4.25f, raw.first { it.kind == KeyKind.SPACE }.weight, 0.001f)
     }
 
-    @Test fun commaPeriodGlobeAndEmojiAreOneKeyWide() {
+    @Test fun commaPeriodAndGlobeAreOneKeyWide() {
         val row = bottom(TypingMode("am", LayoutKind.PHONETIC))
-        assertEquals(listOf(1.25f, 1f, 1f, 1f, 3.25f, 1f, 1.5f), row.map { it.weight })
+        assertEquals(listOf(1.25f, 1f, 1f, 4.25f, 1f, 1.5f), row.map { it.weight })
     }
 
     @Test fun theGlobeStillCyclesLayoutsOnLongPress() {
@@ -63,8 +63,14 @@ class BottomRowTest {
         for (m in modes) {
             val globe = bottom(m)[2]
             assertEquals(KeyKind.GLOBE, globe.kind)
-            assertTrue("$m", globe.longAction)
+            assertEquals("$m", LongAction.CYCLE_LAYOUT, globe.longAction)
         }
+    }
+
+    @Test fun theGlobeShowsTheLanguageTag() {
+        // The tag under the icon (the bare globe read as "internet") is the current language's short label.
+        val tags = modes.map { m -> m.language to bottom(m)[2].label }
+        assertEquals(mapOf("am" to "አማ", "ti" to "ትግ", "om" to "OM", "en" to "EN"), tags.toMap())
     }
 
     @Test fun otherFieldKindsKeepTheirRows() {

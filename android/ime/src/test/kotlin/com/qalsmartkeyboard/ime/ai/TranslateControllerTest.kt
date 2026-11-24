@@ -75,7 +75,7 @@ class TranslateControllerTest {
         assertFalse(h.c.sentenceAvailable)
     }
 
-    @Test fun aSelectionPrefillsTheBoxAndInsertReplacesIt() {
+    @Test fun aSelectionPrefillsTheBoxAndReplaceReplacesIt() {
         val h = H("Keep this. Fix me please. After")
         h.ed.selStart = 11
         h.ed.selEnd = 24
@@ -86,13 +86,25 @@ class TranslateControllerTest {
         h.c.translate()
         assertEquals("Fix me please", h.sent().text)
         h.actions.answer(0, FakeAiActions.ok("እባክህ አስተካክለኝ"))
-        assertEquals(AiApplied.REPLACED, h.c.insert())
+        assertEquals(AiApplied.REPLACED, h.c.replace())
         assertEquals("Keep this. እባክህ አስተካክለኝ. After", h.ed.text.toString())
         // The panel stays open (translate mode) with an empty box for the next one.
         assertTrue(h.c.isOpen)
         assertEquals("", h.c.input.text)
         assertTrue(h.c.step is TranslateStep.Idle)
         assertEquals(TranslateSource.NONE, h.c.source)
+    }
+
+    @Test fun insertAppendsAtTheCursorAndNeverReplacesTheSource() {
+        val h = H("Keep this. Fix me please. After")
+        h.ed.selStart = 11
+        h.ed.selEnd = 24
+        h.adapter.onSelectionUpdate(11, 24, -1, -1)
+        h.c.open()
+        h.c.translate()
+        h.actions.answer(0, FakeAiActions.ok("እባክህ አስተካክለኝ"))
+        assertEquals(AiApplied.INSERTED, h.c.insert())
+        assertEquals("the selection is kept; the translation lands after it", "Keep this. Fix me please እባክህ አስተካክለኝ. After", h.ed.text.toString())
     }
 
     @Test fun editingTheSelectionTurnsItIntoTypedTextThatIsInserted() {
@@ -111,7 +123,7 @@ class TranslateControllerTest {
         assertEquals("abc def DEF! ghi", h.ed.text.toString())
     }
 
-    @Test fun useLastSentenceFillsTheBoxAndInsertReplacesTheSentence() {
+    @Test fun useLastSentenceFillsTheBoxAndReplaceReplacesTheSentence() {
         val h = H("One. Two three ")
         h.c.open()
         assertEquals(0, h.ed.calls.count { it == "deleteSurroundingText" })
@@ -120,18 +132,21 @@ class TranslateControllerTest {
         assertEquals("Two three", h.c.input.text)
         h.c.translate()
         h.actions.answer(0, FakeAiActions.ok("ሁለት ሦስት"))
-        assertEquals(AiApplied.REPLACED, h.c.insert())
+        assertEquals(AiApplied.REPLACED, h.c.replace())
         assertEquals("One. ሁለት ሦስት ", h.ed.text.toString())
     }
 
-    @Test fun replaceFallsBackToInsertWhenTheFieldChanged() {
+    @Test fun replaceFailsWhenTheFieldChangedButInsertStillLands() {
         val h = H("Hello. How are you")
         h.c.open()
         h.c.useLastSentence()
         h.c.translate()
         h.ed.commitText("?") // the field changed meanwhile (another input method, the app)
         h.actions.answer(0, FakeAiActions.ok("እንዴት ነህ"))
-        assertEquals(AiApplied.INSERTED_ORIGINAL_CHANGED, h.c.insert())
+        assertEquals(AiApplied.FAILED, h.c.replace())
+        assertEquals(AiNotice.INSERT_FAILED, h.c.notice)
+        assertEquals("nothing was inserted silently", "Hello. How are you?", h.ed.text.toString())
+        assertEquals(AiApplied.INSERTED, h.c.insert())
         assertEquals("Hello. How are you? እንዴት ነህ", h.ed.text.toString())
     }
 
@@ -293,6 +308,25 @@ class TranslateControllerTest {
         h.type("!")
         assertTrue(h.c.step is TranslateStep.Idle)
         assertEquals(1, h.actions.submitted.size)
+    }
+
+    @Test fun sendingHidesTheKeysUntilTheBoxIsTapped() {
+        val h = H()
+        h.c.open()
+        h.type("Hello")
+        assertFalse("typing: the keys are up", h.c.keysHidden)
+        h.c.translate()
+        assertTrue("sent: the keys give way", h.c.keysHidden)
+        h.actions.answer(0, FakeAiActions.ok("ሰላም"))
+        assertTrue(h.c.keysHidden)
+        h.c.startBoxEditing()
+        assertFalse("a tap in the box brings them back", h.c.keysHidden)
+        h.c.translate()
+        assertTrue("a new send hides them again", h.c.keysHidden)
+        h.c.cancel()
+        assertFalse("back to idle", h.c.keysHidden)
+        h.c.close()
+        assertFalse(h.c.keysHidden)
     }
 
     @Test fun anEmptyCommitIsNotAnEdit() {

@@ -62,7 +62,14 @@ internal object AiWire {
                 put("task", if (tone == null) "REWRITE" else "TONE_ADJUST")
                 put("text", r.text)
                 t.outputLanguage?.let { put("outputLanguage", it) }
-                putJsonObject("options") { if (tone == null) put("mode", "NATURAL") else put("tone", tone.name) }
+                putJsonObject("options") { if (tone == null) put("mode", t.mode.name) else put("tone", tone.name) }
+                if (t.variation > 0) put("variation", t.variation)
+            }
+            is AiTask.Format -> "/ai/transform" to buildJsonObject {
+                put("task", "FORMAT_TEXT")
+                put("text", r.text)
+                t.outputLanguage?.let { put("outputLanguage", it) }
+                putJsonObject("options") { put("format", t.format.name) }
                 if (t.variation > 0) put("variation", t.variation)
             }
             is AiTask.Simplify -> "/ai/transform" to buildJsonObject {
@@ -90,6 +97,7 @@ internal object AiWire {
                 put("replyLanguage", t.replyLanguage)
                 put("count", t.count)
                 if (t.instructions.isNotBlank()) put("instructions", t.instructions)
+                t.intent?.let { put("intent", it.name) }
                 if (t.variation > 0) put("variation", t.variation)
             }
             is AiTask.Email -> "/ai/drafts" to emailBody(t.spec)
@@ -109,7 +117,7 @@ internal object AiWire {
      * IMPROVE are refused by the server); empty optional texts and names are left out.
      */
     fun emailBody(s: AiEmailSpec): JsonObject = buildJsonObject {
-        put("documentType", "EMAIL")
+        put("documentType", s.documentType.name)
         put("mode", s.mode.name)
         put("language", s.language)
         if (s.instructions.isNotBlank()) put("instructions", s.instructions)
@@ -199,6 +207,7 @@ internal object AiWire {
         AiTaskKind.SUMMARIZE -> "SUMMARIZE"
         AiTaskKind.REPLY -> "SMART_REPLY"
         AiTaskKind.EMAIL -> "DRAFT_DOCUMENT"
+        AiTaskKind.FORMAT -> "FORMAT_TEXT"
     }
 
     /** Maps the client's [ApiError] to what the toolbar shows. Switches on `code`, never on a title. */

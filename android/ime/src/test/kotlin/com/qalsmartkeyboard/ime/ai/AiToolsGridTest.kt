@@ -96,7 +96,7 @@ class AiToolsGridTest {
             override fun openEmoji() {}
             override fun startVoice() {}
             override fun openWordArt() {}
-            override fun openWritingModes() {}
+            override fun cycleWritingMode() {}
             override fun openLanguages() {}
             override fun openTheme() {}
             override fun openSettings() {}
@@ -191,15 +191,20 @@ class AiToolsGridTest {
         assertEquals(
             listOf(
                 AiTool.TRANSLATE, AiTool.GRAMMAR, AiTool.REWRITE, AiTool.SIMPLIFY,
+                AiTool.SHORTEN, AiTool.EXPAND, AiTool.CLARIFY, AiTool.FORMAT,
                 AiTool.REPLY, AiTool.EMAIL, AiTool.EXPLAIN, AiTool.SUMMARIZE,
                 AiTool.PROFESSIONAL, AiTool.FRIENDLY, AiTool.POLITE, AiTool.CONCISE,
-                AiTool.APOLOGETIC, AiTool.HONORIFIC, AiTool.ASSIST,
+                AiTool.APOLOGETIC, AiTool.HONORIFIC, AiTool.ROMANTIC, AiTool.CONFIDENT,
+                AiTool.FUNNY, AiTool.PERSUASIVE, AiTool.ASSIST,
             ),
             r.grid.shown.map { it.tool },
         )
         // Every quick action is one served transform task; every Assist tile one Assist action; nothing else.
         assertEquals(AiQuickAction.entries.toSet(), AiTool.entries.mapNotNull { it.quick }.toSet())
-        assertEquals(setOf(AiAssistAction.REPLY, AiAssistAction.EXPLAIN, AiAssistAction.SUMMARIZE), AiTool.entries.mapNotNull { it.assist }.toSet())
+        assertEquals(
+            setOf(AiAssistAction.REPLY, AiAssistAction.EXPLAIN, AiAssistAction.SUMMARIZE, AiAssistAction.FORMAT),
+            AiTool.entries.mapNotNull { it.assist }.toSet(),
+        )
         val first = r.tile(AiTool.TRANSLATE)
         val fifth = r.tile(AiTool.REPLY)
         assertTrue("row 2 below row 1", (fifth.parent as View).top > (first.parent as View).top)
@@ -247,8 +252,9 @@ class AiToolsGridTest {
         val locked = r.grid.shown.filter { it.locked }.map { it.tool }.toSet()
         assertEquals(
             setOf(
-                AiTool.EMAIL, AiTool.REPLY, AiTool.EXPLAIN, AiTool.SUMMARIZE, AiTool.PROFESSIONAL, AiTool.FRIENDLY,
-                AiTool.POLITE, AiTool.CONCISE, AiTool.APOLOGETIC, AiTool.HONORIFIC,
+                AiTool.EMAIL, AiTool.REPLY, AiTool.EXPLAIN, AiTool.SUMMARIZE, AiTool.FORMAT,
+                AiTool.PROFESSIONAL, AiTool.FRIENDLY, AiTool.POLITE, AiTool.CONCISE, AiTool.APOLOGETIC, AiTool.HONORIFIC,
+                AiTool.ROMANTIC, AiTool.CONFIDENT, AiTool.FUNNY, AiTool.PERSUASIVE,
             ),
             locked,
         )
@@ -330,7 +336,7 @@ class AiToolsGridTest {
     }
 
     @Test fun replyExplainAndSummariseOpenAssistOnThatActionAndSendNothing() {
-        for ((tool, action) in listOf(AiTool.REPLY to AiAssistAction.REPLY, AiTool.EXPLAIN to AiAssistAction.EXPLAIN, AiTool.SUMMARIZE to AiAssistAction.SUMMARIZE)) {
+        for ((tool, action) in listOf(AiTool.REPLY to AiAssistAction.REPLY, AiTool.EXPLAIN to AiAssistAction.EXPLAIN, AiTool.SUMMARIZE to AiAssistAction.SUMMARIZE, AiTool.FORMAT to AiAssistAction.FORMAT)) {
             val r = Rig()
             r.openFromBar()
             r.tile(tool).performClick()

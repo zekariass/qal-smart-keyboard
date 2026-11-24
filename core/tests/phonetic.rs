@@ -442,8 +442,8 @@ proptest! {
         prop_assert!(u.candidates.is_empty());
     }
 
-    /// Typing a word and deleting it keystroke by keystroke ends with nothing composing and
-    /// never commits text.
+    /// Typing a word and deleting it syllable by syllable ends with nothing composing and
+    /// never commits text; once the buffer is empty the host gets the next Backspace.
     #[test]
     fn backspacing_a_word_undoes_it(word in "[a-wyz]{1,20}") {
         let e = engine_with("am", AM_PROFILE);
@@ -453,8 +453,13 @@ proptest! {
         for _ in 0..word.len() {
             let u = e.on_key(KeyEvent::Backspace);
             prop_assert_eq!(u.commit, "");
+            if u.composing.is_empty() {
+                break;
+            }
             prop_assert_eq!(u.delete_before, 0);
         }
+        // One press can erase a multi-key syllable, so |word| presses are always enough.
+        prop_assert_eq!(e.on_key(KeyEvent::Backspace).delete_before, 1);
         prop_assert_eq!(e.on_key(KeyEvent::Commit), EditorUpdate::default());
     }
 }

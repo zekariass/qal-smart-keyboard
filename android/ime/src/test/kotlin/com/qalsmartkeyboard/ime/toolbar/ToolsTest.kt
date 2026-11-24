@@ -89,14 +89,12 @@ class ToolsTest {
         assertEquals(true, ToolSet.shortcutCandidates(full.copy(aiLocked = true)).first { it.tool == Tool.AI }.locked)
     }
 
-    @Test fun shortcutsComeInPriorityOrderAndOnlyAsManyAsFit() {
+    @Test fun shortcutsComeInPriorityOrderAndAllArePinned() {
+        // All six are pinned: the bar scrolls sideways when they do not fit, nothing is dropped.
         assertEquals(
             listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.SETTINGS, Tool.THEME, Tool.EMOJI),
             ToolSet.shortcutCandidates(full).map { it.tool },
         )
-        assertEquals(listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD), ToolSet.shortcuts(full, 3).map { it.tool })
-        assertTrue(ToolSet.shortcuts(full, 0).isEmpty())
-        assertTrue(ToolSet.shortcuts(full, -2).isEmpty())
         // Voice is never a shortcut: the microphone has its own place.
         assertTrue(ToolSet.shortcutCandidates(full).none { it.tool == Tool.VOICE })
     }
@@ -110,7 +108,7 @@ class ToolsTest {
         override fun openEmoji() { calls += "emoji" }
         override fun startVoice() { calls += "voice" }
         override fun openWordArt() { calls += "wordart" }
-        override fun openWritingModes() { calls += "modes" }
+        override fun cycleWritingMode() { calls += "modes" }
         override fun openLanguages() { calls += "languages" }
         override fun openTheme() { calls += "theme" }
         override fun openSettings() { calls += "settings" }

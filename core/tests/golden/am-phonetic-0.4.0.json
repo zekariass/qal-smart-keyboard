@@ -80,16 +80,17 @@
       "committed": ""
     },
     {
-      "name": "digraph-sh-longest-match-and-backspace",
+      "name": "backspace-removes-a-digraph-syllable-at-once",
       "keystrokes": ["s", "h", "i", "Backspace", "Backspace"],
       "steps": [
         { "after": 1, "composing": "ስ", "commit": "" },
         { "after": 2, "composing": "ሽ", "commit": "" },
         { "after": 3, "composing": "ሺ", "commit": "" },
-        { "after": 4, "composing": "ሽ", "commit": "" }
+        { "after": 4, "composing": "", "commit": "", "alternatives": [] },
+        { "after": 5, "composing": "", "commit": "", "delete_before": 1 }
       ],
-      "composing": "ስ",
-      "alternatives": ["ሥ"],
+      "composing": "",
+      "alternatives": [],
       "committed": ""
     },
     {
@@ -283,14 +284,14 @@
       "committed": ""
     },
     {
-      "name": "backspace-removes-last-latin-keystroke",
+      "name": "backspace-removes-the-last-syllable",
       "keystrokes": ["s", "e", "l", "a", "m", "Backspace", "Backspace", "Backspace", "Backspace", "Backspace"],
       "steps": [
         { "after": 6, "composing": "ሰላ", "commit": "" },
-        { "after": 7, "composing": "ሰል", "commit": "" },
-        { "after": 8, "composing": "ሰ", "commit": "" },
-        { "after": 9, "composing": "ስ", "commit": "" },
-        { "after": 10, "composing": "", "commit": "", "alternatives": [] }
+        { "after": 7, "composing": "ሰ", "commit": "" },
+        { "after": 8, "composing": "", "commit": "", "alternatives": [] },
+        { "after": 9, "composing": "", "commit": "", "delete_before": 1 },
+        { "after": 10, "composing": "", "commit": "", "delete_before": 1 }
       ],
       "composing": "",
       "alternatives": [],

@@ -10,6 +10,7 @@ import com.qalsmartkeyboard.api.DistributionChannel
 import com.qalsmartkeyboard.api.SessionManager
 import com.qalsmartkeyboard.api.TransportConfig
 import com.qalsmartkeyboard.app.BuildConfig
+import com.qalsmartkeyboard.app.ai.BaseUrlGuard
 import com.qalsmartkeyboard.app.billing.TelephonyCountryHints
 import com.qalsmartkeyboard.data.secure.EncryptedFileStore
 import com.qalsmartkeyboard.data.secure.KeystoreKeys
@@ -40,6 +41,7 @@ class AuthGraph private constructor(context: Context) {
             client = ClientInfo(BuildConfig.VERSION_NAME, ClientSurface.COMPANION, distributionChannel = DistributionChannel.ofFlavor(BuildConfig.FLAVOR)),
             logger = CallLogger { _, status, _ -> if (status == 426) _updateRequired.value = true },
             countryHints = TelephonyCountryHints(context.applicationContext),
+            extraCleartextHosts = BaseUrlGuard.debugCleartextHosts(BuildConfig.API_BASE_URL, BuildConfig.DEBUG),
         ),
         session,
     )

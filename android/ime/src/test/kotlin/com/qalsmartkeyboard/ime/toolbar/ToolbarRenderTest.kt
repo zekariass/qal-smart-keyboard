@@ -113,7 +113,7 @@ class ToolbarRenderTest {
         ai.controller = controller
         controller.onFieldStarted(InputProfile.DEFAULT, "x")
         val bar = KeyboardBar(ui, strip, ai)
-        strip.setModes(listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC, LayoutKind.ABC), LayoutKind.PHONETIC)
+        strip.setModes(listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL, LayoutKind.ABC), LayoutKind.PHONETIC)
         strip.micShown = true
         setup(strip, bar)
         return bar
@@ -423,10 +423,10 @@ class ToolbarRenderTest {
             shoot(
                 listOf(
                     bar(theme) { _, _ -> },
-                    bar(theme) { s, _ -> s.show(listOf(Suggestion("ሰላም", SuggestionKind.TRANSLITERATION), Suggestion("ሰላማ", SuggestionKind.COMPLETION)), true) },
+                    bar(theme) { s, _ -> s.show(listOf(Suggestion("ሰላም", SuggestionKind.TRANSLITERATION), Suggestion("ሰላማ", SuggestionKind.COMPLETION))) },
                     bar(theme) { s, _ -> s.setActiveTools(setOf(Tool.AI)) },
                     bar(theme, AiAvailability(block = AiBlock.SIGNED_OUT)) { _, _ -> },
-                    bar(theme) { s, _ -> s.activate(CandidateStripView.Target.Pill) },
+                    bar(theme) { s, _ -> s.setModes(listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL, LayoutKind.ABC), LayoutKind.FIDEL) },
                     keys,
                 ),
                 File(out, "keys-${theme.id}.png"),

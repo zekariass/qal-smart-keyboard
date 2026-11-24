@@ -103,6 +103,7 @@ class AiAssistControllerTest {
             AiAssistAction.SIMPLIFY to AiTask.Simplify(null),
             AiAssistAction.REPLY to AiTask.Reply("am", "", 3, 0),
             AiAssistAction.SUMMARIZE to AiTask.Summarize("am", AiLength.MEDIUM),
+            AiAssistAction.FORMAT to AiTask.Format(AiFormat.BULLETS, null),
         )
         for ((action, task) in expected) {
             val h = H(selection = "Some text to work on")
@@ -165,6 +166,40 @@ class AiAssistControllerTest {
         h.c.run()
         assertEquals(AiTask.Reply("en", "ok but at 3pm", 3, 0), h.sent().task)
         assertFalse("the note never appears in toString", h.sent().task.toString().contains("3pm"))
+    }
+
+    @Test fun aReplyIntentChipSendsThePresetStanceAndTappingItAgainClearsIt() {
+        val h = H(selection = "Can we meet on Friday?")
+        h.c.open()
+        h.c.selectAction(AiAssistAction.REPLY)
+        h.c.chooseIntent(AiReplyIntent.DECLINE_POLITELY)
+        h.c.run()
+        assertEquals(AiReplyIntent.DECLINE_POLITELY, (h.sent().task as AiTask.Reply).intent)
+        h.c.backToEdit()
+        h.c.chooseIntent(AiReplyIntent.DECLINE_POLITELY)
+        assertNull(h.c.replyIntent)
+        h.c.run()
+        assertNull((h.sent().task as AiTask.Reply).intent)
+        h.c.chooseIntent(AiReplyIntent.AGREE)
+        h.c.close() // the stance does not survive the panel
+        h.c.open()
+        assertNull(h.c.replyIntent)
+    }
+
+    @Test fun formatSendsTheChosenShapeAndRegenerates() {
+        val h = H(selection = "release notes draft")
+        h.c.open()
+        h.c.selectAction(AiAssistAction.FORMAT)
+        assertEquals(AiFormat.BULLETS, h.c.format)
+        h.c.chooseFormat(AiFormat.MEETING_NOTES)
+        h.c.run()
+        assertEquals(AiTask.Format(AiFormat.MEETING_NOTES, null), h.sent().task)
+        h.actions.answer(0, FakeAiActions.ok("notes"))
+        h.c.regenerate()
+        assertEquals(AiTask.Format(AiFormat.MEETING_NOTES, null, variation = 1), h.sent().task)
+        h.c.close()
+        h.c.open()
+        assertEquals(AiFormat.BULLETS, h.c.format)
     }
 
     @Test fun nothingIsSentWithoutTextOrWithTooMuch() {

@@ -1,13 +1,17 @@
 package com.qalsmartkeyboard.aiclient
 
 import com.qalsmartkeyboard.ime.ai.AiDestination
+import com.qalsmartkeyboard.ime.ai.AiDocumentType
 import com.qalsmartkeyboard.ime.ai.AiEmailMode
 import com.qalsmartkeyboard.ime.ai.AiEmailSpec
 import com.qalsmartkeyboard.ime.ai.AiEmailTone
+import com.qalsmartkeyboard.ime.ai.AiFormat
 import com.qalsmartkeyboard.ime.ai.AiLanguages
 import com.qalsmartkeyboard.ime.ai.AiLength
 import com.qalsmartkeyboard.ime.ai.AiOutcome
+import com.qalsmartkeyboard.ime.ai.AiReplyIntent
 import com.qalsmartkeyboard.ime.ai.AiRequest
+import com.qalsmartkeyboard.ime.ai.AiRewriteMode
 import com.qalsmartkeyboard.ime.ai.AiTask
 import com.qalsmartkeyboard.ime.ai.AiTaskKind
 import com.qalsmartkeyboard.ime.ai.AiTone
@@ -108,6 +112,41 @@ class AiTextActionsWireTest {
         val (_, grammar) = sent()
         assertFalse("grammar keeps the text's language", "outputLanguage" in grammar)
         for (b in listOf(explain, summary, simplify, professional, rewrite, grammar)) assertFalse("variation 0 is the default", "variation" in b)
+    }
+
+    @Test fun formatAndTheRewriteModesSendTheirOptions() {
+        val a = actions()
+        repeat(4) { server.enqueue(json(transformed)) }
+        run(a, AiTask.Format(AiFormat.BULLETS, "am"))
+        run(a, AiTask.Rewrite(null, null, mode = AiRewriteMode.SHORTEN))
+        run(a, AiTask.Rewrite(null, null, mode = AiRewriteMode.EXPAND))
+        run(a, AiTask.Rewrite(null, null, mode = AiRewriteMode.CLARIFY))
+
+        val (p1, format) = sent()
+        assertEquals("/api/v1/ai/transform", p1)
+        assertEquals("FORMAT_TEXT", format.s("task"))
+        assertEquals("BULLETS", format["options"]!!.jsonObject.s("format"))
+        assertEquals("am", format.s("outputLanguage"))
+        assertEquals(AiTaskKind.FORMAT, AiTask.Format(AiFormat.BULLETS).kind)
+        for (mode in listOf("SHORTEN", "EXPAND", "CLARIFY")) {
+            val (_, body) = sent()
+            assertEquals("REWRITE", body.s("task"))
+            assertEquals(mode, body["options"]!!.jsonObject.s("mode"))
+            assertFalse("no tone: a plain rewrite", "tone" in body["options"]!!.jsonObject)
+        }
+    }
+
+    @Test fun aReplyIntentIsSentWhenPickedAndLeftOutOtherwise() {
+        server.enqueue(json("""{"requestId":"r","suggestions":[{"text":"Sorry, I can't."}],"replayed":false}"""))
+        run(actions(), AiTask.Reply("en", intent = AiReplyIntent.DECLINE_POLITELY), "Can you come?")
+        assertEquals("DECLINE_POLITELY", sent().second.s("intent"))
+    }
+
+    @Test fun theEmailDocumentTypeIsSent() {
+        server.enqueue(json("""{"requestId":"r","body":"Dear Sir,","replayed":false}"""))
+        val spec = AiEmailSpec(AiEmailMode.NEW, "en", "applying for the post", documentType = AiDocumentType.JOB_APPLICATION)
+        run(actions(), AiTask.Email(spec), spec.mainText)
+        assertEquals("JOB_APPLICATION", sent().second.s("documentType"))
     }
 
     @Test fun regeneratedTransformTasksSendTheirVariation() {
@@ -234,7 +273,7 @@ class AiTextActionsWireTest {
 
     @Test fun everyKindHasItsFeatureCode() {
         assertEquals(
-            listOf("TRANSLATE", "GRAMMAR_CORRECTION", "REWRITE", "TONE_ADJUST", "EXPLAIN_TEXT", "SUMMARIZE", "SMART_REPLY", "DRAFT_DOCUMENT"),
+            listOf("TRANSLATE", "GRAMMAR_CORRECTION", "REWRITE", "TONE_ADJUST", "EXPLAIN_TEXT", "SUMMARIZE", "SMART_REPLY", "DRAFT_DOCUMENT", "FORMAT_TEXT"),
             AiTaskKind.entries.map(AiWire::featureCode),
         )
     }

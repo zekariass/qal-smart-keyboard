@@ -47,6 +47,9 @@ class AiEmailController(
 
     var mode: AiEmailMode = AiEmailMode.NEW
         private set
+    /** The document being written (ADR 0048): an e-mail by default; the other kinds the server serves. */
+    var documentType: AiDocumentType = AiDocumentType.EMAIL
+        private set
     var tone: AiEmailTone = AiEmailTone.PROFESSIONAL
         private set
     var length: AiLength = AiLength.MEDIUM
@@ -109,6 +112,7 @@ class AiEmailController(
         runner.cancel()
         listOf(instructions, original, draft, recipient, sender, subject, body).forEach { it.set("") }
         mode = AiEmailMode.NEW
+        documentType = AiDocumentType.EMAIL
         tone = AiEmailTone.PROFESSIONAL
         length = AiLength.MEDIUM
         language = "en"
@@ -126,6 +130,7 @@ class AiEmailController(
 
     private fun apply(spec: AiEmailSpec) {
         mode = spec.mode
+        documentType = spec.documentType
         language = spec.language.takeIf { it in AiLanguages.ALL } ?: "en"
         tone = spec.tone
         length = spec.length
@@ -143,6 +148,13 @@ class AiEmailController(
         mode = m
         problem = null
         step = AiEmailStep.Compose
+        onChanged()
+    }
+
+    fun chooseDocumentType(t: AiDocumentType) {
+        if (busy || t == documentType) return
+        documentType = t
+        problem = null
         onChanged()
     }
 
@@ -245,6 +257,7 @@ class AiEmailController(
     /** What would be sent now (also what "Open full editor" hands over). */
     fun spec(variation: Int = 0): AiEmailSpec = AiEmailSpec(
         mode = mode,
+        documentType = documentType,
         language = language,
         instructions = instructions.text.trim(),
         originalEmail = if (mode == AiEmailMode.REPLY) original.text.trim() else "",

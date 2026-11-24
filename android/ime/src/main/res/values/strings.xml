@@ -1,22 +1,16 @@
 <resources>
     <string name="ime_name">Qal Smart Keyboard</string>
     <string name="subtype_english_qwerty">English (QWERTY)</string>
-    <!-- N9: shown on the candidate strip while the transliteration profile is DRAFT (not native-speaker approved). -->
-    <string name="candidate_strip_draft">DRAFT</string>
-    <string name="candidate_strip_draft_description">Draft suggestions, not verified by native speakers</string>
     <!-- Top bar: settings gear and the writing-mode selector (am/ti: Fidel, Phonetic, English). -->
     <string name="top_bar_settings">Keyboard settings</string>
     <string name="top_bar_mode">Writing mode: %1$s</string>
     <string name="top_bar_mode_change">Change writing mode</string>
-    <string name="top_bar_mode_option">%1$s writing mode</string>
     <!-- The one bar above the keys: the "AI" entry (a drawn mark, not text) opens the AI tools grid (ADR 0041); its name. -->
     <string name="top_bar_ai_open">AI tools</string>
     <string name="top_bar_candidate_add">Add to your dictionary</string>
     <string name="top_bar_candidate_autocorrect">%1$s, auto-correction</string>
-    <string name="top_bar_more_suggestions">More suggestions</string>
-    <string name="top_bar_fewer_suggestions">Fewer suggestions</string>
+    <string name="top_bar_back_to_tools">Back to tools</string>
     <!-- Accessibility: keys. -->
-    <string name="key_draft_description">draft, not verified by native speakers</string>
     <string name="key_globe_long_action">Change layout</string>
     <string name="key_emoji_description">Emoji</string>
     <!-- Emoji panel (ADR 0028). -->
@@ -55,6 +49,31 @@
     <string name="ai_tone_concise">Concise</string>
     <string name="ai_tone_apologetic">Apologetic</string>
     <string name="ai_tone_honorific">Honorific</string>
+    <string name="ai_tone_romantic">Romantic</string>
+    <string name="ai_tone_confident">Confident</string>
+    <string name="ai_tone_funny">Funny</string>
+    <string name="ai_tone_persuasive">Persuasive</string>
+    <string name="ai_tool_shorten">Shorter</string>
+    <string name="ai_tool_expand">Expand</string>
+    <string name="ai_tool_clarify">Clarify</string>
+    <string name="ai_reply_intent_label">Reply stance (optional)</string>
+    <string name="ai_intent_agree">Agree</string>
+    <string name="ai_intent_disagree">Disagree politely</string>
+    <string name="ai_intent_clarify">Ask to clarify</string>
+    <string name="ai_intent_accept">Accept invitation</string>
+    <string name="ai_intent_decline">Decline politely</string>
+    <string name="ai_intent_thank">Thank them</string>
+    <string name="ai_format_label">Shape into</string>
+    <string name="ai_format_bullets">Bullet points</string>
+    <string name="ai_format_numbered">Numbered list</string>
+    <string name="ai_format_paragraphs">Paragraphs</string>
+    <string name="ai_format_report">Report</string>
+    <string name="ai_format_meeting_notes">Meeting notes</string>
+    <string name="ai_doctype_email">E-mail</string>
+    <string name="ai_doctype_job_application">Job application</string>
+    <string name="ai_doctype_cv">CV</string>
+    <string name="ai_doctype_cover_letter">Cover letter</string>
+    <string name="ai_doctype_business">Business message</string>
     <!-- ADR 0041: the AI tools grid. A tone tile's TalkBack name; the compact line above the tiles. -->
     <string name="ai_tile_tone_description">Rewrite, tone: %1$s</string>
     <string name="ai_grid_offline">Offline: AI needs a connection</string>
@@ -156,6 +175,7 @@
     <string name="ai_action_simplify">Simplify</string>
     <string name="ai_action_reply">Reply</string>
     <string name="ai_action_summarize">Summarise</string>
+    <string name="ai_action_format">Format</string>
     <string name="ai_action_locked">%1$s, Premium</string>
     <string name="ai_output_label">Output</string>
     <string name="ai_output_change">Output language %1$s. Change</string>
@@ -176,6 +196,8 @@
     <string name="ai_run_simplify_in">Simplify in %1$s</string>
     <string name="ai_run_reply">Suggest replies in %1$s</string>
     <string name="ai_run_summarize">Summarise in %1$s</string>
+    <string name="ai_run_format">Format text</string>
+    <string name="ai_run_format_in">Format in %1$s</string>
     <string name="ai_run_locked">Premium: unlock %1$s</string>
     <string name="ai_working_translate">Translating to %1$s…</string>
     <string name="ai_working_explain">Explaining…</string>
@@ -183,6 +205,7 @@
     <string name="ai_working_rewrite">Rewriting…</string>
     <string name="ai_working_reply">Writing replies…</string>
     <string name="ai_working_summarize">Summarising…</string>
+    <string name="ai_working_format">Formatting…</string>
     <string name="ai_working_email">Writing your e-mail…</string>
     <string name="ai_wait_long">This can take up to %1$d seconds.</string>
     <string name="ai_pick_reply">Pick a reply</string>

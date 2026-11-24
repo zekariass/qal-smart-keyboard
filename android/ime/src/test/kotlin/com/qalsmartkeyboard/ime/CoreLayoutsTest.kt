@@ -42,8 +42,7 @@ class CoreLayoutsTest {
         val coreGe = am.rows.flatten().first { it.seriesId == "G" }
         assertEquals(coreGe.forms.map { it.text }, ge.popup.map { it.text })
         assertTrue("labialised forms are in the popup", coreGe.forms.any { it.order > 10 })
-        assertTrue(s.c.candidatesAreDraft) // N9: the DRAFT layout is flagged
-        assertTrue(keys.first { it.kind == KeyKind.SPACE }.draftBadge)
+        assertTrue(s.c.candidatesAreDraft) // the bundled layout is still DRAFT data (not verified)
         s.mode(tiFidel)
         assertTrue(s.c.layout.rows.flatten().any { it.kind == KeyKind.FIDEL_CONSONANT && it.text == "QH" })
         // every key has a spoken description
@@ -156,7 +155,9 @@ class CoreLayoutsTest {
         val period = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "።" }
         assertEquals(listOf(".", "፣", "፤", "፥", "፦", "፧", "፨", "፡"), period.popup.map { it.text })
         val comma = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "፣" }
-        assertEquals(listOf(",", "፤"), comma.popup.map { it.text })
+        // The comma's long-press opens the emoji panel; ፤ and the ASCII mark stay on the period and symbols keys.
+        assertTrue(comma.popup.isEmpty())
+        assertEquals(LongAction.EMOJI, comma.longAction)
         s.consonant("S"); s.vowel(1)
         s.tap(period)
         assertEquals("ሰ።", s.ed.text.toString())
@@ -191,16 +192,19 @@ class CoreLayoutsTest {
         val period = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "።" }
         val comma = s.c.layout.rows.last().first { it.kind == KeyKind.CHAR && it.text == "፣" }
         assertEquals(".", period.popup.first().text)
-        assertEquals(",", comma.popup.first().text)
+        // The comma's long-press opens the emoji panel; the ASCII comma lives on the symbols page.
+        assertTrue(comma.popup.isEmpty())
+        assertEquals(LongAction.EMOJI, comma.longAction)
         s.type("sela")
         s.tap(comma)
         s.type("selam")
         s.tap(period)
         assertEquals("ሰላ፣ሰላም።", s.ed.text.toString())
         assertEquals("", s.ed.composing)
-        // The ASCII marks stay one long-press away.
+        // The ASCII marks stay one long-press away on the period key, the comma on the symbols page.
         s.pick(period.popup.first())
-        s.pick(comma.popup.first())
+        s.tap(s.key(KeyKind.TO_SYMBOLS))
+        s.tap(s.c.layout.rows.flatten().first { it.kind == KeyKind.CHAR && it.text == "," })
         assertEquals("ሰላ፣ሰላም።.,", s.ed.text.toString())
     }
 

@@ -44,6 +44,7 @@ class AiGraph private constructor(context: Context) {
             baseUrl = BuildConfig.API_BASE_URL,
             client = ClientInfo(BuildConfig.VERSION_NAME, ClientSurface.KEYBOARD),
             logger = CallLogger { _, status, _ -> if (status == 426) updateRequired = true },
+            extraCleartextHosts = BaseUrlGuard.debugCleartextHosts(BuildConfig.API_BASE_URL, BuildConfig.DEBUG),
         ),
         auth.session,
     )

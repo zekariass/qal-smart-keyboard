@@ -72,16 +72,16 @@ class ArabicKeyboardTest {
 
     @Test fun bottomRowIsTheOtherLanguagesRowWithTheMarksKeyAfterTheGlobe() {
         val bottom = letters().rows.last()
-        // ADR 0035: ?123, comma, globe, marks, emoji, space, period, Enter.
+        // ADR 0035: ?123, comma, globe, marks, space, period, Enter (emoji folded into the comma's long-press).
         assertEquals(
-            listOf(KeyKind.TO_SYMBOLS, KeyKind.CHAR, KeyKind.GLOBE, KeyKind.CHAR, KeyKind.EMOJI, KeyKind.SPACE, KeyKind.CHAR, KeyKind.ENTER),
+            listOf(KeyKind.TO_SYMBOLS, KeyKind.CHAR, KeyKind.GLOBE, KeyKind.CHAR, KeyKind.SPACE, KeyKind.CHAR, KeyKind.ENTER),
             bottom.map { it.kind },
         )
         val oromo = Layouts.forPage(Page.LETTERS, text, LayoutContext(TypingMode("om", LayoutKind.QUBEE))).rows.last()
         assertEquals(oromo.map { it.kind }, bottom.filterIndexed { i, _ -> i != 3 }.map { it.kind })
         assertEquals("Arabic marks", bottom[3].description)
-        assertTrue("the space bar keeps three key widths", bottom[5].weight >= 3f)
-        assertEquals("ع · العربية", bottom[5].label)
+        assertTrue("the space bar keeps three key widths", bottom[4].weight >= 3f)
+        assertEquals("ع · العربية", bottom[4].label)
     }
 
     @Test fun theMarksKeyTypesAFathaAndOffersEveryHarakah() {
@@ -104,9 +104,11 @@ class ArabicKeyboardTest {
         val bottom = letters().rows.last()
         val comma = bottom[1]
         assertEquals("،", comma.text)
-        assertEquals(listOf("؛", ","), comma.popup.map { it.text })
-        assertEquals("Arabic comma", comma.description)
-        val period = bottom[6]
+        // The comma's long-press opens the emoji panel; ؛ and the ASCII comma stay on the period and symbols keys.
+        assertTrue(comma.popup.isEmpty())
+        assertEquals(LongAction.EMOJI, comma.longAction)
+        assertEquals("Arabic comma, Emoji", comma.description)
+        val period = bottom[5]
         assertEquals(".", period.text)
         assertEquals(listOf("؟", "!", "؛", ":"), period.popup.map { it.text })
         assertEquals("؟", period.hint)

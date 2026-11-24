@@ -11,12 +11,19 @@ enum class AiQuickAction(val task: AiTask) {
     GRAMMAR(AiTask.Grammar),
     REWRITE(AiTask.Rewrite(null)),
     SIMPLIFY(AiTask.Simplify()),
+    SHORTEN(AiTask.Rewrite(null, mode = AiRewriteMode.SHORTEN)),
+    EXPAND(AiTask.Rewrite(null, mode = AiRewriteMode.EXPAND)),
+    CLARIFY(AiTask.Rewrite(null, mode = AiRewriteMode.CLARIFY)),
     PROFESSIONAL(AiTask.Rewrite(AiTone.PROFESSIONAL)),
     FRIENDLY(AiTask.Rewrite(AiTone.FRIENDLY)),
     POLITE(AiTask.Rewrite(AiTone.POLITE)),
     CONCISE(AiTask.Rewrite(AiTone.CONCISE)),
     APOLOGETIC(AiTask.Rewrite(AiTone.APOLOGETIC)),
     HONORIFIC(AiTask.Rewrite(AiTone.HONORIFIC)),
+    ROMANTIC(AiTask.Rewrite(AiTone.ROMANTIC)),
+    CONFIDENT(AiTask.Rewrite(AiTone.CONFIDENT)),
+    FUNNY(AiTask.Rewrite(AiTone.FUNNY)),
+    PERSUASIVE(AiTask.Rewrite(AiTone.PERSUASIVE)),
 }
 
 /**
@@ -34,6 +41,10 @@ enum class AiTool(val icon: ToolIcon, val quick: AiQuickAction? = null, val assi
     GRAMMAR(ToolIcon.GRAMMAR, quick = AiQuickAction.GRAMMAR),
     REWRITE(ToolIcon.REWRITE, quick = AiQuickAction.REWRITE),
     SIMPLIFY(ToolIcon.SIMPLIFY, quick = AiQuickAction.SIMPLIFY),
+    SHORTEN(ToolIcon.SHORTEN, quick = AiQuickAction.SHORTEN),
+    EXPAND(ToolIcon.EXPAND_TEXT, quick = AiQuickAction.EXPAND),
+    CLARIFY(ToolIcon.CLARIFY, quick = AiQuickAction.CLARIFY),
+    FORMAT(ToolIcon.FORMAT, assist = AiAssistAction.FORMAT),
     REPLY(ToolIcon.REPLY, assist = AiAssistAction.REPLY),
     EMAIL(ToolIcon.EMAIL),
     EXPLAIN(ToolIcon.EXPLAIN, assist = AiAssistAction.EXPLAIN),
@@ -44,6 +55,10 @@ enum class AiTool(val icon: ToolIcon, val quick: AiQuickAction? = null, val assi
     CONCISE(ToolIcon.CONCISE, quick = AiQuickAction.CONCISE),
     APOLOGETIC(ToolIcon.APOLOGETIC, quick = AiQuickAction.APOLOGETIC),
     HONORIFIC(ToolIcon.HONORIFIC, quick = AiQuickAction.HONORIFIC),
+    ROMANTIC(ToolIcon.ROMANTIC, quick = AiQuickAction.ROMANTIC),
+    CONFIDENT(ToolIcon.CONFIDENT, quick = AiQuickAction.CONFIDENT),
+    FUNNY(ToolIcon.FUNNY, quick = AiQuickAction.FUNNY),
+    PERSUASIVE(ToolIcon.PERSUASIVE, quick = AiQuickAction.PERSUASIVE),
     ASSIST(ToolIcon.ASSIST),
     ;
 

@@ -4,20 +4,15 @@
 <resources>
     <string name="ime_name">Qal Smart Keyboard</string>
     <string name="subtype_english_qwerty">Ingiliffa (QWERTY)</string>
-    <string name="candidate_strip_draft">WIXINEE</string>
-    <string name="candidate_strip_draft_description">Yaadota wixinee, dubbattoota afaan dhalootaatiin hin mirkanoofne</string>
     <!-- Top bar -->
     <string name="top_bar_settings">Qindaa\'ina kiiboordii</string>
     <string name="top_bar_mode">Akkaataa barreessuu: %1$s</string>
     <string name="top_bar_mode_change">Akkaataa barreessuu jijjiiraa</string>
-    <string name="top_bar_mode_option">Akkaataa barreessuu %1$s</string>
     <string name="top_bar_ai_open">Meeshaalee AI</string>
     <string name="top_bar_candidate_add">Galmee jechootaa keessanitti dabalaa</string>
     <string name="top_bar_candidate_autocorrect">%1$s, ofumaan sirreessuu</string>
-    <string name="top_bar_more_suggestions">Yaadota dabalataa</string>
-    <string name="top_bar_fewer_suggestions">Yaadota muraasa</string>
+    <string name="top_bar_back_to_tools">Gara meeshaaleetti deebi\'i</string>
     <!-- Accessibility: keys -->
-    <string name="key_draft_description">wixinee, dubbattoota afaan dhalootaatiin hin mirkanoofne</string>
     <string name="key_globe_long_action">Qindaa\'ina furtuu jijjiiraa</string>
     <string name="key_emoji_description">Emojii</string>
     <!-- Emoji panel -->
@@ -56,6 +51,31 @@
     <string name="ai_tone_concise">Gabaabaa</string>
     <string name="ai_tone_apologetic">Dhiifama</string>
     <string name="ai_tone_honorific">Kabaja olaanaa</string>
+    <string name="ai_tone_romantic">Jaallachaa</string>
+    <string name="ai_tone_confident">Of-amanamee</string>
+    <string name="ai_tone_funny">Kolfaa</string>
+    <string name="ai_tone_persuasive">Ammamsiisaa</string>
+    <string name="ai_tool_shorten">Gabaabsaa</string>
+    <string name="ai_tool_expand">Dheeressaa</string>
+    <string name="ai_tool_clarify">Ifa godhaa</string>
+    <string name="ai_reply_intent_label">Akkataa deebii (dirqalee)</string>
+    <string name="ai_intent_agree">Walii gali</string>
+    <string name="ai_intent_disagree">Kabajaan wal hin-galine</string>
+    <string name="ai_intent_clarify">Ibsa gaafadhu</string>
+    <string name="ai_intent_accept">Afeerraa fudhadhu</string>
+    <string name="ai_intent_decline">Kabajaan didii</string>
+    <string name="ai_intent_thank">Galateeffadhu</string>
+    <string name="ai_format_label">Bifa filadhu</string>
+    <string name="ai_format_bullets">Tuqaalee</string>
+    <string name="ai_format_numbered">Tarree lakkoofsaa</string>
+    <string name="ai_format_paragraphs">Keeyyata</string>
+    <string name="ai_format_report">Gabaasa</string>
+    <string name="ai_format_meeting_notes">Yaadannoo marii</string>
+    <string name="ai_doctype_email">Imeelii</string>
+    <string name="ai_doctype_job_application">Iyyannoo hojii</string>
+    <string name="ai_doctype_cv">CV</string>
+    <string name="ai_doctype_cover_letter">Xalayaa haguuggii</string>
+    <string name="ai_doctype_business">Ergaa daldalaa</string>
     <string name="ai_tile_tone_description">Irra deebi\'ii barreessi, akkaataa: %1$s</string>
     <string name="ai_grid_offline">Toora ala: AI walqunnamtii barbaada</string>
     <string name="ai_grid_quota">%1$s: %2$s</string>
@@ -155,6 +175,7 @@
     <string name="ai_action_simplify">Salphisaa</string>
     <string name="ai_action_reply">Deebisaa</string>
     <string name="ai_action_summarize">Cuunfaa</string>
+    <string name="ai_action_format">Bifa godhii</string>
     <string name="ai_action_locked">%1$s, Premium</string>
     <string name="ai_output_label">Bu\'aa</string>
     <string name="ai_output_change">Afaan bu\'aa %1$s. Jijjiiraa</string>
@@ -175,6 +196,8 @@
     <string name="ai_run_simplify_in">%1$s tiin salphisaa</string>
     <string name="ai_run_reply">%1$s tiin deebii yaada kennaa</string>
     <string name="ai_run_summarize">%1$s tiin cuunfaa</string>
+    <string name="ai_run_format">Barruu bifa godhii</string>
+    <string name="ai_run_format_in">%1$s tiin bifa godhii</string>
     <string name="ai_run_locked">Premium: %1$s banaa</string>
     <string name="ai_working_translate">Gara %1$s tti hiikaa jira…</string>
     <string name="ai_working_explain">Ibsaa jira…</string>
@@ -182,6 +205,7 @@
     <string name="ai_working_rewrite">Irra deebi\'ee barreessaa jira…</string>
     <string name="ai_working_reply">Deebiiwwan barreessaa jira…</string>
     <string name="ai_working_summarize">Cuunfaa jira…</string>
+    <string name="ai_working_format">Bifa gochaa jira…</string>
     <string name="ai_working_email">Imeelii keessan barreessaa jira…</string>
     <string name="ai_wait_long">Kun hanga sekondii %1$d fudhachuu danda\'a.</string>
     <string name="ai_pick_reply">Deebii tokko filadhaa</string>

@@ -137,7 +137,7 @@ class TranslatePanelViewTest {
         assertEquals(View.VISIBLE, h.view.inputLabelView.visibility)
     }
 
-    @Test fun translateShowsWorkingThenTheResultWithCopyAndInsert() {
+    @Test fun translateShowsWorkingThenTheResultWithCopyReplaceAndInsert() {
         val h = H("Hi").open()
         h.type("Good morning")
         h.view.translateButtonView.performClick()
@@ -147,7 +147,8 @@ class TranslatePanelViewTest {
         h.actions.answer(0, AiOutcome.Success(AiResult("እንደምን አደርክ", sourceLanguage = "en")))
         h.layout()
         assertEquals("እንደምን አደርክ", h.view.resultView!!.text.toString())
-        assertTrue(h.outputTexts().containsAll(listOf("English → Amharic", "Copy", "Insert")))
+        assertTrue(h.outputTexts().containsAll(listOf("English → Amharic", "Copy", "Replace", "Insert")))
+        assertFalse("typed text has no field source to replace", h.button("Replace").isEnabled)
         h.button("Copy").performClick()
         assertTrue("Copy turns into Copied", h.outputTexts().contains("Copied"))
         h.button("Insert").performClick()
@@ -166,7 +167,7 @@ class TranslatePanelViewTest {
         assertEquals("Hello", h.c.input.text)
     }
 
-    @Test fun aSelectionReadsReplace() {
+    @Test fun aSelectionOffersReplaceAlongsideInsert() {
         val h = H("abc def")
         h.ed.selStart = 4
         h.ed.selEnd = 7
@@ -174,9 +175,22 @@ class TranslatePanelViewTest {
         assertEquals("Selected text", h.view.inputLabelView.text.toString())
         h.view.translateButtonView.performClick()
         h.actions.answer(0, FakeAiActions.ok("DEF"))
+        assertTrue(h.button("Replace").isEnabled)
         h.button("Replace").performClick()
         assertEquals(listOf(AiApplied.REPLACED), h.applied)
         assertEquals("abc DEF", h.ed.text.toString())
+    }
+
+    @Test fun aTapInTheBoxBringsTheKeysBackAfterAResult() {
+        val h = H().open()
+        h.type("Hello")
+        h.view.translateButtonView.performClick()
+        h.actions.answer(0, FakeAiActions.ok("ሰላም"))
+        assertTrue(h.c.keysHidden)
+        h.view.inputEditor.performClick()
+        assertFalse(h.c.keysHidden)
+        h.view.translateButtonView.performClick()
+        assertTrue("a new send hides them again", h.c.keysHidden)
     }
 
     @Test fun arabicResultsAreRightToLeft() {
@@ -190,6 +204,18 @@ class TranslatePanelViewTest {
         h.view.translateButtonView.performClick()
         h.actions.answer(1, FakeAiActions.ok("ሰላም"))
         assertFalse(h.view.resultRtl)
+    }
+
+    @Test fun theCardFoldsAwayWhileCompactOutputIsSet() {
+        val h = H().open()
+        h.type("Hello")
+        h.view.translateButtonView.performClick()
+        h.actions.answer(0, FakeAiActions.ok("ሰላም"))
+        assertEquals(View.VISIBLE, h.view.outputView.visibility)
+        h.view.compactOutput = true
+        assertEquals(View.GONE, h.view.outputView.visibility)
+        h.view.compactOutput = false
+        assertEquals(View.VISIBLE, h.view.outputView.visibility)
     }
 
     @Test fun errorsShowTheMessageTheLinkAndRetryWhereItHelps() {

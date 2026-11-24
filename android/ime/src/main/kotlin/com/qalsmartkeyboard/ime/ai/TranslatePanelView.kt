@@ -46,7 +46,11 @@ import com.qalsmartkeyboard.ime.toolbar.ToolIcons
  *   row, and the keys insert and delete at the cursor.
  * - **Output:** nothing; a one-line reason with its link (signed out, update, plan, offline); the spinner with Cancel;
  *   the translation (in the destination's direction: right-to-left for Arabic) with its direction line, alternatives,
- *   Copy and Insert (Replace when it came from the field); or an error with its link and Retry where it helps.
+ *   Copy, Replace (what the box came from; only while it still matches) and Insert (at the cursor); or an error with
+ *   its link and Retry where it helps.
+ * - **Keys:** they stay under the panel while the user is entering text; once Translate sends they give way to the
+ *   output ([TranslateController.keysHidden]) so the window shrinks to the translate UI. A tap in the box brings them
+ *   back for the next edit ([TranslateController.startBoxEditing]).
  *
  * Plain Views on the theme's contrast-checked pairs (ADR 0031 §5) and the keyboard's icon family (ADR 0035). [render] runs
  * on state changes, [renderInput] on keys (it only touches the box). The working line, the translation, "Copied" and
@@ -121,6 +125,8 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
         editor.minLines = 1
         editor.maxLines = 3
         editor.setPadding(dp(4f), dp(8f), dp(4f), dp(8f))
+        // A tap means "edit again": the keys come back after a sent request hid them.
+        editor.onTap = { controller?.startBoxEditing() }
     }
     private val clearButton = IconView(context, ToolIcon.CLOSE, 18f).also { button(it, R.string.ai_source_clear) { tap { controller?.clearInput() } } }
     private val sentenceChip = text(13f).apply {
@@ -158,6 +164,17 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
 
     // ---------------------------------------------------------------- output (rebuilt per state)
     private val output = LinearLayout(context).apply { orientation = VERTICAL }
+
+    /**
+     * The output folds away while it is set (the service uses it while the box is edited on a landscape screen, where
+     * the panel plus the keys would not fit): the state is kept and the card returns when editing ends.
+     */
+    var compactOutput = false
+        set(value) {
+            if (field == value) return
+            field = value
+            output.visibility = if (!value && output.childCount > 0) VISIBLE else GONE
+        }
 
     /** The output view of the last [render] for tests: the translation text, or null. */
     internal var resultView: TextView? = null
@@ -332,7 +349,7 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
                 announce = msg
             }
         }
-        output.visibility = if (output.childCount > 0) VISIBLE else GONE
+        output.visibility = if (output.childCount > 0 && !compactOutput) VISIBLE else GONE
         if (announce != null && announce != lastAnnounced) announceForAccessibility(announce)
         lastAnnounced = announce
     }
@@ -398,6 +415,7 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
         r.result.notes.take(2).forEach { n ->
             card.addView(TextView(context).apply { text = n; setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setTextColor(theme.hintText) })
         }
+        if (c.notice == AiNotice.INSERT_FAILED) card.addView(line(context.getString(R.string.ai_apply_failed), warn = true))
         val actions = row().apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
         val copied = c.notice == AiNotice.COPIED
         actions.addView(
@@ -405,8 +423,15 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
                 tap { c.copy() }
             },
         )
-        val insertLabel = context.getString(if (c.replacesFieldText) R.string.ai_replace else R.string.ai_insert)
-        actions.addView(pill(insertLabel, primary = true) { tap { onApplied(c.insert()) } })
+        // Replace acts on what the box came from (the selection or the sentence); without one it only marks the slot.
+        val replace = pill(context.getString(R.string.ai_replace), onCard = true) { tap { onApplied(c.replace()) } }
+        if (!c.replacesFieldText) {
+            replace.isEnabled = false
+            replace.isClickable = false
+            replace.alpha = 0.45f
+        }
+        actions.addView(replace)
+        actions.addView(pill(context.getString(R.string.ai_insert), primary = true) { tap { onApplied(c.insert()) } })
         card.addView(actions, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         return LinearLayout(context).apply {
             orientation = VERTICAL

@@ -84,8 +84,9 @@ object ToolSet {
     }
 
     /**
-     * The bar's pinned shortcuts in priority order: Translate, AI, Clipboard, then Settings, Theme and Emoji while width
-     * allows. Voice is not here: the microphone has its own place at the bar's right end.
+     * The bar's pinned shortcuts in priority order: Translate, AI, Clipboard, Settings, Theme, Emoji — all of them,
+     * the middle scrolling sideways when they do not fit. Voice is not here: the microphone has its own place at the
+     * bar's right end.
      */
     fun shortcutCandidates(c: ToolContext): List<ToolEntry> = buildList {
         if (c.aiReady) {
@@ -98,8 +99,6 @@ object ToolSet {
         if (c.profile.allowsEmoji && c.emojiReady) add(ToolEntry(Tool.EMOJI))
     }
 
-    /** The first [slots] shortcuts (none when [slots] ≤ 0). */
-    fun shortcuts(c: ToolContext, slots: Int): List<ToolEntry> = shortcutCandidates(c).take(slots.coerceAtLeast(0))
 }
 
 /** What the keyboard does when a tool is chosen (implemented by the service; faked in tests). */
@@ -115,7 +114,9 @@ interface ToolHost {
     fun openEmoji()
     fun startVoice()
     fun openWordArt()
-    fun openWritingModes()
+
+    /** The bar's Writing mode tile: cycles the language's writing modes (am/ti: Phonetic → Fidel → English). */
+    fun cycleWritingMode()
     fun openLanguages()
     fun openTheme()
     fun openSettings()
@@ -219,7 +220,7 @@ class ToolsController(
             Tool.EMOJI -> host.openEmoji()
             Tool.VOICE -> host.startVoice()
             Tool.WORD_ART -> host.openWordArt()
-            Tool.WRITING_MODE -> host.openWritingModes()
+            Tool.WRITING_MODE -> host.cycleWritingMode()
             Tool.LANGUAGES -> host.openLanguages()
             Tool.THEME -> host.openTheme()
             Tool.SETTINGS -> host.openSettings()

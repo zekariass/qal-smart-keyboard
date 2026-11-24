@@ -4,20 +4,15 @@
 <resources>
     <string name="ime_name">Qal Smart Keyboard</string>
     <string name="subtype_english_qwerty">እንግሊዝኛ (QWERTY)</string>
-    <string name="candidate_strip_draft">ንድፊ</string>
-    <string name="candidate_strip_draft_description">ንድፊ እማመታት፣ ብተዛረብቲ ቋንቋ ኣደ ገና ዘይተረጋገጹ</string>
     <!-- Top bar -->
     <string name="top_bar_settings">ቅጥዕታት ኪቦርድ</string>
     <string name="top_bar_mode">ኣገባብ ጽሕፈት: %1$s</string>
     <string name="top_bar_mode_change">ኣገባብ ጽሕፈት ቀይሩ</string>
-    <string name="top_bar_mode_option">ኣገባብ ጽሕፈት %1$s</string>
     <string name="top_bar_ai_open">መሳርሒታት AI</string>
     <string name="top_bar_candidate_add">ናብ መዝገበ ቃላትኩም ወስኹ</string>
     <string name="top_bar_candidate_autocorrect">%1$s፣ ባዕላዊ መአረሚ</string>
-    <string name="top_bar_more_suggestions">ተወሳኺ ርእይቶታት</string>
-    <string name="top_bar_fewer_suggestions">ዝወሓዱ ርእይቶታት</string>
+    <string name="top_bar_back_to_tools">ናብ መሳርሒታት ተመለስ</string>
     <!-- Accessibility: keys -->
-    <string name="key_draft_description">ንድፊ፣ ብተዛረብቲ ቋንቋ ኣደ ገና ዘይተረጋገጸ</string>
     <string name="key_globe_long_action">ሰሌዳ ቀይሩ</string>
     <string name="key_emoji_description">ኢሞጂ</string>
     <!-- Emoji panel -->
@@ -56,6 +51,31 @@
     <string name="ai_tone_concise">ሓጺር</string>
     <string name="ai_tone_apologetic">ይቕሬታ</string>
     <string name="ai_tone_honorific">ኣኽብሮት</string>
+    <string name="ai_tone_romantic">ፍትወኛ</string>
+    <string name="ai_tone_confident">ደፋር</string>
+    <string name="ai_tone_funny">ኣስቒ</string>
+    <string name="ai_tone_persuasive">ኣስማሚ</string>
+    <string name="ai_tool_shorten">ሓጽሩ</string>
+    <string name="ai_tool_expand">ኣራዝሙ</string>
+    <string name="ai_tool_clarify">ግልጺ ግበሩ</string>
+    <string name="ai_reply_intent_label">ኣቋም መልሲ (ኣማራጺ)</string>
+    <string name="ai_intent_agree">ሰማምዕ</string>
+    <string name="ai_intent_disagree">ብትሁትነት ኣይትሰማምዕ</string>
+    <string name="ai_intent_clarify">ኣብራሪ ጠይቕ</string>
+    <string name="ai_intent_accept">ግብዛ ተቀበል</string>
+    <string name="ai_intent_decline">ብትሁትነት ከልክል</string>
+    <string name="ai_intent_thank">የቐንየሉ</string>
+    <string name="ai_format_label">ቅርጺ</string>
+    <string name="ai_format_bullets">ነጥቢ ዝርዝር</string>
+    <string name="ai_format_numbered">ቑጽራዊ ዝርዝር</string>
+    <string name="ai_format_paragraphs">ኣንቀጽታት</string>
+    <string name="ai_format_report">ጸብጻብ</string>
+    <string name="ai_format_meeting_notes">ማስታወሻ ኣኼባ</string>
+    <string name="ai_doctype_email">ኢመይል</string>
+    <string name="ai_doctype_job_application">ናይ ስራ ማመልከቲ</string>
+    <string name="ai_doctype_cv">CV</string>
+    <string name="ai_doctype_cover_letter">ካቨር ሌተር</string>
+    <string name="ai_doctype_business">ናይ ንግዲ መልእኽቲ</string>
     <string name="ai_tile_tone_description">ደጊምኩም ጽሓፉ፣ ቃና፦ %1$s</string>
     <string name="ai_grid_offline">ካብ መስመር ወጻኢ፦ AI ምትእስሳር የድልዮ</string>
     <string name="ai_grid_quota">%1$s፦ %2$s</string>
@@ -155,6 +175,7 @@
     <string name="ai_action_simplify">ኣቃልሉ</string>
     <string name="ai_action_reply">መልሲ</string>
     <string name="ai_action_summarize">ጠቕልሉ</string>
+    <string name="ai_action_format">ኣቅርጽ</string>
     <string name="ai_action_locked">%1$s፣ Premium</string>
     <string name="ai_output_label">ውጽኢት</string>
     <string name="ai_output_change">ቋንቋ ውጽኢት %1$s። ቀይሩ</string>
@@ -175,6 +196,8 @@
     <string name="ai_run_simplify_in">ብ%1$s ኣቃልሉ</string>
     <string name="ai_run_reply">ብ%1$s መልስታት ኣቕርቡ</string>
     <string name="ai_run_summarize">ብ%1$s ጠቕልሉ</string>
+    <string name="ai_run_format">ጽሑፉ ኣቅርጽ</string>
+    <string name="ai_run_format_in">ብ%1$s ኣቅርጽ</string>
     <string name="ai_run_locked">Premium: %1$s ክፈቱ</string>
     <string name="ai_working_translate">ናብ %1$s ይትርጐም ኣሎ…</string>
     <string name="ai_working_explain">የብርህ ኣሎ…</string>
@@ -182,6 +205,7 @@
     <string name="ai_working_rewrite">ደጊሙ ይጽሕፍ ኣሎ…</string>
     <string name="ai_working_reply">መልስታት ይጽሕፍ ኣሎ…</string>
     <string name="ai_working_summarize">ይጠቕልል ኣሎ…</string>
+    <string name="ai_working_format">ይቀርጽ ኣሎ…</string>
     <string name="ai_working_email">ኢመይልኩም ይጽሕፍ ኣሎ…</string>
     <string name="ai_wait_long">እዚ ክሳብ %1$d ካልኢት ክወስድ ይኽእል።</string>
     <string name="ai_pick_reply">መልሲ ምረጹ</string>

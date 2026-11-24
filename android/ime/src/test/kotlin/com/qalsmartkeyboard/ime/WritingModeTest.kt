@@ -67,14 +67,15 @@ class WritingModeTest {
 
     // ---------------------------------------------------------------- selector
 
-    @Test fun amAndTiOfferFidelPhoneticAndEnglishInThatOrder() {
+    @Test fun amAndTiOfferPhoneticFidelAndEnglishInThatOrder() {
+        // The bar's mode toggle cycles the options in this order; Phonetic is also the default.
         val c = controller()
         assertEquals("am", c.language)
-        assertEquals(listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC, LayoutKind.ABC), c.writingModeOptions)
+        assertEquals(listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL, LayoutKind.ABC), c.writingModeOptions)
         assertEquals(LayoutKind.PHONETIC, c.writingMode) // ADR 0007 U3 default
         c.switchLanguage("ti")
-        assertEquals(listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC, LayoutKind.ABC), c.writingModeOptions)
-        assertEquals(listOf("ፊደል", "Phonetic", "English"), c.writingModeOptions.map { LanguageCatalog.writingModeLabel(it) })
+        assertEquals(listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL, LayoutKind.ABC), c.writingModeOptions)
+        assertEquals(listOf("Phonetic", "ፊደል", "English"), c.writingModeOptions.map { LanguageCatalog.writingModeLabel(it) })
     }
 
     @Test fun omAndEnHaveNoSelector() {

@@ -229,7 +229,7 @@ class KeyboardController(
         apply(composer.setCursorContext(before, after))
     }
 
-    /** The active profile or layout is DRAFT: the UI must say it is not verified (rule N9). */
+    /** The active profile or layout is DRAFT data (not yet verified by native speakers). */
     val candidatesAreDraft: Boolean
         get() = composer.isDraft(effectiveMode)
 
@@ -336,7 +336,7 @@ class KeyboardController(
             val hints = if (m.kind == LayoutKind.PHONETIC) composer.phoneticHints(m.language) else null
             val grid = grid(m.language)?.let { KeyLayouts.apply(it, fidel) }
             val ctx = LayoutContext(
-                m, grid, indicator, languagePicker(), composer.isDraft(m), prefs.ethiopicNumerals, hints,
+                m, grid, indicator, languagePicker(), prefs.ethiopicNumerals, hints,
                 latinLayout = latin, numberRow = prefs.numberRow,
             )
             val base = Layouts.forPage(page, profile, ctx)
@@ -438,7 +438,7 @@ class KeyboardController(
                 ShiftState.ONCE -> ShiftState.LOCKED
                 ShiftState.LOCKED -> ShiftState.OFF
             }
-            KeyKind.EMOJI -> if (fieldTyping() != null) { send(ComposerKey.Commit); fieldTyping()?.done() } else if (emoji.searching) emoji.closeSearch() else if (emoji.typingWordArt) emoji.endWordArtTyping() else emoji.open(profile.allowsEmoji)
+            KeyKind.EMOJI -> pressEmojiKey()
             KeyKind.GLOBE -> { nextLanguage(); return }
             KeyKind.ABC_TOGGLE -> { toggleAbc(); return }
             KeyKind.TO_SYMBOLS -> page = Page.SYMBOLS
@@ -446,6 +446,18 @@ class KeyboardController(
             KeyKind.TO_LETTERS -> { page = Page.LETTERS; refreshAutoCapital() }
         }
         onChanged()
+    }
+
+    /**
+     * The emoji action (a dedicated emoji key, or the comma's long-press): while an AI panel field is
+     * typed it ends the typing, while the search or Word Art's field is open it closes them, else the
+     * panel opens (in fields that allow emoji).
+     */
+    private fun pressEmojiKey() {
+        if (fieldTyping() != null) { send(ComposerKey.Commit); fieldTyping()?.done() }
+        else if (emoji.searching) emoji.closeSearch()
+        else if (emoji.typingWordArt) emoji.endWordArtTyping()
+        else emoji.open(profile.allowsEmoji)
     }
 
     /** A tap on candidate [index] of the strip. */
@@ -642,9 +654,13 @@ class KeyboardController(
         onChanged()
     }
 
-    /** A long-press action key (the globe) was held. */
+    /** A long-press action key was held: the globe cycles the language's layouts, the comma opens the emoji panel. */
     fun onLongPress(key: Key) {
-        if (key.kind == KeyKind.GLOBE) cycleLayout()
+        when (key.longAction) {
+            LongAction.CYCLE_LAYOUT -> cycleLayout()
+            LongAction.EMOJI -> { pressEmojiKey(); onChanged() }
+            null -> {}
+        }
     }
 
     /** A popup choice was picked: a language of the picker, or text committed as typed. */

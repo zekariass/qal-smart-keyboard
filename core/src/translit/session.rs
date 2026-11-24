@@ -2,9 +2,10 @@
 //!
 //! The session keeps the raw Latin keystrokes of the current word. After every key it
 //! re-tokenises the whole buffer with longest-match rules from the [`Profile`], so backspace
-//! (remove the last keystroke) and late disambiguation (`s` then `h` becomes `sh`) need no
-//! special cases. Output is deterministic; alternatives are single homophone substitutions
-//! (lexicon-based ranking arrives with C1.6/C1.7). No typed text is ever logged (N2).
+//! (drop the last syllable's keystrokes: `ka` ካ goes in one step) and late disambiguation
+//! (`s` then `h` becomes `sh`) need no special cases. Output is deterministic; alternatives
+//! are single homophone substitutions (lexicon-based ranking arrives with C1.6/C1.7).
+//! No typed text is ever logged (N2).
 
 use super::profile::{ConsonantRule, Profile};
 use crate::composer::{nfc_commit, sanitize};
@@ -32,6 +33,9 @@ struct Tok {
     /// Replacements of this token together with the next one: the labialised reading of a bare
     /// consonant followed by the profile's `labialAltMarker` syllable (`g` + `wa` also gives ጓ).
     merge_next: Vec<String>,
+    /// How many keystrokes of the raw buffer produced this token: Backspace drops all of them
+    /// so one press removes one rendered character (a collapsed geminate counts both letters).
+    raw_len: usize,
 }
 
 impl Tok {
@@ -42,6 +46,7 @@ impl Tok {
             bare: None,
             rule: None,
             merge_next: Vec::new(),
+            raw_len: 1,
         }
     }
 }
@@ -123,13 +128,19 @@ impl PhoneticSession {
             }
             KeyEvent::Commit => commit = self.flush(),
             KeyEvent::Backspace => {
-                if self.pending.take().is_some() || self.raw.pop().is_some() {
-                    // The last Latin keystroke is gone; the view recomputes the composition.
-                } else {
+                if self.pending.take().is_some() {
+                    // The pending punctuation key is gone; the view recomputes the composition.
+                } else if self.raw.is_empty() {
                     return EditorUpdate {
                         delete_before: 1,
                         ..Default::default()
                     };
+                } else if self.is_protected() {
+                    // A protected token is shown as typed: one visible character per keystroke.
+                    self.raw.pop();
+                } else {
+                    // One press removes one Fidel character, however many Latin keys typed it.
+                    self.pop_last_unit();
                 }
             }
             // Two-key Fidel events only mean something in DirectFidel.
@@ -249,6 +260,17 @@ impl PhoneticSession {
         } else {
             commit.push(ch);
         }
+    }
+
+    /// Drops the keystrokes of the last rendered syllable so Backspace removes one shown
+    /// character per press instead of one Latin letter (`selam` ሰላም loses ም, then ላ, then ሰ).
+    fn pop_last_unit(&mut self) {
+        let chars: Vec<char> = self.raw.chars().collect();
+        let drop = self
+            .tokenize(&chars)
+            .last()
+            .map_or(1, |t| t.raw_len.max(1));
+        self.raw = chars[..chars.len().saturating_sub(drop)].iter().collect();
     }
 
     /// A buffer that looks like a URL or e-mail address stays Latin (protected token).
@@ -388,12 +410,16 @@ impl PhoneticSession {
             match hit {
                 Some((Hit::Separator, n)) => {
                     // Splits a sequence that would otherwise combine; shows nothing.
-                    toks.push(Tok::plain(String::new()));
+                    toks.push(Tok {
+                        raw_len: n,
+                        ..Tok::plain(String::new())
+                    });
                     i += n;
                 }
                 Some((Hit::Consonant(k), n)) => {
                     let rule = &p.consonants[k];
                     let (mut tok, used, plain_order) = self.consonant(raw, i + n, rule);
+                    tok.raw_len = n + used;
                     // Fidel does not mark gemination, so a doubled consonant *before a vowel*
                     // (`messeret`, `etta`) is one letter. A doubled consonant with no vowel after
                     // it is two sixth-order letters (`ggr` ግግር, `gg` ግግ): pressing a key twice
@@ -408,6 +434,7 @@ impl PhoneticSession {
                             if !tok.alts.contains(&split) {
                                 tok.alts.push(split);
                             }
+                            tok.raw_len += first.raw_len;
                         }
                         if let Some(prev) = toks.last_mut() {
                             prev.merge_next.clear();
@@ -425,7 +452,9 @@ impl PhoneticSession {
                     i += n + used;
                 }
                 Some((Hit::Vowel(k), n)) => {
-                    toks.push(self.standalone_vowel(k, &raw[i..i + n]));
+                    let mut t = self.standalone_vowel(k, &raw[i..i + n]);
+                    t.raw_len = n;
+                    toks.push(t);
                     i += n;
                 }
                 None => {

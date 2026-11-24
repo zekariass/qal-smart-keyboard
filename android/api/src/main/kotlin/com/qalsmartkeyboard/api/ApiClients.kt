@@ -27,10 +27,16 @@ data class TransportConfig(
     val logger: CallLogger = CallLogger { _, _, _ -> },
     /** The phone's network/SIM country hints for billing calls (ADR 0045); null sends none. */
     val countryHints: CountryHintSource? = null,
+    /**
+     * Additional hosts allowed to use cleartext, beyond [LOCAL_HOSTS]. Intended for debug builds pointed at a dev
+     * machine on the LAN (`-Pqal.apiBaseUrl=http://<pc-ip>:<port>`) — the app passes none in release, so cleartext
+     * stays loopback-only there.
+     */
+    val extraCleartextHosts: Set<String> = emptySet(),
 ) {
     init {
         val url = baseUrl.toHttpUrl()
-        require(url.isHttps || url.host in LOCAL_HOSTS) { "plain http is only allowed for the local stack" }
+        require(url.isHttps || url.host in LOCAL_HOSTS + extraCleartextHosts) { "plain http is only allowed for the local stack" }
         certificatePins.forEach { (host, pins) ->
             require(host.isNotBlank() && pins.isNotEmpty() && pins.all { it.startsWith("sha256/") }) {
                 "pins must be sha256/ SPKI hashes"
@@ -80,7 +86,7 @@ class ApiClients(val config: TransportConfig, val session: SessionManager) {
         .followRedirects(false)
         .apply {
             val url = config.baseUrl.toHttpUrl()
-            if (config.certificatePins.isNotEmpty() && url.host !in TransportConfig.LOCAL_HOSTS) {
+            if (config.certificatePins.isNotEmpty() && url.host !in TransportConfig.LOCAL_HOSTS + config.extraCleartextHosts) {
                 val pinner = CertificatePinner.Builder()
                 config.certificatePins.forEach { (host, pins) -> pinner.add(host, *pins.toTypedArray()) }
                 certificatePinner(pinner.build())

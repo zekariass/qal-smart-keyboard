@@ -62,7 +62,7 @@ class UiLocalisationSmokeTest {
         val ai = AiToolbarView(c)
         ai.controller = AiToolbarController(actions, EditorAiAccess(adapter) { adapter.finishComposition() }, { it() }, {}, onChanged = { ai.render() })
             .also { it.onFieldStarted(InputProfile.DEFAULT, "com.example.chat") }
-        strip.setModes(listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC, LayoutKind.ABC), LayoutKind.PHONETIC)
+        strip.setModes(listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL, LayoutKind.ABC), LayoutKind.PHONETIC)
         KeyboardBar(c, strip, ai).measureAndDraw(w)
 
         val controller = KeyboardController(Sink(), prefs = InMemoryModePreferences(), emojiLoader = EmojiLoader(EmojiDataTest.assets)) {}

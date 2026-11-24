@@ -106,6 +106,19 @@ class AiEmailControllerTest {
         assertFalse("user text never in toString", s.toString().contains("Almaz"))
     }
 
+    @Test fun theDocumentTypeIsSentAndResetsToEmail() {
+        val h = H()
+        h.c.open()
+        assertEquals(AiDocumentType.EMAIL, h.c.documentType)
+        h.c.chooseDocumentType(AiDocumentType.COVER_LETTER)
+        h.c.instructions.set("applying for the translator post")
+        h.c.generate()
+        assertEquals(AiDocumentType.COVER_LETTER, h.spec().documentType)
+        h.c.close()
+        h.c.open()
+        assertEquals(AiDocumentType.EMAIL, h.c.documentType)
+    }
+
     @Test fun regenerateAsksForTheNextVariationWithANewKey() {
         val h = H()
         h.c.open()

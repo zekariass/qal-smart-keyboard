@@ -25,22 +25,32 @@ enum class AiAssistAction(val kind: AiTaskKind, val output: AiOutputRule, val re
     SIMPLIFY(AiTaskKind.REWRITE, AiOutputRule.SAME_BY_DEFAULT, true),
     REPLY(AiTaskKind.REPLY, AiOutputRule.KEYBOARD, true),
     SUMMARIZE(AiTaskKind.SUMMARIZE, AiOutputRule.KEYBOARD, false),
+    FORMAT(AiTaskKind.FORMAT, AiOutputRule.SAME_BY_DEFAULT, true),
     ;
 
     companion object {
         /**
          * The request of [action] on [text] with output language [output] (null: same as the text). Regenerate sends a
          * higher [variation] (the contract's `variation`) with a new `Idempotency-Key`, for transforms and replies.
+         * [intent]: the reply stance (REPLY only); [format]: the shape FORMAT produces.
          */
-        fun task(action: AiAssistAction, output: String?, note: String = "", variation: Int = 0): AiTask = when (action) {
+        fun task(
+            action: AiAssistAction,
+            output: String?,
+            note: String = "",
+            variation: Int = 0,
+            intent: AiReplyIntent? = null,
+            format: AiFormat = AiFormat.BULLETS,
+        ): AiTask = when (action) {
             TRANSLATE -> AiTask.Translate(AiLanguages.plain(output ?: "en"))
             EXPLAIN -> AiTask.Explain(output ?: "en", variation)
             GRAMMAR -> AiTask.Grammar
             REWRITE -> AiTask.Rewrite(null, output, variation)
             PROFESSIONAL -> AiTask.Rewrite(AiTone.PROFESSIONAL, output, variation)
             SIMPLIFY -> AiTask.Simplify(output, variation)
-            REPLY -> AiTask.Reply(output ?: "en", note.trim(), REPLY_COUNT, variation)
+            REPLY -> AiTask.Reply(output ?: "en", note.trim(), REPLY_COUNT, variation, intent)
             SUMMARIZE -> AiTask.Summarize(output ?: "en", AiLength.MEDIUM, variation)
+            FORMAT -> AiTask.Format(format, output, variation)
         }
 
         const val REPLY_COUNT = 3
@@ -123,6 +133,12 @@ class AiAssistController(
         private set
     var notice: AiNotice = AiNotice.NONE
         private set
+    /** The reply stance chips (REPLY): null = the replies vary. */
+    var replyIntent: AiReplyIntent? = null
+        private set
+    /** The shape FORMAT produces. */
+    var format: AiFormat = AiFormat.BULLETS
+        private set
 
     private val picked = HashMap<AiAssistAction, String?>()
     private val sessionLocks = HashSet<AiTaskKind>()
@@ -168,6 +184,8 @@ class AiAssistController(
         outputPickerOpen = false
         notice = AiNotice.NONE
         picked.clear()
+        replyIntent = null
+        format = AiFormat.BULLETS
         lastRequest = null
         lastAction = null
     }
@@ -301,6 +319,20 @@ class AiAssistController(
         onChanged()
     }
 
+    /** A reply stance chip (REPLY): tapping the chosen one clears it back to varied replies. */
+    fun chooseIntent(i: AiReplyIntent?) {
+        if (busy) return
+        replyIntent = if (replyIntent == i) null else i
+        onChanged()
+    }
+
+    /** The shape FORMAT turns the text into. */
+    fun chooseFormat(f: AiFormat) {
+        if (busy || f == format) return
+        format = f
+        onChanged()
+    }
+
     /** The cached plan state (or this session's refusal) says [a] is not part of the plan. */
     fun isLocked(a: AiAssistAction): Boolean {
         val now = availability
@@ -337,7 +369,7 @@ class AiAssistController(
             return
         }
         val output = outputLanguage(a)
-        send(a, output, AiRequest(runner.key(), AiAssistAction.task(a, output, note.text, 0), source.text))
+        send(a, output, AiRequest(runner.key(), AiAssistAction.task(a, output, note.text, 0, replyIntent, format), source.text))
     }
 
     private fun send(a: AiAssistAction, output: String?, request: AiRequest) {
@@ -379,6 +411,7 @@ class AiAssistController(
             is AiTask.Reply -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
             is AiTask.Rewrite -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
             is AiTask.Simplify -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
+            is AiTask.Format -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
             is AiTask.Explain -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
             is AiTask.Summarize -> t.copy(variation = AiEmailRules.nextVariation(t.variation))
             else -> t

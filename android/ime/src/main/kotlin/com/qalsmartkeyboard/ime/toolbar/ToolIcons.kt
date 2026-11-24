@@ -31,6 +31,7 @@ enum class ToolIcon {
 
     // The AI tools grid (ADR 0041): one icon per action.
     ASSIST, SIMPLIFY, EXPLAIN, SUMMARIZE, REPLY, PROFESSIONAL, FRIENDLY, POLITE, CONCISE, APOLOGETIC, HONORIFIC,
+    FORMAT, SHORTEN, EXPAND_TEXT, CLARIFY, ROMANTIC, CONFIDENT, FUNNY, PERSUASIVE,
 
     // The text field's action row (ADR 0038) when its labels do not fit.
     CUT, SELECT_ALL,
@@ -259,6 +260,81 @@ object ToolIcons {
             Path().apply {
                 poly(3.5f, 18f, 3f, 7.5f, 8f, 12f, 12f, 5f, 16f, 12f, 21f, 7.5f, 20.5f, 18f, close = true)
                 poly(4f, 21f, 20f, 21f)
+            },
+        )
+        // A bulleted list: three dots, three lines.
+        ToolIcon.FORMAT -> Glyph(
+            Path().apply { poly(9.5f, 6f, 21f, 6f); poly(9.5f, 12f, 21f, 12f); poly(9.5f, 18f, 21f, 18f) },
+            Path().apply { circle(4.5f, 6f, 1.3f); circle(4.5f, 12f, 1.3f); circle(4.5f, 18f, 1.3f) },
+        )
+        // A line squeezed shorter by inward arrows.
+        ToolIcon.SHORTEN -> Glyph(
+            Path().apply {
+                poly(3.5f, 5.5f, 20.5f, 5.5f)
+                poly(2.5f, 12f, 9f, 12f); poly(5.8f, 9.5f, 9f, 12f, 5.8f, 14.5f)
+                poly(21.5f, 12f, 15f, 12f); poly(18.2f, 9.5f, 15f, 12f, 18.2f, 14.5f)
+                poly(7f, 18.5f, 17f, 18.5f)
+            },
+        )
+        // A short line stretched longer by outward arrows.
+        ToolIcon.EXPAND_TEXT -> Glyph(
+            Path().apply {
+                poly(7f, 5.5f, 17f, 5.5f)
+                poly(9f, 12f, 2.5f, 12f); poly(5.7f, 9.5f, 2.5f, 12f, 5.7f, 14.5f)
+                poly(15f, 12f, 21.5f, 12f); poly(18.3f, 9.5f, 21.5f, 12f, 18.3f, 14.5f)
+                poly(3.5f, 18.5f, 20.5f, 18.5f)
+            },
+        )
+        // Lines and a sparkle: clearer text.
+        ToolIcon.CLARIFY -> Glyph(
+            Path().apply { poly(3.5f, 6.5f, 13f, 6.5f); poly(3.5f, 12f, 10f, 12f); poly(3.5f, 17.5f, 8f, 17.5f) },
+            Path().apply { sparkle(16f, 14.5f, 5.5f) },
+        )
+        // A heart.
+        ToolIcon.ROMANTIC -> Glyph(
+            Path().apply {
+                moveTo(12f, 20f)
+                cubicTo(5f, 15.5f, 3f, 8.8f, 7.5f, 6.6f)
+                cubicTo(9.7f, 5.6f, 11.5f, 6.9f, 12f, 8.6f)
+                cubicTo(12.5f, 6.9f, 14.3f, 5.6f, 16.5f, 6.6f)
+                cubicTo(21f, 8.8f, 19f, 15.5f, 12f, 20f)
+                close()
+            },
+        )
+        // A shield with a check: assured wording.
+        ToolIcon.CONFIDENT -> Glyph(
+            Path().apply {
+                moveTo(12f, 2.8f)
+                lineTo(19.5f, 5.8f)
+                lineTo(19.5f, 11f)
+                cubicTo(19.5f, 16.5f, 16f, 20f, 12f, 21.3f)
+                cubicTo(8f, 20f, 4.5f, 16.5f, 4.5f, 11f)
+                lineTo(4.5f, 5.8f)
+                close()
+                poly(8f, 11.8f, 10.8f, 14.6f, 16.5f, 8.8f)
+            },
+        )
+        // A laughing face: squinted eyes, a wide open mouth.
+        ToolIcon.FUNNY -> Glyph(
+            Path().apply {
+                circle(12f, 12f, 9f)
+                poly(6.8f, 8.4f, 9.3f, 9.6f, 6.8f, 10.8f)
+                poly(17.2f, 8.4f, 14.7f, 9.6f, 17.2f, 10.8f)
+                addArc(RectF(7.3f, 12.3f, 16.7f, 19f), 18f, 144f)
+            },
+        )
+        // A megaphone.
+        ToolIcon.PERSUASIVE -> Glyph(
+            Path().apply {
+                moveTo(3.5f, 10f)
+                lineTo(3.5f, 14.5f)
+                lineTo(7f, 14.5f)
+                lineTo(15.5f, 20f)
+                lineTo(15.5f, 4.5f)
+                lineTo(7f, 10f)
+                close()
+                poly(7f, 10f, 7f, 14.5f)
+                addArc(RectF(16.2f, 8.2f, 20.8f, 16.3f), -55f, 110f)
             },
         )
         ToolIcon.CUT -> Glyph(

@@ -2,6 +2,7 @@ package com.qalsmartkeyboard.ime
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.view.MotionEvent
 import android.view.View
 import com.qalsmartkeyboard.ime.CandidateStripView.Target
 import org.junit.Assert.assertEquals
@@ -13,15 +14,19 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
-/** ADR 0039: the Gboard-like three-slot strip (centre = what Space commits), its autocorrection mark, RTL and expand. */
+/**
+ * Owner request: while composing the whole bar is the suggestion bar — a back chevron at the left end returns to the
+ * tools view; the candidates are full words in a sideways-scrolling list (no truncation, nothing dropped).
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
 class CandidateStripSlotsTest {
     private val ctx = RuntimeEnvironment.getApplication()
-    private val widthPx = (411 * ctx.resources.displayMetrics.density).toInt()
+    private val d = ctx.resources.displayMetrics.density
+    private val widthPx = (411 * d).toInt()
 
     private fun strip(): CandidateStripView = CandidateStripView(ctx).also {
-        it.setModes(listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC, LayoutKind.ABC), LayoutKind.PHONETIC)
+        it.setModes(listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL, LayoutKind.ABC), LayoutKind.PHONETIC)
         it.micShown = true
         it.measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         it.layout(0, 0, widthPx, it.measuredHeight)
@@ -31,70 +36,74 @@ class CandidateStripSlotsTest {
 
     private fun words(vararg s: String) = s.map { Suggestion(it, SuggestionKind.COMPLETION) }
 
-    /** Candidate indices left to right, as drawn. */
+    /** Candidate indices left to right, as placed. */
     private fun CandidateStripView.order(): List<Int> =
-        slots().filter { it.target is Target.Candidate }.sortedBy { it.hit.left }.map { (it.target as Target.Candidate).index }
+        slots().filter { it.target is Target.Candidate }.sortedBy { it.shape.left }.map { (it.target as Target.Candidate).index }
 
-    @Test fun slotOrderPutsWhatSpaceCommitsInTheCentre() {
-        assertEquals(listOf(1, 0, 2), CandidateStripView.slotOrder(5, -1, rtl = false))
-        assertEquals(listOf(0, 1, 2), CandidateStripView.slotOrder(5, autocorrect = 1, rtl = false))
-        assertEquals(listOf(2, 1, 0), CandidateStripView.slotOrder(5, autocorrect = 1, rtl = true))
-        assertEquals(listOf(null, 0, null), CandidateStripView.slotOrder(1, -1, rtl = false))
-        assertEquals(listOf(1, 0, null), CandidateStripView.slotOrder(2, -1, rtl = false))
-        assertEquals(listOf(null, 0, 1), CandidateStripView.slotOrder(2, -1, rtl = true))
-    }
+    private fun CandidateStripView.touch(action: Int, x: Float) =
+        onTouchEvent(MotionEvent.obtain(0L, 0L, action, x, (measuredHeight / 2).toFloat(), 0))
 
-    @Test fun threeEqualSlotsKeepTheBarsToolsPillAndMic() {
+    @Test fun composingShowsEveryCandidateWholeBehindABackChevron() {
         val s = strip()
-        s.show(words("hel", "hello", "help"), isDraft = false)
+        s.show(words("ሰላ", "ሰላም", "ሠላ", "ሰላምታ", "ሰለ"))
         s.draw()
-        assertEquals(listOf(1, 0, 2), s.order())
-        val cells = s.slots().filter { it.target is Target.Candidate }
-        val widths = cells.map { it.hit.width() }
-        assertTrue(widths.toString(), widths.max() - widths.min() < 1f)
-        assertTrue(cells.single { it.primary }.target == Target.Candidate(0))
         val targets = s.slots().map { it.target }
-        assertTrue(Target.Tools in targets && Target.Pill in targets && Target.Mic in targets)
-        assertFalse(Target.More in targets) // three candidates fit
+        assertEquals(Target.Back, targets.first()) // the chevron takes the tools button's place
+        assertEquals(Target.Mic, targets.last())
+        assertFalse(Target.Tools in targets || Target.Pill in targets)
+        assertEquals(listOf(0, 1, 2, 3, 4), s.order()) // the full list, in core order
+        assertEquals(Target.Candidate(0), s.slots().single { it.primary }.target)
+        // A word is never cut to a share of the bar: each cell is as wide as its word plus padding.
+        s.slots().filter { it.target is Target.Candidate }.forEach { assertTrue(it.shape.width() > 20f * d) }
     }
 
-    @Test fun anAutocorrectionIsCentredMarkedAndTheTypedWordIsQuoted() {
+    @Test fun theBackChevronReturnsToTheToolsBarUntilTheNextWord() {
         val s = strip()
-        s.show(listOf(Suggestion("teh", SuggestionKind.TRANSLITERATION), Suggestion("the", SuggestionKind.CORRECTION), Suggestion("tea", SuggestionKind.COMPLETION)), false, autocorrect = 1)
+        s.show(words("se", "selam", "selamta"))
+        s.activate(Target.Back)
+        val t = s.slots().map { it.target }
+        assertEquals(Target.Tools, t.first())
+        assertTrue(Target.Pill in t)
+        assertTrue(t.none { it is Target.Candidate || it == Target.Back })
+        // Typing on (a new list) brings the suggestions back; an empty list leaves the tools bar for good.
+        s.show(words("sa", "sab"))
+        assertEquals(Target.Back, s.slots().first().target)
+        s.show(emptyList())
+        assertEquals(Target.Tools, s.slots().first().target)
+    }
+
+    @Test fun anAutocorrectionIsBoldMarkedAndTheTypedWordIsQuoted() {
+        val s = strip()
+        s.show(listOf(Suggestion("teh", SuggestionKind.TRANSLITERATION), Suggestion("the", SuggestionKind.CORRECTION), Suggestion("tea", SuggestionKind.COMPLETION)), autocorrect = 1)
         s.draw()
         assertEquals(listOf(0, 1, 2), s.order())
-        val centre = s.slots().single { it.primary }
-        assertEquals(Target.Candidate(1), centre.target)
-        assertTrue(centre.autocorrect)
+        val primary = s.slots().single { it.primary }
+        assertEquals(Target.Candidate(1), primary.target)
+        assertTrue(primary.autocorrect)
         assertEquals("“teh”", s.slots().single { it.target == Target.Candidate(0) }.label)
     }
 
-    @Test fun arabicMirrorsTheSideSlots() {
-        val s = strip()
-        s.show(words("كت", "كتاب", "كتب"), isDraft = false, rtl = true)
-        s.draw()
-        assertEquals(listOf(2, 0, 1), s.order())
-    }
-
-    @Test fun moreThanThreeCandidatesExpandAndFoldBack() {
+    @Test fun aLongListScrollsSidewaysInsteadOfDroppingWords() {
         val s = strip()
         var picked = -1
         s.onSelect = { picked = it }
-        s.show(words("ሰላ", "ሰላም", "ሠላ", "ሰላምታ", "ሰለ"), isDraft = true)
-        s.draw()
-        assertTrue(Target.More in s.slots().map { it.target })
-        assertEquals(3, s.order().size)
-        s.activate(Target.More)
-        s.draw()
-        assertEquals(s.order(), s.order().sorted()) // the full list, in core order
-        assertTrue(s.order().size > 3)
-        s.activate(Target.Candidate(3))
-        assertEquals(3, picked)
-        s.activate(Target.More)
-        assertEquals(3, s.order().size)
-        // New candidates start folded.
-        s.activate(Target.More)
-        s.show(words("a", "b", "c", "d"), isDraft = false)
-        assertEquals(3, s.order().size)
+        s.show((0 until 10).map { Suggestion("a-much-longer-suggestion-$it", SuggestionKind.COMPLETION) })
+        // Every candidate is a slot: the last ones start scrolled off the right edge (empty hit).
+        assertEquals(10, s.order().size)
+        assertTrue(s.slots().first { it.target == Target.Candidate(9) }.hit.isEmpty)
+        assertTrue(s.slots().first { it.target == Target.Candidate(0) }.hit.width() > 0f)
+        // A sideways drag across the middle scrolls them into reach (no candidate tap fires).
+        val (midStart, midEnd) = s.middleRange()
+        s.touch(MotionEvent.ACTION_DOWN, midEnd - 8f)
+        s.touch(MotionEvent.ACTION_MOVE, midEnd - 60f) // past the slop: the sideways drag starts
+        s.touch(MotionEvent.ACTION_MOVE, midStart - 2000f) // drag far past the end: clamps at the last word
+        assertTrue("a full drag reaches the last word", s.slots().first { it.target == Target.Candidate(9) }.hit.width() > 0f)
+        assertTrue("the first word scrolled off", s.slots().first { it.target == Target.Candidate(0) }.hit.isEmpty)
+        s.touch(MotionEvent.ACTION_UP, midStart - 2000f)
+        assertEquals(-1, picked)
+        // A tap on a visible word reports its core index.
+        s.touch(MotionEvent.ACTION_DOWN, midEnd - 8f)
+        s.touch(MotionEvent.ACTION_UP, midEnd - 8f)
+        assertEquals(9, picked)
     }
 }

@@ -10,16 +10,17 @@ import com.qalsmartkeyboard.ime.toolbar.ToolContext
 import com.qalsmartkeyboard.ime.toolbar.ToolSet
 
 /**
- * The one bar above the keys: the [strip] (tools button, mode pill, shortcuts / candidates / chooser, mic). Always
+ * The one bar above the keys: the [strip] (tools button, mode pill, shortcuts / candidates, mic). Always
  * [CandidateStripView.HEIGHT_DP] tall, so switching modes, languages, tools or fields never changes the keyboard's idle
  * height (ADR 0007 D45, ADR 0035). The quick actions' result panel (working, review, errors) is [ai], a separate view
  * above this bar that is shown only while it has content.
  *
  * States of the middle:
- * - **idle**: the pinned shortcuts ([ToolSet.shortcutCandidates] for the field, the first ones that fit). The "AI" shortcut
- *   opens the AI tools grid in place of the keys (ADR 0041); Translate opens the translate panel above the bar (ADR 0037);
- * - **composing** (phonetic candidates): the candidates;
- * - **chooser**: the writing-mode options;
+ * - **idle**: the pinned shortcuts ([ToolSet.shortcutCandidates] for the field — all of them, the overflow a sideways
+ *   drag away). The "AI" shortcut opens the AI tools grid in place of the keys (ADR 0041); Translate opens the
+ *   translate panel above the bar (ADR 0037);
+ * - **composing** (phonetic candidates): the whole bar is the suggestion bar — a back chevron at the left end returns
+ *   to the tools view; the candidates take the rest as full words, scrolling sideways when they overflow;
  * - **tool panel open** ([CandidateStripView.panelTitle]: tools, clipboard, AI tools): a back arrow and the panel's title;
  * - **sensitive field** (password, email, ...; [com.qalsmartkeyboard.ime.ai.AiToolbarController.visible] false): no AI
  *   shortcuts, no candidates; clipboard and emoji only where the field allows them ([ToolContext]).

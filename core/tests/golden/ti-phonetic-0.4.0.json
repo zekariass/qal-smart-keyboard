@@ -101,12 +101,12 @@
       "committed": "ሃ፣ኣ።"
     },
     {
-      "name": "backspace-recomputes-digraph-and-series",
+      "name": "backspace-removes-a-digraph-syllable-at-once",
       "keystrokes": ["q", "h", "e", "Backspace", "Backspace", "Backspace"],
       "steps": [
-        { "after": 4, "composing": "ቕ", "commit": "" },
-        { "after": 5, "composing": "ቅ", "commit": "" },
-        { "after": 6, "composing": "", "commit": "" }
+        { "after": 4, "composing": "", "commit": "", "alternatives": [] },
+        { "after": 5, "composing": "", "commit": "", "delete_before": 1 },
+        { "after": 6, "composing": "", "commit": "", "delete_before": 1 }
       ],
       "composing": "",
       "alternatives": [],

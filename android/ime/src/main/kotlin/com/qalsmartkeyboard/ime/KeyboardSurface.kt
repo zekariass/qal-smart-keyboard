@@ -15,6 +15,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Button
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
@@ -38,7 +39,7 @@ import kotlin.math.min
  *
  * Accessibility: every key is a virtual view ([KeyNodes], `ExploreByTouchHelper`) with its spoken
  * name and the Button role; an accessibility click types the key like a tap, and keys with a
- * long-press action (the globe) offer it as a long click. Long-press popups (Fidel forms, Ethiopic
+ * long-press action (the globe, the comma) offer it as a long click. Long-press popups (Fidel forms, Ethiopic
  * punctuation and numerals) are touch-only.
  */
 class KeyboardSurface(context: Context) : View(context) {
@@ -68,8 +69,14 @@ class KeyboardSurface(context: Context) : View(context) {
             field = value
             bgShader = null
             borderPaint.strokeWidth = value.borderWidthDp * d
+            vowelFill = vowelTint(value)
             invalidate()
         }
+
+    /** The Fidel vowel-order row's fill: a light accent tint on the plain key colour, so ሀ ሁ ሂ … read as their own row. */
+    private var vowelFill = vowelTint(theme)
+
+    private fun vowelTint(t: KeyboardTheme) = ColorUtils.blendARGB(t.key, t.accent, VOWEL_TINT)
 
     private val dark get() = !theme.isLight
     private val bg get() = theme.bgTop
@@ -78,7 +85,6 @@ class KeyboardSurface(context: Context) : View(context) {
     private val pressedColor get() = theme.pressed
     private val accent get() = theme.accent
     private val onAccent get() = theme.onAccent
-    private val accentText get() = theme.accentText
     private val textColor get() = theme.keyText
     private val specialText get() = theme.specialText
     private val dimColor get() = theme.hintText
@@ -273,6 +279,7 @@ class KeyboardSurface(context: Context) : View(context) {
                 p in down -> pressedColor
                 selected -> accent
                 key.kind == KeyKind.ENTER -> accent
+                key.kind == KeyKind.FIDEL_VOWEL -> vowelFill
                 key.kind == KeyKind.CHAR || key.kind == KeyKind.SPACE || key.kind == KeyKind.FIDEL_CONSONANT -> keyColor
                 key.kind == KeyKind.SHIFT && c.shift != ShiftState.OFF -> pressedColor
                 else -> specialColor
@@ -309,7 +316,15 @@ class KeyboardSurface(context: Context) : View(context) {
             if (keyIcon != null) {
                 val size = min(min(p.rect.width(), p.rect.height()) * 0.5f, KEY_ICON_DP * d)
                 val color = if (key.kind == KeyKind.ENTER) onAccent else specialText
-                ToolIcons.draw(canvas, keyIcon, p.rect.centerX(), p.rect.centerY(), size, color, icon)
+                if (key.kind == KeyKind.GLOBE && key.label.isNotEmpty()) {
+                    // The bare globe read as "internet": the language's tag under the icon says what it switches.
+                    ToolIcons.draw(canvas, keyIcon, p.rect.centerX(), p.rect.centerY() - 4.5f * d, size * 0.85f, color, icon)
+                    fitText(key.label, p.rect.width() - 4f * d, 10f * d)
+                    text.color = color
+                    canvas.drawText(key.label, p.rect.centerX(), p.rect.bottom - 4f * d, text)
+                } else {
+                    ToolIcons.draw(canvas, keyIcon, p.rect.centerX(), p.rect.centerY(), size, color, icon)
+                }
                 continue
             }
             val label = when (key.kind) {
@@ -322,7 +337,7 @@ class KeyboardSurface(context: Context) : View(context) {
                 selected -> onAccent
                 key.kind == KeyKind.ENTER -> onAccent
                 key.kind == KeyKind.SPACE || dead -> dimColor
-                key.kind == KeyKind.CHAR || key.kind == KeyKind.FIDEL_CONSONANT -> textColor
+                key.kind == KeyKind.CHAR || key.kind == KeyKind.FIDEL_CONSONANT || key.kind == KeyKind.FIDEL_VOWEL -> textColor
                 else -> specialText
             }
             val base = when {
@@ -330,12 +345,8 @@ class KeyboardSurface(context: Context) : View(context) {
                 label.length > 2 -> 15f
                 else -> 21f
             } * d
-            if (key.draftBadge) {
-                drawWithDraftTag(canvas, p.rect, label, base)
-            } else {
-                fitText(label, p.rect.width() - 4f * d, base)
-                canvas.drawText(label, p.rect.centerX(), p.rect.centerY() - (text.descent() + text.ascent()) / 2, text)
-            }
+            fitText(label, p.rect.width() - 4f * d, base)
+            canvas.drawText(label, p.rect.centerX(), p.rect.centerY() - (text.descent() + text.ascent()) / 2, text)
             // Secondary label: the first alternative, or (phonetic letters) the native character
             // for the current shift state. Read from the layout model only: no engine call here.
             val hint = if (key.shiftHint != null && c.shift != ShiftState.OFF) key.shiftHint else key.hint
@@ -345,29 +356,6 @@ class KeyboardSurface(context: Context) : View(context) {
                 canvas.drawText(hint, p.rect.right - 4f * d, p.rect.top + 12f * d, hintPaint)
             }
         }
-    }
-
-    private val draftLabel = context.getString(R.string.candidate_strip_draft)
-
-    /**
-     * A label with the DRAFT tag (N9): stacked above it on tall keys, beside it on short (landscape)
-     * keys, dropped when neither fits ([DraftTagLayout]), so the two never overlap. [text]'s colour is
-     * the label's.
-     */
-    private fun drawWithDraftTag(canvas: Canvas, r: RectF, label: String, size: Float) {
-        val labelColor = text.color
-        text.textSize = size
-        val l = DraftTagLayout.Text(text.measureText(label), text.ascent(), text.descent())
-        text.textSize = TAG_TEXT_DP * d
-        val t = DraftTagLayout.Text(text.measureText(draftLabel), text.ascent(), text.descent())
-        val p = DraftTagLayout.place(r.width(), r.height(), l, t, pad = 2f * d, gap = TAG_GAP_DP * d)
-        if (p.showsTag) {
-            text.color = accentText
-            canvas.drawText(draftLabel, r.left + p.tagX, r.top + p.tagBaseline, text)
-        }
-        text.color = labelColor
-        text.textSize = size * p.labelScale
-        canvas.drawText(label, r.left + p.labelX, r.top + p.labelBaseline, text)
     }
 
     private fun enterText(l: EnterLabel) = enterLabelText(context, l)
@@ -400,7 +388,7 @@ class KeyboardSurface(context: Context) : View(context) {
         lpFired = true
         if (c.prefs.hapticsEnabled) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         hidePreview()
-        if (p.key.popup.isNotEmpty()) showPopup(p) else if (p.key.longAction) c.onLongPress(p.key)
+        if (p.key.popup.isNotEmpty()) showPopup(p) else if (p.key.longAction != null) c.onLongPress(p.key)
     }
 
     private fun showPopup(p: Placed) {
@@ -604,9 +592,8 @@ class KeyboardSurface(context: Context) : View(context) {
         /** Function-key icons (shift, delete, Enter, globe, emoji): half the key's short side, at most this (dp). */
         const val KEY_ICON_DP = 24f
 
-        /** Size of the DRAFT tag text, and the space between it and the label. */
-        const val TAG_TEXT_DP = 8f
-        const val TAG_GAP_DP = 3f
+        /** How much of the accent goes into the Fidel vowel-order row's tint on top of the key colour. */
+        const val VOWEL_TINT = 0.25f
 
         /** Key press preview bubble: smallest width, height, and the gap above the key. */
         const val PREVIEW_MIN_W_DP = 52f
@@ -649,7 +636,7 @@ class KeyboardSurface(context: Context) : View(context) {
             } ?: key.spoken
             KeyKind.FIDEL_CONSONANT -> if (c?.isSelectedConsonant(key) == true) context.getString(R.string.kb_key_selected, key.spoken) else key.spoken
             else -> key.spoken
-        }.let { if (key.draftBadge) "$it, ${context.getString(R.string.key_draft_description)}" else it }
+        }
     }
 
     /** One virtual accessibility node per key (index into [placed]). */
@@ -683,9 +670,10 @@ class KeyboardSurface(context: Context) : View(context) {
             node.setBoundsInParent(Rect(p.rect.left.toInt(), p.rect.top.toInt(), ceil(p.rect.right).toInt(), ceil(p.rect.bottom).toInt()))
             node.isClickable = true
             node.addAction(AccessibilityActionCompat.ACTION_CLICK)
-            if (p.key.longAction) {
+            if (p.key.longAction != null) {
                 node.isLongClickable = true
-                node.addAction(AccessibilityActionCompat(AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, context.getString(R.string.key_globe_long_action)))
+                val label = if (p.key.longAction == LongAction.CYCLE_LAYOUT) R.string.key_globe_long_action else R.string.key_emoji_description
+                node.addAction(AccessibilityActionCompat(AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, context.getString(label)))
             }
         }
 
@@ -695,7 +683,7 @@ class KeyboardSurface(context: Context) : View(context) {
             val c = controller ?: return false
             when (action) {
                 AccessibilityNodeInfoCompat.ACTION_CLICK -> c.onKey(p.key)
-                AccessibilityNodeInfoCompat.ACTION_LONG_CLICK -> if (p.key.longAction) c.onLongPress(p.key) else return false
+                AccessibilityNodeInfoCompat.ACTION_LONG_CLICK -> if (p.key.longAction != null) c.onLongPress(p.key) else return false
                 else -> return false
             }
             invalidate()

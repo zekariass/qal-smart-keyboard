@@ -1,6 +1,6 @@
 //! Cross-module property tests (plan C1.10): the segmenter never splits grapheme clusters,
-//! everything that normalises text is NFC-idempotent, and phonetic Backspace undoes the last
-//! key. Ethiopic numeral round-trips live in `calendar.rs` (C1.9) and are not repeated.
+//! everything that normalises text is NFC-idempotent, and phonetic Backspace removes the last
+//! rendered syllable. Ethiopic numeral round-trips live in `calendar.rs` (C1.9) and are not repeated.
 //! Synthetic text only (N2).
 
 mod common;
@@ -228,29 +228,32 @@ proptest! {
     }
 }
 
-// ---- Declared reversibility: phonetic Backspace undoes the last key ---------------------
+// ---- Declared reversibility: phonetic Backspace undoes the last syllable ---------------
 
 proptest! {
-    /// "The last Latin keystroke is gone" (translit session): for any letter prefix, typing one
-    /// more letter and pressing Backspace restores exactly the previous composing text and
-    /// candidate list. The prefix stays below the 48-key forced-commit limit.
+    /// One press removes one shown character (translit session): for any letter prefix, typing
+    /// one more letter and pressing Backspace drops exactly the last rendered syllable, however
+    /// many Latin keys produced it (`ka` ካ goes in one step, not via ክ). The prefix stays
+    /// below the 48-key forced-commit limit.
     #[test]
-    fn phonetic_backspace_undoes_the_last_key(
+    fn phonetic_backspace_removes_one_shown_character(
         prefix in "[a-zA-Z']{0,30}",
         extra in "[a-zA-Z']",
     ) {
         let e = phonetic();
-        let mut before = EditorUpdate::default();
         for c in prefix.chars() {
-            before = e.on_key(KeyEvent::Char { text: c.to_string() });
+            e.on_key(KeyEvent::Char { text: c.to_string() });
         }
         let typed = e.on_key(KeyEvent::Char { text: extra });
         prop_assume!(typed.commit.is_empty());
+        prop_assume!(!typed.composing.is_empty());
         let after = e.on_key(KeyEvent::Backspace);
         prop_assert_eq!(after.commit, String::new());
         prop_assert_eq!(after.delete_before, 0);
-        prop_assert_eq!(after.composing, before.composing);
-        prop_assert_eq!(after.candidates, before.candidates);
+        // Every token renders a single character, so the composition loses exactly its last one.
+        let mut want = typed.composing.chars().collect::<Vec<_>>();
+        want.pop();
+        prop_assert_eq!(after.composing, want.into_iter().collect::<String>());
     }
 
     /// Backspacing a whole composition leaves nothing composing; one more Backspace is

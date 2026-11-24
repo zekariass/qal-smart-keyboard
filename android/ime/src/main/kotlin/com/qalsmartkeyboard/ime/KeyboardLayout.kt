@@ -15,6 +15,12 @@ enum class KeyKind {
 }
 
 /**
+ * What a key's long-press fires when it has no popup: the globe cycles the language's layouts,
+ * the comma opens the emoji panel.
+ */
+enum class LongAction { CYCLE_LAYOUT, EMOJI }
+
+/**
  * One long-press choice. [text] is committed as a `Char`; when [language] is set the choice is a
  * language of the picker instead.
  */
@@ -30,7 +36,7 @@ data class PopupItem(
  * One key. [text] is what a CHAR key commits (lower-case for letters; shift upper-cases it); for
  * [KeyKind.FIDEL_CONSONANT] it is the core series id. [weight] is the relative width inside its row.
  * A CHAR key with empty [text] is a layout spacer. [popup] opens on long-press ([popupColumns]
- * wide); [longAction] fires on long-press instead (globe). [hint] is a small corner label showing
+ * wide); [longAction] fires on long-press instead (globe, comma). [hint] is a small corner label showing
  * the first alternative, or (phonetic letter keys) the native character the key produces;
  * [shiftHint], when not null, replaces it while shift is on. [order] is the vowel order of a FIDEL_VOWEL key.
  */
@@ -41,12 +47,11 @@ data class Key(
     val weight: Float = 1f,
     val popup: List<PopupItem> = emptyList(),
     val popupColumns: Int = 5,
-    val longAction: Boolean = false,
+    val longAction: LongAction? = null,
     val hint: String = "",
     val shiftHint: String? = null,
     val order: Int = 0,
     val description: String = "",
-    val draftBadge: Boolean = false,
 ) {
     val isLetter: Boolean get() = kind == KeyKind.CHAR && text.length == 1 && text[0].isLetter()
     val isSpacer: Boolean get() = kind == KeyKind.CHAR && text.isEmpty()
@@ -55,7 +60,7 @@ data class Key(
     val spoken: String get() = description.ifEmpty { label }
 
     /** Acts on release (so a long-press can take over) instead of on press. */
-    val actsOnRelease: Boolean get() = popup.isNotEmpty() || longAction
+    val actsOnRelease: Boolean get() = popup.isNotEmpty() || longAction != null
 }
 
 enum class Page { LETTERS, SYMBOLS, SYMBOLS_2, NUMBER }
@@ -72,7 +77,6 @@ data class LayoutContext(
     val indicator: String = "",
     /** The enabled languages for the space-bar picker. */
     val picker: List<PopupItem> = emptyList(),
-    val draft: Boolean = false,
     /**
      * numeralStyle ETHIOPIC (ADR 0043 as amended by ADR 0044): the digit keys of am/ti typed natively type Ethiopic numerals
      * ([ethiopicDigits]). False (WESTERN, the default): they type Western digits with the Ethiopic numeral on long-press.
@@ -234,8 +238,20 @@ object Layouts {
     private fun spacer(w: Float) = Key(KeyKind.CHAR, "", "", w)
     private fun backspace(w: Float = 1.5f) = Key(KeyKind.BACKSPACE, "⌫", weight = w, description = L.keyDelete)
     private fun enter(w: Float = 1.5f) = Key(KeyKind.ENTER, "", weight = w)
-    private fun emojiKey(profile: InputProfile, w: Float = 1f): Key? =
-        if (profile.allowsEmoji) Key(KeyKind.EMOJI, "", weight = w, description = L.keyEmoji) else null
+    /**
+     * The comma and emoji keys in one (ADR 0035's row kept short): a tap types the comma, a
+     * long-press opens the emoji panel, the ☺ corner hint marks it. The comma's own long-press
+     * alternatives stay on the period key and the symbols page. Fields that disallow emoji keep the
+     * plain comma with its long-press alternatives.
+     */
+    private fun emojiComma(base: Key, profile: InputProfile): Key =
+        if (!profile.allowsEmoji) base
+        else base.copy(
+            popup = emptyList(),
+            longAction = LongAction.EMOJI,
+            hint = "☺",
+            description = "${base.description.ifEmpty { L.keyComma }}, ${L.keyEmoji}",
+        )
 
     private fun plainSpace(w: Float) = Key(KeyKind.SPACE, " ", " ", w, description = L.keySpace)
 
@@ -327,7 +343,6 @@ object Layouts {
             LanguageCatalog.spokenName(ctx.mode.language),
             if (ctx.mode.kind == LayoutKind.ENGLISH) ctx.latinLayout.label else LanguageCatalog.spokenKind(ctx.mode.kind),
         ),
-        draftBadge = ctx.draft,
     )
 
     private fun marks(ctx: LayoutContext, only: Set<String>? = null): List<PopupItem> =
@@ -387,15 +402,16 @@ object Layouts {
         val bottom = when (profile.kind) {
             FieldKind.EMAIL -> listOf(toSym, ch("@"), ch(","), plainSpace(3f), ch("."), enter())
             FieldKind.URI -> listOf(toSym, ch("/"), plainSpace(2f), ch("."), Key(KeyKind.CHAR, ".com", ".com", 1.5f), enter())
-            // ADR 0035, Gboard's order: ?123, comma, globe, (Arabic: the marks key), emoji, space, period, Enter. No ABC key:
-            // am/ti switch writing modes with the bar's pill (one tap away), om reaches ABC by long-pressing the globe.
+            // ADR 0035, Gboard's order, with the emoji key folded into the comma (a tap types it, a long-press
+            // opens the panel) and the language's tag under the globe icon: ?123, comma, globe, (Arabic: the
+            // marks key), space, period, Enter. No ABC key: am/ti switch writing modes with the bar's pill
+            // (one tap away), om reaches ABC by long-pressing the globe.
             FieldKind.TEXT -> {
                 val keys = listOfNotNull(
                     toSym,
-                    commaKey(ctx),
-                    Key(KeyKind.GLOBE, "🌐", weight = 1f, longAction = true, description = L.keySwitchLanguage),
+                    emojiComma(commaKey(ctx), profile),
+                    Key(KeyKind.GLOBE, LanguageCatalog.shortLabel(ctx.mode.language), weight = 1f, longAction = LongAction.CYCLE_LAYOUT, description = L.keySwitchLanguage),
                     if (ctx.arabic) arabicMarksKey() else null,
-                    emojiKey(profile, 1f),
                 )
                 val after = listOf(periodKey(ctx), enter())
                 // The space bar takes what the letter rows' ten units leave, never less than three keys.
@@ -500,11 +516,11 @@ object Layouts {
         return KeyboardLayout(Page.LETTERS, top + listOf(rows[1], rows[2] + backspace(1f), bottom))
     }
 
-    private fun bottomSymbols(profile: InputProfile, ctx: LayoutContext) = listOfNotNull(
+    private fun bottomSymbols(profile: InputProfile, ctx: LayoutContext) = listOf(
         // Back to the letters: the language's own glyph on the Arabic layout (its letters are not "ABC").
         Key(KeyKind.TO_LETTERS, if (ctx.arabic) LanguageCatalog.nativeGlyph(ctx.mode.language) else "ABC", weight = 1.5f, description = L.keyLetters),
-        symbolKey(',', ctx), emojiKey(profile, 1f),
-        plainSpace(if (profile.allowsEmoji) 3.5f else 4f), ch("."), enter(),
+        emojiComma(symbolKey(',', ctx), profile),
+        plainSpace(if (profile.allowsEmoji) 4.5f else 4f), ch("."), enter(),
     )
 
     private fun symbols1(profile: InputProfile, ctx: LayoutContext): KeyboardLayout {

@@ -63,7 +63,7 @@ object AiTimeouts {
 
     fun callTimeoutSeconds(kind: AiTaskKind): Long = when (kind) {
         AiTaskKind.TRANSLATE -> TRANSLATE_SECONDS
-        AiTaskKind.GRAMMAR, AiTaskKind.REWRITE, AiTaskKind.TONE -> QUICK_LLM_SECONDS
+        AiTaskKind.GRAMMAR, AiTaskKind.REWRITE, AiTaskKind.TONE, AiTaskKind.FORMAT -> QUICK_LLM_SECONDS
         AiTaskKind.EXPLAIN, AiTaskKind.SUMMARIZE, AiTaskKind.REPLY -> LONG_FORM_SECONDS
         AiTaskKind.EMAIL -> EMAIL_SECONDS
     }

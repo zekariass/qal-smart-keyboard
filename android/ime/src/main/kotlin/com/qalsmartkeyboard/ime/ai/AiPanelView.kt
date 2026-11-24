@@ -303,14 +303,35 @@ class AiPanelView(context: Context) : LinearLayout(context) {
             if (a.hasMoreOutputs()) langs += ui.chip(context.getString(R.string.ai_output_more_languages)) { a.moreOutputs() }
             body.addView(chipRow(ui, "outputs", langs))
         }
-        // 4. Reply: what the user wants to say.
+        // 4. Reply: a preset stance (optional) and what the user wants to say.
         if (a.action == AiAssistAction.REPLY) {
+            body.addView(section(ui, context.getString(R.string.ai_reply_intent_label)))
+            body.addView(
+                chipRow(
+                    ui, "replyIntents",
+                    AiReplyIntent.entries.map { i ->
+                        ui.chip(AiMessages.intent(context, i), selected = a.replyIntent == i) { a.chooseIntent(i) }
+                    },
+                ),
+            )
             body.addView(
                 ui.field(
                     context.getString(R.string.ai_reply_note_label), a.note.text, context.getString(R.string.ai_reply_note_hint),
                     if (a.note.isBlank) null else AiMessages.count(a.note.length, a.note.limit), a.note.overLimit, maxLines = 3,
                     description = context.getString(R.string.ai_reply_note_label),
                 ) { a.startTyping(AiAssistField.NOTE) },
+            )
+        }
+        // 5. Format: the shape the text becomes.
+        if (a.action == AiAssistAction.FORMAT) {
+            body.addView(section(ui, context.getString(R.string.ai_format_label)))
+            body.addView(
+                chipRow(
+                    ui, "formats",
+                    AiFormat.entries.map { f ->
+                        ui.chip(AiMessages.format(context, f), selected = a.format == f) { a.chooseFormat(f) }
+                    },
+                ),
             )
         }
         notice(ui, a.notice)
@@ -392,6 +413,15 @@ class AiPanelView(context: Context) : LinearLayout(context) {
 
     private fun emailCompose(ui: AiUi, e: AiEmailController, buttons: MutableList<View>) {
         blockBanner(ui, e.availability)?.let(body::addView)
+        // The document kind (ADR 0048): E-mail by default; job application, CV, cover letter and business message too.
+        body.addView(
+            chipRow(
+                ui, "docType",
+                AiDocumentType.entries.map { t ->
+                    ui.chip(AiMessages.documentType(context, t), selected = e.documentType == t) { e.chooseDocumentType(t) }
+                },
+            ).apply { setPadding(0, (4f * d).toInt(), 0, 0) },
+        )
         // Mode: New · Reply · Improve.
         body.addView(
             chipRow(

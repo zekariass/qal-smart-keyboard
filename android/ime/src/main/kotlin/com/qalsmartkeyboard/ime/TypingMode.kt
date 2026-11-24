@@ -75,12 +75,12 @@ object LanguageCatalog {
     fun isEthiopic(language: String) = language == "am" || language == "ti"
 
     /**
-     * The writing modes the mode selector offers, in selector order: am/ti have Fidel, Phonetic and
-     * English (= [LayoutKind.ABC], Latin with no transliteration); om and en have a single mode and no
-     * selector. Language and writing mode are separate: the language stays am/ti in English mode.
+     * The writing modes of am/ti in the order the bar's mode toggle cycles them: Phonetic → Fidel →
+     * English (= [LayoutKind.ABC], Latin with no transliteration) → Phonetic. om and en have a single
+     * mode and no toggle. Language and writing mode are separate: the language stays am/ti in English mode.
      */
     fun writingModes(language: String): List<LayoutKind> =
-        if (isEthiopic(language)) listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC, LayoutKind.ABC) else emptyList()
+        if (isEthiopic(language)) listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL, LayoutKind.ABC) else emptyList()
 
     /** The selector's name of a writing mode (am/ti). */
     fun writingModeLabel(kind: LayoutKind) = when (kind) {

@@ -124,6 +124,20 @@ class TranslateController(
     var sentenceAvailable: Boolean = false
         private set
 
+    /**
+     * The user tapped the box to edit or type again after a send hid the keys. Cleared when a request is sent
+     * ([send]) and on [reset]; kept while the output stands so the keys stay for the next edit.
+     */
+    var boxEditing: Boolean = false
+        private set
+
+    /**
+     * The keys give way to the output once Translate is tapped: hidden through Working, a result and an error, so the
+     * window shrinks to the panel; the box's tap ([startBoxEditing]) brings them back. A language list takes the key
+     * area regardless of this flag.
+     */
+    val keysHidden: Boolean get() = step !is TranslateStep.Idle && !boxEditing
+
     /** What [source] captured from the field (for Replace): the selection, or the sentence and its trailing whitespace. */
     private var captured: AiSource? = null
     private var lastRequest: AiRequest? = null
@@ -199,6 +213,7 @@ class TranslateController(
         detected = null
         sentenceAvailable = false
         lastRequest = null
+        boxEditing = false
     }
 
     /** Replaces the box's text without treating it as an edit. */
@@ -238,6 +253,13 @@ class TranslateController(
         step = TranslateStep.Idle
         lastRequest = null
         notice = AiNotice.NONE
+    }
+
+    /** The box was tapped (to move the cursor or type): the keys come back after a send hid them. */
+    fun startBoxEditing() {
+        if (!isOpen || boxEditing) return
+        boxEditing = true
+        onChanged()
     }
 
     /** The × in the box: empties it and drops the output. */
@@ -408,6 +430,7 @@ class TranslateController(
         val task = request.task as AiTask.Translate
         lastRequest = request
         step = TranslateStep.Working(task)
+        boxEditing = false // the keys give way to the output until the box is tapped
         onChanged()
         runner.start(request) { outcome ->
             step = when (outcome) {
@@ -447,10 +470,10 @@ class TranslateController(
         onChanged()
     }
 
-    /** Enter on the keys: translates; on a result, inserts it. Never reaches the host's Enter or Send. */
+    /** Enter on the keys: translates; on a result, applies it (Replace when it can, else Insert). Never reaches the host's Enter or Send. */
     fun onEnter() {
         when (step) {
-            is TranslateStep.Result -> insert()
+            is TranslateStep.Result -> apply()
             is TranslateStep.Working -> Unit
             else -> if (!input.isBlank) translate()
         }
@@ -473,25 +496,39 @@ class TranslateController(
         onChanged()
     }
 
+    /** The Enter key's apply: Replace what the box came from while it still reads the same, else Insert at the cursor. */
+    private fun apply(): AiApplied = if (replacesFieldText) replace() else insert()
+
     /**
-     * Puts the shown translation into the field: it replaces the selection or sentence it came from (if the field still
-     * reads the same; else it is inserted at the cursor, [AiApplied.INSERTED_ORIGINAL_CHANGED]), or is inserted at the
-     * cursor. Then the box and the output are cleared for the next translation; the panel stays open (translate mode).
+     * Replaces the field text the box came from — the selection or the sentence — with the shown translation, while
+     * the box still holds it unchanged and the field still reads it. There is no fallback: when it no longer matches
+     * (the field changed meanwhile) the apply fails and nothing is inserted; Insert still puts it at the cursor.
      */
-    fun insert(): AiApplied {
+    fun replace(): AiApplied {
         val r = step as? TranslateStep.Result ?: return AiApplied.FAILED
         val text = r.shownText
-        val src = captured?.takeIf { replacesFieldText }
-        val replaced = when (src) {
+        val replaced = when (val src = captured?.takeIf { replacesFieldText }) {
             is AiSource.Selection -> editor.replaceSelection(src.text, text)
             is AiSource.Sentence -> editor.replaceBeforeCursor(src.text + src.trailing, text + src.trailing)
             null -> false
         }
-        val applied = when {
-            replaced -> AiApplied.REPLACED
-            editor.insertAtCursor(text) -> if (src != null) AiApplied.INSERTED_ORIGINAL_CHANGED else AiApplied.INSERTED
-            else -> AiApplied.FAILED
-        }
+        return finishApply(if (replaced) AiApplied.REPLACED else AiApplied.FAILED)
+    }
+
+    /**
+     * Inserts the shown translation at the cursor (after a selection, if any), preserving the field's text. Never
+     * replaces: what the box came from stays as it is.
+     */
+    fun insert(): AiApplied {
+        val r = step as? TranslateStep.Result ?: return AiApplied.FAILED
+        return finishApply(if (editor.insertAtCursor(r.shownText)) AiApplied.INSERTED else AiApplied.FAILED)
+    }
+
+    /**
+     * After an apply succeeded the box and the output are cleared for the next translation; the panel stays open
+     * (translate mode). A failure keeps them and is flagged for the panel's warn line.
+     */
+    private fun finishApply(applied: AiApplied): AiApplied {
         if (applied == AiApplied.FAILED) {
             notice = AiNotice.INSERT_FAILED
         } else {

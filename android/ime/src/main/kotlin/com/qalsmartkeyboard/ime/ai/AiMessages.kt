@@ -70,6 +70,7 @@ object AiMessages {
             AiAssistAction.SIMPLIFY -> R.string.ai_action_simplify
             AiAssistAction.REPLY -> R.string.ai_action_reply
             AiAssistAction.SUMMARIZE -> R.string.ai_action_summarize
+            AiAssistAction.FORMAT -> R.string.ai_action_format
         },
     )
 
@@ -85,6 +86,7 @@ object AiMessages {
             AiAssistAction.SIMPLIFY -> if (lang == null) c.getString(R.string.ai_run_simplify) else c.getString(R.string.ai_run_simplify_in, lang)
             AiAssistAction.REPLY -> c.getString(R.string.ai_run_reply, lang ?: "English")
             AiAssistAction.SUMMARIZE -> c.getString(R.string.ai_run_summarize, lang ?: "English")
+            AiAssistAction.FORMAT -> if (lang == null) c.getString(R.string.ai_run_format) else c.getString(R.string.ai_run_format_in, lang)
         }
     }
 
@@ -98,6 +100,7 @@ object AiMessages {
             AiAssistAction.REWRITE, AiAssistAction.PROFESSIONAL, AiAssistAction.SIMPLIFY -> c.getString(R.string.ai_working_rewrite)
             AiAssistAction.REPLY -> c.getString(R.string.ai_working_reply)
             AiAssistAction.SUMMARIZE -> c.getString(R.string.ai_working_summarize)
+            AiAssistAction.FORMAT -> c.getString(R.string.ai_working_format)
         }
     }
 
@@ -151,6 +154,40 @@ object AiMessages {
         },
     )
 
+    /** The document kind the Write panel produces (ADR 0048). */
+    fun documentType(c: Context, t: AiDocumentType): String = c.getString(
+        when (t) {
+            AiDocumentType.EMAIL -> R.string.ai_doctype_email
+            AiDocumentType.JOB_APPLICATION -> R.string.ai_doctype_job_application
+            AiDocumentType.CV -> R.string.ai_doctype_cv
+            AiDocumentType.COVER_LETTER -> R.string.ai_doctype_cover_letter
+            AiDocumentType.BUSINESS_MESSAGE -> R.string.ai_doctype_business
+        },
+    )
+
+    /** The shape FORMAT restructures the text into. */
+    fun format(c: Context, f: AiFormat): String = c.getString(
+        when (f) {
+            AiFormat.BULLETS -> R.string.ai_format_bullets
+            AiFormat.NUMBERED_LIST -> R.string.ai_format_numbered
+            AiFormat.PARAGRAPHS -> R.string.ai_format_paragraphs
+            AiFormat.REPORT -> R.string.ai_format_report
+            AiFormat.MEETING_NOTES -> R.string.ai_format_meeting_notes
+        },
+    )
+
+    /** The preset stance of the suggested replies (null is "varied" and has no chip). */
+    fun intent(c: Context, i: AiReplyIntent): String = c.getString(
+        when (i) {
+            AiReplyIntent.AGREE -> R.string.ai_intent_agree
+            AiReplyIntent.DISAGREE_POLITELY -> R.string.ai_intent_disagree
+            AiReplyIntent.ASK_CLARIFICATION -> R.string.ai_intent_clarify
+            AiReplyIntent.ACCEPT_INVITATION -> R.string.ai_intent_accept
+            AiReplyIntent.DECLINE_POLITELY -> R.string.ai_intent_decline
+            AiReplyIntent.THANK_SENDER -> R.string.ai_intent_thank
+        },
+    )
+
     fun problem(c: Context, p: AiEmailProblem): String = c.getString(
         when (p) {
             AiEmailProblem.MISSING_INSTRUCTIONS -> R.string.ai_email_problem_instructions
@@ -180,6 +217,10 @@ object AiMessages {
         AiTool.REPLY -> action(c, AiAssistAction.REPLY)
         AiTool.EXPLAIN -> action(c, AiAssistAction.EXPLAIN)
         AiTool.SUMMARIZE -> action(c, AiAssistAction.SUMMARIZE)
+        AiTool.FORMAT -> action(c, AiAssistAction.FORMAT)
+        AiTool.SHORTEN -> c.getString(R.string.ai_tool_shorten)
+        AiTool.EXPAND -> c.getString(R.string.ai_tool_expand)
+        AiTool.CLARIFY -> c.getString(R.string.ai_tool_clarify)
         AiTool.EMAIL -> c.getString(R.string.tool_email)
         AiTool.ASSIST -> c.getString(R.string.tool_ai_assist)
         else -> tone(c, t.tone!!)
@@ -201,6 +242,10 @@ object AiMessages {
             AiTone.CONCISE -> R.string.ai_tone_concise
             AiTone.APOLOGETIC -> R.string.ai_tone_apologetic
             AiTone.HONORIFIC -> R.string.ai_tone_honorific
+            AiTone.ROMANTIC -> R.string.ai_tone_romantic
+            AiTone.CONFIDENT -> R.string.ai_tone_confident
+            AiTone.FUNNY -> R.string.ai_tone_funny
+            AiTone.PERSUASIVE -> R.string.ai_tone_persuasive
         },
     )
 

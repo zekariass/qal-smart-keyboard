@@ -53,7 +53,7 @@ class KeyboardBarTest {
             ai.controller = controller
             bar.onTool = { tools += it }
             controller.onFieldStarted(InputProfile.DEFAULT, "com.example.chat")
-            strip.setModes(listOf(LayoutKind.FIDEL, LayoutKind.PHONETIC, LayoutKind.ABC), LayoutKind.PHONETIC)
+            strip.setModes(listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL, LayoutKind.ABC), LayoutKind.PHONETIC)
             layout()
         }
 
@@ -80,8 +80,8 @@ class KeyboardBarTest {
         val t = h.targets()
         assertEquals(Target.Tools, t[0])
         assertEquals(Target.Pill, t[1])
-        // Translate, AI and Clipboard first, then Settings and Theme while they fit.
-        assertEquals(listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.SETTINGS), shortcutTools(h).take(4))
+        // Every shortcut of the field is on the bar; what does not fit scrolls in on a sideways drag.
+        assertEquals(listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.SETTINGS, Tool.THEME, Tool.EMOJI), shortcutTools(h))
         assertEquals("no panel above the bar when idle", View.GONE, h.ai.visibility)
         assertEquals("the bar is the strip alone (the AI row is retired, ADR 0041)", 1, h.bar.childCount)
         assertEquals(0, h.actions.refreshCount) // showing the keyboard never refreshes (D40)
@@ -91,32 +91,49 @@ class KeyboardBarTest {
         val h = H()
         h.strip.micShown = true
         h.layout()
-        for (s in h.strip.slots().filter { it.target is Target.Shortcut || it.target == Target.Tools || it.target == Target.Mic }) {
+        // Fixed buttons are full 48 dp targets; a shortcut's touch target is its visible part (the rest is scrolled off).
+        for (s in h.strip.slots().filter { it.target == Target.Tools || it.target == Target.Mic }) {
             assertTrue("${s.target} ${s.hit.width() / d} dp", s.hit.width() >= 48f * d - 0.5f)
             assertEquals(barPx.toFloat(), s.hit.height(), 1f)
         }
-        // Shortcuts are evenly spaced, never further apart than 72 dp, and never overlap the mic at the right end.
+        // Shortcuts are evenly spaced 48 dp slots; their (clipped) targets never overlap the mic at the right end.
         val shortcuts = h.strip.slots().filter { it.target is Target.Shortcut }
-        val widths = shortcuts.map { it.hit.width() }
+        val widths = shortcuts.map { it.shape.width() }
         assertTrue(widths.max() - widths.min() < 0.5f)
-        assertTrue(widths.first() <= CandidateStripView.MAX_SHORTCUT_DP * d + 0.5f)
+        assertTrue(widths.first() >= 48f * d - 0.5f && widths.first() <= CandidateStripView.MAX_SHORTCUT_DP * d + 0.5f)
+        for (s in shortcuts) assertEquals("${s.target} height", barPx.toFloat(), s.hit.height(), 1f)
         val mic = h.strip.slots().last()
         assertEquals(Target.Mic, mic.target)
         assertEquals(widthPx.toFloat(), mic.hit.right, 0.5f)
         assertTrue(shortcuts.last().hit.right <= mic.hit.left + 0.5f)
     }
 
-    @Test fun narrowScreensShowFewerShortcutsButKeepTranslateAndAi() {
+    /** Owner request: nothing drops off the bar when it does not fit — the middle scrolls sideways on a drag. */
+    @Test fun whenShortcutsDoNotFitTheyScrollSidewaysInsteadOfDropping() {
         val h = H()
         h.strip.micShown = true
         val narrow = (320 * d).toInt()
         h.bar.measure(View.MeasureSpec.makeMeasureSpec(narrow, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         h.bar.layout(0, 0, narrow, h.bar.measuredHeight)
-        assertEquals(listOf(Tool.TRANSLATE, Tool.AI), shortcutTools(h).take(2))
-        assertTrue(shortcutTools(h).size < 6)
+        // Every tool of the field is a slot: Theme and Emoji included, off the right edge at first.
+        assertEquals(listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.SETTINGS, Tool.THEME, Tool.EMOJI), shortcutTools(h))
+        assertTrue(h.strip.slots().first { it.target == Target.Shortcut(Tool.EMOJI) }.hit.isEmpty)
+        assertTrue(h.strip.slots().first { it.target == Target.Shortcut(Tool.TRANSLATE) }.hit.width() > 0f)
+        // A sideways drag across the middle scrolls them into reach (no tool tap fires).
+        fun touch(action: Int, x: Float) = h.strip.onTouchEvent(
+            android.view.MotionEvent.obtain(0L, 0L, action, x, (barPx / 2).toFloat(), 0),
+        )
+        val (midStart, midEnd) = h.strip.middleRange()
+        touch(android.view.MotionEvent.ACTION_DOWN, midEnd - 8f)
+        touch(android.view.MotionEvent.ACTION_MOVE, midEnd - 60f) // past the slop: the sideways drag starts
+        touch(android.view.MotionEvent.ACTION_MOVE, midStart - 200f) // drag far past the end: clamps at the last icon
+        assertTrue("a full drag reaches the last icon", h.strip.slots().first { it.target == Target.Shortcut(Tool.EMOJI) }.hit.width() >= 48f * d - 0.5f)
+        assertTrue("the first icon scrolled off", h.strip.slots().first { it.target == Target.Shortcut(Tool.TRANSLATE) }.hit.isEmpty)
+        touch(android.view.MotionEvent.ACTION_UP, midStart - 200f)
+        assertTrue(h.tools.isEmpty())
     }
 
-    /** Owner request: the settings gear is always on the am/ti Phonetic bar, beside the pill, even on narrow phones. */
+    /** The settings gear stays a bar shortcut beside the am/ti mode pill at every width (a drag away at most). */
     @Test fun theSettingsGearStaysOnTheBarBesideThePill() {
         for (dp in listOf(320, 360, 384, 411)) {
             val h = H()
@@ -127,8 +144,8 @@ class KeyboardBarTest {
             assertTrue("$dp dp: pill shown", Target.Pill in h.targets())
             assertTrue("$dp dp: ${shortcutTools(h)}", Tool.SETTINGS in shortcutTools(h))
             assertEquals("$dp dp", listOf(Tool.TRANSLATE, Tool.AI), shortcutTools(h).take(2))
-            // Every shortcut keeps its 48 dp touch target.
-            for (s in h.strip.slots().filter { it.target is Target.Shortcut }) assertTrue("$dp dp", s.hit.width() >= 48 * d - 0.5f)
+            // Every shortcut keeps its 48 dp cell (its visible touch target may be smaller while scrolled off).
+            for (s in h.strip.slots().filter { it.target is Target.Shortcut }) assertTrue("$dp dp", s.shape.width() >= 48 * d - 0.5f)
         }
     }
 
@@ -159,29 +176,44 @@ class KeyboardBarTest {
         assertTrue(h.actions.submitted.isEmpty())
     }
 
-    @Test fun composingPutsCandidatesInTheMiddleAndKeepsTools() {
+    @Test fun composingTurnsTheBarIntoTheSuggestionListWithABackChevron() {
         val h = H()
-        h.strip.show(cands("ሰላም", "ሰላማ"), isDraft = true)
+        h.strip.show(cands("ሰላም", "ሰላማ"))
         assertEquals(barPx, h.layout())
-        // The tools button stays reachable at the left while composing; the composition is in the centre slot, the
-        // other candidate on its left (ADR 0039).
-        assertEquals(listOf(Target.Tools, Target.Pill, Target.DraftTag, Target.Candidate(1), Target.Candidate(0)), h.targets())
-        // The word is done: the shortcuts are back.
-        h.strip.show(emptyList(), isDraft = true)
+        // Owner request: the whole bar is the suggestion list while composing — the back chevron takes the left end
+        // (where the tools button was), then every candidate as a full word.
+        assertEquals(listOf(Target.Back, Target.Candidate(0), Target.Candidate(1)), h.targets())
+        // The chevron brings the tools bar back while composing.
+        h.strip.activate(Target.Back)
+        h.layout()
+        assertEquals(Target.Tools, h.targets().first())
+        assertTrue(Target.Pill in h.targets())
+        // Typing on (a new list) restores the suggestions; the word done leaves the tools bar.
+        h.strip.show(cands("ሰላም", "ሰላማ", "ሰለ"))
+        assertEquals(Target.Back, h.targets().first())
+        h.strip.show(emptyList())
         h.layout()
         assertEquals(listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD), shortcutTools(h).take(3))
     }
 
-    @Test fun theModeChooserTakesTheMiddle() {
+    @Test fun thePillCyclesPhoneticFidelEnglishPhonetic() {
+        // Owner request: the mode pill is a toggle, not a dropdown — each tap moves to the next mode and
+        // the middle keeps its shortcuts (no option buttons appear).
         val h = H()
+        val picked = ArrayList<LayoutKind>()
+        h.strip.onModeSelected = { picked += it }
+        val modes = listOf(LayoutKind.PHONETIC, LayoutKind.FIDEL, LayoutKind.ABC)
         h.strip.activate(Target.Pill)
-        assertTrue(h.strip.isModeChooserOpen)
-        assertEquals(listOf(Target.Tools, Target.Pill, Target.Mode(LayoutKind.FIDEL), Target.Mode(LayoutKind.PHONETIC), Target.Mode(LayoutKind.ABC)), h.targets())
+        h.strip.setModes(modes, LayoutKind.FIDEL)
         h.strip.activate(Target.Pill)
-        assertFalse(h.strip.isModeChooserOpen)
-        // The tools panel's Writing mode tile opens the same chooser.
-        h.strip.openModeChooser()
-        assertTrue(h.strip.isModeChooserOpen)
+        h.strip.setModes(modes, LayoutKind.ABC)
+        h.strip.activate(Target.Pill)
+        assertEquals(listOf(LayoutKind.FIDEL, LayoutKind.ABC, LayoutKind.PHONETIC), picked)
+        assertEquals(listOf(Tool.TRANSLATE, Tool.AI), shortcutTools(h).take(2)) // no chooser in the middle
+        // The tools panel's Writing mode tile cycles the same way.
+        h.strip.setModes(modes, LayoutKind.PHONETIC)
+        h.strip.cycleMode()
+        assertEquals(LayoutKind.FIDEL, picked.last())
     }
 
     @Test fun anOpenToolPanelLeavesOnlyBackAndTitle() {
@@ -202,7 +234,7 @@ class KeyboardBarTest {
         h.bar.fieldContext = { ToolContext(password) }
         h.controller.onFieldStarted(password, "com.example.bank")
         h.strip.setModes(emptyList(), LayoutKind.ABC) // the controller offers no writing modes there
-        h.strip.show(emptyList(), isDraft = false)
+        h.strip.show(emptyList())
         assertEquals(barPx, h.layout())
         assertEquals(listOf(Target.Tools, Target.Shortcut(Tool.SETTINGS), Target.Shortcut(Tool.THEME)), h.targets())
         assertFalse(h.bar.toolContext().aiReady)
@@ -281,8 +313,8 @@ class KeyboardBarTest {
         val h = H()
         val heights = ArrayList<Int>()
         heights += h.layout()
-        h.strip.show(cands("ሰላም"), false); heights += h.layout()
-        h.strip.show(emptyList(), false); heights += h.layout()
+        h.strip.show(cands("ሰላም")); heights += h.layout()
+        h.strip.show(emptyList()); heights += h.layout()
         h.strip.activate(Target.Pill); heights += h.layout()
         h.strip.micShown = true; heights += h.layout()
         h.strip.panelTitle = "Tools"; heights += h.layout()

@@ -418,9 +418,9 @@ class KeyboardImeService : InputMethodService() {
             openEmoji()
             controller.emoji.openWordArt()
         }
-        override fun openWritingModes() {
+        override fun cycleWritingMode() {
             translate?.closePicker()
-            strip?.openModeChooser()
+            strip?.cycleMode()
         }
         override fun openLanguages() = openCompanion(AiLink.LANGUAGES)
         override fun openTheme() = openCompanion(AiLink.THEMES)
@@ -1271,11 +1271,10 @@ class KeyboardImeService : InputMethodService() {
             // While an AI field is typed into the bar is hidden; its candidates would also close the AI row.
             val candidates = controller.showCandidateStrip && !aiTyping
             it.show(
-                if (candidates) controller.candidates else emptyList(), candidates && controller.candidatesAreDraft,
-                autocorrect = if (candidates) controller.autocorrectIndex else -1, rtl = controller.candidatesRtl,
+                if (candidates) controller.candidates else emptyList(),
+                autocorrect = if (candidates) controller.autocorrectIndex else -1,
             )
             it.setModes(controller.writingModeOptions, controller.writingMode)
-            it.closeModeChooser()
         }
         // Emoji panel (ADR 0028): the panel takes the key area, or (search) the keys are back with the search strip in the bar's place.
         val mode = controller.emoji.mode
@@ -1351,7 +1350,12 @@ class KeyboardImeService : InputMethodService() {
         }
         syncActiveTools()
         bar?.sync() // the field's shortcuts (clipboard, emoji, voice) follow the field and the settings
-        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE || (picking && !searchingLanguages)) View.GONE else View.VISIBLE
+        // Translate mode: once Translate is sent the keys give way to the output; a tap in the box brings them back.
+        // On a landscape screen the card folds away while the keys are up for an edit, so the rows still fit.
+        val translateHidesKeys = translateOpen && !picking && tr?.keysHidden == true
+        translatePanel?.compactOutput = translateOpen && tr?.boxEditing == true &&
+            resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE || (picking && !searchingLanguages) || translateHidesKeys) View.GONE else View.VISIBLE
         emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
         bar?.visibility = if (inSearch || inWordArtTyping || aiTyping) View.GONE else View.VISIBLE
         aiFieldBar?.let {

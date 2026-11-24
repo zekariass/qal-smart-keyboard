@@ -4,7 +4,9 @@ Network side of the keyboard's AI toolbar. Implements `:ime`'s `AiActions` port 
 OkHttp stack (bearer, client headers with `X-Client-Surface: KEYBOARD`, refresh authenticator), with the contract's
 8 s client timeout. `:app` wires it (`AiGraph`, `QalApplication`).
 
-- `POST /ai/translate`, `POST /ai/transform` (GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST); `Idempotency-Key` = the
+- `POST /ai/translate`, `POST /ai/transform` (GRAMMAR_CORRECTION, REWRITE — NATURAL and the SHORTEN / EXPAND / CLARIFY /
+  SIMPLIFY modes —, TONE_ADJUST, FORMAT_TEXT), `POST /ai/replies` (with the optional preset `intent`), `POST /ai/drafts`
+  (`documentType`: e-mail, job application, CV, cover letter, business message); `Idempotency-Key` = the
   request id; source language left to server detection. `saveToHistory: true` is added only while the `saveToHistory`
   supplier of `ServerAiActions` returns true (A2.6: the person turned AI history on; default never, the member is then absent).
   Errors map to `AiFailure` by Problem `code`

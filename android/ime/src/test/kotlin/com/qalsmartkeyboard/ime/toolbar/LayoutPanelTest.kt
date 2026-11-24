@@ -49,7 +49,7 @@ class LayoutPanelTest {
             override fun openEmoji() {}
             override fun startVoice() {}
             override fun openWordArt() {}
-            override fun openWritingModes() {}
+            override fun cycleWritingMode() {}
             override fun openLanguages() {}
             override fun openTheme() {}
             override fun openSettings() {}

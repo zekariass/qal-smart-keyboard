@@ -63,7 +63,7 @@ class AiPanelViewTest {
 
     private fun all(v: View): List<View> = if (v is ViewGroup) listOf(v) + (0 until v.childCount).flatMap { all(v.getChildAt(it)) } else listOf(v)
 
-    @Test fun assistOpensAtTheKeyboardHeightWithTheSelectionAndEightActions() {
+    @Test fun assistOpensAtTheKeyboardHeightWithTheSelectionAndNineActions() {
         val h = H(selection = "ሰላም ነው")
         h.ws.openAssist()
         assertEquals((260 * d).toInt(), h.layout().measuredHeight)
@@ -71,10 +71,28 @@ class AiPanelViewTest {
         assertTrue(t.contains("AI Assist"))
         assertTrue(t.contains("Selected text"))
         assertTrue(t.contains("ሰላም ነው"))
-        for (a in listOf("Translate", "Explain", "Fix grammar", "Rewrite", "Make professional", "Simplify", "Reply", "Summarise")) {
+        for (a in listOf("Translate", "Explain", "Fix grammar", "Rewrite", "Make professional", "Simplify", "Reply", "Summarise", "Format")) {
             assertTrue("chip $a", t.contains(a))
         }
         assertEquals(listOf("Translate to English"), h.footer())
+    }
+
+    @Test fun replyShowsTheIntentChipsAndFormatTheShapeChips() {
+        val h = H(selection = "Can you come?")
+        h.ws.openAssist()
+        h.click("Reply")
+        var t = h.texts()
+        assertTrue(t.contains("Reply stance (optional)"))
+        for (i in listOf("Agree", "Disagree politely", "Ask to clarify", "Accept invitation", "Decline politely", "Thank them")) {
+            assertTrue("intent $i", t.contains(i))
+        }
+        h.click("Format")
+        t = h.texts()
+        assertTrue(t.contains("Shape into"))
+        for (f in listOf("Bullet points", "Numbered list", "Paragraphs", "Report", "Meeting notes")) {
+            assertTrue("format $f", t.contains(f))
+        }
+        assertEquals(listOf("Format text"), h.footer())
     }
 
     @Test fun thePasteChipShowsOnlyForTextAndASensitiveClipSaysSo() {
@@ -150,7 +168,7 @@ class AiPanelViewTest {
         val h = H()
         h.ws.openEmail()
         val t = h.texts()
-        for (s in listOf("New", "Reply", "Improve", "What do you want to say?", "Professional", "Persuasive", "Short", "English")) assertTrue(s, t.contains(s))
+        for (s in listOf("E-mail", "Job application", "CV", "Cover letter", "Business message", "New", "Reply", "Improve", "What do you want to say?", "Professional", "Persuasive", "Short", "English")) assertTrue(s, t.contains(s))
         assertEquals(listOf("Generate email"), h.footer())
         h.clickFooter("Generate email")
         assertTrue(h.texts().contains("Say what the e-mail should say."))

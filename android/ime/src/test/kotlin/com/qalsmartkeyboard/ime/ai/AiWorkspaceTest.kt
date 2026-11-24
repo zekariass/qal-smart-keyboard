@@ -3,6 +3,7 @@ package com.qalsmartkeyboard.ime.ai
 import com.qalsmartkeyboard.ime.ComposerUpdate
 import com.qalsmartkeyboard.ime.KeyKind
 import com.qalsmartkeyboard.ime.KeyboardController
+import com.qalsmartkeyboard.ime.LongAction
 import com.qalsmartkeyboard.ime.TextSink
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -51,7 +52,7 @@ class AiWorkspaceTest {
         assertEquals("nothing reaches the host field", "", h.host.out.toString())
         h.tapKind(KeyKind.BACKSPACE)
         assertEquals("hi\n", h.ws.assist.source.text)
-        h.tapKind(KeyKind.EMOJI) // the emoji key ends typing, back to the panel
+        h.kc.onLongPress(h.kc.layout.rows.flatten().first { it.longAction == LongAction.EMOJI }) // the comma's long-press ends typing, back to the panel
         assertFalse(h.ws.typing)
         assertTrue(h.ws.showsPanel)
         h.tap("z")

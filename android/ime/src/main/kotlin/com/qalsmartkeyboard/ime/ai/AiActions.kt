@@ -71,13 +71,16 @@ fun interface AiCall {
  * What a request is metered as: one value per contract `FeatureCode` the keyboard uses. [TONE] is `TONE_ADJUST`
  * ("make professional", a rewrite with a tone), [REPLY] `SMART_REPLY`, [EMAIL] `DRAFT_DOCUMENT` (ADR 0027).
  */
-enum class AiTaskKind { TRANSLATE, GRAMMAR, REWRITE, TONE, EXPLAIN, SUMMARIZE, REPLY, EMAIL }
+enum class AiTaskKind { TRANSLATE, GRAMMAR, REWRITE, TONE, EXPLAIN, SUMMARIZE, REPLY, EMAIL, FORMAT }
 
 /** Contract `targetLength` (SUMMARIZE) and `DraftRequest.length`. */
 enum class AiLength { SHORT, MEDIUM, LONG }
 
 /** Contract `DraftRequest.mode`: a new e-mail, a reply to a received one, or an improved draft. */
 enum class AiEmailMode { NEW, REPLY, IMPROVE }
+
+/** Contract `DraftRequest.documentType`: the document kinds the server serves today (the rest answer NOT_AVAILABLE). */
+enum class AiDocumentType { EMAIL, JOB_APPLICATION, CV, COVER_LETTER, BUSINESS_MESSAGE }
 
 /** Contract `EmailTone` (the e-mail writer's eight tones; PROFESSIONAL is the server default). */
 enum class AiEmailTone { PROFESSIONAL, FORMAL, FRIENDLY, CASUAL, POLITE, PERSUASIVE, APOLOGETIC, CONCISE }
@@ -101,6 +104,8 @@ data class AiEmailSpec(
     val recipientName: String = "",
     val senderName: String = "",
     val variation: Int = 0,
+    /** The document to write: an e-mail by default; the other kinds the server serves (job application, CV, ...). */
+    val documentType: AiDocumentType = AiDocumentType.EMAIL,
 ) {
     /** The main user text of the mode (what the server checks first): the description, the e-mail answered or the draft. */
     val mainText: String get() = when (mode) {
@@ -112,8 +117,17 @@ data class AiEmailSpec(
     override fun toString() = "AiEmailSpec($mode, $language, $tone, $length, variation=$variation)"
 }
 
-/** Contract `Tone` values. */
-enum class AiTone { FRIENDLY, POLITE, PROFESSIONAL, CONCISE, APOLOGETIC, HONORIFIC }
+/** Contract `Tone` values (TONE_ADJUST). */
+enum class AiTone { FRIENDLY, POLITE, PROFESSIONAL, CONCISE, APOLOGETIC, HONORIFIC, ROMANTIC, CONFIDENT, FUNNY, PERSUASIVE }
+
+/** Contract `TransformRequest.options.mode` for REWRITE (NATURAL, the shaping modes and SIMPLIFY). */
+enum class AiRewriteMode { NATURAL, SHORTEN, EXPAND, CLARIFY, SIMPLIFY }
+
+/** Contract `TransformRequest.options.format` (FORMAT_TEXT, required): the shape the text is restructured into. */
+enum class AiFormat { BULLETS, NUMBERED_LIST, PARAGRAPHS, REPORT, MEETING_NOTES }
+
+/** Contract `RepliesRequest.intent`: a preset stance every suggested reply takes; null = varied. */
+enum class AiReplyIntent { AGREE, DISAGREE_POLITELY, ASK_CLARIFICATION, ACCEPT_INVITATION, DECLINE_POLITELY, THANK_SENDER }
 
 /**
  * Where the translation goes: a destination profile (N3: "Mum, Amharic, honorific") or a plain
@@ -145,11 +159,17 @@ sealed interface AiTask {
     /** `GRAMMAR_CORRECTION`: always in the language of the text (another output language is refused by the server). */
     data object Grammar : AiTask
 
-    /** [tone] null: a natural rewrite (`REWRITE`); set: `TONE_ADJUST` ("make professional" is PROFESSIONAL). */
-    data class Rewrite(val tone: AiTone?, val outputLanguage: String? = null, val variation: Int = 0) : AiTask
+    /**
+     * [tone] null: a `REWRITE` in [mode] (a natural rewrite by default); set: `TONE_ADJUST` ("make professional" is
+     * PROFESSIONAL) and [mode] is ignored.
+     */
+    data class Rewrite(val tone: AiTone?, val outputLanguage: String? = null, val variation: Int = 0, val mode: AiRewriteMode = AiRewriteMode.NATURAL) : AiTask
 
     /** `REWRITE` mode `SIMPLIFY`: short sentences, everyday words. */
     data class Simplify(val outputLanguage: String? = null, val variation: Int = 0) : AiTask
+
+    /** `FORMAT_TEXT`: restructures the text into [format] (notes to bullets, meeting notes, ...). */
+    data class Format(val format: AiFormat, val outputLanguage: String? = null, val variation: Int = 0) : AiTask
 
     /** `EXPLAIN_TEXT`, written in [outputLanguage]. */
     data class Explain(val outputLanguage: String, val variation: Int = 0) : AiTask
@@ -159,10 +179,10 @@ sealed interface AiTask {
 
     /**
      * `POST /ai/replies`: [count] replies to the request's text (the message received) in [replyLanguage]. [instructions]
-     * are the user's own notes on what to answer (any language, user text).
+     * are the user's own notes on what to answer (any language, user text); [intent] is a preset stance for all of them.
      */
-    data class Reply(val replyLanguage: String, val instructions: String = "", val count: Int = 3, val variation: Int = 0) : AiTask {
-        override fun toString() = "Reply($replyLanguage, count=$count, variation=$variation)"
+    data class Reply(val replyLanguage: String, val instructions: String = "", val count: Int = 3, val variation: Int = 0, val intent: AiReplyIntent? = null) : AiTask {
+        override fun toString() = "Reply($replyLanguage, count=$count, variation=$variation, intent=$intent)"
     }
 
     /** `POST /ai/drafts` (e-mail). The request's text is [AiEmailSpec.mainText]; the spec holds everything that is sent. */
@@ -176,6 +196,7 @@ sealed interface AiTask {
             Grammar -> AiTaskKind.GRAMMAR
             is Rewrite -> if (tone == null) AiTaskKind.REWRITE else AiTaskKind.TONE
             is Simplify -> AiTaskKind.REWRITE
+            is Format -> AiTaskKind.FORMAT
             is Explain -> AiTaskKind.EXPLAIN
             is Summarize -> AiTaskKind.SUMMARIZE
             is Reply -> AiTaskKind.REPLY
