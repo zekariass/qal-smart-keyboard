@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+
 import java.util.UUID;
 
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,7 +27,9 @@ import com.qalsmartkeyboard.platform.geo.CountryResolution;
 /**
  * Sellable products with their active prices for a market and sales channel, and the {@code BillingOptions} document
  * (products plus the routed payment methods). Only ACTIVE products of sellable ACTIVE plans with an active price valid
- * now are listed.
+ * now are listed, and only of the product families the market offers ({@code billing_market_offerings}, T8.10: the
+ * market's own row, else the {@code ZZ} default, else off). Order pricing reads the same list, so a family a market
+ * does not offer can neither be shown nor ordered.
  */
 final class BillingCatalog {
 
@@ -63,6 +65,7 @@ final class BillingCatalog {
 				  AND pr.valid_from <= ? AND (pr.valid_until IS NULL OR pr.valid_until > ?)
 				  AND bp.product_status = 'ACTIVE'
 				  AND (bp.product_type <> 'SUBSCRIPTION' OR (sp.is_sellable AND sp.plan_status = 'ACTIVE'))
+				  AND fn_billing_offering_enabled(pr.market_country_code, bp.product_type)
 				ORDER BY COALESCE(sp.display_order, 1000), bp.product_code, pr.billing_period""",
 				(rs, i) -> new PriceRow(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3), rs.getString(4),
 						rs.getString(5), rs.getString(6), rs.getBigDecimal(7), (Integer) rs.getObject(8),
@@ -71,14 +74,6 @@ final class BillingCatalog {
 				marketCountry, salesChannel, now, now);
 	}
 
-	/** The active price of one product, period and renewal model in a market and channel. */
-	Optional<PriceRow> price(String productCode, String marketCountry, String salesChannel, String billingPeriod,
-			String renewalModel) {
-		return prices(marketCountry, salesChannel).stream()
-				.filter(p -> p.productCode().equals(productCode) && p.billingPeriod().equals(billingPeriod)
-						&& p.renewalModel().equals(renewalModel))
-				.findFirst();
-	}
 
 	List<ProductDto> products(String marketCountry, String salesChannel) {
 		Map<String, List<PriceRow>> byProduct = new LinkedHashMap<>();

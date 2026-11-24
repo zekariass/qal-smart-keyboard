@@ -20,6 +20,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -28,7 +29,13 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.qalsmartkeyboard.billing.BillingDtos.AdminPriceUpdate;
+import com.qalsmartkeyboard.billing.BillingDtos.AdminProductDto;
+import com.qalsmartkeyboard.billing.BillingDtos.AdminProductListDto;
+import com.qalsmartkeyboard.billing.BillingDtos.AdminProductUpdate;
 import com.qalsmartkeyboard.billing.BillingDtos.BillingOptionsDto;
+import com.qalsmartkeyboard.billing.BillingDtos.MarketOfferingSetDto;
+import com.qalsmartkeyboard.billing.BillingDtos.MarketOfferingSetUpdate;
 import com.qalsmartkeyboard.billing.BillingDtos.CreateAttemptRequest;
 import com.qalsmartkeyboard.billing.BillingDtos.CreateOrderRequest;
 import com.qalsmartkeyboard.billing.BillingDtos.PaymentAttemptDto;
@@ -51,7 +58,9 @@ import jakarta.validation.Valid;
  * {@code getBillingOptions}, {@code listBillingProducts}, {@code createPaymentOrder}, {@code getPaymentOrder},
  * {@code cancelPaymentOrder}, {@code createPaymentAttempt}, {@code getPaymentAttempt}, {@code returnFromCheckout},
  * {@code listSubscriptions}, {@code receiveGatewayWebhook}, {@code getProviderRoutes}, {@code replaceProviderRoutes};
- * and in ADR 0046 {@code verifyStorePurchase} and {@code receiveStoreNotification} (RevenueCat).
+ * and in ADR 0046 {@code verifyStorePurchase} and {@code receiveStoreNotification} (RevenueCat); and in T8.10 the
+ * catalogue admin ({@code listAdminBillingProducts}, {@code updateAdminBillingProduct}, {@code setAdminBillingPrice})
+ * and market offerings ({@code getMarketOfferings}, {@code replaceMarketOfferings}).
  * Responses are {@code no-store}.
  */
 @RestController
@@ -67,10 +76,13 @@ class BillingController {
 	private final ProviderRouteAdmin routes;
 	private final StorePurchases storePurchases;
 	private final StoreNotificationIntake storeNotifications;
+	private final CatalogAdmin catalogAdmin;
+	private final MarketOfferingAdmin offerings;
 
 	BillingController(CountryResolver countries, BillingCatalog catalog, OrderService orders, AttemptService attempts,
 			CheckoutReturn returns, SubscriptionQueries subscriptions, WebhookIntake webhooks,
-			ProviderRouteAdmin routes, StorePurchases storePurchases, StoreNotificationIntake storeNotifications) {
+			ProviderRouteAdmin routes, StorePurchases storePurchases, StoreNotificationIntake storeNotifications,
+			CatalogAdmin catalogAdmin, MarketOfferingAdmin offerings) {
 		this.countries = countries;
 		this.catalog = catalog;
 		this.orders = orders;
@@ -81,6 +93,8 @@ class BillingController {
 		this.routes = routes;
 		this.storePurchases = storePurchases;
 		this.storeNotifications = storeNotifications;
+		this.catalogAdmin = catalogAdmin;
+		this.offerings = offerings;
 	}
 
 	@GetMapping("/api/v1/billing/options")
@@ -228,6 +242,38 @@ class BillingController {
 			@PathVariable String countryCode, @PathVariable String clientPlatform,
 			@PathVariable String distributionChannel, @Valid @RequestBody ProviderRouteSetUpdate body) {
 		return noStore(routes.replace(user, countryCode, clientPlatform, distributionChannel, body));
+	}
+
+	@GetMapping("/admin/v1/billing/products")
+	ResponseEntity<AdminProductListDto> adminProducts(@AuthenticationPrincipal AuthenticatedUser user,
+			@RequestParam(name = "marketCountry", required = false) String marketCountry) {
+		return noStore(catalogAdmin.list(user, marketCountry));
+	}
+
+	@PatchMapping(path = "/admin/v1/billing/products/{productCode}", consumes = MediaType.APPLICATION_JSON_VALUE)
+	ResponseEntity<AdminProductDto> updateAdminProduct(@AuthenticationPrincipal AuthenticatedUser user,
+			@PathVariable String productCode, @Valid @RequestBody AdminProductUpdate body) {
+		return noStore(catalogAdmin.update(user, productCode, body));
+	}
+
+	@PutMapping(path = "/admin/v1/billing/products/{productCode}/prices/{marketCountry}/{salesChannel}",
+			consumes = MediaType.APPLICATION_JSON_VALUE)
+	ResponseEntity<AdminProductDto> setAdminPrice(@AuthenticationPrincipal AuthenticatedUser user,
+			@PathVariable String productCode, @PathVariable String marketCountry, @PathVariable String salesChannel,
+			@Valid @RequestBody AdminPriceUpdate body) {
+		return noStore(catalogAdmin.setPrice(user, productCode, marketCountry, salesChannel, body));
+	}
+
+	@GetMapping("/admin/v1/billing/market-offerings/{countryCode}")
+	ResponseEntity<MarketOfferingSetDto> getOfferings(@AuthenticationPrincipal AuthenticatedUser user,
+			@PathVariable String countryCode) {
+		return noStore(offerings.get(user, countryCode));
+	}
+
+	@PutMapping(path = "/admin/v1/billing/market-offerings/{countryCode}", consumes = MediaType.APPLICATION_JSON_VALUE)
+	ResponseEntity<MarketOfferingSetDto> replaceOfferings(@AuthenticationPrincipal AuthenticatedUser user,
+			@PathVariable String countryCode, @Valid @RequestBody MarketOfferingSetUpdate body) {
+		return noStore(offerings.replace(user, countryCode, body));
 	}
 
 	private static <T> ResponseEntity<T> noStore(T body) {

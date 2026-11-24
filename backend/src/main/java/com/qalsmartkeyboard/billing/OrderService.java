@@ -44,7 +44,14 @@ import tools.jackson.databind.json.JsonMapper;
  * (403 {@code BILLING_POLICY_DENIED}); the market/channel policy must allow an in-app gateway flow with at least one
  * eligible method for the amount; the server prices from {@code billing_prices} and snapshots list, discount, tax and
  * total. The resolved country and the signal summary (no IP address) go into {@code payment_orders.metadata}. Promotions
- * (M4.4), upgrades (M4.4), credit packs and AUTO_RENEW (mandates) are not part of this step.
+ * (M4.4), upgrades (M4.4) and AUTO_RENEW (mandates) are not part of this step.
+ *
+ * <p><b>Credit packs</b> (T8.10, SD 15.6): an {@code AI_CREDIT_PACK} product is ordered with {@code ONE_TIME} and the
+ * renewal model {@code NONE} (an omitted or MANUAL_RENEW preference is read as NONE; there is no term, mandate or
+ * proration) as an {@code AI_CREDIT_TOPUP} order. Its credit units and validity are snapshotted into the order metadata
+ * ({@code creditUnits}, {@code creditValidityDays}) so a later product edit never changes what a created order grants.
+ * Everything else (country, policy, routing, idempotency, guest refusal) is the plan path. Which families a market sells
+ * comes from the catalogue ({@code billing_market_offerings}); a family it does not offer is {@code PRODUCT_NOT_AVAILABLE}.
  */
 final class OrderService {
 
@@ -58,7 +65,7 @@ final class OrderService {
 			String productCode, String productName, String billingPeriod, String renewalModel, String marketCountry,
 			String salesChannel, String taxBehavior, long listMinor, long discountMinor, long taxMinor,
 			long amountMinor, String currency, int exponent, Instant expiresAt, Instant paidAt, Instant createdAt,
-			String fingerprint, UUID subscriptionId, UUID receiptId) {
+			String fingerprint, UUID subscriptionId, UUID receiptId, UUID creditLotId) {
 
 		Channel channel() {
 			return Channel.ofSalesChannel(salesChannel).orElseThrow();
@@ -91,7 +98,8 @@ final class OrderService {
 	PaymentOrderDto create(AuthenticatedUser user, String idempotencyKeyHeader, CreateOrderRequest body,
 			String platformHeader, CountryResolution resolution) {
 		if (user.isGuest()) {
-			throw BillingErrors.problem(ApiErrorCode.GUEST_NOT_ALLOWED, "Sign in to buy a plan.");
+			// a guest's purchase could not follow it to an account (credits, plan): sign in first (SD 9.1, 15.6)
+			throw BillingErrors.problem(ApiErrorCode.GUEST_NOT_ALLOWED, "Sign in to buy.");
 		}
 		String key = BillingErrors.idempotencyKey(idempotencyKeyHeader);
 		Channel channel = Channel.ofSalesChannel(body.salesChannel())
@@ -137,17 +145,30 @@ final class OrderService {
 					"Purchases are not available for this market and app build.");
 		}
 
-		PriceRow price = catalog.price(body.productCode(), market, channel.salesChannel(), body.billingPeriod(), renewal)
-				.orElse(null);
-		if (price == null) {
-			boolean productListed = catalog.prices(market, channel.salesChannel()).stream()
-					.anyMatch(p -> p.productCode().equals(body.productCode()));
-			throw productListed
-					? BillingErrors.problem(ApiErrorCode.PRICE_NOT_AVAILABLE,
-							"No price for this billing period in this market.")
-					: BillingErrors.problem(ApiErrorCode.PRODUCT_NOT_AVAILABLE, "This product is not available.");
+		// the catalogue lists only ACTIVE products with an active price of the families this market offers
+		List<PriceRow> listed = catalog.prices(market, channel.salesChannel()).stream()
+				.filter(p -> p.productCode().equals(body.productCode())).toList();
+		if (listed.isEmpty()) {
+			throw BillingErrors.problem(ApiErrorCode.PRODUCT_NOT_AVAILABLE, "This product is not available.");
 		}
-		if (!"SUBSCRIPTION".equals(price.productType()) || OrderPricing.term(price.billingPeriod()) == null) {
+		boolean creditPack = "AI_CREDIT_PACK".equals(listed.get(0).productType());
+		String priceRenewal = creditPack ? "NONE" : renewal;
+		PriceRow price = listed.stream()
+				.filter(p -> p.billingPeriod().equals(body.billingPeriod()) && p.renewalModel().equals(priceRenewal))
+				.findFirst().orElseThrow(() -> BillingErrors.problem(ApiErrorCode.PRICE_NOT_AVAILABLE,
+						"No price for this billing period in this market."));
+		String orderType;
+		if (creditPack) {
+			if (!"ONE_TIME".equals(price.billingPeriod()) || price.creditUnits() == null
+					|| price.creditUnits().signum() <= 0) {
+				throw BillingErrors.problem(ApiErrorCode.PRODUCT_NOT_AVAILABLE, "This product is not available.");
+			}
+			orderType = "AI_CREDIT_TOPUP";
+		}
+		else if ("SUBSCRIPTION".equals(price.productType()) && OrderPricing.term(price.billingPeriod()) != null) {
+			orderType = "SUBSCRIPTION_PURCHASE";
+		}
+		else {
 			throw BillingErrors.problem(ApiErrorCode.PRODUCT_NOT_AVAILABLE, "This product is not available yet.");
 		}
 		OrderPricing.Amounts amounts = OrderPricing.amounts(price.amountMinor(), 0, price.taxBehavior(),
@@ -165,7 +186,14 @@ final class OrderService {
 		metadata.put("countryResolution", resolution.summary());
 		metadata.put("clientPlatform", channel.platform());
 		metadata.put("distributionChannel", channel.distribution());
-		metadata.put("renewalModel", renewal);
+		metadata.put("renewalModel", priceRenewal);
+		if (creditPack) {
+			metadata.put("productType", price.productType());
+			metadata.put("creditUnits", price.creditUnits().stripTrailingZeros().toPlainString());
+			metadata.put("creditValidityDays",
+					price.creditValidityDays() == null ? Fulfilment.DEFAULT_CREDIT_VALIDITY_DAYS
+							: price.creditValidityDays());
+		}
 		UUID id = UUID.randomUUID();
 		String reference = reference(market, now);
 		try {
@@ -174,10 +202,10 @@ final class OrderService {
 					       order_type, sales_channel, market_country_code, currency_code, list_amount_minor,
 					       discount_minor, tax_minor, amount_minor, order_status, idempotency_key, expires_at, metadata,
 					       created_at, updated_at)
-					VALUES (?, ?, ?, ?, ?, 'SUBSCRIPTION_PURCHASE', ?, ?, ?, ?, ?, ?, ?, 'AWAITING_PAYMENT', ?, ?,
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AWAITING_PAYMENT', ?, ?,
 					        CAST(? AS JSONB), ?, ?)
 					ON CONFLICT (user_id, idempotency_key) DO NOTHING""", id, reference, user.userId(),
-					price.productId(), price.priceId(), channel.salesChannel(), market, price.currency(),
+					price.productId(), price.priceId(), orderType, channel.salesChannel(), market, price.currency(),
 					amounts.listMinor(), amounts.discountMinor(), amounts.taxMinor(), amounts.totalMinor(), key,
 					utc(now.plus(properties.orderTtl())), json.writeValueAsString(metadata), utc(now), utc(now)));
 			if (inserted == 0) {
@@ -193,8 +221,9 @@ final class OrderService {
 					body.productCode());
 			throw BillingErrors.problem(ApiErrorCode.PRODUCT_NOT_AVAILABLE, "This product is not available.");
 		}
-		log.info("billing order created orderId={} market={} channel={} countrySource={} confidence={} flags={}", id,
-				market, channel.salesChannel(), resolution.source(), resolution.confidence(), resolution.flags());
+		log.info("billing order created orderId={} type={} market={} channel={} countrySource={} confidence={} flags={}",
+				id, orderType, market, channel.salesChannel(), resolution.source(), resolution.confidence(),
+				resolution.flags());
 		return dto(load(user.userId(), id).orElseThrow());
 	}
 
@@ -251,8 +280,8 @@ final class OrderService {
 					o.exponent());
 		}
 		String status = o.status().isPayable() && o.expiredAt(now) ? OrderStatus.EXPIRED.name() : o.status().name();
-		FulfilmentDto fulfilment = o.subscriptionId() == null && o.receiptId() == null ? null
-				: new FulfilmentDto(o.subscriptionId(), null, o.receiptId());
+		FulfilmentDto fulfilment = o.subscriptionId() == null && o.receiptId() == null && o.creditLotId() == null ? null
+				: new FulfilmentDto(o.subscriptionId(), o.creditLotId(), o.receiptId());
 		return new PaymentOrderDto(o.id(), o.orderReference(), o.orderType(), status, o.productCode(),
 				o.billingPeriod(), o.renewalModel(), o.marketCountry(), o.salesChannel(), o.taxBehavior(),
 				new OrderAmountsDto(money(o.listMinor(), o), money(o.discountMinor(), o), money(o.taxMinor(), o),
@@ -284,7 +313,9 @@ final class OrderService {
 			       o.list_amount_minor, o.discount_minor, o.tax_minor, o.amount_minor, o.currency_code,
 			       c.minor_unit_exponent, o.expires_at, o.paid_at, o.created_at, o.metadata->>'requestFingerprint',
 			       (SELECT a.subscription_id FROM subscription_payment_allocations a WHERE a.payment_order_id = o.id),
-			       (SELECT r.id FROM payment_receipts r WHERE r.payment_order_id = o.id)
+			       (SELECT r.id FROM payment_receipts r WHERE r.payment_order_id = o.id),
+			       (SELECT l.id FROM ai_credit_lots l WHERE l.payment_order_id = o.id AND l.lot_source = 'PURCHASE'
+			        ORDER BY l.created_at LIMIT 1)
 			FROM payment_orders o
 			JOIN billing_products bp ON bp.id = o.billing_product_id
 			JOIN billing_prices pr ON pr.id = o.billing_price_id
@@ -296,6 +327,6 @@ final class OrderService {
 				rs.getString(9), rs.getString(10), rs.getString(11), rs.getString(12), rs.getLong(13), rs.getLong(14),
 				rs.getLong(15), rs.getLong(16), rs.getString(17), rs.getInt(18), JdbcRoutingData.instant(rs, 19),
 				JdbcRoutingData.instant(rs, 20), JdbcRoutingData.instant(rs, 21), rs.getString(22),
-				rs.getObject(23, UUID.class), rs.getObject(24, UUID.class));
+				rs.getObject(23, UUID.class), rs.getObject(24, UUID.class), rs.getObject(25, UUID.class));
 	}
 }

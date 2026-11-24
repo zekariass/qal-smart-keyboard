@@ -43,6 +43,12 @@ class UsageConfiguration {
 		return new UsageReadService(jdbc, entitlements, credits, properties, clock.getIfAvailable(Clock::systemUTC));
 	}
 
+	/** {@code /me/credits} and {@code /me/credits/transactions} (T8.10). */
+	@Bean
+	CreditReadService creditReadService(JdbcClient jdbc, Credits credits, ObjectProvider<Clock> clock) {
+		return new CreditReadService(jdbc, credits, clock.getIfAvailable(Clock::systemUTC));
+	}
+
 	@Bean
 	JdbcMetering metering(JdbcClient jdbc, PlatformTransactionManager transactionManager,
 			EntitlementResolver entitlements, CreditWallet wallet, UsageProperties properties,

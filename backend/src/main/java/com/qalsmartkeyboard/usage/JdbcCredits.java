@@ -100,8 +100,8 @@ final class JdbcCredits implements Credits, CreditWallet {
 					.param("units", amount).param("expires", expiresAt == null ? null : Timestamp.from(expiresAt))
 					.param("order", paymentOrder).param("now", Timestamp.from(now)).update();
 			BigDecimal after = account.balance().add(amount);
-			insertTx(account.id(), lotId, null, openingType(source), amount, after, "grant:" + source + ":" + sourceRef,
-					source + " " + sourceRef, now);
+			insertTx(account.id(), lotId, null, paymentOrder, openingType(source), amount, after,
+					"grant:" + source + ":" + sourceRef, source + " " + sourceRef, now);
 			setBalance(account.id(), after, now);
 			return lot(new Lot(lotId, amount, amount, expiresAt, now), userId, source, true);
 		});
@@ -134,8 +134,9 @@ final class JdbcCredits implements Credits, CreditWallet {
 			Lot lot = found.get();
 			Instant now = clock.instant();
 			BigDecimal after = account.get().balance().subtract(lot.remaining());
-			int rows = insertTx(account.get().id(), lotId, null, "REVERSAL", lot.remaining().negate(), after,
-					"reverse:" + sourceRef, "reversed " + source + " " + sourceRef, now);
+			UUID paymentOrder = source == CreditSource.PURCHASE ? parseUuid(sourceRef) : null;
+			int rows = insertTx(account.get().id(), lotId, null, paymentOrder, "REVERSAL", lot.remaining().negate(),
+					after, "reverse:" + sourceRef, "reversed " + source + " " + sourceRef, now);
 			if (rows == 0) {
 				return zero();
 			}
@@ -173,7 +174,7 @@ final class JdbcCredits implements Credits, CreditWallet {
 			}
 			Instant now = clock.instant();
 			BigDecimal after = account.balance().add(amount);
-			insertTx(account.id(), lotId, null, "ADJUSTMENT", amount, after, key,
+			insertTx(account.id(), lotId, null, null, "ADJUSTMENT", amount, after, key,
 					description == null ? null : description.substring(0, Math.min(255, description.length())), now);
 			setRemaining(lotId, remaining, now);
 			setBalance(account.id(), after, now);
@@ -225,7 +226,7 @@ final class JdbcCredits implements Credits, CreditWallet {
 			return false; // another run got there first
 		}
 		BigDecimal after = account.balance().subtract(lot.get().remaining());
-		insertTx(account.id(), lotId, null, "EXPIRY", lot.get().remaining().negate(), after, null,
+		insertTx(account.id(), lotId, null, null, "EXPIRY", lot.get().remaining().negate(), after, null,
 				"expired " + lot.get().expiresAt(), now);
 		setRemaining(lotId, zero(), now);
 		setBalance(account.id(), after, now);
@@ -268,7 +269,7 @@ final class JdbcCredits implements Credits, CreditWallet {
 			}
 			BigDecimal take = lot.remaining().min(toTake);
 			balance = balance.subtract(take);
-			insertTx(account.id(), lot.id(), reservationId, "CONSUMPTION", take.negate(), balance,
+			insertTx(account.id(), lot.id(), reservationId, null, "CONSUMPTION", take.negate(), balance,
 					"hold:" + reservationId + ":" + sequence, "reserved", now);
 			setRemaining(lot.id(), lot.remaining().subtract(take), now);
 			toTake = toTake.subtract(take);
@@ -333,7 +334,7 @@ final class JdbcCredits implements Credits, CreditWallet {
 			BigDecimal back = d.units().min(left);
 			Lot lot = locked.stream().filter(l -> l.id().equals(d.lotId())).findFirst().orElseThrow();
 			balance = balance.add(back);
-			insertTx(account.id(), lot.id(), reservationId, "ADJUSTMENT", back, balance, "settle:" + reservationId,
+			insertTx(account.id(), lot.id(), reservationId, null, "ADJUSTMENT", back, balance, "settle:" + reservationId,
 					"unused credit returned", now);
 			setRemaining(lot.id(), lot.remaining().add(back), now);
 			left = left.subtract(back);
@@ -375,14 +376,17 @@ final class JdbcCredits implements Credits, CreditWallet {
 				created);
 	}
 
-	private int insertTx(UUID accountId, UUID lotId, UUID requestId, String type, BigDecimal delta, BigDecimal after,
-			String key, String description, Instant now) {
+	/** @param paymentOrder the purchase order on a PURCHASE lot's own rows (grant, reversal), else null */
+	private int insertTx(UUID accountId, UUID lotId, UUID requestId, UUID paymentOrder, String type, BigDecimal delta,
+			BigDecimal after, String key, String description, Instant now) {
 		return jdbc.sql("""
-				INSERT INTO ai_credit_transactions (credit_account_id, lot_id, ai_request_id, transaction_type,
-				                                    delta_units, balance_after, idempotency_key, description, created_at)
-				VALUES (:a, :lot, :req, :type, :delta, :after, :key, :description, :now)
+				INSERT INTO ai_credit_transactions (credit_account_id, lot_id, ai_request_id, payment_order_id,
+				                                    transaction_type, delta_units, balance_after, idempotency_key,
+				                                    description, created_at)
+				VALUES (:a, :lot, :req, :order, :type, :delta, :after, :key, :description, :now)
 				ON CONFLICT DO NOTHING
-				""").param("a", accountId).param("lot", lotId).param("req", requestId).param("type", type)
+				""").param("a", accountId).param("lot", lotId).param("req", requestId).param("order", paymentOrder)
+				.param("type", type)
 				.param("delta", delta).param("after", after).param("key", key).param("description", description)
 				.param("now", Timestamp.from(now)).update();
 	}

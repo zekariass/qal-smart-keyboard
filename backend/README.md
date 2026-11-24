@@ -1341,6 +1341,77 @@ idempotency, admin switch). Opt-in live sandbox smoke test (never in CI): with `
 git-ignored dev secrets file and `QAL_LIVE_SANDBOX=1`,
 `./mvnw -B -ntp -Djava.version=21 -Dit.test=ArifPayLiveSandboxIT -Dtest=NONE -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false verify`.
 
+## Billing: prepaid credit packs and market offerings (T8.10, SD 15.6, ADR 0048 §4)
+
+**Packs (V31).** `CREDITS_100` (Starter), `CREDITS_500` (Standard, the V1 row updated in place) and `CREDITS_1500` (Pro),
+`AI_CREDIT_PACK`, 365-day validity, seeded **DRAFT**. Ethiopian prices (owner decision 2026-11-24): 49 / 199 / 499 ETB
+(`amount_minor` 4900 / 19900 / 49900), `ONE_TIME` + renewal `NONE`, tax INCLUSIVE (VAT still OI-10), for
+`ANDROID_DIRECT` and `ANDROID_GOOGLE_PLAY`. The SD guide prices (GBP 0.99 / 3.99 / 9.99) exist only as **inactive**
+`ZZ`/`ANDROID_GOOGLE_PLAY` reference rows: store-billed packs (RevenueCat consumables) are not implemented, so
+store-billing markets get 403 `BILLING_POLICY_DENIED` on `POST /billing/orders` exactly as for plans. Packs need no
+policy or route rows of their own: the ET market/channel policies and ArifPay/Chapa routes are per channel, not product.
+
+**Purchase.** `POST /api/v1/billing/orders` `{"productCode":"CREDITS_500","billingPeriod":"ONE_TIME","marketCountry":"ET",
+"salesChannel":"ANDROID_DIRECT"}` → `orderType: AI_CREDIT_TOPUP` (renewal `NONE`; an omitted/`MANUAL_RENEW` preference is
+read as NONE, `AUTO_RENEW` is 422). Same country resolution, policy, routing, `Idempotency-Key` and guest refusal (403
+`GUEST_NOT_ALLOWED`) as plans; the pack's credit units and validity are snapshotted into `payment_orders.metadata`. Attempts,
+webhooks, the return URL and reconciliation are the ADR 0045 path. On a verified PAID transition `Fulfilment` grants, in the
+same transaction, one lot through `Credits.grant(user, units, PURCHASE, orderId, paidAt + validity)` plus the receipt.
+**One lot per order** is guaranteed three ways: the attempt and order row locks with PAID→PAID impossible (a second
+verified capture is `DUPLICATE_CAPTURE`, refund-flagged, no grant); `Fulfilment` reuses an existing PURCHASE lot of the
+order; and `JdbcCredits` derives the lot id from (user, PURCHASE, orderId), so a replay hits the primary key. A late
+success on an EXPIRED/CANCELLED order still grants (money taken is honoured). `GET /billing/orders/{id}` shows
+`fulfilment.creditLotId`.
+
+**Refunds.** `Fulfilment.reverseCreditTopUp(orderId)` → `Credits.reverse`: one `REVERSAL` row for the unconsumed remainder,
+consumed credits stay consumed, never negative, idempotent. No customer-refund flow for gateway orders exists yet (A2
+only refunds duplicate captures, which never granted anything); the future refund orchestrator calls it in the transaction
+that moves the order to `REFUNDED` / `PARTIALLY_REFUNDED`.
+
+**Balance APIs** (module `usage`, `CreditReadController`): `GET /api/v1/me/credits` (exact `balanceUnits`, spendable lots
+soonest-expiry first, `nextExpiryAt`) and `GET /api/v1/me/credits/transactions` (ledger newest first, keyset cursor,
+`limit` 1-100, `paymentOrderId` on purchase rows, `featureCode` on consumption rows). Own account only (user from the
+token), guests included, `no-store`.
+
+**QUOTA_EXCEEDED.** Unchanged order of consumption (allowance first, then credits). `upgradeOptions` lists a
+`CREDIT_PACK` (and a `PLAN`) only when it is ACTIVE with an active price in a market whose offerings include it
+(`fn_billing_offering_enabled`; the user's `market_country_code` when known); `creditBalance` is always present.
+
+**Market offerings.** `billing_market_offerings (market_country_code, offering SUBSCRIPTIONS | AI_CREDITS, is_enabled,
+revision)`: a market's own row, else the `ZZ` row (the default for every country), else **off**. Seeded: `ZZ`
+SUBSCRIPTIONS on, `ZZ` AI_CREDITS off, `ET` AI_CREDITS on — i.e. today's behaviour plus packs in Ethiopia. Enforced in the
+catalogue (`/billing/options`, `/billing/products`), which order pricing reads, so a family a market does not offer is 422
+`PRODUCT_NOT_AVAILABLE`. Existing subscriptions, lots and entitlements are never affected.
+
+**Admin (FINANCE: `billing:read`, `prices:edit`, `prices:approve` for status; all audited).**
+
+| Operation | What |
+|---|---|
+| `GET /admin/v1/billing/products[?marketCountry=ET]` | products with every price row (version, validity, active now) |
+| `PATCH /admin/v1/billing/products/{code}` | name, description, `creditUnits`, `creditValidityDays`; `productStatus` (DRAFT/ACTIVE/RETIRED) needs `prices:approve` |
+| `PUT /admin/v1/billing/products/{code}/prices/{market}/{salesChannel}` | `{"currency","amountMinor","billingPeriod","renewalModel","taxBehavior"?,"active"?}`; in place while no order uses the row, otherwise a new `price_version` from now |
+| `GET/PUT /admin/v1/billing/market-offerings/{country}` | effective offerings with `source` MARKET/DEFAULT/NONE; PUT replaces the market's own rows (`expectedRevision`) |
+
+Make **Ethiopia credits-only** (read the revision first; it is 1 after V31):
+
+```bash
+curl -H "Authorization: Bearer $ADMIN" $API/admin/v1/billing/market-offerings/ET          # -> "revision": 1
+curl -X PUT -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' \
+  $API/admin/v1/billing/market-offerings/ET \
+  -d '{"expectedRevision":1,"offerings":[{"offering":"SUBSCRIPTIONS","enabled":false},{"offering":"AI_CREDITS","enabled":true}]}'
+```
+
+Both again: `{"expectedRevision":2,"offerings":[{"offering":"AI_CREDITS","enabled":true}]}` (plans inherit `ZZ`); plans
+only: `[{"offering":"AI_CREDITS","enabled":false}]`. **Selling the packs** (go-live, besides the ADR 0045 provider and policy
+switches): `PATCH /admin/v1/billing/products/CREDITS_500 {"productStatus":"ACTIVE"}` (same for 100/1500); change a price:
+`PUT /admin/v1/billing/products/CREDITS_500/prices/ET/ANDROID_DIRECT {"currency":"ETB","amountMinor":19900,
+"billingPeriod":"ONE_TIME","renewalModel":"NONE"}`; open another market: its prices, its offering, its policy and routes.
+
+**Tests.** `BillingCreditPacksIT` (seeded prices, sandbox purchase → lot → `/me/credits`, duplicate/return/reconciliation
+repeats, 8 concurrent verifications, late success on EXPIRED/CANCELLED, allowance-then-credits consumption and refund
+reversal, order refusals, the offering matrix incl. ZZ fallback and the QUOTA_EXCEEDED hint, admin permissions,
+validation, versioning and audit, `/me/credits` paging and ownership).
+
 ## Contract tests
 
 Controller tests validate every response against `contracts/openapi.yaml` (OpenAPI 3.1) by adding one annotation:
