@@ -78,6 +78,7 @@
     <string name="ai_tile_tone_description">እንደገና መጻፍ፣ ቃና፦ %1$s</string>
     <string name="ai_grid_offline">ከመስመር ውጭ፦ AI ግንኙነት ያስፈልገዋል</string>
     <string name="ai_grid_quota">%1$s፦ %2$s</string>
+    <string name="ai_grid_credits">የAI ክሬዲት፦ %1$d</string>
     <string name="ai_status_offline">ከመስመር ውጭ</string>
     <string name="ai_status_signed_out">AI ለመጠቀም ይግቡ</string>
     <string name="ai_status_update">ማዘመን ያስፈልጋል</string>
@@ -107,6 +108,8 @@
     <string name="ai_err_quota">የAI ድርሻዎን ጨርሰዋል።</string>
     <string name="ai_err_quota_reset">የAI ድርሻዎን ጨርሰዋል። %1$s ይታደሳል።</string>
     <string name="ai_err_quota_upgrade">ለተጨማሪ ያሻሽሉ።</string>
+    <string name="ai_err_quota_upgrade_or_credits">ለተጨማሪ ያሻሽሉ ወይም ክሬዲት ይግዙ።</string>
+    <string name="ai_err_quota_credits">ለተጨማሪ ክሬዲት ይግዙ።</string>
     <string name="ai_err_rate_limited">በጣም ብዙ ጥያቄዎች። ትንሽ ቆይተው እንደገና ይሞክሩ።</string>
     <string name="ai_err_not_entitled">ይህ ባህሪ በጥቅልዎ ውስጥ አልተካተተም።</string>
     <string name="ai_err_on_device_only">በስልኩ ላይ ብቻ የሚሠራ AI ስለመረጡ ምንም አልተላከም። ይህን በAI ቅንብሮች ውስጥ ይቀይሩ።</string>
@@ -124,6 +127,7 @@
     <string name="ai_link_sign_in">ይግቡ</string>
     <string name="ai_link_settings">ቅንብሮችን ይክፈቱ</string>
     <string name="ai_link_upgrade">ጥቅሎችን ይመልከቱ</string>
+    <string name="ai_link_buy_credits">ክሬዲት ይግዙ</string>
     <string name="ai_link_update">ያዘምኑ</string>
 
     <!-- AI panels, direction control and e-mail writer -->

@@ -100,6 +100,7 @@ class AiToolbarView(context: Context) : LinearLayout(context) {
         val row = ArrayList<View>()
         val link = p.failure.link
         if (link != null) row += chip(linkLabel(link)) { onLink(link) }
+        p.failure.extraLink?.let { l -> row += chip(linkLabel(l)) { onLink(l) } }
         if (canRetry(p.failure)) row += chip(R.string.ai_retry) { c.retry() }
         row += chip(R.string.ai_close) { c.close() }
         addView(buttons(*row.toTypedArray()))

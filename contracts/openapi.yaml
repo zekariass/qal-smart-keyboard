@@ -2218,6 +2218,11 @@ paths:
       tags: [Entitlements]
       operationId: getCredits
       summary: Get AI credit balance and lots
+      description: |
+        The caller's own credits (SD 15.4, 15.6), guests included. `balanceUnits` is the exact spendable
+        balance (6 dp; show it rounded down). `lots` are the lots that still have credits and have not
+        expired, soonest expiry first (the order they are spent in); `nextExpiryAt` is the soonest of
+        their expiries (absent when none expires). Credits work in every country.
       responses:
         '200':
           description: Credit summary.
@@ -2230,6 +2235,10 @@ paths:
       tags: [Entitlements]
       operationId: listCreditTransactions
       summary: List AI credit ledger entries
+      description: |
+        The caller's own append-only credit ledger, newest first (purchases, consumption, returns of unused
+        reservations as `ADJUSTMENT`, expiry, refund reversals). `paymentOrderId` is set on the rows of a
+        purchased lot. Keyset paging: pass `nextCursor` back as `cursor`.
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -2246,6 +2255,7 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/CreditTransaction' }
                   nextCursor: { $ref: '#/components/schemas/NextCursor' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   # ---------------------------------------------------------------- Billing
@@ -2267,6 +2277,13 @@ paths:
         returned as `marketCountry` (`ZZ` = global default) with `marketResolution`; send that value
         back as `CreateOrderRequest.marketCountry`. Options are ordered by provider priority (the
         first method is the default). Existing entitlements never depend on the current country.
+
+        **Market offerings (T8.10).** `products` lists only the product families the resolved market sells
+        (`SUBSCRIPTIONS` and/or `AI_CREDITS`, admin `/admin/v1/billing/market-offerings/{countryCode}`; a
+        market without its own setting inherits `ZZ`): a credits-only market lists no plans, a plans-only
+        market no credit packs. Credit packs (`productType = AI_CREDIT_PACK`) carry `creditUnits`,
+        `creditValidityDays` and one `ONE_TIME` price with `renewalModel = NONE` (no subscription, nothing
+        to cancel).
       parameters:
         - name: marketCountry
           in: query
@@ -2300,6 +2317,7 @@ paths:
       tags: [Billing]
       operationId: listBillingProducts
       summary: List sellable products and active prices for a market and channel
+      description: Only ACTIVE products with an active price, of the product families the market offers (see `getBillingOptions`).
       parameters:
         - name: marketCountry
           in: query
@@ -2356,7 +2374,17 @@ paths:
         0045, see `/billing/options`), otherwise 403 `BILLING_POLICY_DENIED`; `salesChannel` must
         match `X-Client-Platform` when that header is sent. The resolved country and a summary of
         the signals (never an IP address) are recorded on the order for audit. Guests get 403
-        `GUEST_NOT_ALLOWED`.
+        `GUEST_NOT_ALLOWED` (a guest's credits or plan could not follow it; sign in first).
+
+        **Prepaid credit packs (T8.10, SD 15.6).** `productCode` of an `AI_CREDIT_PACK` (e.g. `CREDITS_500`)
+        with `billingPeriod: ONE_TIME`; `renewalPreference` is `NONE` (omitted or `MANUAL_RENEW` is read as
+        `NONE`; `AUTO_RENEW` is 422 `MANDATE_NOT_SUPPORTED`). The order is `orderType = AI_CREDIT_TOPUP`, a
+        one-off payment through the same attempts, verification and receipts as plans. Once verified PAID
+        it grants exactly one credit lot (`fulfilment.creditLotId`) of the pack's credit units, expiring
+        after the pack's validity; the units and validity are fixed when the order is created. A product
+        family the market does not offer (admin market offerings) is 422 `PRODUCT_NOT_AVAILABLE`, like an
+        unknown or inactive product. Store-billed packs (RevenueCat consumables) are not available yet:
+        store-billing markets are 403 `BILLING_POLICY_DENIED` here as for plans.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/ClientPlatform'
@@ -3782,6 +3810,160 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/v1/billing/products:
+    get:
+      tags: [Admin]
+      operationId: listAdminBillingProducts
+      summary: Billing products with their price rows (admin)
+      description: |
+        Every product (any status) with its price rows, newest first, optionally only the rows of one
+        market. Permission `billing:read`.
+      x-internal: true
+      parameters:
+        - name: marketCountry
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/CountryCode' }
+      responses:
+        '200':
+          description: Products.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AdminBillingProduct' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/v1/billing/products/{productCode}:
+    parameters:
+      - $ref: '#/components/parameters/AdminProductCode'
+    patch:
+      tags: [Admin]
+      operationId: updateAdminBillingProduct
+      summary: Edit a billing product (admin)
+      description: |
+        Display name, description, and for credit packs the credit units and validity (days) of the
+        pack. Orders already created keep the units and validity they were created with. Changing
+        `productStatus` (DRAFT, ACTIVE, RETIRED; only ACTIVE products are sold) needs `prices:approve`,
+        everything else `prices:edit`. Audited as `BILLING_PRODUCT_UPDATE`.
+      x-internal: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminBillingProductUpdate' }
+      responses:
+        '200':
+          description: The product.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminBillingProduct' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/v1/billing/products/{productCode}/prices/{marketCountry}/{salesChannel}:
+    parameters:
+      - $ref: '#/components/parameters/AdminProductCode'
+      - name: marketCountry
+        in: path
+        required: true
+        description: ISO 3166-1 alpha-2 market, or `ZZ` for the global market (unknown or untrusted billing country).
+        schema: { $ref: '#/components/schemas/CountryCode' }
+      - name: salesChannel
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/SalesChannel' }
+    put:
+      tags: [Admin]
+      operationId: setAdminBillingPrice
+      summary: Set a product's price for a market and channel (admin)
+      description: |
+        Sets the price of one scope (product, market, channel, currency, billing period, renewal model)
+        without a deploy. The scope's current row is updated in place while no order uses it; once an
+        order references it, it is closed (`validUntil` = now) and a new `priceVersion` starts now, so
+        every order keeps the exact price it was created with. `active: false` ends the scope's price
+        (nothing is sold in it). The same values again change nothing. Credit packs use `ONE_TIME` +
+        `NONE`; subscriptions a term period (`MONTHLY`, `ANNUAL`, ...) with `MANUAL_RENEW`. Permission
+        `prices:edit`; audited as `BILLING_PRICE_SET` (old and new amounts).
+      x-internal: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminBillingPriceUpdate' }
+      responses:
+        '200':
+          description: The product with its price rows in this market.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminBillingProduct' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/v1/billing/market-offerings/{countryCode}:
+    parameters:
+      - name: countryCode
+        in: path
+        required: true
+        description: ISO 3166-1 alpha-2 market, or `ZZ` for the default every market without its own setting inherits.
+        schema: { $ref: '#/components/schemas/CountryCode' }
+    get:
+      tags: [Admin]
+      operationId: getMarketOfferings
+      summary: Product families a market sells (admin)
+      description: |
+        Whether the market sells `SUBSCRIPTIONS` (plans) and `AI_CREDITS` (credit packs): each with the
+        market's own setting or the inherited `ZZ` default (`source`), off when neither exists (fail
+        closed). Enforced in `/billing/options`, `/billing/products` and order creation. It never changes
+        existing subscriptions, credit lots or entitlements. Permission `billing:read`.
+      x-internal: true
+      responses:
+        '200':
+          description: The market's offerings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MarketOfferingSet' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Admin]
+      operationId: replaceMarketOfferings
+      summary: Set what a market sells (admin)
+      description: |
+        Replaces the market's own settings: each listed offering is set for the market, an offering left
+        out inherits `ZZ` again (for `ZZ` itself: off). Credits only, for example:
+        `{"expectedRevision": 1, "offerings": [{"offering": "SUBSCRIPTIONS", "enabled": false},
+        {"offering": "AI_CREDITS", "enabled": true}]}`. `expectedRevision` is the revision last read (0
+        when the market has no settings); a stale one is 409 `REVISION_CONFLICT` with `currentRevision`.
+        Products still need an ACTIVE status, an active price in the market and an approved market/channel
+        policy to be sold. Permission `prices:edit`; audited as `BILLING_MARKET_OFFERINGS_REPLACE`.
+      x-internal: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MarketOfferingSetUpdate' }
+      responses:
+        '200':
+          description: The market's offerings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MarketOfferingSet' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
 components:
   securitySchemes:
@@ -3870,6 +4052,11 @@ components:
       required: false
       description: UI locale for messages (e.g. `am`, `ti`, `om`, `en`).
       schema: { type: string, maxLength: 35 }
+    AdminProductCode:
+      name: productCode
+      in: path
+      required: true
+      schema: { type: string, maxLength: 60, pattern: '^[A-Z][A-Z0-9_]*$' }
     Cursor:
       name: cursor
       in: query
@@ -6034,7 +6221,7 @@ components:
       type: object
       required: [balanceUnits, lots]
       properties:
-        balanceUnits: { type: number, minimum: 0, description: Exact balance (6 dp); display rounded down to whole credits. }
+        balanceUnits: { type: number, format: double, minimum: 0, description: Exact balance (6 dp); display rounded down to whole credits. }
         nextExpiryAt: { type: string, format: date-time }
         lots:
           type: array
@@ -6043,8 +6230,8 @@ components:
             required: [lotId, originalUnits, remainingUnits, source]
             properties:
               lotId: { type: string, format: uuid }
-              originalUnits: { type: number, exclusiveMinimum: 0 }
-              remainingUnits: { type: number, minimum: 0 }
+              originalUnits: { type: number, format: double, exclusiveMinimum: 0 }
+              remainingUnits: { type: number, format: double, minimum: 0 }
               source:
                 type: string
                 enum: [PURCHASE, GRANT, PROMOTION, REFUND, ADJUSTMENT]
@@ -6057,8 +6244,8 @@ components:
         transactionType:
           type: string
           enum: [PURCHASE, GRANT, CONSUMPTION, REFUND, EXPIRY, ADJUSTMENT, REVERSAL]
-        deltaUnits: { type: number }
-        balanceAfter: { type: number, minimum: 0 }
+        deltaUnits: { type: number, format: double }
+        balanceAfter: { type: number, format: double, minimum: 0 }
         featureCode: { $ref: '#/components/schemas/FeatureCode' }
         lotId: { type: string, format: uuid }
         aiRequestId: { type: string, format: uuid }
@@ -6490,6 +6677,103 @@ components:
             properties:
               providerCode: { type: string, maxLength: 40, pattern: '^[A-Z][A-Z0-9_]*$' }
               enabled: { type: boolean, default: true }
+              notes: { type: string, maxLength: 1000 }
+    AdminBillingPrice:
+      type: object
+      required: [priceId, marketCountry, salesChannel, amount, taxBehavior, billingPeriod, renewalModel, priceVersion, active, validFrom]
+      properties:
+        priceId: { type: string, format: uuid }
+        marketCountry: { $ref: '#/components/schemas/CountryCode' }
+        salesChannel: { $ref: '#/components/schemas/SalesChannel' }
+        amount: { $ref: '#/components/schemas/Money' }
+        taxBehavior: { $ref: '#/components/schemas/TaxBehavior' }
+        taxRateBasisPoints: { type: integer, minimum: 0, maximum: 10000 }
+        billingPeriod: { $ref: '#/components/schemas/BillingPeriod' }
+        renewalModel: { $ref: '#/components/schemas/RenewalModel' }
+        priceVersion: { type: integer, minimum: 1 }
+        active: { type: boolean, description: The row is active and inside its validity window now. }
+        validFrom: { type: string, format: date-time }
+        validUntil: { type: string, format: date-time }
+    AdminBillingProduct:
+      type: object
+      required: [productCode, productType, displayName, productStatus, prices]
+      properties:
+        productCode: { type: string, maxLength: 60 }
+        productType:
+          type: string
+          enum: [SUBSCRIPTION, AI_CREDIT_PACK, ADD_ON]
+        displayName: { type: string, maxLength: 120 }
+        description: { type: string }
+        productStatus:
+          type: string
+          enum: [DRAFT, ACTIVE, RETIRED]
+        planCode: { type: string }
+        creditUnits: { type: integer, format: int64, minimum: 1 }
+        creditValidityDays: { type: integer, minimum: 1 }
+        prices:
+          type: array
+          items: { $ref: '#/components/schemas/AdminBillingPrice' }
+    AdminBillingProductUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        productStatus:
+          type: string
+          enum: [DRAFT, ACTIVE, RETIRED]
+        creditUnits: { type: integer, format: int64, minimum: 1, maximum: 1000000, description: Credit packs only. }
+        creditValidityDays: { type: integer, minimum: 1, maximum: 3650, description: Credit packs only. }
+    AdminBillingPriceUpdate:
+      type: object
+      required: [currency, amountMinor, billingPeriod, renewalModel]
+      properties:
+        currency: { $ref: '#/components/schemas/CurrencyCode' }
+        amountMinor: { type: integer, format: int64, minimum: 0, maximum: 100000000000, description: 'Integer minor units of `currency` (4900 = 49.00 ETB).' }
+        taxBehavior:
+          type: string
+          enum: [INCLUSIVE, EXCLUSIVE, NOT_APPLICABLE]
+          default: INCLUSIVE
+        taxRateBasisPoints: { type: integer, minimum: 0, maximum: 10000, description: Required for EXCLUSIVE. }
+        billingPeriod: { $ref: '#/components/schemas/BillingPeriod' }
+        renewalModel: { $ref: '#/components/schemas/RenewalModel' }
+        active: { type: boolean, default: true, description: false ends the price of this scope. }
+    MarketOffering:
+      type: string
+      enum: [SUBSCRIPTIONS, AI_CREDITS]
+    MarketOfferingSet:
+      type: object
+      required: [countryCode, revision, offerings]
+      properties:
+        countryCode: { $ref: '#/components/schemas/CountryCode' }
+        revision: { type: integer, minimum: 0 }
+        offerings:
+          type: array
+          items:
+            type: object
+            required: [offering, enabled, source]
+            properties:
+              offering: { $ref: '#/components/schemas/MarketOffering' }
+              enabled: { type: boolean, description: Effective value for the market. }
+              source:
+                type: string
+                enum: [MARKET, DEFAULT, NONE]
+                description: '`MARKET` its own setting, `DEFAULT` inherited from `ZZ`, `NONE` no setting (off).'
+              notes: { type: string }
+    MarketOfferingSetUpdate:
+      type: object
+      required: [expectedRevision, offerings]
+      properties:
+        expectedRevision: { type: integer, minimum: 0 }
+        offerings:
+          type: array
+          maxItems: 2
+          items:
+            type: object
+            required: [offering, enabled]
+            properties:
+              offering: { $ref: '#/components/schemas/MarketOffering' }
+              enabled: { type: boolean }
               notes: { type: string, maxLength: 1000 }
 
     # ------------------------------------------------------------ organizations

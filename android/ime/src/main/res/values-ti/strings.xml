@@ -79,6 +79,7 @@
     <string name="ai_tile_tone_description">ደጊምኩም ጽሓፉ፣ ቃና፦ %1$s</string>
     <string name="ai_grid_offline">ካብ መስመር ወጻኢ፦ AI ምትእስሳር የድልዮ</string>
     <string name="ai_grid_quota">%1$s፦ %2$s</string>
+    <string name="ai_grid_credits">ናይ AI ክረዲት፦ %1$d</string>
     <string name="ai_status_offline">ካብ መስመር ወጻኢ</string>
     <string name="ai_status_signed_out">AI ንምጥቃም እተዉ</string>
     <string name="ai_status_update">ምሕዳስ የድሊ</string>
@@ -108,6 +109,8 @@
     <string name="ai_err_quota">ናይ AI ኣበልኩም ወዲእኩም።</string>
     <string name="ai_err_quota_reset">ናይ AI ኣበልኩም ወዲእኩም። %1$s ይሕደስ።</string>
     <string name="ai_err_quota_upgrade">ንተወሳኺ ኣመሓይሹ።</string>
+    <string name="ai_err_quota_upgrade_or_credits">ንተወሳኺ ኣመሓይሹ ወይ ክረዲት ግዝኡ።</string>
+    <string name="ai_err_quota_credits">ንተወሳኺ ክረዲት ግዝኡ።</string>
     <string name="ai_err_rate_limited">ብዙሓት ሕቶታት። ቁሩብ ተጸበዩ ደሓር ደጊምኩም ፈትኑ።</string>
     <string name="ai_err_not_entitled">እዚ ባህሪ ኣብ ጥቕሊኹም ኣይእቶን።</string>
     <string name="ai_err_on_device_only">AI ኣብ መሳርሒ ጥራይ ስለ ዝመረጽኩም፣ ዝተላእከ የለን። ኣብ ቅጥዕታት AI ቀይሩዎ።</string>
@@ -125,6 +128,7 @@
     <string name="ai_link_sign_in">እተዉ</string>
     <string name="ai_link_settings">ቅጥዕታት ክፈቱ</string>
     <string name="ai_link_upgrade">ጥቕልታት ርኣዩ</string>
+    <string name="ai_link_buy_credits">ክረዲት ግዝኡ</string>
     <string name="ai_link_update">ኣሐድሱ</string>
 
     <!-- AI panels, direction control and e-mail writer -->

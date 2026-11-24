@@ -62,8 +62,7 @@ class AiToolsPanelView(context: Context) : TileGridView<AiTool>(context) {
             AiBlock.SIGNED_OUT -> context.getString(R.string.ai_status_signed_out) to AiLink.SIGN_IN
             AiBlock.UPDATE_REQUIRED -> context.getString(R.string.ai_status_update) to AiLink.UPDATE_APP
             AiBlock.OFFLINE -> context.getString(R.string.ai_grid_offline) to null
-            AiBlock.NONE -> AiMessages.quota(context, a.quota[AiTaskKind.TRANSLATE]).takeIf { it.isNotEmpty() }
-                ?.let { context.getString(R.string.ai_grid_quota, context.getString(R.string.ai_translate), it) } to null
+            AiBlock.NONE -> AiMessages.gridNotice(context, a) to null
         }
         if (text == null) return null.also { noticeView = null }
         val blocked = a?.block != AiBlock.NONE

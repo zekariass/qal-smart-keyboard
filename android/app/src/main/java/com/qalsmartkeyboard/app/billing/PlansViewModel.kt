@@ -41,6 +41,10 @@ class PlansViewModel(val model: PlansModel, session: SessionManager?) : ViewMode
     fun dismissMessage() = model.dismissMessage()
 
     fun buy() = run { model.buy() }
+    fun buyPack(productCode: String) = run { model.buyPack(productCode) }
+    fun openHistory() { viewModelScope.launch { model.openHistory() } }
+    fun loadMoreHistory() { viewModelScope.launch { model.loadMoreHistory() } }
+    fun closeHistory() = model.closeHistory()
     fun buyFromStore(host: PurchaseHost) = run { model.buyFromStore(host) }
     fun onReturned(result: String?) = run { model.onReturned(result) }
     fun onCheckoutClosed() = run { model.onCheckoutClosed() }

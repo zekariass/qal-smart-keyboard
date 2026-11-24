@@ -272,6 +272,9 @@ final class AttemptService {
 	}
 
 	private static String itemName(OrderRow order) {
+		if ("ONE_TIME".equals(order.billingPeriod())) {
+			return order.productName(); // a credit pack: no term
+		}
 		String term = switch (order.billingPeriod()) {
 			case "MONTHLY" -> "30 days";
 			case "ANNUAL" -> "1 year";

@@ -26,6 +26,7 @@ import com.qalsmartkeyboard.billing.spi.StoreBillingProvider;
 import com.qalsmartkeyboard.platform.outbox.OutboxEvent;
 import com.qalsmartkeyboard.platform.outbox.OutboxEventHandler;
 import com.qalsmartkeyboard.platform.outbox.OutboxPublisher;
+import com.qalsmartkeyboard.usage.Credits;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -78,8 +79,20 @@ class BillingConfiguration {
 	}
 
 	@Bean
-	Fulfilment billingFulfilment(JdbcTemplate jdbc, JsonMapper json) {
-		return new Fulfilment(jdbc, json);
+	Fulfilment billingFulfilment(JdbcTemplate jdbc, Credits credits, JsonMapper json) {
+		return new Fulfilment(jdbc, credits, json);
+	}
+
+	@Bean
+	CatalogAdmin billingCatalogAdmin(JdbcTemplate jdbc, TransactionTemplate transactions, AdminAccess admin,
+			AuditTrail audit, ObjectProvider<Clock> clock) {
+		return new CatalogAdmin(jdbc, transactions, admin, audit, clock(clock));
+	}
+
+	@Bean
+	MarketOfferingAdmin billingMarketOfferingAdmin(JdbcTemplate jdbc, TransactionTemplate transactions,
+			AdminAccess admin, AuditTrail audit, ObjectProvider<Clock> clock) {
+		return new MarketOfferingAdmin(jdbc, transactions, admin, audit, clock(clock));
 	}
 
 	@Bean

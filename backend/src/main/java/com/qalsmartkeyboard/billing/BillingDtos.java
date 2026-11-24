@@ -167,4 +167,55 @@ final class BillingDtos {
 	record RouteInput(@NotBlank @Size(max = 40) @Pattern(regexp = "^[A-Z][A-Z0-9_]*$") String providerCode,
 			Boolean enabled, @Size(max = 1000) String notes) {
 	}
+
+	/** {@code AdminBillingPrice}. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	record AdminPriceDto(UUID priceId, String marketCountry, String salesChannel, MoneyDto amount, String taxBehavior,
+			Integer taxRateBasisPoints, String billingPeriod, String renewalModel, int priceVersion, boolean active,
+			Instant validFrom, Instant validUntil) {
+	}
+
+	/** {@code AdminBillingProduct}. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	record AdminProductDto(String productCode, String productType, String displayName, String description,
+			String productStatus, String planCode, Long creditUnits, Integer creditValidityDays,
+			List<AdminPriceDto> prices) {
+	}
+
+	record AdminProductListDto(List<AdminProductDto> items) {
+	}
+
+	/** {@code AdminBillingProductUpdate}: every field optional, at least one present. */
+	record AdminProductUpdate(@Size(min = 1, max = 120) String displayName, @Size(max = 2000) String description,
+			@Pattern(regexp = "^(DRAFT|ACTIVE|RETIRED)$") String productStatus,
+			@Min(1) @Max(1_000_000) Long creditUnits, @Min(1) @Max(3650) Integer creditValidityDays) {
+	}
+
+	/** {@code AdminBillingPriceUpdate}. */
+	record AdminPriceUpdate(@NotNull @Pattern(regexp = "^[A-Z]{3}$") String currency,
+			@NotNull @Min(0) @Max(100_000_000_000L) Long amountMinor,
+			@Pattern(regexp = "^(INCLUSIVE|EXCLUSIVE|NOT_APPLICABLE)$") String taxBehavior,
+			@Min(0) @Max(10_000) Integer taxRateBasisPoints,
+			@NotNull @Pattern(regexp = "^(ONE_TIME|WEEKLY|MONTHLY|QUARTERLY|ANNUAL|LIFETIME)$") String billingPeriod,
+			@NotNull @Pattern(regexp = "^(NONE|MANUAL_RENEW|AUTO_RENEW|STORE_MANAGED)$") String renewalModel,
+			Boolean active) {
+	}
+
+	/** One entry of {@code MarketOfferingSet.offerings}. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	record MarketOfferingDto(String offering, boolean enabled, String source, String notes) {
+	}
+
+	/** {@code MarketOfferingSet}. */
+	record MarketOfferingSetDto(String countryCode, int revision, List<MarketOfferingDto> offerings) {
+	}
+
+	/** {@code MarketOfferingSetUpdate}. */
+	record MarketOfferingSetUpdate(@NotNull @Min(0) @Max(Integer.MAX_VALUE) Integer expectedRevision,
+			@NotNull @Size(max = 2) List<@Valid @NotNull MarketOfferingInput> offerings) {
+	}
+
+	record MarketOfferingInput(@NotNull @Pattern(regexp = "^(SUBSCRIPTIONS|AI_CREDITS)$") String offering,
+			@NotNull Boolean enabled, @Size(max = 1000) String notes) {
+	}
 }

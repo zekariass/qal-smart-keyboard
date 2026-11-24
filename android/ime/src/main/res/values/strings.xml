@@ -78,6 +78,7 @@
     <string name="ai_tile_tone_description">Rewrite, tone: %1$s</string>
     <string name="ai_grid_offline">Offline: AI needs a connection</string>
     <string name="ai_grid_quota">%1$s: %2$s</string>
+    <string name="ai_grid_credits">AI credits: %1$d</string>
     <string name="ai_status_offline">Offline</string>
     <string name="ai_status_signed_out">Sign in to use AI</string>
     <string name="ai_status_update">Update needed</string>
@@ -107,6 +108,8 @@
     <string name="ai_err_quota">You have used your AI allowance.</string>
     <string name="ai_err_quota_reset">You have used your AI allowance. It renews %1$s.</string>
     <string name="ai_err_quota_upgrade">Upgrade for more.</string>
+    <string name="ai_err_quota_upgrade_or_credits">Upgrade or buy credits for more.</string>
+    <string name="ai_err_quota_credits">Buy credits for more.</string>
     <string name="ai_err_rate_limited">Too many requests. Wait a moment and try again.</string>
     <string name="ai_err_not_entitled">This feature is not part of your plan.</string>
     <string name="ai_err_on_device_only">You chose on-device AI only, so nothing was sent. Change this in AI settings.</string>
@@ -124,6 +127,7 @@
     <string name="ai_link_sign_in">Sign in</string>
     <string name="ai_link_settings">Open settings</string>
     <string name="ai_link_upgrade">See plans</string>
+    <string name="ai_link_buy_credits">Buy credits</string>
     <string name="ai_link_update">Update</string>
 
     <!-- AI panels, direction control and e-mail writer (ADR 0031) -->

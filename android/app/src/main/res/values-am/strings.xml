@@ -597,5 +597,41 @@
     <string name="pay_checkout_close">ክፍያውን ሰርዝ</string>
     <string name="pay_checkout_error_title">የክፍያ ገጹ አልተጫነም</string>
     <string name="pay_checkout_error_body">ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።</string>
+    <!-- AI credit packs (T8.10). DRAFT (N9). -->
+    <string name="pay_credits_title">የAI ክሬዲት</string>
+    <string name="pay_credits_header">የAI ክሬዲት</string>
+    <string name="pay_credits_balance">ክሬዲትዎ</string>
+    <string name="pay_credits_expire_all">%2$s ያበቃል</string>
+    <string name="pay_credits_expire_some">%1$d በ%2$s ያበቃል</string>
+    <string name="pay_pack_terms">አንድ ጊዜ ግዢ · ደንበኝነት የለም · %1$s</string>
+    <string name="pay_pack_terms_short">አንድ ጊዜ ግዢ · ደንበኝነት የለም</string>
+    <string name="pay_pack_buy">በ%1$s ይግዙ</string>
+    <string name="pay_credits_terms">ክሬዲት የሚከፈለው አንድ ጊዜ ነው። ምንም አይታደስም፣ በራስ-ሰር ምንም አይቆረጥም። መጀመሪያ የሚያበቃው ክሬዲት መጀመሪያ ጥቅም ላይ ይውላል።</string>
+    <string name="pay_credits_guest_note">ክሬዲት ለመግዛት መለያ ያስፈልጋል፤ ስለዚህ ክሬዲትዎ በማንኛውም ስልክ ላይ የእርስዎ ሆኖ ይቆያል።</string>
+    <string name="pay_credits_history">የክሬዲት ታሪክ</string>
+    <string name="pay_credits_paid_title">ክሬዲት ተጨምሯል</string>
+    <string name="pay_credits_paid_body">ክሬዲትዎ በቁልፍ ሰሌዳው ውስጥ ለመጠቀም ዝግጁ ነው።</string>
+    <string name="pay_receipt_credits">ክሬዲት</string>
+    <string name="pay_receipt_credits_expire">ክሬዲት የሚያበቃበት</string>
+    <string name="pay_ledger_purchase">የተገዛ ክሬዲት</string>
+    <string name="pay_ledger_grant">የተጨመረ ክሬዲት</string>
+    <string name="pay_ledger_consumption">ጥቅም ላይ የዋለ</string>
+    <string name="pay_ledger_refund">የተመለሰ</string>
+    <string name="pay_ledger_expiry">ያበቃ</string>
+    <string name="pay_ledger_adjustment">ማስተካከያ</string>
+    <string name="pay_ledger_reversal">የተሻረ</string>
+    <string name="pay_ledger_other">የክሬዲት ለውጥ</string>
+    <string name="pay_ledger_balance_after">ቀሪ ሂሳብ፦ %1$s</string>
+    <string name="pay_ledger_empty_title">እስካሁን የክሬዲት እንቅስቃሴ የለም</string>
+    <string name="pay_ledger_empty_body">ክሬዲት ሲገዙ ወይም ሲጠቀሙ እዚህ ይታያል።</string>
+    <string name="pay_ledger_more">ተጨማሪ ጫን</string>
+    <plurals name="pay_credits_count">
+        <item quantity="one">%1$d ክሬዲት</item>
+        <item quantity="other">%1$d ክሬዲቶች</item>
+    </plurals>
+    <plurals name="pay_valid_days">
+        <item quantity="one">ለ%1$d ቀን የሚሰራ</item>
+        <item quantity="other">ለ%1$d ቀናት የሚሰራ</item>
+    </plurals>
     <string name="plans_account_summary">ጥቅልዎ፣ ዋጋዎችና ክፍያ</string>
 </resources>

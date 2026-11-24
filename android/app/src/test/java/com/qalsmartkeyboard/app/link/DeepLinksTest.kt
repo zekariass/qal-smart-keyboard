@@ -29,6 +29,9 @@ class DeepLinksTest {
         assertEquals(DeepLinkAction.SHOW_PRIVACY, DeepLinks.route(AiLink.AI_SETTINGS, out, true))
         assertEquals(DeepLinkAction.SHOW_PRIVACY, DeepLinks.route(AiLink.AI_SETTINGS, AccountStatus.Guest, true))
         assertEquals(DeepLinkAction.SHOW_PLANS, DeepLinks.route(AiLink.UPGRADE, AccountStatus.Registered, true))
+        assertEquals(DeepLinkAction.SHOW_CREDITS, DeepLinks.route(AiLink.BUY_CREDITS, AccountStatus.Registered, true))
+        assertEquals(DeepLinkAction.SHOW_CREDITS, DeepLinks.route(AiLink.BUY_CREDITS, AccountStatus.Guest, true))
+        assertEquals(DeepLinkAction.NONE, DeepLinks.route(AiLink.BUY_CREDITS, AccountStatus.Registered, false))
         assertEquals(DeepLinkAction.OPEN_STORE, DeepLinks.route(AiLink.UPDATE_APP, out, true))
         for (account in listOf(out, AccountStatus.Guest, AccountStatus.Registered)) {
             assertEquals(DeepLinkAction.SHOW_KEYBOARD_SETTINGS, DeepLinks.route(AiLink.SETTINGS, account, true))

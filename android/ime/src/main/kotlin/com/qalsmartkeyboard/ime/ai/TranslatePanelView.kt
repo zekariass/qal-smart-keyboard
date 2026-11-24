@@ -386,6 +386,7 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
                             LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
                         )
                         s.failure.link?.let { l -> addView(pill(AiMessages.link(context, l)) { onLink(l) }) }
+                        s.failure.extraLink?.let { l -> addView(pill(AiMessages.link(context, l)) { onLink(l) }) }
                         if (AiGate.canRetry(s.failure) && s.task != null) addView(pill(context.getString(R.string.ai_retry)) { tap { c.retry() } })
                     },
                 )

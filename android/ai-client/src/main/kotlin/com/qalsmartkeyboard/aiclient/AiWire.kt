@@ -224,7 +224,9 @@ internal object AiWire {
     private fun http(e: ApiError.Http): AiFailure = when (e.code) {
         "QUOTA_EXCEEDED" -> AiFailure.QuotaExceeded(
             resetAtMs = (e.extensions["resetAt"] as? JsonPrimitive)?.contentOrNull?.let(::parseInstantMs),
-            canUpgrade = (e.extensions["upgradeOptions"] as? JsonArray)?.isNotEmpty() == true,
+            // T8.10: PLAN options (or an untyped legacy entry) lead to the plans, CREDIT_PACK options to the credits.
+            canUpgrade = upgradeTypes(e).any { it != "CREDIT_PACK" },
+            canBuyCredits = upgradeTypes(e).any { it == "CREDIT_PACK" },
         )
         "RATE_LIMITED" -> AiFailure.RateLimited((e as? ApiError.RateLimited)?.retryAfterSeconds)
         "FEATURE_NOT_ENTITLED" -> AiFailure.NotEntitled
@@ -247,6 +249,10 @@ internal object AiWire {
             else -> AiFailure.Other
         }
     }
+
+    /** The `type` of each `upgradeOptions` entry (`PLAN` when it has none). */
+    private fun upgradeTypes(e: ApiError.Http): List<String> =
+        (e.extensions["upgradeOptions"] as? JsonArray).orEmpty().map { o -> str(o as? JsonObject, "type") ?: "PLAN" }
 
     fun parseInstantMs(s: String): Long? = try {
         OffsetDateTime.parse(s).toInstant().toEpochMilli()

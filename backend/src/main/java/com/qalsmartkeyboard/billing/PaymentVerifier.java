@@ -39,9 +39,10 @@ import tools.jackson.databind.json.JsonMapper;
  * review and grants nothing.</li>
  * <li>In one transaction, under row locks (attempt, then order): the attempt becomes SUCCEEDED, a CAPTURE row is
  * appended to {@code payment_transactions} (idempotent per attempt), the order becomes PAID and is fulfilled (term,
- * allocation, {@code subscription_events}, receipt) and {@code billing.subscription.changed} is written to the outbox
- * for the entitlements module. A second verified capture on an already paid order is recorded and flagged for refund
- * (step A2), never granted twice.</li>
+ * allocation, {@code subscription_events}, receipt; or, for a credit pack, exactly one credit lot and receipt) and, for
+ * a term, {@code billing.subscription.changed} is written to the outbox for the entitlements module. A second verified
+ * capture on an already paid order is recorded and flagged for refund (step A2), never granted twice: the order row
+ * lock serialises concurrent verifications (webhook, return URL, reconciliation) and PAID cannot become PAID again.</li>
  * <li>FAILED / CANCELLED / EXPIRED close an open attempt without any grant; a checkout never started is EXPIRED after
  * its expiry plus a grace period. PENDING keeps it open.</li>
  * </ol>
@@ -243,12 +244,16 @@ final class PaymentVerifier {
 		}
 		jdbc.update("UPDATE payment_orders SET order_status = 'PAID', paid_at = ?, updated_at = ? WHERE id = ?",
 				OrderService.utc(now), OrderService.utc(now), ctx.orderId());
-		UUID subscriptionId = fulfilment.fulfil(ctx, transactionId, now);
-		Map<String, Object> event = new LinkedHashMap<>();
-		event.put("userId", ctx.userId().toString());
-		event.put("subscriptionId", subscriptionId.toString());
-		event.put("orderId", ctx.orderId().toString());
-		outbox.publish("user_subscription", subscriptionId.toString(), BillingEvents.SUBSCRIPTION_CHANGED, event);
+		Fulfilment.Fulfilled fulfilled = fulfilment.fulfil(ctx, transactionId, now);
+		if (fulfilled.subscriptionId() != null) {
+			Map<String, Object> event = new LinkedHashMap<>();
+			event.put("userId", ctx.userId().toString());
+			event.put("subscriptionId", fulfilled.subscriptionId().toString());
+			event.put("orderId", ctx.orderId().toString());
+			outbox.publish("user_subscription", fulfilled.subscriptionId().toString(),
+					BillingEvents.SUBSCRIPTION_CHANGED, event);
+		}
+		// a credit lot needs no event: balances are read live from the ledger (no entitlement cache holds them)
 		if (current != AttemptStatus.REQUIRES_ACTION && current != AttemptStatus.PENDING
 				&& current != AttemptStatus.INITIATED) {
 			log.warn("billing late capture honoured attemptId={} previousStatus={} orderStatus={}", ctx.attemptId(),

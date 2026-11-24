@@ -16,7 +16,12 @@ object AiMessages {
         is AiFailure.QuotaExceeded -> {
             val reset = f.resetAtMs?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it)) }
             val base = if (reset != null) c.getString(R.string.ai_err_quota_reset, reset) else c.getString(R.string.ai_err_quota)
-            if (f.canUpgrade) base + " " + c.getString(R.string.ai_err_quota_upgrade) else base
+            when {
+                f.canUpgrade && f.canBuyCredits -> base + " " + c.getString(R.string.ai_err_quota_upgrade_or_credits)
+                f.canUpgrade -> base + " " + c.getString(R.string.ai_err_quota_upgrade)
+                f.canBuyCredits -> base + " " + c.getString(R.string.ai_err_quota_credits)
+                else -> base
+            }
         }
         is AiFailure.RateLimited -> c.getString(R.string.ai_err_rate_limited)
         AiFailure.NotEntitled -> c.getString(R.string.ai_err_not_entitled)
@@ -52,6 +57,7 @@ object AiMessages {
             AiLink.SIGN_IN -> R.string.ai_link_sign_in
             AiLink.AI_SETTINGS, AiLink.SETTINGS, AiLink.LANGUAGES, AiLink.THEMES, AiLink.TRANSLATION -> R.string.ai_link_settings
             AiLink.UPGRADE -> R.string.ai_link_upgrade
+            AiLink.BUY_CREDITS -> R.string.ai_link_buy_credits
             AiLink.UPDATE_APP -> R.string.ai_link_update
             AiLink.EMAIL_WRITER -> R.string.ai_email_open_full
         },
@@ -250,6 +256,14 @@ object AiMessages {
     )
 
     /** The remaining allowance ("3 of 10 left this month"), or "" when the plan state does not say. */
+    /** The tools grid's allowance line: "Translate: 12 left today", with "AI credits: 120" after it when the balance is known and above 0. */
+    fun gridNotice(c: Context, a: AiAvailability): String? {
+        val allowance = quota(c, a.quota[AiTaskKind.TRANSLATE]).takeIf { it.isNotEmpty() }
+            ?.let { c.getString(R.string.ai_grid_quota, c.getString(R.string.ai_translate), it) }
+        val credits = a.creditBalance?.takeIf { it > 0 }?.let { c.getString(R.string.ai_grid_credits, it) }
+        return listOfNotNull(allowance, credits).takeIf { it.isNotEmpty() }?.joinToString(" · ")
+    }
+
     fun quota(c: Context, q: AiQuotaHint?): String {
         val left = q?.remaining ?: return ""
         val limit = q.limit

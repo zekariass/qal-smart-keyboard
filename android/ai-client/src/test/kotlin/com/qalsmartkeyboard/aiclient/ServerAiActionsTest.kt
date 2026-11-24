@@ -3,6 +3,7 @@ package com.qalsmartkeyboard.aiclient
 import com.qalsmartkeyboard.ime.ai.AiBlock
 import com.qalsmartkeyboard.ime.ai.AiDestination
 import com.qalsmartkeyboard.ime.ai.AiFailure
+import com.qalsmartkeyboard.ime.ai.AiLink
 import com.qalsmartkeyboard.ime.ai.AiOutcome
 import com.qalsmartkeyboard.ime.ai.AiRequest
 import com.qalsmartkeyboard.ime.ai.AiTask
@@ -22,6 +23,7 @@ import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -261,6 +263,27 @@ class ServerAiActionsTest {
         assertTrue(f.canUpgrade)
         server.enqueue(problem(429, "QUOTA_EXCEEDED", ""","resetAt":"2026-11-17T21:00:00Z","upgradeOptions":[]"""))
         assertFalse((failure(run(actions(), tr)) as AiFailure.QuotaExceeded).canUpgrade)
+    }
+
+    @Test fun quotaExceededSeparatesPlanOptionsFromCreditPackOptions() {
+        fun quota(options: String): AiFailure.QuotaExceeded {
+            server.enqueue(problem(429, "QUOTA_EXCEEDED", ""","featureCode":"TRANSLATE","creditBalance":0,"upgradeOptions":$options"""))
+            return failure(run(actions(), tr)) as AiFailure.QuotaExceeded
+        }
+        val both = quota("""[{"type":"PLAN","productCode":"PLAN_PREMIUM"},{"type":"CREDIT_PACK","productCode":"CREDITS_500"}]""")
+        assertTrue(both.canUpgrade)
+        assertTrue(both.canBuyCredits)
+        val creditsOnly = quota("""[{"type":"CREDIT_PACK","productCode":"CREDITS_100"},{"type":"CREDIT_PACK","productCode":"CREDITS_500"}]""")
+        assertFalse(creditsOnly.canUpgrade)
+        assertTrue(creditsOnly.canBuyCredits)
+        assertEquals(AiLink.BUY_CREDITS, creditsOnly.link)
+        val plansOnly = quota("""[{"type":"PLAN","productCode":"PLAN_PREMIUM"}]""")
+        assertTrue(plansOnly.canUpgrade)
+        assertFalse(plansOnly.canBuyCredits)
+        val none = quota("[]")
+        assertFalse(none.canUpgrade)
+        assertFalse(none.canBuyCredits)
+        assertNull(none.link)
     }
 
     @Test fun serverCodesMapToToolbarStates() {

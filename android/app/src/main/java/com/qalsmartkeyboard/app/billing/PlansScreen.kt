@@ -2,7 +2,15 @@ package com.qalsmartkeyboard.app.billing
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.res.pluralStringResource
+import com.qalsmartkeyboard.api.billing.CreditTransaction
+import java.text.NumberFormat
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -59,6 +67,13 @@ data class PlansActions(
     val selectOffer: (String) -> Unit = {},
     val selectMethod: (String) -> Unit = {},
     val buy: () -> Unit = {},
+    /** Buy the credit pack with this product code (T8.10). */
+    val buyPack: (String) -> Unit = {},
+    val openHistory: () -> Unit = {},
+    val loadMoreHistory: () -> Unit = {},
+    val closeHistory: () -> Unit = {},
+    /** The credits section has been scrolled into view (a "Buy credits" deep link): forget the request. */
+    val creditsFocused: () -> Unit = {},
     val buyFromStore: () -> Unit = {},
     val reopen: () -> Unit = {},
     val refresh: () -> Unit = {},
@@ -73,7 +88,16 @@ data class PlansActions(
  * after a purchase (the host returns to where the user came from: the keyboard, the themes, ...).
  */
 @Composable
-fun PlansRoute(vm: PlansViewModel, onBack: () -> Unit, onSignIn: () -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
+fun PlansRoute(
+    vm: PlansViewModel,
+    onBack: () -> Unit,
+    onSignIn: () -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Scroll to the "AI credits" section once it shows (opened from the keyboard's "Buy credits"). */
+    focusCredits: Boolean = false,
+    onCreditsFocused: () -> Unit = {},
+) {
     val state by vm.model.state.collectAsState()
     val activity = LocalContext.current as? Activity
     val url = state.checkout.checkoutUrl
@@ -83,8 +107,12 @@ fun PlansRoute(vm: PlansViewModel, onBack: () -> Unit, onSignIn: () -> Unit, onD
     }
     val finished = state.checkout.step == CheckoutStep.PAID || state.checkout.step == CheckoutStep.FAILED
     val leave = {
-        if (finished) vm.closeCheckout()
-        onBack()
+        if (state.history.open) {
+            vm.closeHistory()
+        } else {
+            if (finished) vm.closeCheckout()
+            onBack()
+        }
     }
     BackHandler(onBack = leave)
     PlansScreen(
@@ -96,6 +124,11 @@ fun PlansRoute(vm: PlansViewModel, onBack: () -> Unit, onSignIn: () -> Unit, onD
             selectOffer = vm::selectOffer,
             selectMethod = vm::selectMethod,
             buy = vm::buy,
+            buyPack = vm::buyPack,
+            openHistory = vm::openHistory,
+            loadMoreHistory = vm::loadMoreHistory,
+            closeHistory = vm::closeHistory,
+            creditsFocused = onCreditsFocused,
             buyFromStore = { activity?.let { a -> vm.buyFromStore { a } } },
             reopen = vm::reopenCheckout,
             refresh = vm::refreshCheckout,
@@ -107,6 +140,7 @@ fun PlansRoute(vm: PlansViewModel, onBack: () -> Unit, onSignIn: () -> Unit, onD
             dismissMessage = vm::dismissMessage,
         ),
         modifier,
+        focusCredits = focusCredits,
     )
 }
 
@@ -117,8 +151,13 @@ fun PlansRoute(vm: PlansViewModel, onBack: () -> Unit, onSignIn: () -> Unit, onD
  * confirming, not completed, paid (receipt) and failed.
  */
 @Composable
-fun PlansScreen(state: PlansState, actions: PlansActions, modifier: Modifier = Modifier) {
-    SettingsScaffold(title = stringResource(R.string.plans_title), onBack = actions.back, modifier = modifier) {
+fun PlansScreen(state: PlansState, actions: PlansActions, modifier: Modifier = Modifier, focusCredits: Boolean = false) {
+    if (state.history.open && state.checkout.step == CheckoutStep.IDLE) {
+        CreditHistoryScreen(state.history, actions, modifier)
+        return
+    }
+    val creditsOnly = state.phase == PlansPhase.READY && state.offers.isEmpty() && state.packs.isNotEmpty() && !state.storeFlow
+    SettingsScaffold(title = stringResource(if (creditsOnly) R.string.pay_credits_title else R.string.plans_title), onBack = actions.back, modifier = modifier) {
         when (state.checkout.step) {
             CheckoutStep.CONFIRMING -> Confirming()
             CheckoutStep.STILL_CONFIRMING -> StillConfirming(state, actions)
@@ -141,6 +180,7 @@ fun PlansScreen(state: PlansState, actions: PlansActions, modifier: Modifier = M
                 )
                 PlansPhase.NOT_AVAILABLE -> {
                     CurrentPlan(state)
+                    state.credits?.let { CreditBalance(it) }
                     Notice(
                         stringResource(R.string.pay_unavailable_title),
                         stringResource(if (state.unavailable == UnavailableReason.STORE_NOT_IN_BUILD) R.string.pay_unavailable_store_body else R.string.pay_unavailable_body),
@@ -148,7 +188,7 @@ fun PlansScreen(state: PlansState, actions: PlansActions, modifier: Modifier = M
                     )
                     state.notice?.let { SettingsNote(it) }
                 }
-                PlansPhase.READY -> Ready(state, actions)
+                PlansPhase.READY -> Ready(state, actions, focusCredits)
             }
         }
     }
@@ -199,8 +239,9 @@ private fun CurrentPlan(state: PlansState) {
 }
 
 @Composable
-private fun ColumnScope.Ready(state: PlansState, actions: PlansActions) {
-    CurrentPlan(state)
+private fun ColumnScope.Ready(state: PlansState, actions: PlansActions, focusCredits: Boolean) {
+    val plansOffered = state.storeFlow || state.offers.isNotEmpty()
+    if (plansOffered || state.current?.isFree == false) CurrentPlan(state)
     state.notice?.let { SettingsNote(it) }
     if (state.storeFlow) {
         SettingsHeader(stringResource(R.string.pay_choose_header))
@@ -217,7 +258,7 @@ private fun ColumnScope.Ready(state: PlansState, actions: PlansActions) {
         }
         SettingsNote(stringResource(R.string.pay_terms_store))
     } else {
-        SettingsHeader(stringResource(R.string.pay_choose_header))
+        if (state.offers.isNotEmpty()) SettingsHeader(stringResource(R.string.pay_choose_header))
         state.offers.groupBy { it.productCode }.values.forEach { group ->
             val product = group.first()
             if (state.offers.map { it.productCode }.distinct().size > 1) {
@@ -252,9 +293,14 @@ private fun ColumnScope.Ready(state: PlansState, actions: PlansActions) {
                 )
             }
         }
-        SettingsNote(stringResource(R.string.pay_terms))
+        if (state.offers.isNotEmpty()) SettingsNote(stringResource(R.string.pay_terms))
     }
     state.message?.let { Message(it, actions) }
+    if (state.offers.isEmpty() && !state.storeFlow) {
+        // Credits only: no plan to pay for; the packs below carry their own buttons.
+        CreditsSection(state, actions, focusCredits)
+        return
+    }
     Spacer(Modifier.height(8.dp))
     val starting = state.checkout.step == CheckoutStep.STARTING
     val label = when {
@@ -278,6 +324,142 @@ private fun ColumnScope.Ready(state: PlansState, actions: PlansActions) {
         }
         Text(label)
     }
+    if (state.packs.isNotEmpty()) CreditsSection(state, actions, focusCredits)
+}
+
+// ---------------------------------------------------------------- AI credits (T8.10)
+
+/** The balance row: "120", and "100 expire on 24 Nov 2027" under it when a lot expires. */
+@Composable
+private fun CreditBalance(c: CreditsInfo) {
+    val expiry = c.nextExpiryMs?.let { ms ->
+        stringResource(if (c.expiringUnits >= c.balance) R.string.pay_credits_expire_all else R.string.pay_credits_expire_some, c.expiringUnits, MoneyFormat.date(ms))
+    }
+    val number = NumberFormat.getIntegerInstance().format(c.balance)
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.pay_credits_balance)) },
+        supportingContent = expiry?.let { { Text(it) } },
+        trailingContent = { Text(number, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.testTag("credits_balance").semantics(mergeDescendants = true) {},
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ColumnScope.CreditsSection(state: PlansState, actions: PlansActions, focus: Boolean) {
+    val requester = remember { BringIntoViewRequester() }
+    if (focus) {
+        LaunchedEffect(Unit) {
+            requester.bringIntoView()
+            actions.creditsFocused()
+        }
+    }
+    SettingsHeader(stringResource(R.string.pay_credits_header), Modifier.bringIntoViewRequester(requester).testTag("credits_header"))
+    state.credits?.let { CreditBalance(it) }
+    val starting = state.checkout.step == CheckoutStep.STARTING
+    state.packs.forEach { p ->
+        val price = p.displayPrice ?: MoneyFormat.format(p.price)
+        val buying = starting && state.buyingPack == p.productCode
+        val terms = p.validityDays?.let {
+            stringResource(R.string.pay_pack_terms, pluralStringResource(R.plurals.pay_valid_days, it, it))
+        } ?: stringResource(R.string.pay_pack_terms_short)
+        ListItem(
+            headlineContent = { Text(p.name, fontWeight = FontWeight.Medium) },
+            supportingContent = {
+                Column {
+                    Text(pluralStringResource(R.plurals.pay_credits_count, p.credits.toInt(), p.credits.toInt()))
+                    p.description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    Text(terms, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = if (state.buyer == BuyerKind.REGISTERED) ({ actions.buyPack(p.productCode) }) else actions.signIn,
+                        enabled = !starting,
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("pack_buy_${p.productCode}"),
+                    ) {
+                        if (buying) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        Text(if (state.buyer == BuyerKind.REGISTERED) stringResource(R.string.pay_pack_buy, price) else stringResource(R.string.pay_sign_in_to_buy))
+                    }
+                }
+            },
+            trailingContent = { Text(price, style = MaterialTheme.typography.titleMedium) },
+            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.testTag("pack_${p.productCode}"),
+        )
+    }
+    if (state.buyer != BuyerKind.REGISTERED) SettingsNote(stringResource(R.string.pay_credits_guest_note))
+    SettingsNote(stringResource(R.string.pay_credits_terms))
+    TextButton(
+        onClick = actions.openHistory,
+        modifier = Modifier.padding(horizontal = 8.dp).heightIn(min = 48.dp).testTag("credit_history_open"),
+    ) { Text(stringResource(R.string.pay_credits_history)) }
+}
+
+private val TYPE_LABEL = mapOf(
+    "PURCHASE" to R.string.pay_ledger_purchase,
+    "GRANT" to R.string.pay_ledger_grant,
+    "CONSUMPTION" to R.string.pay_ledger_consumption,
+    "REFUND" to R.string.pay_ledger_refund,
+    "EXPIRY" to R.string.pay_ledger_expiry,
+    "ADJUSTMENT" to R.string.pay_ledger_adjustment,
+    "REVERSAL" to R.string.pay_ledger_reversal,
+)
+
+/** Credits are fractional (6 dp); the ledger shows at most two decimals. */
+private fun units(v: Double, signed: Boolean): String {
+    val nf = NumberFormat.getNumberInstance().apply { maximumFractionDigits = 2; minimumFractionDigits = 0 }
+    val s = nf.format(v)
+    return if (signed && v > 0) "+$s" else s
+}
+
+/** "Credit history": the ledger, newest first, with a Load more button while the server has another page. */
+@Composable
+private fun CreditHistoryScreen(h: CreditHistoryState, actions: PlansActions, modifier: Modifier) {
+    SettingsScaffold(title = stringResource(R.string.pay_credits_history), onBack = actions.closeHistory, modifier = modifier) {
+        when {
+            h.items.isEmpty() && h.loading -> Loading()
+            h.items.isEmpty() && h.error != null -> Notice(
+                stringResource(if (h.error == PlansMessage.OFFLINE) R.string.pay_offline_title else R.string.pay_error_title),
+                stringResource(if (h.error == PlansMessage.OFFLINE) R.string.pay_offline_body else R.string.pay_error_body),
+                stringResource(R.string.pay_retry), actions.openHistory,
+            )
+            h.items.isEmpty() -> Notice(stringResource(R.string.pay_ledger_empty_title), stringResource(R.string.pay_ledger_empty_body), null, null)
+            else -> {
+                h.items.forEach { t -> LedgerRow(t) }
+                if (h.error != null) SettingsNote(stringResource(if (h.error == PlansMessage.OFFLINE) R.string.pay_msg_offline else R.string.pay_msg_server))
+                if (h.nextCursor != null || h.error != null) {
+                    if (h.loading) {
+                        Loading()
+                    } else {
+                        OutlinedButton(
+                            onClick = actions.loadMoreHistory,
+                            modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 48.dp).testTag("credit_history_more"),
+                        ) { Text(stringResource(R.string.pay_ledger_more)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LedgerRow(t: CreditTransaction) {
+    val label = stringResource(TYPE_LABEL[t.transactionType] ?: R.string.pay_ledger_other)
+    ListItem(
+        headlineContent = { Text(label) },
+        supportingContent = {
+            Column {
+                t.createdAtMs?.let { Text(MoneyFormat.date(it)) }
+                Text(stringResource(R.string.pay_ledger_balance_after, units(t.balanceAfter, false)), style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        trailingContent = { Text(units(t.deltaUnits, true), style = MaterialTheme.typography.titleMedium) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.semantics(mergeDescendants = true) {},
+    )
 }
 
 @Composable
@@ -401,19 +583,27 @@ private fun NotCompleted(state: PlansState, actions: PlansActions) {
 private fun Paid(state: PlansState, actions: PlansActions) {
     val r = state.checkout.receipt
     val plan = r?.planName ?: state.current?.name
-    StatusPage(
-        if (plan != null) stringResource(R.string.pay_paid_title, plan) else stringResource(R.string.pay_paid_title_generic),
-        stringResource(R.string.pay_paid_body),
-        R.drawable.ic_settings_check,
-    )
+    if (r?.credits != null) {
+        StatusPage(stringResource(R.string.pay_credits_paid_title), stringResource(R.string.pay_credits_paid_body), R.drawable.ic_settings_check)
+    } else {
+        StatusPage(
+            if (plan != null) stringResource(R.string.pay_paid_title, plan) else stringResource(R.string.pay_paid_title_generic),
+            stringResource(R.string.pay_paid_body),
+            R.drawable.ic_settings_check,
+        )
+    }
     if (r != null) {
         SettingsHeader(stringResource(R.string.pay_receipt_header))
         r.orderReference?.let { SettingsValueRow(stringResource(R.string.pay_receipt_order), it) }
         val period = r.period?.let { periodName(it) }
-        listOfNotNull(r.planName, period).takeIf { it.isNotEmpty() }?.let { SettingsValueRow(stringResource(R.string.pay_receipt_plan), it.joinToString(" · ")) }
+        if (r.credits != null) {
+            SettingsValueRow(stringResource(R.string.pay_receipt_credits), NumberFormat.getIntegerInstance().format(r.credits))
+        } else {
+            listOfNotNull(r.planName, period).takeIf { it.isNotEmpty() }?.let { SettingsValueRow(stringResource(R.string.pay_receipt_plan), it.joinToString(" · ")) }
+        }
         (r.amount?.let { MoneyFormat.format(it) } ?: r.storePrice)?.let { SettingsValueRow(stringResource(R.string.pay_receipt_amount), it) }
         r.paidAtMs?.let { SettingsValueRow(stringResource(R.string.pay_receipt_paid_on), MoneyFormat.date(it)) }
-        r.validUntilMs?.let { SettingsValueRow(stringResource(R.string.pay_receipt_valid_until), MoneyFormat.date(it)) }
+        r.validUntilMs?.let { SettingsValueRow(stringResource(if (r.credits != null) R.string.pay_receipt_credits_expire else R.string.pay_receipt_valid_until), MoneyFormat.date(it)) }
     }
     Spacer(Modifier.height(16.dp))
     Button(onClick = actions.done, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 48.dp)) {

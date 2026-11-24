@@ -599,5 +599,41 @@
     <string name="pay_checkout_close">ክፍሊት ሰርዝ</string>
     <string name="pay_checkout_error_title">ገጽ ክፍሊት ኣይተጻዕነን</string>
     <string name="pay_checkout_error_body">ርክብኩም ኣረጋግጹ እሞ እንደገና ፈትኑ።</string>
+    <!-- AI credit packs (T8.10). DRAFT (N9). -->
+    <string name="pay_credits_title">ናይ AI ክረዲት</string>
+    <string name="pay_credits_header">ናይ AI ክረዲት</string>
+    <string name="pay_credits_balance">ክረዲትኩም</string>
+    <string name="pay_credits_expire_all">%2$s የብቅዕ</string>
+    <string name="pay_credits_expire_some">%1$d ኣብ %2$s የብቅዕ</string>
+    <string name="pay_pack_terms">ሓደ ግዜ ዕዳጋ · ምዝገባ የለን · %1$s</string>
+    <string name="pay_pack_terms_short">ሓደ ግዜ ዕዳጋ · ምዝገባ የለን</string>
+    <string name="pay_pack_buy">ብ%1$s ግዝኡ</string>
+    <string name="pay_credits_terms">ክረዲት ሓደ ግዜ እዩ ዝኽፈል። ዋላ ሓደ ኣይሕደስን፣ ብነብሱ ዋላ ሓደ ኣይእሰርን። ቅድም ዝውድእ ክረዲት ቅድም ይጥቀም።</string>
+    <string name="pay_credits_guest_note">ክረዲት ንምግዛእ ሕሳብ የድሊ፣ ስለዚ ክረዲትኩም ኣብ ዝዀነ ስልኪ ናትኩም ኮይኑ ይጸንሕ።</string>
+    <string name="pay_credits_history">ታሪኽ ክረዲት</string>
+    <string name="pay_credits_paid_title">ክረዲት ተወሲኹ</string>
+    <string name="pay_credits_paid_body">ክረዲትኩም ኣብ ኪቦርድ ንምጥቃም ድሉው እዩ።</string>
+    <string name="pay_receipt_credits">ክረዲት</string>
+    <string name="pay_receipt_credits_expire">ክረዲት ዝውድእሉ</string>
+    <string name="pay_ledger_purchase">ዝተገዝአ ክረዲት</string>
+    <string name="pay_ledger_grant">ዝተወሰኸ ክረዲት</string>
+    <string name="pay_ledger_consumption">ዝተጠቕመ</string>
+    <string name="pay_ledger_refund">ዝተመለሰ</string>
+    <string name="pay_ledger_expiry">ዝወደአ</string>
+    <string name="pay_ledger_adjustment">ምዕራይ</string>
+    <string name="pay_ledger_reversal">ዝተመለሰ</string>
+    <string name="pay_ledger_other">ለውጢ ክረዲት</string>
+    <string name="pay_ledger_balance_after">ሸቶ፦ %1$s</string>
+    <string name="pay_ledger_empty_title">ክሳብ ሕጂ ንጥፈት ክረዲት የለን</string>
+    <string name="pay_ledger_empty_body">ክረዲት ክትገዝኡ ወይ ክትጥቀሙ ከለኹም ኣብዚ ይረአ።</string>
+    <string name="pay_ledger_more">ንዝበለጸ ጽዓን</string>
+    <plurals name="pay_credits_count">
+        <item quantity="one">%1$d ክረዲት</item>
+        <item quantity="other">%1$d ክረዲታት</item>
+    </plurals>
+    <plurals name="pay_valid_days">
+        <item quantity="one">ን%1$d መዓልቲ ዝሰርሕ</item>
+        <item quantity="other">ን%1$d መዓልትታት ዝሰርሕ</item>
+    </plurals>
     <string name="plans_account_summary">ጥቕልኹም፣ ዋጋታትን ክፍሊትን</string>
 </resources>

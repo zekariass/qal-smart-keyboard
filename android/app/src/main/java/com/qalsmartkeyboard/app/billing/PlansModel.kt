@@ -3,6 +3,8 @@ package com.qalsmartkeyboard.app.billing
 import com.qalsmartkeyboard.api.ApiError
 import com.qalsmartkeyboard.api.billing.BillingClient
 import com.qalsmartkeyboard.api.billing.BillingOptions
+import com.qalsmartkeyboard.api.billing.CreditSummary
+import com.qalsmartkeyboard.api.billing.CreditTransaction
 import com.qalsmartkeyboard.api.billing.CurrentPlan
 import com.qalsmartkeyboard.api.billing.Money
 import com.qalsmartkeyboard.api.billing.PaymentMethod
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import kotlin.math.floor
 
 /** Who may see what on the paywall. */
 enum class BuyerKind { SIGNED_OUT, GUEST, REGISTERED }
@@ -77,6 +80,48 @@ data class PlanOffer(
     val key: String get() = "$productCode/$period"
 }
 
+/** One prepaid AI credit pack the market sells (T8.10): exactly the server's product, credits and money. */
+data class CreditPack(
+    val productCode: String,
+    val name: String,
+    val description: String?,
+    val credits: Long,
+    val validityDays: Int?,
+    val price: Money,
+    val displayPrice: String?,
+) {
+    val key: String get() = "$productCode/$PERIOD"
+
+    companion object {
+        const val PERIOD = "ONE_TIME"
+    }
+}
+
+/**
+ * The credit balance shown on the paywall, rounded down to whole credits (the server's exact balance has 6 dp).
+ * [expiringUnits] of it expire on [nextExpiryMs] (the soonest lot's date), when any lot expires.
+ */
+data class CreditsInfo(val balance: Long, val nextExpiryMs: Long?, val expiringUnits: Long) {
+    companion object {
+        fun of(s: CreditSummary): CreditsInfo {
+            val next = s.nextExpiryAtMs ?: s.lots.mapNotNull { it.expiresAtMs }.minOrNull()
+            val expiring = if (next == null) 0.0 else s.lots.filter { it.expiresAtMs == next }.sumOf { it.remainingUnits }
+            val balance = floor(s.balanceUnits + 1e-9).toLong()
+            return CreditsInfo(balance, next, floor(expiring + 1e-9).toLong().coerceAtMost(balance))
+        }
+    }
+}
+
+/** The "Credit history" page: ledger rows newest first, paged by cursor. */
+data class CreditHistoryState(
+    val open: Boolean = false,
+    val loading: Boolean = false,
+    val items: List<CreditTransaction> = emptyList(),
+    val nextCursor: String? = null,
+    /** The last load failed (offline or server); [items] keep what was loaded. */
+    val error: PlansMessage? = null,
+)
+
 /** What the current plan looks like (from `/me/entitlements` and `/me/subscriptions`). */
 data class CurrentPlanInfo(
     val planCode: String,
@@ -125,6 +170,8 @@ data class Receipt(
     val storePrice: String?,
     val paidAtMs: Long?,
     val validUntilMs: Long?,
+    /** A credit-pack receipt (T8.10): the credits added; [validUntilMs] is then when they expire. */
+    val credits: Long? = null,
 )
 
 data class CheckoutState(
@@ -150,6 +197,13 @@ data class PlansState(
     /** Payment options in the server's order: the default first. */
     val methods: List<PaymentMethod> = emptyList(),
     val storeOffers: List<StoreOffer> = emptyList(),
+    /** The credit packs this market sells (empty: no credits section). Gateway flow only. */
+    val packs: List<CreditPack> = emptyList(),
+    /** The balance, or null while unknown (not loaded, or the call failed). */
+    val credits: CreditsInfo? = null,
+    /** The pack whose checkout is starting (its button shows the spinner). */
+    val buyingPack: String? = null,
+    val history: CreditHistoryState = CreditHistoryState(),
     val selectedOffer: String? = null,
     val selectedMethod: String? = null,
     val checkout: CheckoutState = CheckoutState(),
@@ -227,17 +281,19 @@ class PlansModel(
         }
         options = opts
         val current = loadCurrent(who)
+        val credits = loadCredits()
         if (!opts.purchaseUiAllowed || opts.paymentMethods.isEmpty() || !(opts.gatewayFlow || opts.storeFlow)) {
-            _state.update { it.copy(phase = PlansPhase.NOT_AVAILABLE, unavailable = UnavailableReason.MARKET, current = current, offers = emptyList(), methods = emptyList(), notice = opts.notice) }
+            _state.update { it.copy(phase = PlansPhase.NOT_AVAILABLE, unavailable = UnavailableReason.MARKET, current = current, credits = credits, offers = emptyList(), packs = emptyList(), methods = emptyList(), notice = opts.notice) }
             resumePending()
             return
         }
         if (opts.storeFlow) {
-            loadStore(who, current, opts)
+            loadStore(who, current, opts, credits)
         } else {
             val offers = offersOf(opts)
-            if (offers.isEmpty()) {
-                _state.update { it.copy(phase = PlansPhase.NOT_AVAILABLE, unavailable = UnavailableReason.MARKET, current = current, notice = opts.notice) }
+            val packs = packsOf(opts)
+            if (offers.isEmpty() && packs.isEmpty()) {
+                _state.update { it.copy(phase = PlansPhase.NOT_AVAILABLE, unavailable = UnavailableReason.MARKET, current = current, credits = credits, packs = emptyList(), notice = opts.notice) }
             } else {
                 val methods = opts.paymentMethods.sortedWith(compareByDescending<PaymentMethod> { it.isDefault }.thenBy { it.priority ?: Int.MAX_VALUE })
                 _state.update { s ->
@@ -246,9 +302,11 @@ class PlansModel(
                         unavailable = null,
                         storeFlow = false,
                         current = current,
+                        credits = credits,
                         offers = offers,
+                        packs = packs,
                         methods = methods,
-                        selectedOffer = s.selectedOffer?.takeIf { k -> offers.any { it.key == k } } ?: defaultOffer(offers),
+                        selectedOffer = s.selectedOffer?.takeIf { k -> offers.any { it.key == k } } ?: offers.takeIf { it.isNotEmpty() }?.let(::defaultOffer),
                         selectedMethod = s.selectedMethod?.takeIf { c -> methods.any { it.methodCode == c } } ?: methods.first().methodCode,
                         notice = opts.notice,
                     )
@@ -258,11 +316,11 @@ class PlansModel(
         resumePending()
     }
 
-    private suspend fun loadStore(who: BuyerKind, current: CurrentPlanInfo?, opts: BillingOptions) {
+    private suspend fun loadStore(who: BuyerKind, current: CurrentPlanInfo?, opts: BillingOptions, credits: CreditsInfo?) {
         val storeOffered = opts.paymentMethods.any { it.methodType == "APP_STORE" || it.providerCode == "REVENUECAT" }
         if (!storeOffered || !store.available) {
             _state.update {
-                it.copy(phase = PlansPhase.NOT_AVAILABLE, unavailable = if (storeOffered) UnavailableReason.STORE_NOT_IN_BUILD else UnavailableReason.MARKET, current = current, notice = opts.notice)
+                it.copy(phase = PlansPhase.NOT_AVAILABLE, unavailable = if (storeOffered) UnavailableReason.STORE_NOT_IN_BUILD else UnavailableReason.MARKET, current = current, credits = credits, packs = emptyList(), notice = opts.notice)
             }
             return
         }
@@ -284,7 +342,9 @@ class PlansModel(
                 storeFlow = true,
                 unavailable = null,
                 current = current,
+                credits = credits,
                 offers = emptyList(),
+                packs = emptyList(), // store-billed packs are not available yet (the server answers BILLING_POLICY_DENIED)
                 methods = emptyList(),
                 storeOffers = offers,
                 selectedOffer = s.selectedOffer?.takeIf { k -> offers.any { it.id == k } } ?: offers.firstOrNull()?.id,
@@ -328,6 +388,20 @@ class PlansModel(
         )
     }
 
+    /** The balance (guests have one too), or the last known one when the call fails. */
+    private suspend fun loadCredits(): CreditsInfo? = try {
+        CreditsInfo.of(billing.credits())
+    } catch (e: ApiError) {
+        _state.value.credits
+    }
+
+    private fun packsOf(o: BillingOptions): List<CreditPack> =
+        o.products.filter { it.productType == "AI_CREDIT_PACK" }.mapNotNull { p ->
+            val price = p.prices.firstOrNull { it.billingPeriod == CreditPack.PERIOD } ?: return@mapNotNull null
+            val credits = p.creditUnits ?: return@mapNotNull null
+            CreditPack(p.productCode, p.displayName, p.description, credits, p.creditValidityDays, price.listPrice, price.displayPrice)
+        }.sortedBy { it.credits }
+
     private fun offersOf(o: BillingOptions): List<PlanOffer> =
         o.products.filter { it.productType == "SUBSCRIPTION" }.flatMap { p ->
             p.prices.filter { it.renewalModel == "MANUAL_RENEW" }
@@ -347,31 +421,44 @@ class PlansModel(
 
     /** Starts the hosted checkout of the selected offer and method. */
     suspend fun buy() {
+        val offer = _state.value.selected ?: return
+        begin(offer.key, offer.productCode, offer.period, "MANUAL_RENEW", null)
+    }
+
+    /**
+     * Starts the hosted checkout of the credit pack [productCode] with the selected payment method (T8.10): one-time, no
+     * renewal preference. The same order, attempt, Custom Tab and polling as a plan; a guest is asked to sign in.
+     */
+    suspend fun buyPack(productCode: String) {
+        val pack = _state.value.packs.firstOrNull { it.productCode == productCode } ?: return
+        begin(pack.key, pack.productCode, CreditPack.PERIOD, null, pack.productCode)
+    }
+
+    private suspend fun begin(key: String, productCode: String, period: String, renewal: String?, pack: String?) {
         val s = _state.value
         if (s.phase != PlansPhase.READY || s.storeFlow || s.checkout.step != CheckoutStep.IDLE) return
         if (buyer() != BuyerKind.REGISTERED) {
             _state.update { it.copy(message = PlansMessage.NEEDS_ACCOUNT) }
             return
         }
-        val offer = s.selected ?: return
         val method = s.selectedMethod ?: return
         val market = options?.marketCountry ?: return
-        _state.update { it.copy(checkout = CheckoutState(CheckoutStep.STARTING), message = null) }
+        _state.update { it.copy(checkout = CheckoutState(CheckoutStep.STARTING), buyingPack = pack, message = null) }
         try {
-            val o = openOrder(offer, market)
-            startAttempt(o.orderId, method, offer.productCode, offer.period)
+            val o = openOrder(key, productCode, period, renewal, market)
+            startAttempt(o.orderId, method, productCode, period)
         } catch (e: ApiError) {
             onStartFailed(e)
         }
     }
 
-    private suspend fun openOrder(offer: PlanOffer, market: String): PaymentOrder {
+    private suspend fun openOrder(key: String, productCode: String, period: String, renewal: String?, market: String): PaymentOrder {
         order?.let { o ->
             val fresh = o.status == "AWAITING_PAYMENT" && (o.expiresAtMs ?: Long.MAX_VALUE) > now() + ORDER_MARGIN_MS
-            if (fresh && o.productCode == offer.productCode && o.billingPeriod == offer.period) return o
+            if (fresh && o.productCode == productCode && o.billingPeriod == period) return o
         }
-        val key = orderKey?.takeIf { it.first == offer.key }?.second ?: newKey().also { orderKey = offer.key to it }
-        val o = billing.createOrder(key, offer.productCode, offer.period, market)
+        val idem = orderKey?.takeIf { it.first == key }?.second ?: newKey().also { orderKey = key to it }
+        val o = billing.createOrder(idem, productCode, period, market, renewal)
         order = o
         return o
     }
@@ -552,6 +639,11 @@ class PlansModel(
         order = null
         orderKey = null
         withContext(Dispatchers.IO) { runCatching { refresher.planChanged() } }
+        val pack = _state.value.packs.firstOrNull { it.productCode == o.productCode }
+        if (pack != null || o.creditLotId != null) {
+            paidCredits(o, pack)
+            return
+        }
         val current = loadCurrent(buyer())
         val offer = _state.value.offers.firstOrNull { it.productCode == o.productCode && it.period == o.billingPeriod }
         val subEnd = current?.untilMs
@@ -564,6 +656,60 @@ class PlansModel(
                     receipt = Receipt(o.orderReference, offer?.productName ?: current?.name, o.billingPeriod, o.total, null, o.paidAtMs, subEnd),
                 ),
             )
+        }
+    }
+
+    /** A verified credit-pack order: the balance is read again (the server granted one lot) and the receipt shows the credits. */
+    private suspend fun paidCredits(o: PaymentOrder, pack: CreditPack?) {
+        val summary = try {
+            billing.credits()
+        } catch (e: ApiError) {
+            null
+        }
+        val info = summary?.let { CreditsInfo.of(it) } ?: _state.value.credits
+        val lot = summary?.lots?.firstOrNull { it.lotId == o.creditLotId }
+        val validUntil = lot?.expiresAtMs ?: pack?.validityDays?.let { (o.paidAtMs ?: now()) + it * DAY_MS }
+        _state.update {
+            it.copy(
+                credits = info,
+                buyingPack = null,
+                checkout = CheckoutState(
+                    CheckoutStep.PAID,
+                    orderId = o.orderId,
+                    receipt = Receipt(o.orderReference, pack?.name, o.billingPeriod, o.total, null, o.paidAtMs, validUntil, credits = pack?.credits ?: lot?.originalUnits?.toLong()),
+                ),
+            )
+        }
+    }
+
+    // ---------------------------------------------------------------- credit history
+
+    /** Opens the "Credit history" page and loads its first page. */
+    suspend fun openHistory() {
+        _state.update { it.copy(history = CreditHistoryState(open = true, loading = true)) }
+        loadHistoryPage(null)
+    }
+
+    /** The next page, when there is one and none is loading. */
+    suspend fun loadMoreHistory() {
+        val h = _state.value.history
+        if (!h.open || h.loading) return
+        if (h.nextCursor == null && h.error == null && h.items.isNotEmpty()) return
+        _state.update { it.copy(history = h.copy(loading = true, error = null)) }
+        loadHistoryPage(h.nextCursor)
+    }
+
+    fun closeHistory() = _state.update { it.copy(history = CreditHistoryState()) }
+
+    private suspend fun loadHistoryPage(cursor: String?) {
+        try {
+            val page = billing.creditTransactions(cursor)
+            _state.update { s ->
+                if (!s.history.open) s
+                else s.copy(history = s.history.copy(loading = false, error = null, items = if (cursor == null) page.items else s.history.items + page.items, nextCursor = page.nextCursor))
+            }
+        } catch (e: ApiError) {
+            _state.update { s -> if (!s.history.open) s else s.copy(history = s.history.copy(loading = false, error = messageOf(e))) }
         }
     }
 
@@ -671,6 +817,8 @@ class PlansModel(
         const val ATTEMPT_CHECK_FROM_MS = 5_000L
 
         /** An order this close to its expiry is not reused for a new attempt. */
+        const val DAY_MS = 24 * 3600_000L
+
         const val ORDER_MARGIN_MS = 2 * 60_000L
 
         /** A pending checkout older than this is forgotten (the reconciliation job settles it server side). */
