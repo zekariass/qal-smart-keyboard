@@ -628,4 +628,104 @@
     <!-- Translate one-tap paste of a copied message (T8.13). DRAFT (N9). -->
     <string name="translate_paste_message">Ergaa garagalfame maxxansaa</string>
     <string name="translate_paste_message_desc">Ergaa garagalfame maxxansiitii hiikaa</string>
+    <!-- Productivity utilities: calculator, units and currency, Ethiopian calendar, QR (T8.3). DRAFT (N9). -->
+    <string name="tool_calculator">Herregaa</string>
+    <string name="tool_unit_converter">Safartuu</string>
+    <string name="tool_currency">Sharafa maallaqaa</string>
+    <string name="tool_calendar">Kaalaandarii</string>
+    <string name="tool_qr">Koodii QR</string>
+    <string name="util_insert">Galchaa</string>
+    <string name="util_copy">Garagalchaa</string>
+    <string name="calc_expression_description">Herrega: %1$s</string>
+    <string name="calc_result_description">Bu\'aa: %1$s</string>
+    <string name="calc_empty_description">Herregni hin jiru</string>
+    <string name="calc_error_incomplete">Herrega xumuraa</string>
+    <string name="calc_error_div0">Zeeroon hir\'isuun hin danda\'amu</string>
+    <string name="calc_error_large">Lakkoofsi baay\'ee guddaa dha</string>
+    <string name="calc_error_invalid">Herrega sirrii miti</string>
+    <string name="calc_error_long">Herregni baay\'ee dheeraa dha</string>
+    <string name="calc_key_clear">Qulqulleessi</string>
+    <string name="calc_key_backspace">Haqi</string>
+    <string name="calc_key_equals">Walqixa</string>
+    <string name="calc_key_percent">Dhibbeentaa</string>
+    <string name="calc_key_power">Humna</string>
+    <string name="calc_key_open">Qabsiisaa banaa</string>
+    <string name="calc_key_close">Qabsiisaa cufi</string>
+    <string name="calc_key_divide">Hiruu</string>
+    <string name="calc_key_multiply">Baay\'isuu</string>
+    <string name="calc_key_minus">Hir\'isuu</string>
+    <string name="calc_key_plus">Ida\'uu</string>
+    <string name="calc_key_dot">Tuqaa</string>
+    <string name="conv_mode_length">Dheerina</string>
+    <string name="conv_mode_mass">Ulfaatina</string>
+    <string name="conv_mode_temperature">Ho\'a</string>
+    <string name="conv_mode_volume">Qabiyyee</string>
+    <string name="conv_mode_area">Bal\'ina</string>
+    <string name="conv_mode_speed">Saffisa</string>
+    <string name="conv_mode_data">Daataa</string>
+    <string name="conv_from">%1$s irraa, kutaa itti aanu filachuuf tuqaa</string>
+    <string name="conv_to">%1$s tti, kutaa itti aanu filachuuf tuqaa</string>
+    <string name="conv_swap">Kutaalee jijjiiri</string>
+    <string name="conv_key_negate">Dabalata ykn hir\'ata</string>
+    <string name="conv_type_number">Lakkoofsa barreessi</string>
+    <string name="conv_rates_unavailable">Interneetii malee gatiin hin argamu</string>
+    <string name="conv_rates_as_of">Gatiin hanga %1$s</string>
+    <string name="conv_rates_stale">Gatiin hanga %1$s, kan darbe ta\'uu danda\'a</string>
+    <string name="cal_gregorian">Giriigorii</string>
+    <string name="cal_ethiopian">Itoophiyaa</string>
+    <string name="cal_swap">Kaalaandaroota jijjiiri</string>
+    <string name="cal_today">Har\'a</string>
+    <string name="cal_numerals">Lakkoofsa Gi\'iizii</string>
+    <string name="cal_year">Waggaa</string>
+    <string name="cal_month">Ji\'a</string>
+    <string name="cal_day">Guyyaa</string>
+    <string name="cal_next">%1$s itti aanu</string>
+    <string name="cal_previous">%1$s darbe</string>
+    <string name="cal_insert">Guyyaa galchaa</string>
+    <string name="cal_out_of_range">Guyyaan daangaa ala</string>
+    <string name="cal_era_ec">E.C.</string>
+    <string name="cal_era_gc">G.C.</string>
+    <string name="cal_date_description">Guyyaa %1$s: %2$s</string>
+    <string name="qr_kind_text">Barreeffama</string>
+    <string name="qr_kind_url">Hidhaa</string>
+    <string name="qr_kind_wifi">Wi-Fi</string>
+    <string name="qr_security_wpa">WPA</string>
+    <string name="qr_security_wep">WEP</string>
+    <string name="qr_security_none">Banaa</string>
+    <string name="qr_use_field">Barreeffama bakka barreessuu fayyadami</string>
+    <string name="qr_use_clipboard">Kuusaa garagalchaa fayyadami</string>
+    <string name="qr_hint_text">Barreeffama kee bakka barreessuu irratti barreessi, achii booda Barreeffama bakka barreessuu fayyadami tuqi.</string>
+    <string name="qr_hint_wifi">Maqaan network sarara jalqabaarratti, jecha iccitii sarara lammaffaarratti.</string>
+    <string name="qr_too_long">Koodii QR tiif baay\'ee dheeraa dha</string>
+    <string name="qr_copy_text">Barreeffama garagalchi</string>
+    <string name="qr_image_description">Koodii QR</string>
+    <string-array name="cal_months_ethiopian">
+        <item>Fuulbana</item>
+        <item>Onkoloolessa</item>
+        <item>Sadaasa</item>
+        <item>Muddee</item>
+        <item>Amajjii</item>
+        <item>Guraandhala</item>
+        <item>Bitooteessa</item>
+        <item>Ebla</item>
+        <item>Caamsaa</item>
+        <item>Waxabajjii</item>
+        <item>Adoolessa</item>
+        <item>Hagayya</item>
+        <item>Qaammee</item>
+    </string-array>
+    <string-array name="cal_months_gregorian">
+        <item>Jannuwaarii</item>
+        <item>Februwaarii</item>
+        <item>Maarchii</item>
+        <item>Eprilii</item>
+        <item>Mee</item>
+        <item>Juunii</item>
+        <item>Julaayi</item>
+        <item>Ogastii</item>
+        <item>Siptembara</item>
+        <item>Oktoobara</item>
+        <item>Noovembara</item>
+        <item>Diseembara</item>
+    </string-array>
 </resources>
