@@ -266,10 +266,7 @@ impl PhoneticSession {
     /// character per press instead of one Latin letter (`selam` ሰላም loses ም, then ላ, then ሰ).
     fn pop_last_unit(&mut self) {
         let chars: Vec<char> = self.raw.chars().collect();
-        let drop = self
-            .tokenize(&chars)
-            .last()
-            .map_or(1, |t| t.raw_len.max(1));
+        let drop = self.tokenize(&chars).last().map_or(1, |t| t.raw_len.max(1));
         self.raw = chars[..chars.len().saturating_sub(drop)].iter().collect();
     }
 
