@@ -458,7 +458,7 @@ packs and media AI. Steps are scheduled across M5–M7 by their §4 phases; they
 | T8.3 | Productivity utilities: QR encode, `keyboard-core` `calc` evaluator, `/tools/fx-rates` snapshot + client cache, calendar converter surface, unit converter; tools-panel tiles per ADR 0035. | A2.5 | Deterministic unit tests; zero network on key path. | ⬜ TODO |
 | T8.4 | Draw & Sketch phase 1: canvas at keyboard height (Android) + companion, pen/colour/thickness/eraser/undo-redo, PNG export, `commitContent` insert + share-sheet fallback, on-device gallery. | — | Stroke/undo/export tests; budgets §17.1 met. | ⬜ TODO |
 | T8.5 | `POST /ai/chat` (`AI_CHAT`, stateless turns) + companion chat UI and keyboard Ask-AI handoff (§6.4 pending-insert). | B5.5 | Contract tests; no server-side content persistence proven. | ⬜ TODO |
-| T8.6 | `POST /ai/social-posts` and `POST /ai/form-assist` + UI; R-7 verify/disclaimer notices in the review UI (snapshot-tested incl. legal/immigration variant). | B5.5 | Contract + UI tests; notice always present. | ⬜ TODO |
+| T8.6 | `POST /ai/form-assist` + UI (social media assistant dropped by the owner 2026-11-24; its catalogue code stays inactive); R-7 verify/disclaimer notices in the review UI (snapshot-tested incl. legal/immigration variant). | B5.5 | Contract + UI tests; notice always present. | ⬜ TODO |
 | T8.7 | Creative tools: sticker maker (WebP pack + strip), quote/card maker, image annotator; premium-tier boolean entitlements gating; basic tiers free. | T8.4 | Entitlement + render tests. | ⬜ TODO |
 | T8.8 | GIF maker: trim/image-sequence → animated WebP (GIF fallback); codec/encoder licence checked first (N10, open question SD §26.2). | T8.7 | Licence recorded; export tests. | ⬜ TODO |
 | T8.9 | OCR: on-device recognition (basic scripts, free) + `POST /ai/ocr` (`OCR_SCAN`, PRINTED/HANDWRITING) for Ethiopic/handwriting/layouts; transient-image rule tested. | B5.5 | Transience test; contract tests. | ⬜ TODO |
@@ -486,7 +486,7 @@ content persisted outside opt-in history.
 
 Status of the notes: grammar, translation (190 languages), tones, smart replies, rewrite/summarise, e-mail/professional
 writer, text formatter and reply intents are served (B5.5, ADR 0027/0040, T8.2; the T8.2 keyboard UI is in progress).
-Planned but not built: chat (T8.5), social media + form assistant (T8.6), Draw & Sketch (T8.4, T8.15), creative tools
+Planned but not built: chat (T8.5), form assistant (T8.6; social media dropped by the owner), Draw & Sketch (T8.4, T8.15), creative tools
 (T8.7, T8.8), productivity tools + OCR (T8.3, T8.9), prepaid credits (T8.10), media AI (T8.11). Added by this review:
 M4.11, T8.12–T8.15.
 
@@ -495,7 +495,7 @@ Recommended order (each step goes through the delegation workflow; launch-path s
 2. **T8.2 UI** (in progress) → **T8.13** clipboard translate / reply.
 3. **T8.3** productivity utilities (calculator, Ethiopian calendar, unit converter, QR) and **T8.4** Draw & Sketch phase 1 — free, on-device, user acquisition.
 4. **T8.10** prepaid credit packs (reuses the §16 payments pipeline; Starter/Standard/Pro priced per market, ETB in Ethiopia).
-5. **T8.5** AI chat, then **T8.6** social media + form assistant (R-7 verify notice).
+5. **T8.5** AI chat, then **T8.6** form assistant (R-7 verify notice; social media assistant dropped by the owner 2026-11-24).
 6. **H3.6** admin console (plans/quotas, provider routes, premium theme list) with **T8.14** model router pages.
 7. **T8.12** voice + AI (quota needs V5.1 server ASR).
 8. **T8.7** creative tools → **T8.9** OCR → **T8.8** GIF → **T8.15** Draw phase 2 → **T8.11** media AI.
