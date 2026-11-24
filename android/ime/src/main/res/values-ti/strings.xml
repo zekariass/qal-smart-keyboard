@@ -628,5 +628,5 @@
     <string name="layout_desc_fidel_long_press">ምጥዋቕ ሳድስ (ስ) ይጽሕፍ፤ ካልኦት ቅርጽታት ንምርካብ ሓዙ፤ መስርዕ ኣናበብቲ የለን፣ መጠወቅታት ይነውሑ</string>
     <!-- Translate one-tap paste of a copied message (T8.13). DRAFT (N9). -->
     <string name="translate_paste_message">ዝተቐድሐ መልእኽቲ ለጥፉ</string>
-    <string name="translate_paste_message_desc">ዝተቐድሐ መልእኽቲ ለጥፍካ ተርጉም</string>
+    <string name="translate_paste_message_desc">ዝተቐድሐ መልእኽቲ ለጢፍኩም ተርጉሙ</string>
 </resources>
