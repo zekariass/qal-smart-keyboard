@@ -71,12 +71,12 @@
 | Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 21 | 0 | 0 | 1 | 95% |
 | Phase 2 | Backend + P0 AI (M2) | 39 | 39 | 0 | 0 | 0 | 100% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
-| Phase 4 | Monetisation (M4) | 10 | 0 | 0 | 0 | 10 | 0% |
+| Phase 4 | Monetisation (M4) | 11 | 2 | 6 | 0 | 3 | 18% |
 | Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
 | Phase 6 | Differentiation (M6) | 8 | 0 | 0 | 0 | 8 | 0% |
 | Phase 7 | Expansion + B2B (M7) | 5 | 0 | 0 | 0 | 5 | 0% |
-| Phase 8 | Extended tools (ADR 0048) | 11 | 0 | 0 | 0 | 11 | 0% |
-| **Total** | | **120** | 66 | 0 | 0 | 54 | 55% |
+| Phase 8 | Extended tools (ADR 0048) | 15 | 2 | 0 | 0 | 13 | 13% |
+| **Total** | | **125** | 70 | 6 | 0 | 49 | 56% |
 
 ### Human gates
 
@@ -377,16 +377,17 @@ Read SD §16 and the billing tags in API. Always fail closed.
 
 | ID | Step | Depends on | Done when | Status |
 |---|---|---|---|---|
-| M4.1 | Billing core: merchant accounts, products/prices (no-overlap guard), orders with snapshot list/discount/tax/amount, attempts, payments, refunds bound to capture, append-only ledgers. | B1.2, B4.1 | Constraint tests from SQL guards. | ⬜ TODO |
-| M4.2 | Provider SPI + **Chapa** adapter (hosted checkout, ETB), webhook endpoint (signature verify → `WEBHOOK_SIGNATURE_INVALID` 401, dedupe, out-of-order handling), server-side verification before granting. | M4.1 | Sandbox end-to-end; duplicate/out-of-order tests. | ⬜ TODO |
+| M4.1 | Billing core: merchant accounts, products/prices (no-overlap guard), orders with snapshot list/discount/tax/amount, attempts, payments, refunds bound to capture, append-only ledgers. | B1.2, B4.1 | Constraint tests from SQL guards. | 🟦 IN PROGRESS |
+| M4.2 | Provider SPI + **Chapa** adapter (hosted checkout, ETB), webhook endpoint (signature verify → `WEBHOOK_SIGNATURE_INVALID` 401, dedupe, out-of-order handling), server-side verification before granting. | M4.1 | Sandbox end-to-end; duplicate/out-of-order tests. | 🟦 IN PROGRESS |
 | M4.3 | Manual renewal + reminders (push/SMS), grace logic, receipts. | M4.2 | Scheduler tests. | ⬜ TODO |
 | M4.4 | Upgrade proration, credit packs → credit lots, promo/discount codes. | M4.1, B4.3 | Proration unit tests. | ⬜ TODO |
-| M4.5 | Reconciliation job (provider vs ledger), discrepancy report, admin refund flow. | M4.2 | Reconciliation passes on sandbox data. | ⬜ TODO |
-| M4.6 | Market/channel policy engine (which methods/currencies per country and platform; default deny). | M4.1 | Unlisted market → denied. | ⬜ TODO |
-| M4.7 | **Google Play Billing**: purchases API validation, RTDN webhooks, `store_purchases` tables, states (ACTIVE, IN_GRACE_PERIOD, ON_HOLD, PAUSED, …) feeding entitlements. Only if Play eligibility confirmed (open item). | M4.1 | Sandbox test. | ⬜ TODO |
-| M4.8 | Android `direct` flavour (APK distribution, Chapa path, self-update policy) and `billing-play` / `billing-direct` modules. | M4.2, M4.7 | Both flavours build; policy review. | ⬜ TODO |
-| M4.9 | ArifPay adapter behind a feature flag. | M4.2 | Flag off by default. | ⬜ TODO |
-| M4.10 | Companion paywall/plan screens, order status polling, receipts, subscription management. | M4.2 | Flow tested. | ⬜ TODO |
+| M4.5 | Reconciliation job (provider vs ledger), discrepancy report, admin refund flow. | M4.2 | Reconciliation passes on sandbox data. | 🟦 IN PROGRESS |
+| M4.6 | Market/channel policy engine (which methods/currencies per country and platform; default deny). | M4.1 | Unlisted market → denied. | 🟩 DONE |
+| M4.7 | **Google Play Billing**: purchases API validation, RTDN webhooks, `store_purchases` tables, states (ACTIVE, IN_GRACE_PERIOD, ON_HOLD, PAUSED, …) feeding entitlements. Only if Play eligibility confirmed (open item). | M4.1 | Sandbox test. | 🟦 IN PROGRESS |
+| M4.8 | Android `direct` flavour (APK distribution, Chapa path, self-update policy) and `billing-play` / `billing-direct` modules. | M4.2, M4.7 | Both flavours build; policy review. | 🟦 IN PROGRESS |
+| M4.9 | ArifPay adapter behind a feature flag. | M4.2 | Flag off by default. | 🟩 DONE |
+| M4.10 | Companion paywall/plan screens, order status polling, receipts, subscription management. | M4.2 | Flow tested. | 🟦 IN PROGRESS |
+| M4.11 | Hosted checkout in a Chrome Custom Tab instead of the in-app WebView (owner decision 2026-11-20: ArifPay's checkout page requires geolocation and stays blank when the WebView declines it). `androidx.browser` Custom Tab, `qalkeyboard://billing/return` deep link (return activity), on resume → server verification + order polling as today; the app requests no location permission. | M4.10 | ArifPay sandbox payment completed on the owner's phone → PAID → Premium unlocked in the keyboard. | ⬜ TODO |
 
 **Exit M4:** R6 passed; live real-money pilot; zero unverified grants.
 
@@ -463,6 +464,10 @@ packs and media AI. Steps are scheduled across M5–M7 by their §4 phases; they
 | T8.9 | OCR: on-device recognition (basic scripts, free) + `POST /ai/ocr` (`OCR_SCAN`, PRINTED/HANDWRITING) for Ethiopic/handwriting/layouts; transient-image rule tested. | B5.5 | Transience test; contract tests. | ⬜ TODO |
 | T8.10 | Prepaid credit packs: `AI_CREDIT_PACK` products/prices seeded (SD §15.6 packages), purchase through §16 pipeline, guest-buy guard, balance/expiry UI ("no subscription" copy), `QUOTA_EXCEEDED` buy-credits path. | M4.4 | End-to-end sandbox purchase → lot; ledger tests. | ⬜ TODO |
 | T8.11 | Media AI (P3): `POST /ai/images` for SKETCH_ENHANCE/DOODLE_TO_IMAGE/AI_STICKER_GEN/AI_IMAGE_GEN + `HANDWRITING` mode of `/ai/ocr`; task-based route classes per SD §11.2. | T8.4, E7.2 | Route/cost tests; image lifecycle (transient output objects). | ⬜ TODO |
+| T8.12 | Voice + AI (Implementation_notes §6): after dictation, one-tap "Fix grammar" and "Translate" on the transcript (existing `/ai/transform` GRAMMAR_CORRECTION and `/ai/translate`), a "speak in one language, insert in another" mode; premium voice quota counts seconds once server ASR (V5.1) exists. No audio or transcript stored (N2). | V5.2 (platform recognizer, done), B5.5; quota: V5.1 | Dictation → grammar / translate chain tested on device in am and en; nothing persisted. | ⬜ TODO |
+| T8.13 | Translate and reply to received messages from the clipboard (§2, §11): one-tap "Paste copied message" in the translate panel and AI Assist (clip read only on that tap, sensitive clips never offered), then Translate or Reply with the T8.2 intents (Agree, Decline politely, Ask for clarification, Accept invitation, Thank). Verify first what the in-progress T8.2 UI already covers. | T8.2, ADR 0037/0038 | Copy in another app → one tap → translation or reply inserted; device-tested. | ⬜ TODO |
+| T8.14 | Task-based model router implementation (ADR 0048 §2; notes "platform selects the model"): model tiers (economical / standard / advanced) as data, per-task + validated-language-pair routing, a complexity signal (length, document type) choosing the tier, cost and health ordering with failover; admin pages to change task→model without an app release (inside H3.6). | B5.2, H3.6 | Routing-matrix tests (task × language × complexity); changing a task's model is a data change only. | ⬜ TODO |
+| T8.15 | Draw & Sketch phase 2 (§12): gallery management, text and shapes, more brushes and canvas backgrounds, opt-in encrypted cloud backup (consent-gated, envelope encryption N13). | T8.4, A2.4 | Gallery/shape tests; backup round-trip with consent off by default. | ⬜ TODO |
 
 **Exit Phase 8:** every new feature code served through the §11.1 pipeline or proven local; R-7/R-8 honoured; no
 content persisted outside opt-in history.
@@ -476,6 +481,31 @@ content persisted outside opt-in history.
 - **Docs:** when behaviour changes, update SD/SQL/API and add an ADR in `docs/adr/` (numbering starts at D33).
 - **Accessibility:** TalkBack/VoiceOver, large text, contrast on every UI step.
 - **Security reviews:** per phase exit.
+
+## Next steps (reviewed 2026-11-24 against `Implementation_notes.md`)
+
+Status of the notes: grammar, translation (190 languages), tones, smart replies, rewrite/summarise, e-mail/professional
+writer, text formatter and reply intents are served (B5.5, ADR 0027/0040, T8.2; the T8.2 keyboard UI is in progress).
+Planned but not built: chat (T8.5), social media + form assistant (T8.6), Draw & Sketch (T8.4, T8.15), creative tools
+(T8.7, T8.8), productivity tools + OCR (T8.3, T8.9), prepaid credits (T8.10), media AI (T8.11). Added by this review:
+M4.11, T8.12–T8.15.
+
+Recommended order (each step goes through the delegation workflow; launch-path steps can run in parallel):
+1. **M4.11** Custom Tab checkout + one real ArifPay sandbox payment on the phone (closes the payments loop).
+2. **T8.2 UI** (in progress) → **T8.13** clipboard translate / reply.
+3. **T8.3** productivity utilities (calculator, Ethiopian calendar, unit converter, QR) and **T8.4** Draw & Sketch phase 1 — free, on-device, user acquisition.
+4. **T8.10** prepaid credit packs (reuses the §16 payments pipeline; Starter/Standard/Pro priced per market, ETB in Ethiopia).
+5. **T8.5** AI chat, then **T8.6** social media + form assistant (R-7 verify notice).
+6. **H3.6** admin console (plans/quotas, provider routes, premium theme list) with **T8.14** model router pages.
+7. **T8.12** voice + AI (quota needs V5.1 server ASR).
+8. **T8.7** creative tools → **T8.9** OCR → **T8.8** GIF → **T8.15** Draw phase 2 → **T8.11** media AI.
+
+Launch path in parallel: H3.5 (Play listing, Data safety, policies), H3.2 (security hardening), A1.9 (performance/QA),
+H3.4 (hosting — needs the owner's decision).
+
+Owner actions blocking steps: Chapa and RevenueCat keys (M4.2, M4.7), ArifPay confirmations OI-PAY-1..5, a Play merchant
+profile outside Ethiopia for global sales (OI-PAY-7), G0 native-speaker review, a licensed English word list (autocorrect),
+hosting/region decision (H3.4).
 
 ## Suggested parallel tracks
 
