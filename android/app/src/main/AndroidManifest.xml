@@ -51,10 +51,24 @@
             </intent-filter>
         </activity>
 
-        <!-- ADR 0047: the hosted-checkout WebView checks every page against Google Safe Browsing. -->
-        <meta-data
-            android:name="android.webkit.WebView.EnableSafeBrowsing"
-            android:value="true" />
+        <!-- ADR 0047 (M4.11): the provider's checkout runs in a Chrome Custom Tab; its done button lands here. The
+             activity only brings MainActivity forward (the plans screen then confirms with the server). -->
+        <activity
+            android:name=".billing.BillingReturnActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="qalkeyboard"
+                    android:host="billing"
+                    android:path="/return" />
+            </intent-filter>
+        </activity>
 
         <!-- ADR 0024: Sentry starts only from QalApplication (a DSN in the build AND the privacy switch on), never by
              itself. Auto-init off, and the SDK's start-up providers are removed from the merged manifest. -->

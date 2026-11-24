@@ -590,7 +590,10 @@
     <string name="pay_failed_expired">ይህ ትዕዛዝ ከመከፈሉ በፊት ጊዜው አልፏል።</string>
     <string name="pay_failed_cancelled">ይህ ትዕዛዝ ተሰርዟል።</string>
     <string name="pay_failed_other">ይህ ትዕዛዝ ከእንግዲህ ሊከፈል አይችልም።</string>
-    <string name="pay_checkout_title">ደህንነቱ የተጠበቀ ክፍያ</string>
+    <string name="pay_checkout_waiting_title">በአሪፍፔይ ገጽ ላይ ክፍያዎን ያጠናቅቁ</string>
+    <string name="pay_checkout_waiting_body">የክፍያ ገጹ በአሳሽዎ ተከፍቷል። ሲጨርሱ ወደዚህ ይመለሱ።</string>
+    <string name="pay_checkout_paid">ከፍያለሁ</string>
+    <string name="pay_checkout_reopen">የክፍያ ገጹን እንደገና ክፈት</string>
     <string name="pay_checkout_close">ክፍያውን ሰርዝ</string>
     <string name="pay_checkout_error_title">የክፍያ ገጹ አልተጫነም</string>
     <string name="pay_checkout_error_body">ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።</string>

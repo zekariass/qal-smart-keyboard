@@ -23,12 +23,15 @@ playIntegrity = "1.4.0"
 desugarJdkLibs = "2.1.5"
 robolectric = "4.16"
 work = "2.10.1"
+# Hosted checkout in a Chrome Custom Tab (ADR 0047, M4.11).
+browser = "1.9.0"
 # Crash reporting (ADR 0024): the core Android SDK only (no NDK, replay, OkHttp, Fragment or Timber integrations).
 sentry = "8.62.0"
 # Global store billing (ADR 0047): RevenueCat, play flavour only (:billing-play).
 revenuecat = "11.4.2"
 
 [libraries]
+androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-customview = { group = "androidx.customview", name = "customview", version.ref = "customview" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

@@ -149,7 +149,7 @@ class PlansModelTest {
         assertFalse("the client never sends a price", orderReq.body.clone().readUtf8().contains("amount"))
         assertEquals(ATTEMPT_ID, pending.load()!!.attemptId)
 
-        // The WebView intercepts the return URL; the server verifies; the second poll sees PAID.
+        // The payer comes back from the Custom Tab; the server verifies; the second poll sees PAID.
         var polls = 0
         route = { r ->
             if (r.path!!.endsWith("/billing/orders/$ORDER_ID")) {
@@ -158,7 +158,6 @@ class PlansModelTest {
             }
             backend(r)
         }
-        assertEquals(CheckoutNavigation.Return("success", false), CheckoutUrlPolicy.decide("https://api.example/api/v1/billing/return/$ATTEMPT_ID?result=success"))
         model.onReturned("success")
         s = model.state.value
         assertEquals(CheckoutStep.PAID, s.checkout.step)
