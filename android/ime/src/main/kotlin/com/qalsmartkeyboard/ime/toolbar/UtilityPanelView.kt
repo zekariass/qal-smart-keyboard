@@ -105,7 +105,7 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
         PadStyle.ACCENT -> theme.onAccent
     }
 
-    private fun fillOf(style: PadStyle) = when (style) {
+    protected fun fillOf(style: PadStyle) = when (style) {
         PadStyle.KEY -> theme.key
         PadStyle.SPECIAL -> theme.special
         PadStyle.ACCENT -> theme.accent
@@ -189,6 +189,19 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
             isHorizontalScrollBarEnabled = false
             addView(inner, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }.also { column.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4f) }) }
+    }
+
+    /** Registers a custom control (an icon button, a swatch) so [controls] lists it. */
+    protected fun <V : View> track(v: V): V {
+        made += v
+        return v
+    }
+
+    /** [render] again after a state change, keeping a scrolled panel where the user left it. */
+    protected fun rebuildKeepingScroll() {
+        val y = scroll.scrollY
+        render()
+        if (y > 0) scroll.post { scroll.scrollTo(0, y) }
     }
 
     protected fun asButton(v: View) {

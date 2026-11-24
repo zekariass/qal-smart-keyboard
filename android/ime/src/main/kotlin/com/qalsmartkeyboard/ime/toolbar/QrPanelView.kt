@@ -8,7 +8,11 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.io.File
 import com.qalsmartkeyboard.ime.R
+import com.qalsmartkeyboard.ime.share.ImageSender
+import com.qalsmartkeyboard.ime.share.ImageShare
+import com.qalsmartkeyboard.ime.share.ShareOutcome
 import com.qalsmartkeyboard.ime.utilities.QrBitmap
 import com.qalsmartkeyboard.ime.utilities.QrController
 import com.qalsmartkeyboard.ime.utilities.QrKind
@@ -22,8 +26,8 @@ import com.qalsmartkeyboard.ime.utilities.WifiSecurity
  * puts the encoded string on the clipboard.
  *
  * The code itself is drawn black on white with the standard quiet zone, not in theme colours: scanners need the contrast.
- * Everything is computed on the device. TODO(T8.4): "Share image" and "Insert image" arrive with the Draw step's
- * `commitContent` and share-sheet plumbing; [QrBitmap.render] is the bitmap they will take.
+ * Everything is computed on the device. "Insert image" and "Share image" (T8.4) write the code as a PNG into the app-private
+ * FileProvider directory and hand it to [imageShare]: `commitContent` where the field takes PNGs, else the share sheet.
  */
 class QrPanelView(context: Context) : UtilityPanelView(context) {
     var controller: QrController = QrController()
@@ -39,6 +43,15 @@ class QrPanelView(context: Context) : UtilityPanelView(context) {
     var clipboardText: () -> String = { "" }
 
     var onCopy: (String) -> Unit = {}
+
+    /** T8.4: how an image reaches another app; the two image buttons exist only when this is set. */
+    var imageShare: ImageShare? = null
+
+    /** Where the code's PNG is written before it is handed over (inside the FileProvider's `drawings/png/`). */
+    var imageFile: File? = null
+
+    /** The image was committed into the field: the service closes the panel. */
+    var onImageInserted: () -> Unit = {}
 
     private var image: ImageView? = null
     private var sourceView: TextView? = null
@@ -92,7 +105,11 @@ class QrPanelView(context: Context) : UtilityPanelView(context) {
             orientation = LinearLayout.VERTICAL
             addView(source, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(hintView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4f) })
-            for (b in listOf(useField, useClip, copy)) {
+            val imageButtons = if (imageShare == null) emptyList() else listOf(
+                button(s(R.string.draw_insert), s(R.string.qr_insert_image), sp = 13f) { sendImage(insert = true) },
+                button(s(R.string.draw_share), s(R.string.qr_share_image), sp = 13f) { sendImage(insert = false) },
+            )
+            for (b in listOf(useField, useClip, copy) + imageButtons) {
                 addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4f) })
             }
         }
@@ -133,6 +150,39 @@ class QrPanelView(context: Context) : UtilityPanelView(context) {
         }
     }
 
+    /** Writes the shown code as a 512 px PNG and inserts it (or opens the share sheet, [insert] false). */
+    private fun sendImage(insert: Boolean) {
+        val ready = controller.state() as? QrState.Ready
+        val share = imageShare
+        val file = imageFile
+        if (ready == null || share == null || file == null) {
+            hint?.text = context.getString(R.string.draw_status_nothing)
+            return
+        }
+        val bmp = QrBitmap.render(ready.matrix, EXPORT_PX)
+        val written = try {
+            file.parentFile?.mkdirs()
+            file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } catch (e: java.io.IOException) {
+            false
+        } finally {
+            bmp.recycle()
+        }
+        val title = context.getString(R.string.tool_qr)
+        val outcome = if (!written) ShareOutcome.FAILED
+        else if (insert) ImageSender.insertOrShare(share, file, title, context.getString(R.string.draw_share_title))
+        else ImageSender.shareOnly(share, file, context.getString(R.string.draw_share_title))
+        hint?.text = context.getString(
+            when (outcome) {
+                ShareOutcome.INSERTED -> R.string.draw_status_inserted
+                ShareOutcome.SHARED -> R.string.draw_status_shared
+                ShareOutcome.NO_IMAGE -> R.string.draw_status_nothing
+                ShareOutcome.FAILED -> R.string.draw_status_failed
+            },
+        )
+        if (outcome == ShareOutcome.INSERTED) onImageInserted()
+    }
+
     /** The source line(s) for the preview; a Wi-Fi password (second line) is shown as dots. */
     private fun maskedSource(): String {
         val s = controller.source.trim()
@@ -144,5 +194,8 @@ class QrPanelView(context: Context) : UtilityPanelView(context) {
     companion object {
         /** The code's square, in dp (a 25-module code gets 5 px per module at 3x density). */
         const val CODE_DP = 150f
+
+        /** The exported image's side, in pixels (whole pixels per module, so scanners read it). */
+        const val EXPORT_PX = 512
     }
 }

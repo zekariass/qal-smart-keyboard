@@ -27,6 +27,9 @@ enum class ToolIcon {
 
     // T8.3 productivity tools.
     CALCULATOR, UNITS, CURRENCY, CALENDAR, QR,
+
+    // T8.4 Draw & Sketch: the tile and the panel's own controls.
+    DRAW, PEN, HIGHLIGHTER, ERASER, UNDO, REDO, TRASH, PAPER, SAVE, IMAGE_INSERT, SHARE, GALLERY, PLUS,
     LOCK, CHECK, GRAMMAR, REWRITE,
 
     /** The AI entry (ADR 0041): an "AI" wordmark in a rounded outline, drawn as paths so it never scales with the font. */
@@ -489,6 +492,99 @@ object ToolIcons {
                 rect(14f, 18.3f, 16.2f, 20.5f, 0.3f); rect(18.3f, 18.3f, 20.5f, 20.5f, 0.3f)
             },
         )
+        // T8.4 Draw & Sketch. The tile: a pencil over a squiggle.
+        ToolIcon.DRAW -> Glyph(
+            Path().apply {
+                poly(6f, 16f, 7f, 12f, 16f, 3.5f, 19.5f, 7f, 10.5f, 16f, close = true)
+                poly(14f, 5.5f, 17.5f, 9f)
+                moveTo(3f, 21f)
+                cubicTo(6f, 18.5f, 8f, 23.5f, 11.5f, 20.5f)
+                cubicTo(14.5f, 18f, 16.5f, 22.5f, 21f, 20f)
+            },
+        )
+        ToolIcon.PEN -> Glyph(
+            Path().apply {
+                poly(4f, 20f, 4f, 16.5f, 15.5f, 5f, 19f, 8.5f, 7.5f, 20f, close = true)
+                poly(13f, 7.5f, 16.5f, 11f)
+            },
+        )
+        // A chisel marker with a bar of colour under it.
+        ToolIcon.HIGHLIGHTER -> Glyph(
+            Path().apply {
+                poly(10f, 3.5f, 20.5f, 14f, 15f, 19.5f, 4.5f, 9f, close = true)
+                poly(7.3f, 11.7f, 12.3f, 16.7f)
+                poly(3.5f, 21.5f, 12f, 21.5f)
+            },
+        )
+        ToolIcon.ERASER -> Glyph(
+            Path().apply {
+                poly(8.5f, 20f, 3.5f, 15f, 14f, 4.5f, 20.5f, 11f, 11.5f, 20f, close = true)
+                poly(8.5f, 20f, 21f, 20f)
+                poly(8.2f, 9.8f, 15.2f, 16.8f)
+            },
+        )
+        ToolIcon.UNDO -> Glyph(
+            Path().apply {
+                poly(9f, 5f, 4.5f, 9.5f, 9f, 14f)
+                moveTo(4.5f, 9.5f)
+                lineTo(14.5f, 9.5f)
+                cubicTo(18.5f, 9.5f, 20f, 12f, 20f, 14.5f)
+                cubicTo(20f, 17.5f, 18f, 19.5f, 14.5f, 19.5f)
+                lineTo(10f, 19.5f)
+            },
+        )
+        ToolIcon.REDO -> Glyph(
+            Path().apply {
+                poly(15f, 5f, 19.5f, 9.5f, 15f, 14f)
+                moveTo(19.5f, 9.5f)
+                lineTo(9.5f, 9.5f)
+                cubicTo(5.5f, 9.5f, 4f, 12f, 4f, 14.5f)
+                cubicTo(4f, 17.5f, 6f, 19.5f, 9.5f, 19.5f)
+                lineTo(14f, 19.5f)
+            },
+        )
+        ToolIcon.TRASH -> Glyph(
+            Path().apply {
+                poly(4.5f, 7f, 19.5f, 7f)
+                poly(9.5f, 7f, 9.5f, 4.5f, 14.5f, 4.5f, 14.5f, 7f)
+                rect(6.5f, 7f, 17.5f, 20.5f, 2f)
+                poly(10f, 11f, 10f, 16.5f); poly(14f, 11f, 14f, 16.5f)
+            },
+        )
+        // A page with a checkerboard: the canvas background.
+        ToolIcon.PAPER -> Glyph(
+            Path().apply { rect(4.5f, 3.5f, 19.5f, 20.5f, 2f) },
+            Path().apply {
+                rect(8f, 7f, 12f, 11f, 0.3f); rect(12f, 11f, 16f, 15f, 0.3f); rect(8f, 15f, 12f, 19f, 0.3f)
+            },
+        )
+        ToolIcon.SAVE -> Glyph(
+            Path().apply {
+                poly(4f, 15f, 4f, 20f, 20f, 20f, 20f, 15f)
+                poly(12f, 4f, 12f, 15f)
+                poly(7.5f, 10.5f, 12f, 15f, 16.5f, 10.5f)
+            },
+        )
+        ToolIcon.IMAGE_INSERT -> Glyph(
+            Path().apply {
+                rect(3.5f, 5f, 20.5f, 19f, 2.5f)
+                poly(5f, 17f, 10f, 11.5f, 14f, 15.5f, 16.5f, 13f, 19.5f, 17f)
+            },
+            Path().apply { circle(8f, 9.2f, 1.3f) },
+        )
+        ToolIcon.SHARE -> Glyph(
+            Path().apply {
+                circle(6f, 12f, 2.5f); circle(18f, 6f, 2.5f); circle(18f, 18f, 2.5f)
+                poly(8.2f, 10.8f, 15.8f, 7.2f); poly(8.2f, 13.2f, 15.8f, 16.8f)
+            },
+        )
+        ToolIcon.GALLERY -> Glyph(
+            Path().apply {
+                rect(4f, 4f, 10.5f, 10.5f, 1.5f); rect(13.5f, 4f, 20f, 10.5f, 1.5f)
+                rect(4f, 13.5f, 10.5f, 20f, 1.5f); rect(13.5f, 13.5f, 20f, 20f, 1.5f)
+            },
+        )
+        ToolIcon.PLUS -> Glyph(Path().apply { poly(12f, 5f, 12f, 19f); poly(5f, 12f, 19f, 12f) })
         ToolIcon.LOCK -> Glyph(
             Path().apply {
                 moveTo(8f, 10.5f)

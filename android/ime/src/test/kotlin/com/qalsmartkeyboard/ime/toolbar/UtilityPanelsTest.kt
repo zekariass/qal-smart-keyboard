@@ -41,7 +41,7 @@ class UtilityPanelsTest {
     private val d = ctx.resources.displayMetrics.density
     private val widthPx = (411 * d).toInt()
 
-    private val utilityTools = listOf(Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR)
+    private val utilityTools = listOf(Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.DRAW)
 
     private fun profile(type: Int) = InputProfile.from(type, 0, false, 0)
 
@@ -109,6 +109,7 @@ class UtilityPanelsTest {
             Tool.CURRENCY to ToolPanel.CONVERTER,
             Tool.CALENDAR to ToolPanel.CALENDAR,
             Tool.QR to ToolPanel.QR,
+            Tool.DRAW to ToolPanel.DRAW,
         )
         for ((tool, panel) in expect) {
             t.toggleTools()

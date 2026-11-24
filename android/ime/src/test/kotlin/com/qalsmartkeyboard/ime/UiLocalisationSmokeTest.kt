@@ -103,7 +103,7 @@ class UiLocalisationSmokeTest {
     /** T8.3: the utilities' tiles, month arrays and format strings resolve in this language. */
     private fun checkUtilityStrings() {
         val c = ctx
-        for (t in listOf(Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR)) {
+        for (t in listOf(Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.DRAW)) {
             assertTrue("$t", toolLabel(c, t).isNotBlank())
         }
         val names = calendarNames(c)
@@ -121,6 +121,18 @@ class UiLocalisationSmokeTest {
         c.getString(R.string.cal_previous, "x")
         c.getString(R.string.cal_date_description, "a", "b")
         ConverterMode.entries.forEach { assertTrue("$it", converterModeLabel(c, it).isNotBlank()) }
+        checkDrawStrings()
+    }
+
+    /** T8.4: every Draw & Sketch string resolves and its format arguments format in this language. */
+    private fun checkDrawStrings() {
+        val c = ctx
+        val ids = R.string::class.java.fields.filter { it.name.startsWith("draw_") || it.name == "tool_draw" || it.name.startsWith("qr_insert_image") || it.name.startsWith("qr_share_image") }
+        assertTrue(ids.size >= 50)
+        for (f in ids) assertTrue(f.name, c.getString(f.getInt(null)).isNotBlank())
+        c.getString(R.string.draw_bg_desc, "x")
+        c.getString(R.string.draw_colour_desc, "x")
+        c.getString(R.string.draw_gallery_item, 1, 2)
     }
 
     @Test @Config(qualifiers = "am-w411dp-h891dp-xxhdpi")

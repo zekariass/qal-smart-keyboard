@@ -21,6 +21,18 @@
                 android:name="android.view.im"
                 android:resource="@xml/method" />
         </service>
+
+        <!-- T8.4: Draw & Sketch and the QR panel hand an exported PNG to the host app (commitContent) or the share sheet.
+             Only drawings/png/ of the app-private files is exposed, only by a URI grant given on the user's tap. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.drawings"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/draw_file_paths" />
+        </provider>
     </application>
 
 </manifest>

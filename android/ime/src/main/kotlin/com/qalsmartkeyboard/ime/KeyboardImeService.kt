@@ -81,6 +81,11 @@ import com.qalsmartkeyboard.ime.toolbar.CalendarPanelView
 import com.qalsmartkeyboard.ime.toolbar.ConverterPanelView
 import com.qalsmartkeyboard.ime.toolbar.LayoutPanelView
 import com.qalsmartkeyboard.ime.toolbar.QrPanelView
+import com.qalsmartkeyboard.ime.toolbar.DrawPanelView
+import com.qalsmartkeyboard.ime.draw.DrawController
+import com.qalsmartkeyboard.ime.draw.DrawingStore
+import com.qalsmartkeyboard.ime.draw.PngDrawingExporter
+import com.qalsmartkeyboard.ime.share.SystemImageShare
 import com.qalsmartkeyboard.ime.utilities.CalculatorController
 import com.qalsmartkeyboard.ime.utilities.CalendarController
 import com.qalsmartkeyboard.ime.utilities.ConverterController
@@ -126,6 +131,7 @@ class KeyboardImeService : InputMethodService() {
     private var converterPanel: ConverterPanelView? = null
     private var calendarPanel: CalendarPanelView? = null
     private var qrPanel: QrPanelView? = null
+    private var drawPanel: DrawPanelView? = null
     private var aiToolsPanel: AiToolsPanelView? = null
     private var clipPanel: ClipboardPanelView? = null
     private var seenToolPanel = ToolPanel.NONE
@@ -201,6 +207,7 @@ class KeyboardImeService : InputMethodService() {
         converterPanel?.theme = t
         calendarPanel?.theme = t
         qrPanel?.theme = t
+        drawPanel?.theme = t
         aiToolsPanel?.theme = t
         clipPanel?.theme = t
         aiView?.theme = t
@@ -389,6 +396,22 @@ class KeyboardImeService : InputMethodService() {
     private val unitConverter = ConverterController(fx = { fxCache.current() }, onChanged = { })
     private val dateConverter = CalendarController(onChanged = { })
     private val qrCode = QrController(onChanged = { qrPanel?.refresh() })
+
+    // T8.4 Draw & Sketch (ADR 0048): free and on-device. The drawing lives in memory until the user saves it; saved
+    // drawings and exported PNGs stay in the app-private files directory. The image goes to the host app through
+    // commitContent when the field takes image/png, else the system share sheet.
+    private val imageShare by lazy {
+        SystemImageShare(
+            this, SystemImageShare.authority(this),
+            editorInfo = { currentInputEditorInfo },
+            connection = { currentInputConnection },
+        )
+    }
+    private val drawingStore by lazy { DrawingStore(java.io.File(filesDir, "drawings")) }
+    private val drawThread by lazy { java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "draw-thumbs").apply { isDaemon = true } } }
+    private val draw by lazy {
+        DrawController(drawingStore, PngDrawingExporter(), { imageShare }, onChanged = { drawPanel?.refresh() })
+    }
 
     /** Insert from a utility panel: back to the keys, and the text goes into the field. */
     private fun insertFromUtility(text: String) {
@@ -892,6 +915,7 @@ class KeyboardImeService : InputMethodService() {
 
     override fun onDestroy() {
         AppLanguage.removeListener(onAppLanguageChanged)
+        drawThread.shutdownNow()
         voice.cancel()
         clipSource.stop()
         clipHistory.clear()
@@ -1062,8 +1086,21 @@ class KeyboardImeService : InputMethodService() {
             it.fieldText = ::fieldTextForQr
             it.clipboardText = { SystemAiClipboard(ui).readText().orEmpty() }
             it.onCopy = ::copyFromUtility
+            it.imageShare = imageShare
+            it.imageFile = drawingStore.pngFile("_qr")
+            it.onImageInserted = { tools.close() }
             it.haptics = { controller.prefs.hapticsEnabled }
             qrPanel = it
+        }
+        val drawView = DrawPanelView(ui).also {
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            it.controller = draw
+            it.executor = drawThread
+            it.mainPost = { r -> main.post(r) }
+            it.onInserted = { tools.close() }
+            it.haptics = { controller.prefs.hapticsEnabled }
+            drawPanel = it
         }
         val aiToolsView = AiToolsPanelView(ui).also {
             it.visibility = View.GONE
@@ -1115,7 +1152,7 @@ class KeyboardImeService : InputMethodService() {
             addView(voiceView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(toolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(layoutView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            for (v in listOf(calcView, converterView, calendarView, qrView)) {
+            for (v in listOf(calcView, converterView, calendarView, qrView, drawView)) {
                 addView(v, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             }
             addView(aiToolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -1321,6 +1358,8 @@ class KeyboardImeService : InputMethodService() {
         controller.emoji.close()
         controller.onCompositionAbandoned()
         tools.close()
+        draw.discard() // an unsaved drawing is not kept once the keyboard is hidden
+        drawPanel?.let { it.canvasView.session = draw.session; it.release() }
         clipHistory.prune()
         aiToolbar?.onKeyboardHidden()
         closeAiPanels()
@@ -1385,8 +1424,10 @@ class KeyboardImeService : InputMethodService() {
         converterPanel?.visibility = if (toolPanel == ToolPanel.CONVERTER) View.VISIBLE else View.GONE
         calendarPanel?.visibility = if (toolPanel == ToolPanel.CALENDAR) View.VISIBLE else View.GONE
         qrPanel?.visibility = if (toolPanel == ToolPanel.QR) View.VISIBLE else View.GONE
+        drawPanel?.visibility = if (toolPanel == ToolPanel.DRAW) View.VISIBLE else View.GONE
         if (toolPanel != seenToolPanel) {
             if (seenToolPanel == ToolPanel.QR) qrCode.clear() // the text a code was made from is not kept
+            if (seenToolPanel == ToolPanel.DRAW) drawPanel?.release() // bitmaps and thumbnails are freed with the panel
             seenToolPanel = toolPanel
             val rise = 8f * resources.displayMetrics.density
             when (toolPanel) {
@@ -1401,6 +1442,7 @@ class KeyboardImeService : InputMethodService() {
                 }
                 ToolPanel.CALENDAR -> calendarPanel?.let { dateConverter.useToday(); it.render(); Motion.reveal(it, fromYPx = rise) }
                 ToolPanel.QR -> qrPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
+                ToolPanel.DRAW -> drawPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
                 ToolPanel.AI -> aiToolsPanel?.let {
                     // The user opened the AI tools: the cached plan state is rendered at once; a throttled background
                     // refresh may update it (ADR 0007 D40, as the AI row did). No text is read or sent.
@@ -1447,6 +1489,7 @@ class KeyboardImeService : InputMethodService() {
             toolPanel == ToolPanel.CONVERTER -> ui.getString(if (tools.converterOnCurrency) R.string.tool_currency else R.string.tool_unit_converter)
             toolPanel == ToolPanel.CALENDAR -> ui.getString(R.string.tool_calendar)
             toolPanel == ToolPanel.QR -> ui.getString(R.string.tool_qr)
+            toolPanel == ToolPanel.DRAW -> ui.getString(R.string.tool_draw)
             picker == TranslatePicker.SOURCE -> ui.getString(R.string.translate_from_title)
             picker == TranslatePicker.DESTINATION -> ui.getString(R.string.translate_into_title)
             else -> null

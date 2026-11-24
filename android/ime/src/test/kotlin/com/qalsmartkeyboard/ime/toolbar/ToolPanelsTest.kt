@@ -67,11 +67,11 @@ class ToolPanelsTest {
         val (p, picked) = toolsPanel(ToolContext(text, aiReady = true, voiceOffered = true, writingModes = true))
         assertEquals("same height as the keys it replaces", keysPx, p.measuredHeight)
         val labels = texts(p)
-        for (l in listOf("Translate", "AI tools", "Clipboard", "Emoji", "Voice typing", "Word Art", "Writing mode", "Languages", "Theme", "Settings", "Calculator", "Units", "Currency", "Calendar", "QR code")) {
+        for (l in listOf("Translate", "AI tools", "Clipboard", "Emoji", "Voice typing", "Word Art", "Writing mode", "Languages", "Theme", "Settings", "Calculator", "Units", "Currency", "Calendar", "QR code", "Draw")) {
             assertTrue("$l in $labels", l in labels)
         }
         // ADR 0041: one AI entry (Assist and Write Email are tiles of the AI tools grid).
-        assertEquals(15, p.shown.size) // the ten tools and the five T8.3 utilities
+        assertEquals(16, p.shown.size) // the ten tools, the five T8.3 utilities and Draw (T8.4)
         assertEquals("AI tools", p.tileFor(Tool.AI)!!.contentDescription.toString())
         // Every tile is one Button node with its name; a tap reports the tool.
         val tile = p.tileFor(Tool.CLIPBOARD)!!
