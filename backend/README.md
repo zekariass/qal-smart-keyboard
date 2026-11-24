@@ -109,6 +109,22 @@ snapshot keeps being served.
   to one gets 401 before the version gate runs.
 - `/config` never fails on bad client headers (the contract declares no 400 for it): they count as unknown.
 
+## Tools: FX rates snapshot (T8.3, ADR 0048)
+
+Module `tools`: `GET /api/v1/tools/fx-rates` (operation `getFxRates`) returns `{ base: "USD", asOf, rates: {ETB: n, ...},
+source, stale }` for the keyboard's offline-capable currency converter.
+
+- **Auth:** `security: [{}, bearerAuth]` (optional bearer, in `ApiPaths.OPTIONAL_BEARER`): anonymous is fine, a presented
+  token must be valid. Unmetered (no AI credits), read-only, identical for every caller, no user data logged. Header
+  `Cache-Control: public, max-age=3600`. No snapshot at all is a 503 `PROVIDER_UNAVAILABLE`.
+- **Source:** port `FxRateSource`; adapter `StaticFxRateSource` reads the newest `as_of` of base USD from
+  `fx_rate_snapshots` (V30). V30 seeds ETB, EUR, GBP, AED, SAR, KES, CAD, AUD, CNY, INR, JPY with `source='seed'`
+  at migration time: **dev/test values, not market data.** Nothing calls an external service.
+- **Staleness:** `stale` is true when `asOf` is older than `qal.tools.fx.stale-after` (env `QAL_TOOLS_FX_STALE_AFTER`,
+  default `48h`, must be positive).
+- **Open (SD 26.2, ADR 0048):** FX source and licence. A licensed provider is added by defining another `FxRateSource`
+  bean (or a job that writes new snapshot rows); the API does not change. No admin/ops write path yet.
+
 ## Languages and language packs (B3.1)
 
 Module `languages`: the five read operations `GET /languages`, `GET /languages/{code}/transliteration-profiles`,

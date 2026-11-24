@@ -38,7 +38,7 @@ class FlywayBaselineIT {
     @Test
     void baselineIsAppliedByTheBootedApplicationAndValidates() {
         MigrationInfo[] all = flyway.info().all();
-        assertEquals(29, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
+        assertEquals(30, all.length, "V1 baseline, V2 outbox/scheduler (B1.4), V3 OTP phone ciphertext (B2.1),"
                 + " V4 session SUPERSEDED_RETRY reason (B2.4 follow-up), V5 attestation nonces (B2.3), V6 language-resource discovery columns (B3.1), V7 preferences revisions (B3.3),"
                 + " V8 destination profiles and app rules (B3.4), V9 usage reservations (B4.2), V10 AI provider seeds (B5.1), V11 account deletion progress (B6.2), V12 AI provider cost control (B5.2), V13 dictionary sync (B3.6),"
                 + " V14 AI replay cache (B5.4), V15 language-resource datasets (B3.2),"
@@ -47,7 +47,8 @@ class FlywayBaselineIT {
                 + " V24 translation language catalogue (ADR 0040), V25 payments provider routing (ADR 0045),"
                 + " V26 Chapa, RevenueCat mappings, refunds and reconciliation (ADR 0045 A2, ADR 0046),"
                 + " V27 extended tools catalogue (T8.1, ADR 0048), V28 AI format, reply intents and document types (T8.2, ADR 0048),"
-                + " V29 smart-reply template v4: a preset intent decides every reply (T8.13)");
+                + " V29 smart-reply template v4: a preset intent decides every reply (T8.13),"
+                + " V30 FX rate snapshots (T8.3)");
         assertEquals("1", all[0].getVersion().getVersion());
         assertEquals("baseline", all[0].getDescription());
         assertEquals(MigrationState.SUCCESS, all[0].getState());
@@ -108,7 +109,8 @@ class FlywayBaselineIT {
         // + ai_request_fingerprints and ai_replay_cache (UNLOGGED) from V14 + language_resource_datasets from V15
         // + email_challenges from V22 + ai_model_translation_languages from V24
         // + billing_provider_routes and billing_receipt_sequences from V25 (V26 adds no table)
-        assertEquals(105, tables);
+        // + fx_rate_snapshots from V30
+        assertEquals(106, tables);
         assertEquals("u", jdbc.queryForObject(
                 "select relpersistence::text from pg_class where relname = 'ai_replay_cache'", String.class));
         assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
