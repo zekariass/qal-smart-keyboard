@@ -635,4 +635,7 @@
     <string name="layout_desc_colemak">Like QWERTY, with the most used letters moved to the middle row</string>
     <string name="layout_desc_fidel_two_key">Tap a consonant, then its vowel order; hold a consonant for all its forms</string>
     <string name="layout_desc_fidel_long_press">A tap types the consonant form (ስ), hold for the other orders; no vowel row, taller keys</string>
+    <!-- Translate one-tap paste of a copied message (T8.13). -->
+    <string name="translate_paste_message">Paste copied message</string>
+    <string name="translate_paste_message_desc">Paste the copied message and translate it</string>
 </resources>

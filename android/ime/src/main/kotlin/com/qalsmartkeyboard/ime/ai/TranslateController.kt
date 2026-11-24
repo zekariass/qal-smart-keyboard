@@ -72,6 +72,11 @@ class TranslateController(
     private val copyToClipboard: (String) -> Unit,
     /** The keyboard language (the Detect source's likely language). */
     private val keyboardLanguage: () -> String,
+    /**
+     * The system clipboard for the "Paste copied message" chip (T8.13): its description is probed on open and clear,
+     * its content is read only by [pasteCopiedMessage] (the user's tap). Default: nothing to paste.
+     */
+    private val clipboard: AiClipboard = NoClipboard,
     prefs: AiLanguagePrefs = AiLanguagePrefs.InMemory(),
     /** Refreshes the cached plan state (throttled; ADR 0007 D40). Called when the panel opens. */
     private val refresh: () -> Unit = {},
@@ -118,6 +123,13 @@ class TranslateController(
 
     /** The server's detected source language from the last result while the source is Detect (cleared by an edit). */
     var detected: String? = null
+        private set
+
+    /**
+     * What the clipboard holds, from its description only ([AiClipboard.availability]); refreshed when the panel opens
+     * and when the box is emptied. [ClipAvailability.TEXT] offers "Paste copied message"; SENSITIVE shows a hint.
+     */
+    var clip: ClipAvailability = ClipAvailability.NONE
         private set
 
     /** The sentence before the cursor can be used ("Use last sentence" is offered while the box is empty). */
@@ -189,6 +201,7 @@ class TranslateController(
         } else {
             sentenceAvailable = editor.textBeforeCursor(AiTextTarget.LOOKBACK)?.let(AiTextTarget::sentenceBeforeCursor) != null
         }
+        clip = clipboard.availability()
         isOpen = true
         onChanged()
     }
@@ -212,6 +225,7 @@ class TranslateController(
         notice = AiNotice.NONE
         detected = null
         sentenceAvailable = false
+        clip = ClipAvailability.NONE
         lastRequest = null
         boxEditing = false
     }
@@ -273,7 +287,31 @@ class TranslateController(
         lastRequest = null
         notice = AiNotice.NONE
         detected = null
+        clip = clipboard.availability()
         onChanged()
+    }
+
+    /**
+     * "Paste copied message" (one tap): the only place the clip's content is read. The text fills the box and the
+     * translation starts at once, through the same path as the Translate button (blocked, offline and over-limit
+     * handling included). A clip that turned empty or sensitive reads nothing and re-probes.
+     */
+    fun pasteCopiedMessage() {
+        if (!isOpen || busy || clip != ClipAvailability.TEXT || !input.isBlank) return
+        val text = clipboard.readText()
+        if (text.isNullOrBlank()) {
+            clip = clipboard.availability()
+            onChanged()
+            return
+        }
+        runner.cancel()
+        captured = null
+        setInput(text)
+        source = TranslateSource.TYPED
+        detected = null
+        step = TranslateStep.Idle
+        lastRequest = null
+        translate()
     }
 
     /** "Use last sentence": the sentence before the cursor goes into the box (read now, on the tap); Insert replaces it. */
@@ -540,6 +578,7 @@ class TranslateController(
             detected = null
             sentenceAvailable = false
             notice = AiNotice.NONE
+            clip = clipboard.availability()
         }
         onChanged()
         return applied
@@ -589,4 +628,11 @@ class TranslateController(
         /** The language search's length (a language name is short). */
         const val SEARCH_MAX = 40
     }
+}
+
+/** No clipboard (the default): nothing is offered and nothing is read. */
+private object NoClipboard : AiClipboard {
+    override fun availability() = ClipAvailability.NONE
+    override fun readText(): String? = null
+    override fun copy(text: String) = false
 }
