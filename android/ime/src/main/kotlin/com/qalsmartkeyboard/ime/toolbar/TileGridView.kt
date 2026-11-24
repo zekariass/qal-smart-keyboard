@@ -67,7 +67,7 @@ open class TileGridView<K : Any>(context: Context) : FrameLayout(context) {
 
     private val content = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(8f), dp(6f), dp(8f), dp(4f))
+        setPadding(dp(8f), dp(6f), dp(8f), dp(16f))
     }
     private val scroll = ScrollView(context).apply {
         isVerticalScrollBarEnabled = false

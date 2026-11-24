@@ -55,7 +55,7 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
 
     protected val column = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(8f), dp(6f), dp(8f), dp(6f))
+        setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
     }
     private val scroll = ScrollView(context).apply {
         isVerticalScrollBarEnabled = false
@@ -70,6 +70,9 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
     val controls: List<View> get() = made
 
     private val made = ArrayList<View>()
+
+    /** True when the content is taller than the panel, so it scrolls (only a keyboard shorter than the default should). */
+    val scrolls: Boolean get() = column.height > scroll.height
 
     init {
         addView(scroll, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -166,18 +169,55 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
         setPadding(dp(4f), dp(2f), dp(4f), dp(2f))
     }
 
-    /** A horizontal row of [views] with the given weights, [heightDp] minimum tall. */
-    protected fun row(vararg cells: Pair<View, Float>, gapDp: Float = 4f, bottomDp: Float = 4f): LinearLayout =
+    /**
+     * A horizontal row of [cells] with the given weights. A [stretch]ed row (the default) shares the panel's spare height with
+     * the other stretched rows, so a pad fills the keyboard's height instead of the height of its content; each cell fills
+     * the row, never below the 48dp a button measures. When the panel is shorter than its rows need (a small keyboard-height
+     * setting) the column scrolls, the fallback.
+     */
+    protected fun row(vararg cells: Pair<View, Float>, gapDp: Float = 4f, bottomDp: Float = 4f, stretch: Boolean = true): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             cells.forEachIndexed { i, (v, w) ->
                 addView(
                     v,
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, w).apply { if (i > 0) marginStart = dp(gapDp) },
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, w).apply { if (i > 0) marginStart = dp(gapDp) },
                 )
             }
-        }.also { column.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(bottomDp) }) }
+        }.also {
+            column.addView(
+                it,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, if (stretch) 1f else 0f)
+                    .apply { bottomMargin = dp(bottomDp) },
+            )
+        }
+
+    /** A vertical stack of [cells] (view, weight) that shares its height by weight, each at least as tall as it measures. */
+    protected fun stack(vararg cells: Pair<View, Float>, gapDp: Float = 4f): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            cells.forEachIndexed { i, (v, w) ->
+                addView(
+                    v,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, w).apply { if (i > 0) topMargin = dp(gapDp) },
+                )
+            }
+        }
+
+    /** A horizontal group of [cells] that shares its width by weight; cells fill the height. */
+    protected fun hbox(vararg cells: Pair<View, Float>, gapDp: Float = 4f): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            cells.forEachIndexed { i, (v, w) ->
+                addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, w).apply { if (i > 0) marginStart = dp(gapDp) })
+            }
+        }
+
+    /** Adds [v] to the column, taking the spare height (a stretched body). */
+    protected fun fill(v: View, bottomDp: Float = 0f) {
+        column.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { bottomMargin = dp(bottomDp) })
+    }
 
     /** A sideways-scrolling strip of chips that fills the width when they fit. */
     protected fun chipStrip(chips: List<View>): View {

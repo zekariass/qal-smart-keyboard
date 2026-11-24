@@ -10,6 +10,7 @@ import com.qalsmartkeyboard.aiclient.EntitlementTokenVerifier
 import com.qalsmartkeyboard.aiclient.LastDestinationStore
 import com.qalsmartkeyboard.aiclient.PinnedKeys
 import com.qalsmartkeyboard.aiclient.ServerAiActions
+import com.qalsmartkeyboard.aiclient.ServerFxRateSource
 import com.qalsmartkeyboard.aiclient.ServerThemeAccess
 import com.qalsmartkeyboard.aiclient.SessionAccessInfo
 import com.qalsmartkeyboard.aiclient.TranslationCatalogStore
@@ -84,6 +85,13 @@ class AiGraph private constructor(context: Context) {
 
     /** Premium keyboard themes (`PREMIUM_THEMES`), answered from the cached verified entitlement token. */
     val themeAccess = ServerThemeAccess(entitlements, session, connectivity) { listener -> actions.addAvailabilityListener(listener) }
+
+    /**
+     * The currency converter's rates (`GET /tools/fx-rates`): public data, fetched without the session over the transport's
+     * bearer-free client, at the same base URL as the AI calls (both flavours). Null when the build has no base URL.
+     */
+    val fxRates: ServerFxRateSource? =
+        BuildConfig.API_BASE_URL.takeIf { it.isNotBlank() }?.let { ServerFxRateSource(clients.anonymousClient, it) }
 
     companion object {
         const val KEY_ALIAS = "qal.ai.v1"

@@ -41,6 +41,9 @@ class UtilityPanelsTest {
     private val d = ctx.resources.displayMetrics.density
     private val widthPx = (411 * d).toInt()
 
+    /** The panel height on the reference phone (1080x2340 at 2.625): the 328dp keyboard area less the 44dp bar. */
+    private val PANEL_DP = 284
+
     private val utilityTools = listOf(Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.DRAW)
 
     private fun profile(type: Int) = InputProfile.from(type, 0, false, 0)
@@ -51,9 +54,9 @@ class UtilityPanelsTest {
     }
 
     private fun <V : UtilityPanelView> V.opened(): V {
-        heightProvider = { (260 * d).toInt() }
+        heightProvider = { (PANEL_DP * d).toInt() }
         render()
-        layoutAt(widthPx, (260 * d).toInt())
+        layoutAt(widthPx, (PANEL_DP * d).toInt())
         return this
     }
 
@@ -171,7 +174,7 @@ class UtilityPanelsTest {
         for (m in ConverterMode.entries) {
             c.selectMode(m)
             p.render()
-            p.layoutAt(widthPx, (260 * d).toInt())
+            p.layoutAt(widthPx, (PANEL_DP * d).toInt())
             assertControlsAreAccessible(p, "converter $m")
         }
     }
@@ -184,7 +187,7 @@ class UtilityPanelsTest {
         assertControlsAreAccessible(qr, "qr text")
         qrC.selectKind(QrKind.WIFI)
         qr.render()
-        qr.layoutAt(widthPx, (260 * d).toInt())
+        qr.layoutAt(widthPx, (PANEL_DP * d).toInt())
         assertControlsAreAccessible(qr, "qr wifi")
     }
 
@@ -311,5 +314,137 @@ class UtilityPanelsTest {
                 p.draw(android.graphics.Canvas(android.graphics.Bitmap.createBitmap(widthPx, (260 * d).toInt(), android.graphics.Bitmap.Config.ARGB_8888)))
             }
         }
+    }
+
+    // ---- fit: everything a task needs is on screen at the default keyboard height ---------------------------------
+
+    private fun View.offsetIn(root: View): Pair<Int, Int> {
+        var x = 0
+        var y = 0
+        var v: View = this
+        while (v !== root) {
+            x += v.left
+            y += v.top
+            v = v.parent as View
+        }
+        return x to y
+    }
+
+    private fun assertFitsWithoutScrolling(p: UtilityPanelView, what: String, primary: List<String> = emptyList()) {
+        assertFalse("$what scrolls at ${PANEL_DP}dp", p.scrolls)
+        for (v in p.controls) {
+            val (x, y) = v.offsetIn(p)
+            val name = v.contentDescription?.toString() ?: (v as? TextView)?.text?.toString().orEmpty()
+            assertTrue("$what/$name clipped at the top ($y)", y >= 0)
+            assertTrue("$what/$name clipped at the bottom: ${(y + v.height) / d}dp of ${p.height / d}dp", y + v.height <= p.height)
+            // Tabs and chips sit in a sideways strip on purpose; everything else must be inside the width.
+            if (generateSequence(v.parent) { it.parent }.none { it is android.widget.HorizontalScrollView }) {
+                assertTrue("$what/$name clipped at the side", x >= 0 && x + v.width <= p.width)
+            }
+            assertTrue("$what/$name under 48dp: ${v.height / d}x${v.width / d}", v.height >= (48 * d).toInt() - 1 && v.width >= (48 * d).toInt() - 1)
+        }
+        for (label in primary) {
+            val v = p.controls.firstOrNull { (it.contentDescription ?: (it as TextView).text).toString() == label }
+            assertNotNull("$what has $label", v)
+        }
+    }
+
+    @Test fun calculatorPadFitsWithItsDisplayInTheBar() {
+        val shown = ArrayList<String>()
+        val p = CalculatorPanelView(ctx).apply {
+            displayInBar = true
+            onDisplay = { text, _, _ -> shown += text }
+            controller = CalculatorController(onChanged = { refresh() })
+        }.opened()
+        assertFitsWithoutScrolling(p, "calculator", listOf(ctx.getString(R.string.util_insert), ctx.getString(R.string.util_copy), ctx.getString(R.string.calc_key_equals)))
+        assertEquals("0", shown.last())
+        p.tap("7"); p.tap(ctx.getString(R.string.calc_key_plus)); p.tap("1")
+        assertEquals("7+1  = 8", shown.last())
+    }
+
+    @Test fun calculatorWithoutABarKeepsItsDisplayAboveThePad() {
+        val p = CalculatorPanelView(ctx).apply { controller = CalculatorController(onChanged = { refresh() }) }.opened()
+        p.tap("7")
+        assertEquals("7", p.expressionText.toString())
+        assertControlsAreAccessible(p, "calculator (own display)")
+    }
+
+    @Test fun converterFitsInEveryMode() {
+        val cache = FxSnapshotCache().apply { put(FxSnapshot("USD", System.currentTimeMillis(), mapOf("ETB" to 130.0), stale = true)) }
+        val c = ConverterController(fx = { cache.current() })
+        val p = ConverterPanelView(ctx).apply { controller = c; this.cache = cache }.opened()
+        for (m in ConverterMode.entries) {
+            c.selectMode(m)
+            p.render()
+            p.layoutAt(widthPx, (PANEL_DP * d).toInt())
+            p.tap("1")
+            assertFitsWithoutScrolling(p, "converter $m", listOf(ctx.getString(R.string.util_insert), ctx.getString(R.string.util_copy)))
+        }
+        // The note under the result (rates as of / stale) is part of the layout, not below it.
+        assertTrue(p.noteText.isNotEmpty())
+    }
+
+    @Test fun calendarFits() {
+        val p = CalendarPanelView(ctx).apply { controller = CalendarController(today = { YMD(2024, 9, 11) }) }.opened()
+        assertFitsWithoutScrolling(p, "calendar", listOf(ctx.getString(R.string.cal_insert), ctx.getString(R.string.util_copy), ctx.getString(R.string.cal_today)))
+    }
+
+    @Test fun qrFitsForEveryKindWithTheImageButtons() {
+        val qrC = QrController()
+        val qr = QrPanelView(ctx).apply { controller = qrC; imageShare = com.qalsmartkeyboard.ime.share.FakeImageShare() }.opened()
+        for (k in QrKind.entries) {
+            qrC.selectKind(k)
+            qr.render()
+            qr.layoutAt(widthPx, (PANEL_DP * d).toInt())
+            assertFitsWithoutScrolling(qr, "qr $k", listOf(ctx.getString(R.string.qr_copy_text), ctx.getString(R.string.qr_share_image)))
+        }
+    }
+
+    @Test fun theToolsGridScrollsToItsLastRowAboveTheBottomEdge() {
+        val grid = ToolsPanelView(ctx).apply {
+            heightProvider = { (PANEL_DP * d).toInt() }
+            tiles = { ToolSet.tiles(ToolContext(profile(T.TYPE_CLASS_TEXT))) }
+            render()
+        }
+        grid.layoutAt(widthPx, (PANEL_DP * d).toInt())
+        val scroll = grid.getChildAt(0) as android.widget.ScrollView
+        scroll.scrollTo(0, 100_000)
+        val tile = grid.tileFor(grid.shown.last().tool)!!
+        val y = tile.offsetIn(scroll.getChildAt(0)).second - scroll.scrollY
+        assertTrue("the last tile ends ${(y + tile.height) / d}dp in a ${grid.height / d}dp panel", y >= 0 && y + tile.height <= grid.height)
+    }
+
+    @Test fun theBarDrawsTheCalculatorLineShrinkingAndCutting() {
+        val bar = com.qalsmartkeyboard.ime.CandidateStripView(ctx)
+        bar.panelTitle = "Calculator"
+        bar.measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec((44 * d).toInt(), View.MeasureSpec.EXACTLY))
+        bar.layout(0, 0, bar.measuredWidth, bar.measuredHeight)
+        val canvas = android.graphics.Canvas(android.graphics.Bitmap.createBitmap(widthPx, (44 * d).toInt(), android.graphics.Bitmap.Config.ARGB_8888))
+        bar.panelDetail = "12×3  = 36"
+        bar.panelDetailDescription = "12 times 3. Result 36"
+        bar.draw(canvas)
+        bar.panelDetail = "a very long expression ".repeat(12)
+        bar.panelDetailWarn = true
+        bar.draw(canvas)
+    }
+
+    @Test fun currencyShowsTheAsOfDateAndTheStaleNoteFromAFakeSource() {
+        val now = 1_700_000_000_000L
+        var stale = false
+        val cache = FxSnapshotCache(source = { FxSnapshot("USD", now - 2 * 60 * 60 * 1000, mapOf("ETB" to 130.0), stale = stale) }, clock = { now })
+        assertTrue(cache.refreshIfDue())
+        var opened = 0
+        val c = ConverterController(fx = { cache.current() }).also { it.selectMode(ConverterMode.CURRENCY) }
+        val p = ConverterPanelView(ctx).apply { controller = c; this.cache = cache; onCurrencyOpened = { opened++ } }.opened()
+        assertEquals(1, opened)
+        assertEquals(ctx.getString(R.string.conv_rates_as_of, "2023-11-14"), p.noteText.toString())
+        stale = true
+        assertTrue(cache.refresh())
+        p.refresh()
+        assertEquals(ctx.getString(R.string.conv_rates_stale, "2023-11-14"), p.noteText.toString())
+        // Another tab does not ask for rates.
+        c.selectMode(ConverterMode.LENGTH)
+        p.render()
+        assertEquals(1, opened)
     }
 }

@@ -8,6 +8,7 @@ import com.qalsmartkeyboard.app.crash.CrashReporting
 import com.qalsmartkeyboard.ime.AppLanguage
 import com.qalsmartkeyboard.ime.ai.AiActionsHolder
 import com.qalsmartkeyboard.ime.theme.ThemeAccessHolder
+import com.qalsmartkeyboard.ime.utilities.FxRateSourceHolder
 
 /**
  * Registers what the keyboard service cannot know itself (A2.5): the system creates
@@ -27,5 +28,6 @@ class QalApplication : Application() {
         if (BuildConfig.DEBUG) BaseUrlGuard.check(BuildConfig.API_BASE_URL, BaseUrlGuard.isEmulator()) { Log.w("QalApi", it) }
         AiActionsHolder.factory = { AiGraph.get(context).actions }
         ThemeAccessHolder.factory = { AiGraph.get(context).themeAccess }
+        FxRateSourceHolder.factory = { AiGraph.get(context).fxRates }
     }
 }

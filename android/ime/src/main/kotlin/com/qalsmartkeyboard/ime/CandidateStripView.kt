@@ -107,6 +107,25 @@ class CandidateStripView(context: Context) : View(context) {
             changed()
         }
 
+    /**
+     * T8.3 polish: a live line shown in place of [panelTitle] (right-aligned in the space after the back arrow, one line,
+     * shrinking to fit): the calculator's expression and result, so its pad can take the whole key area. [panelDetailWarn]
+     * draws it as an error; [panelDetailDescription] is what TalkBack reads.
+     */
+    var panelDetail: String? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            changed()
+        }
+    var panelDetailWarn: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+    var panelDetailDescription: String? = null
+
     private var items: List<Suggestion> = emptyList()
     private var autocorrect = -1
 
@@ -173,6 +192,7 @@ class CandidateStripView(context: Context) : View(context) {
         textSize = 16f * d
         typeface = Typeface.DEFAULT_BOLD
     }
+    private val detailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.RIGHT }
     private val line = Paint().apply { strokeWidth = 1f * d }
     private val shape = Paint(Paint.ANTI_ALIAS_FLAG)
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -269,7 +289,7 @@ class CandidateStripView(context: Context) : View(context) {
             out += Slot(Target.Tools, tools, tools, context.getString(R.string.emoji_back_to_keys))
             val x = tools.right + 4f * d
             val r = RectF(x, 0f, w - 8f * d, h)
-            out += Slot(Target.Title, r, r, title)
+            out += Slot(Target.Title, r, r, panelDetail ?: title)
             return Geometry(w, out, x, w.toFloat(), dividers)
         }
         // Composing: the bar is the suggestion bar — a back chevron takes the left end (back to the tools bar),
@@ -352,8 +372,12 @@ class CandidateStripView(context: Context) : View(context) {
                 Target.Tools -> drawIcon(canvas, s, if (panelTitle != null) ToolIcon.BACK else ToolIcon.TOOLS, active = false, down)
                 Target.Back -> drawIcon(canvas, s, ToolIcon.BACK, active = false, down)
                 Target.Title -> {
-                    titlePaint.color = textColor
-                    canvas.drawText(fit(s.label, titlePaint, s.shape.width()), s.shape.left, cy - (titlePaint.descent() + titlePaint.ascent()) / 2, titlePaint)
+                    if (panelDetail != null) {
+                        drawDetail(canvas, s.label, s.shape, cy)
+                    } else {
+                        titlePaint.color = textColor
+                        canvas.drawText(fit(s.label, titlePaint, s.shape.width()), s.shape.left, cy - (titlePaint.descent() + titlePaint.ascent()) / 2, titlePaint)
+                    }
                 }
                 is Target.Shortcut -> {
                     // The scrolled middle is clipped: a half-visible icon is not drawn over the pill or the mic.
@@ -393,6 +417,25 @@ class CandidateStripView(context: Context) : View(context) {
     }
 
     /** Shortens [label] with an ellipsis until it fits [max] px. */
+    /** The live line: right-aligned, as large as fits between 22 and 13 sp, then its start is cut ("…" first). */
+    private fun drawDetail(canvas: Canvas, label: String, r: RectF, cy: Float) {
+        val p = detailPaint
+        p.color = if (panelDetailWarn) theme.warn else textColor
+        var sp = 22f
+        p.textSize = sp * d
+        while (sp > 13f && p.measureText(label) > r.width()) {
+            sp -= 1f
+            p.textSize = sp * d
+        }
+        var shown = label
+        if (p.measureText(shown) > r.width()) {
+            var from = 0
+            while (from < label.length - 1 && p.measureText(label, from, label.length) + p.measureText("…") > r.width()) from++
+            shown = "…" + label.substring(from)
+        }
+        canvas.drawText(shown, r.right, cy - (p.descent() + p.ascent()) / 2, p)
+    }
+
     private fun fit(label: String, p: Paint, max: Float): String {
         if (p.measureText(label) <= max) return label
         var n = label.length
@@ -612,8 +655,8 @@ class CandidateStripView(context: Context) : View(context) {
                 }
                 Target.Title -> {
                     node.className = TextView::class.java.name
-                    node.text = s.label
-                    node.isHeading = true
+                    node.text = if (panelDetail != null) panelDetailDescription ?: s.label else s.label
+                    node.isHeading = panelDetail == null
                 }
                 is Target.Shortcut -> {
                     node.className = Button::class.java.name

@@ -15,8 +15,8 @@ import com.qalsmartkeyboard.ime.utilities.CalcKey
 import com.qalsmartkeyboard.ime.utilities.CalculatorController
 
 /**
- * The calculator panel (T8.3), opened by the Tools grid's "Calculator" tile: a display (the expression, and under it the live
- * result or the reason `=` failed) over a 5-column pad, in place of the keys. Insert commits the result to the field,
+ * The calculator panel (T8.3), opened by the Tools grid's "Calculator" tile: a 5-column pad in place of the keys, its display (the
+ * expression and the live result or the reason `=` failed, on one line) in the panel bar above ([displayInBar]). Insert commits the result to the field,
  * Copy puts it on the clipboard. All arithmetic is keyboard-core's `calc_eval`; nothing is stored or sent.
  *
  * Pad: `C ( ) % ⌫` / `7 8 9 ÷ ^` / `4 5 6 × Copy` / `1 2 3 − Insert` / `0 . = +`. Plain Views, theme tokens only, every
@@ -37,44 +37,61 @@ class CalculatorPanelView(context: Context) : UtilityPanelView(context) {
 
     private var expressionView: TextView? = null
     private var resultView: TextView? = null
+    private var shownExpression: CharSequence = ""
+    private var shownResult: CharSequence = ""
+
+    /**
+     * True when the host shows the expression and result in its panel bar ([onDisplay]), so the pad takes the whole key area:
+     * the five rows then fit the keyboard's height at 48dp with 4dp gaps. False (a host without a bar): a one-line display
+     * is built above the pad and the column scrolls if the height is short.
+     */
+    var displayInBar: Boolean = false
+
+    /** The display changed: its one-line text, what TalkBack says, and whether it is an error. Called with [displayInBar]. */
+    var onDisplay: (text: String, description: String?, warn: Boolean) -> Unit = { _, _, _ -> }
 
     /** The text of the expression line (tests). */
-    val expressionText: CharSequence get() = expressionView?.text ?: ""
+    val expressionText: CharSequence get() = shownExpression
 
     /** The text of the result / error line (tests). */
-    val resultLine: CharSequence get() = resultView?.text ?: ""
+    val resultLine: CharSequence get() = shownResult
 
     override fun build() {
-        val expr = TextView(context).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
-            setTextColor(theme.keyText)
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.START
-            typeface = Typeface.DEFAULT
-            // A number is read left to right even in an RTL UI language; the calculator pad itself is not mirrored.
-            textDirection = View.TEXT_DIRECTION_LTR
-            layoutDirection = View.LAYOUT_DIRECTION_LTR
+        expressionView = null
+        resultView = null
+        if (!displayInBar) {
+            val expr = TextView(context).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                setTextColor(theme.keyText)
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.START
+                typeface = Typeface.DEFAULT
+                // A number is read left to right even in an RTL UI language; the calculator pad itself is not mirrored.
+                textDirection = View.TEXT_DIRECTION_LTR
+                layoutDirection = View.LAYOUT_DIRECTION_LTR
+            }
+            val res = TextView(context).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                setTextColor(theme.hintText)
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                textDirection = View.TEXT_DIRECTION_LTR
+            }
+            expressionView = expr
+            resultView = res
+            val display = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14f), dp(2f), dp(14f), dp(2f))
+                background = card(theme.key)
+                minimumHeight = dp(44f)
+                addView(expr, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                addView(res, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8f) })
+            }
+            column.addView(display, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4f) })
         }
-        val res = TextView(context).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setTextColor(theme.hintText)
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            textDirection = View.TEXT_DIRECTION_LTR
-        }
-        expressionView = expr
-        resultView = res
-        val display = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14f), dp(6f), dp(14f), dp(6f))
-            background = card(theme.key)
-            minimumHeight = dp(76f)
-            addView(expr, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-            addView(res, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-        column.addView(display, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6f) })
 
         fun s(id: Int) = context.getString(id)
         fun digit(n: Int) = button(n.toString(), n.toString()) { controller.key(CalcKey.Digit(n)) }
@@ -100,25 +117,36 @@ class CalculatorPanelView(context: Context) : UtilityPanelView(context) {
 
     /** Updates the display from the controller without rebuilding the pad. */
     fun refresh() {
-        val e = expressionView ?: return
-        val r = resultView ?: return
         val c = controller
-        e.text = c.expression.ifEmpty { "0" }
-        e.contentDescription = if (c.expression.isEmpty()) {
+        val exprText = c.expression.ifEmpty { "0" }
+        val exprDescription = if (c.expression.isEmpty()) {
             context.getString(R.string.calc_empty_description)
         } else {
             context.getString(R.string.calc_expression_description, spoken(c.expression))
         }
         val err = c.error
+        val resultText: String
+        val resultDescription: String?
         if (err != null) {
-            r.text = context.getString(errorText(err))
-            r.setTextColor(theme.warn)
-            r.contentDescription = r.text
+            resultText = context.getString(errorText(err))
+            resultDescription = resultText
         } else {
             val preview = c.preview()
-            r.setTextColor(theme.hintText)
-            r.text = if (preview != null) "= ${preview.replace('-', '−')}" else ""
-            r.contentDescription = if (preview != null) context.getString(R.string.calc_result_description, preview) else null
+            resultText = if (preview != null) "= ${preview.replace('-', '−')}" else ""
+            resultDescription = if (preview != null) context.getString(R.string.calc_result_description, preview) else null
+        }
+        shownExpression = exprText
+        shownResult = resultText
+        expressionView?.let { it.text = exprText; it.contentDescription = exprDescription }
+        resultView?.let {
+            it.text = resultText
+            it.setTextColor(if (err != null) theme.warn else theme.hintText)
+            it.contentDescription = resultDescription
+        }
+        if (displayInBar) {
+            val line = if (err != null) resultText else if (resultText.isEmpty()) exprText else "$exprText  $resultText"
+            val spokenLine = listOfNotNull(exprDescription, resultDescription).joinToString(". ")
+            onDisplay(line, spokenLine, err != null)
         }
     }
 
