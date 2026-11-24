@@ -96,8 +96,8 @@ class AiProviderSeedsIT {
 				  JOIN ai_models m ON m.id = r.model_id JOIN ai_providers p ON p.id = m.provider_id
 				 WHERE r.source_language_id IS NULL AND r.destination_language_id IS NULL AND NOT r.is_enabled
 				 ORDER BY 1""", String.class)).containsExactly("DRAFT_DOCUMENT:openai:1", "EXPLAIN_TEXT:openai:1",
-				"GRAMMAR_CORRECTION:openai:1", "REWRITE:openai:1", "SMART_REPLY:openai:1", "SUMMARIZE:openai:1",
-				"TONE_ADJUST:openai:1", "TRANSLATE:google-translate:2", "TRANSLATE:openai:1"); // V19 + V20
+				"FORMAT_TEXT:openai:1", "GRAMMAR_CORRECTION:openai:1", "REWRITE:openai:1", "SMART_REPLY:openai:1", "SUMMARIZE:openai:1",
+				"TONE_ADJUST:openai:1", "TRANSLATE:google-translate:2", "TRANSLATE:openai:1"); // V19 + V20 + V28
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_routing_policies WHERE is_enabled", Integer.class))
 				.isZero();
 
@@ -121,7 +121,7 @@ class AiProviderSeedsIT {
 			assertThat(d.dataPolicy().trainsOnCustomerData()).isFalse();
 			assertThat(d.dataPolicy().zeroDataRetention()).isTrue();
 			assertThat(d.dataPolicy().processingRegions()).containsExactly("local");
-			assertThat(d.capabilities()).hasSize(45); // V10: 19, V20 (ADR 0027): 4 features x 4 languages, V23: ar (2 translations + 7 features), V24: any pair
+			assertThat(d.capabilities()).hasSize(50); // V10: 19, V20 (ADR 0027): 4 features x 4 languages, V23: ar (2 translations + 7 features), V24: any pair, V28: FORMAT_TEXT x 5 languages
 		});
 		for (AiFeature feature : AiFeature.values()) {
 			assertThat(registry.resolve(RouteQuery.of(feature, "en", "am"))).isEmpty();
