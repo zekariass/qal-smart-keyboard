@@ -158,6 +158,15 @@ class TranslatePanelViewTest {
         assertNull("the output is cleared for the next one", h.view.resultView)
     }
 
+    @Test fun aDetectResultWithoutAReportedSourceDoesNotGuessTheKeyboardLanguage() {
+        val h = H().open()
+        h.type("Can you join us for dinner?")
+        h.view.translateButtonView.performClick()
+        h.actions.answer(0, AiOutcome.Success(AiResult("ንራት ምሳና ክትሳተፍ ትኽእልዶ?")))
+        h.layout()
+        assertTrue(h.outputTexts().contains("Detect language → Amharic"))
+    }
+
     @Test fun cancelReturnsToTheBox() {
         val h = H().open()
         h.type("Hello")

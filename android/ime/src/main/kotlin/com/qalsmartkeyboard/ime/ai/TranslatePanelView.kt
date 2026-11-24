@@ -420,10 +420,12 @@ class TranslatePanelView(context: Context) : LinearLayout(context) {
                 if (theme.hasBorder) setStroke(dp(1f), theme.border)
             }
         }
-        // "Amharic → English": the server's detected source when it reported one, else the source shown in the header.
+        // "Amharic → English": the server's detected source when it reported one, else the explicit source. A Detect
+        // request whose provider reported no source (OpenAI does not) says "Detect language" rather than showing the
+        // keyboard language as a guess (an English message was labelled "Amharic → Tigrinya").
         val from = r.result.sourceLanguage?.takeIf { c.catalog.isKnown(it) }?.let(AiLanguages::name)
             ?: r.task.sourceLanguage?.let(AiLanguages::name)
-            ?: AiLanguages.name(c.direction.likelySource(c.detected))
+            ?: context.getString(R.string.translate_detect_language)
         val to = r.task.destination.label
         card.addView(
             TextView(context).apply {
