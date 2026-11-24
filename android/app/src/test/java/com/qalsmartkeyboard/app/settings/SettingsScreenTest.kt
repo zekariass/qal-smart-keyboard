@@ -62,7 +62,9 @@ class SettingsScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     private val dir: File = Files.createTempDirectory("settings-ui").toFile()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // One thread: on Windows a DataStore write's tmp -> file rename fails (AccessDeniedException) while a parallel read
+    // still holds the file open; Linux allows it, so this flaked only on the dev PC.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private val repository = SettingsRepository(
         DataStoreFactory.create(
             storage = OkioStorage(FileSystem.SYSTEM, PreferencesSerializer) { File(dir, "s.preferences_pb").absolutePath.toPath() },
