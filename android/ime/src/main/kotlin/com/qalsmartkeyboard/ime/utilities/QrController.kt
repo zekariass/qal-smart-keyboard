@@ -84,10 +84,8 @@ class QrController(private val onChanged: () -> Unit = {}) {
 
 /**
  * Renders a [QrMatrix] to a [Bitmap]: dark modules in [dark] on [light], a four-module quiet zone, whole pixels per module
- * so edges stay sharp. This is the image the share / insert path will take.
- *
- * TODO(T8.4): the Draw step adds `commitContent` and the share sheet; hand this bitmap to that path (PNG export) rather
- * than building a second one here.
+ * so edges stay sharp. This is the image the QR panel's Insert / Share image buttons write as a PNG and hand to
+ * [com.qalsmartkeyboard.ime.share.ImageShare] (T8.4).
  */
 object QrBitmap {
     const val QUIET_ZONE = 4

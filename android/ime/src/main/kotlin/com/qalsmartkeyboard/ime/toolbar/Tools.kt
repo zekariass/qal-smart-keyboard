@@ -34,6 +34,9 @@ enum class Tool(val icon: ToolIcon) {
     CURRENCY(ToolIcon.CURRENCY),
     CALENDAR(ToolIcon.CALENDAR),
     QR(ToolIcon.QR),
+
+    /** T8.4 Draw & Sketch (ADR 0048): free, on-device; the canvas takes the key area ([ToolPanel.DRAW]). */
+    DRAW(ToolIcon.DRAW),
     LANGUAGES(ToolIcon.LANGUAGES),
     THEME(ToolIcon.THEME),
     SETTINGS(ToolIcon.SETTINGS),
@@ -100,6 +103,7 @@ object ToolSet {
             add(ToolEntry(Tool.CURRENCY))
             add(ToolEntry(Tool.CALENDAR))
             add(ToolEntry(Tool.QR))
+            add(ToolEntry(Tool.DRAW))
         }
         add(ToolEntry(Tool.LANGUAGES))
         add(ToolEntry(Tool.THEME))
@@ -156,9 +160,9 @@ interface ToolHost {
 
 /**
  * Which tool panel replaces the key area: the tools grid, the clipboard, the AI tools grid (ADR 0041), the current
- * language's key layouts (ADR 0043), or one of the T8.3 utilities (calculator, unit and currency converter, calendar, QR).
+ * language's key layouts (ADR 0043), or one of the T8.3 utilities (calculator, unit and currency converter, calendar, QR) and Draw & Sketch (T8.4).
  */
-enum class ToolPanel { NONE, TOOLS, CLIPBOARD, AI, LAYOUT, CALCULATOR, CONVERTER, CALENDAR, QR }
+enum class ToolPanel { NONE, TOOLS, CLIPBOARD, AI, LAYOUT, CALCULATOR, CONVERTER, CALENDAR, QR, DRAW }
 
 /**
  * The tools, clipboard and AI tools panels' open state, free of Views (JVM-tested). Only one is open at a time; any
@@ -256,6 +260,10 @@ class ToolsController(
                 open(ToolPanel.QR)
                 return
             }
+            Tool.DRAW -> {
+                open(ToolPanel.DRAW)
+                return
+            }
             else -> Unit
         }
         close()
@@ -268,7 +276,7 @@ class ToolsController(
             Tool.LANGUAGES -> host.openLanguages()
             Tool.THEME -> host.openTheme()
             Tool.SETTINGS -> host.openSettings()
-            Tool.CLIPBOARD, Tool.AI, Tool.LAYOUT, Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR -> Unit
+            Tool.CLIPBOARD, Tool.AI, Tool.LAYOUT, Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.DRAW -> Unit
         }
     }
 
