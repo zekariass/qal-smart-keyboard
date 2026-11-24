@@ -55,7 +55,7 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
 
     protected val column = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
+        setPadding(dp(8f), dp(2f), dp(8f), dp(2f))
     }
     private val scroll = ScrollView(context).apply {
         isVerticalScrollBarEnabled = false
@@ -175,7 +175,7 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
      * the row, never below the 48dp a button measures. When the panel is shorter than its rows need (a small keyboard-height
      * setting) the column scrolls, the fallback.
      */
-    protected fun row(vararg cells: Pair<View, Float>, gapDp: Float = 4f, bottomDp: Float = 4f, stretch: Boolean = true): LinearLayout =
+    protected fun row(vararg cells: Pair<View, Float>, gapDp: Float = GAP_DP, bottomDp: Float = GAP_DP, stretch: Boolean = true): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -194,7 +194,7 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
         }
 
     /** A vertical stack of [cells] (view, weight) that shares its height by weight, each at least as tall as it measures. */
-    protected fun stack(vararg cells: Pair<View, Float>, gapDp: Float = 4f): LinearLayout =
+    protected fun stack(vararg cells: Pair<View, Float>, gapDp: Float = GAP_DP): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             cells.forEachIndexed { i, (v, w) ->
@@ -206,7 +206,7 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
         }
 
     /** A horizontal group of [cells] that shares its width by weight; cells fill the height. */
-    protected fun hbox(vararg cells: Pair<View, Float>, gapDp: Float = 4f): LinearLayout =
+    protected fun hbox(vararg cells: Pair<View, Float>, gapDp: Float = GAP_DP): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             cells.forEachIndexed { i, (v, w) ->
@@ -228,7 +228,7 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
         return HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             addView(inner, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }.also { column.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4f) }) }
+        }.also { column.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(GAP_DP) }) }
     }
 
     /** Registers a custom control (an icon button, a swatch) so [controls] lists it. */
@@ -259,6 +259,12 @@ abstract class UtilityPanelView(context: Context) : FrameLayout(context) {
     companion object {
         /** The smallest touch target (ADR 0035). */
         const val MIN_TARGET_DP = 48f
+
+        /**
+         * Gap between rows and cells. 3dp (not 4) and 2dp column padding let five 48dp rows fit the key area of a default
+         * keyboard on a 2.625-density phone (~266dp; device test 2026-11-24: at 4dp the last row was clipped).
+         */
+        const val GAP_DP = 3f
         private const val DEFAULT_HEIGHT_DP = 260f
     }
 }

@@ -1123,7 +1123,9 @@ class KeyboardImeService : InputMethodService() {
         }
         val drawView = DrawPanelView(ui).also {
             it.visibility = View.GONE
-            it.heightProvider = { k.preferredHeightPx() }
+            // The AI panels' taller height: three control rows plus a canvas worth drawing on do not fit the key area
+            // (device test 2026-11-24: ~251dp left a clipped bottom row and a ~90dp canvas).
+            it.heightProvider = { aiPanelHeightPx(k) }
             it.controller = draw
             it.executor = drawThread
             it.mainPost = { r -> main.post(r) }

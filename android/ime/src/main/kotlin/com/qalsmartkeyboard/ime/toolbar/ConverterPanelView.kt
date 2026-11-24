@@ -135,22 +135,27 @@ class ConverterPanelView(context: Context) : UtilityPanelView(context) {
         val dot = button(".", s(R.string.calc_key_dot)) { controller.key(NumKey.Dot); refresh() }
         val copy = button(s(R.string.util_copy), s(R.string.util_copy), sp = 13f) { phrase()?.let(onCopy) }
         val insert = button(s(R.string.util_insert), s(R.string.util_insert), PadStyle.ACCENT, sp = 13f) { phrase()?.let(onInsert) }
+        // ⌫ and C are the pad's fourth column, so the side holds three rows and the whole panel is four 48dp rows under the
+        // tabs (device test 2026-11-24: with ⌫ C on the side, Copy and Insert fell below the key area).
         val pad = stack(
-            hbox(digit(7) to 1f, digit(8) to 1f, digit(9) to 1f) to 1f,
-            hbox(digit(4) to 1f, digit(5) to 1f, digit(6) to 1f) to 1f,
-            hbox(digit(1) to 1f, digit(2) to 1f, digit(3) to 1f) to 1f,
-            hbox(digit(0) to 1f, dot to 1f, neg to 1f) to 1f,
+            hbox(digit(7) to 1f, digit(8) to 1f, digit(9) to 1f, back to 1f) to 1f,
+            hbox(digit(4) to 1f, digit(5) to 1f, digit(6) to 1f, clear to 1f) to 1f,
+            hbox(digit(1) to 1f, digit(2) to 1f, digit(3) to 1f, dot to 1f) to 1f,
+            hbox(neg to 1f, digit(0) to 2f, spacer() to 1f) to 1f,
         )
         val side = stack(
             units to 1f,
-            display to 1.3f,
-            hbox(back to 1f, clear to 1f) to 1f,
+            display to 2f,
             hbox(copy to 1f, insert to 1f) to 1f,
         )
-        fill(hbox(pad to 0.46f, side to 0.54f, gapDp = 6f))
+        fill(hbox(pad to 0.56f, side to 0.44f, gapDp = 6f))
         refresh()
         if (controller.mode == ConverterMode.CURRENCY) onCurrencyOpened()
     }
+
+    /** An empty cell that keeps the pad's columns aligned: a [android.widget.Space] measures 0 (a plain View would take
+     *  all the height it is offered and squeeze the other rows). */
+    private fun spacer(): View = android.widget.Space(context)
 
     private fun phrase(): String? = (controller.result() as? ConverterResult.Value)?.phrase
 

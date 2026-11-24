@@ -98,7 +98,8 @@ class CalendarPanelView(context: Context) : UtilityPanelView(context) {
 
         // One row of actions: Today, the numerals toggle, Copy, Insert.
         val today = button(s(R.string.cal_today), s(R.string.cal_today), sp = 13f) { controller.useToday(); refresh() }
-        val num = chip(s(R.string.cal_numerals), s(R.string.cal_numerals), controller.ethiopicNumerals) {
+        // The label is the numerals themselves (the words were cut to "Ethiopic n…" on a phone); TalkBack reads the words.
+        val num = chip("፩፪፫", s(R.string.cal_numerals), controller.ethiopicNumerals) {
             controller.setEthiopicNumerals(!controller.ethiopicNumerals)
             render()
         }

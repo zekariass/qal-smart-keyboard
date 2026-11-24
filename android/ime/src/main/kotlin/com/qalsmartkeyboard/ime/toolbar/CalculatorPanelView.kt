@@ -103,15 +103,16 @@ class CalculatorPanelView(context: Context) : UtilityPanelView(context) {
         val close = button(")", s(R.string.calc_key_close), PadStyle.SPECIAL) { controller.key(CalcKey.CloseParen) }
         val pct = button("%", s(R.string.calc_key_percent), PadStyle.SPECIAL) { controller.key(CalcKey.Percent) }
         val back = button("⌫", s(R.string.calc_key_backspace), PadStyle.SPECIAL) { controller.key(CalcKey.Backspace) }
-        row(*cells(clear, open, close, pct, back))
-        row(*cells(digit(7), digit(8), digit(9), op('÷', R.string.calc_key_divide), op('^', R.string.calc_key_power)))
+        // Four rows of six (device test 2026-11-24: the key area is five keyboard rows, ~251dp on a 2.625-density phone, so
+        // five 48dp pad rows plus gaps did not fit and the last row scrolled; four rows fit with room to spare).
         val copy = button(s(R.string.util_copy), s(R.string.util_copy), sp = 13f) { controller.resultText()?.let(onCopy) }
-        row(*cells(digit(4), digit(5), digit(6), op('×', R.string.calc_key_multiply), copy))
         val insert = button(s(R.string.util_insert), s(R.string.util_insert), PadStyle.ACCENT, sp = 13f) { controller.resultText()?.let(onInsert) }
-        row(*cells(digit(1), digit(2), digit(3), op('−', R.string.calc_key_minus), insert))
         val dot = button(".", s(R.string.calc_key_dot)) { controller.key(CalcKey.Dot) }
         val eq = button("=", s(R.string.calc_key_equals), PadStyle.ACCENT, sp = 22f) { controller.key(CalcKey.Equals) }
-        row(digit(0) to 1f, dot to 1f, eq to 2f, op('+', R.string.calc_key_plus) to 1f)
+        row(*cells(digit(7), digit(8), digit(9), op('÷', R.string.calc_key_divide), clear, back))
+        row(*cells(digit(4), digit(5), digit(6), op('×', R.string.calc_key_multiply), open, close))
+        row(*cells(digit(1), digit(2), digit(3), op('−', R.string.calc_key_minus), pct, op('^', R.string.calc_key_power)))
+        row(*cells(digit(0), dot, eq, op('+', R.string.calc_key_plus), copy, insert))
         refresh()
     }
 
