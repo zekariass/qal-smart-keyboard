@@ -605,5 +605,41 @@
     <string name="pay_checkout_close">Cancel payment</string>
     <string name="pay_checkout_error_title">The payment page didn\'t load</string>
     <string name="pay_checkout_error_body">Check your connection and try again.</string>
+    <!-- AI credit packs (T8.10). -->
+    <string name="pay_credits_title">AI credits</string>
+    <string name="pay_credits_header">AI credits</string>
+    <string name="pay_credits_balance">Your credits</string>
+    <string name="pay_credits_expire_all">Expire on %2$s</string>
+    <string name="pay_credits_expire_some">%1$d expire on %2$s</string>
+    <string name="pay_pack_terms">One-time purchase · no subscription · %1$s</string>
+    <string name="pay_pack_terms_short">One-time purchase · no subscription</string>
+    <string name="pay_pack_buy">Buy for %1$s</string>
+    <string name="pay_credits_terms">Credits are paid once. Nothing renews and nothing is charged automatically. Credits that expire first are used first.</string>
+    <string name="pay_credits_guest_note">Buying credits needs an account, so your credits stay yours on any phone.</string>
+    <string name="pay_credits_history">Credit history</string>
+    <string name="pay_credits_paid_title">Credits added</string>
+    <string name="pay_credits_paid_body">Your credits are ready to use in the keyboard.</string>
+    <string name="pay_receipt_credits">Credits</string>
+    <string name="pay_receipt_credits_expire">Credits expire on</string>
+    <string name="pay_ledger_purchase">Credits bought</string>
+    <string name="pay_ledger_grant">Credits added</string>
+    <string name="pay_ledger_consumption">Used</string>
+    <string name="pay_ledger_refund">Refunded</string>
+    <string name="pay_ledger_expiry">Expired</string>
+    <string name="pay_ledger_adjustment">Adjustment</string>
+    <string name="pay_ledger_reversal">Reversed</string>
+    <string name="pay_ledger_other">Credit change</string>
+    <string name="pay_ledger_balance_after">Balance: %1$s</string>
+    <string name="pay_ledger_empty_title">No credit activity yet</string>
+    <string name="pay_ledger_empty_body">When you buy or use credits, they show up here.</string>
+    <string name="pay_ledger_more">Load more</string>
+    <plurals name="pay_credits_count">
+        <item quantity="one">%1$d credit</item>
+        <item quantity="other">%1$d credits</item>
+    </plurals>
+    <plurals name="pay_valid_days">
+        <item quantity="one">valid %1$d day</item>
+        <item quantity="other">valid %1$d days</item>
+    </plurals>
     <string name="plans_account_summary">Your plan, prices and payment</string>
 </resources>

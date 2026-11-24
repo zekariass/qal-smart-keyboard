@@ -49,13 +49,20 @@ class BillingClient(private val clients: ApiClients) {
      * `POST /billing/orders` with [idempotencyKey] (the same key and body return the same order: a retry after a lost
      * answer never creates a second one). [marketCountry] is the value [options] returned; the server prices it.
      */
-    suspend fun createOrder(idempotencyKey: UUID, productCode: String, billingPeriod: String, marketCountry: String): PaymentOrder {
+    suspend fun createOrder(
+        idempotencyKey: UUID,
+        productCode: String,
+        billingPeriod: String,
+        marketCountry: String,
+        /** `MANUAL_RENEW` for plans; null for a credit pack (one-time, no renewal: the field is left out). */
+        renewalPreference: String? = "MANUAL_RENEW",
+    ): PaymentOrder {
         val body = buildJsonObject {
             put("productCode", productCode)
             put("billingPeriod", billingPeriod)
             put("marketCountry", marketCountry)
             put("salesChannel", requireChannel().salesChannel)
-            put("renewalPreference", "MANUAL_RENEW")
+            renewalPreference?.let { put("renewalPreference", it) }
         }
         val doc = call("POST", "/billing/orders", body = body, idempotencyKey = idempotencyKey)
         return BillingJson.order(doc) ?: throw ApiError.Unexpected(201)
@@ -102,6 +109,15 @@ class BillingClient(private val clients: ApiClients) {
     /** The plan the server grants now (`GET /me/entitlements`, its `plan` member). */
     suspend fun currentPlan(): CurrentPlan =
         BillingJson.plan(call("GET", "/me/entitlements")) ?: throw ApiError.Unexpected(200)
+
+    /** `GET /me/credits` (T8.10): the balance and the spendable lots, guests included. */
+    suspend fun credits(): CreditSummary = BillingJson.credits(call("GET", "/me/credits")) ?: throw ApiError.Unexpected(200)
+
+    /** `GET /me/credits/transactions`: the ledger, newest first; [cursor] is the previous page's `nextCursor`. */
+    suspend fun creditTransactions(cursor: String? = null, limit: Int = 20): CreditTransactionPage {
+        val query = buildMap { put("limit", limit.toString()); cursor?.let { put("cursor", it) } }
+        return BillingJson.creditPage(call("GET", "/me/credits/transactions", query = query)) ?: throw ApiError.Unexpected(200)
+    }
 
     /** `GET /me/subscriptions` (first page). */
     suspend fun subscriptions(): List<Subscription> {

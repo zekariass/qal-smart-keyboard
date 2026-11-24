@@ -217,6 +217,30 @@ class AiPanelViewTest {
         assertEquals("See plans", AiMessages.link(ctx, AiFailure.NotEntitled.link!!))
     }
 
+    @Test fun quotaLinksFollowWhatTheServerOffered() {
+        val both = AiFailure.QuotaExceeded(null, canUpgrade = true, canBuyCredits = true)
+        assertEquals(AiLink.UPGRADE, both.link)
+        assertEquals(AiLink.BUY_CREDITS, both.extraLink)
+        val creditsOnly = AiFailure.QuotaExceeded(null, canUpgrade = false, canBuyCredits = true)
+        assertEquals(AiLink.BUY_CREDITS, creditsOnly.link)
+        assertNull(creditsOnly.extraLink)
+        val plansOnly = AiFailure.QuotaExceeded(null, canUpgrade = true)
+        assertEquals(AiLink.UPGRADE, plansOnly.link)
+        assertNull(plansOnly.extraLink)
+        assertNull(AiFailure.QuotaExceeded(null, canUpgrade = false).link)
+        assertEquals("Buy credits", AiMessages.link(ctx, AiLink.BUY_CREDITS))
+        assertTrue(AiMessages.failure(ctx, both).contains("Upgrade or buy credits"))
+        assertTrue(AiMessages.failure(ctx, creditsOnly).contains("Buy credits for more"))
+    }
+
+    @Test fun theToolsGridShowsTheCreditBalanceBesideTheAllowance() {
+        val quota = mapOf(AiTaskKind.TRANSLATE to AiQuotaHint(12, 20, AiPeriod.DAILY, null))
+        assertEquals("Translate: 12 of 20 left today · AI credits: 120", AiMessages.gridNotice(ctx, AiAvailability(quota = quota, creditBalance = 120)))
+        assertEquals("Translate: 12 of 20 left today", AiMessages.gridNotice(ctx, AiAvailability(quota = quota, creditBalance = 0)))
+        assertEquals("AI credits: 5", AiMessages.gridNotice(ctx, AiAvailability(creditBalance = 5)))
+        assertNull(AiMessages.gridNotice(ctx, AiAvailability()))
+    }
+
     @Test fun theSystemClipboardHonoursTheSensitiveFlagAndReadsOnlyOnRequest() {
         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = SystemAiClipboard(ctx)

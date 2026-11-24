@@ -79,6 +79,7 @@
     <string name="ai_tile_tone_description">Irra deebi\'ii barreessi, akkaataa: %1$s</string>
     <string name="ai_grid_offline">Toora ala: AI walqunnamtii barbaada</string>
     <string name="ai_grid_quota">%1$s: %2$s</string>
+    <string name="ai_grid_credits">Kireediin AI: %1$d</string>
     <string name="ai_status_offline">Toora ala</string>
     <string name="ai_status_signed_out">AI fayyadamuuf seenaa</string>
     <string name="ai_status_update">Haaromsuun barbaachisa</string>
@@ -108,6 +109,8 @@
     <string name="ai_err_quota">Qooda AI keessanii fayyadamtanii fixxaniittu.</string>
     <string name="ai_err_quota_reset">Qooda AI keessanii fayyadamtanii fixxaniittu. %1$s haaromfama.</string>
     <string name="ai_err_quota_upgrade">Dabalataaf fooyyessaa.</string>
+    <string name="ai_err_quota_upgrade_or_credits">Dabalataaf fooyyessaa yookaan kireedii bitadhaa.</string>
+    <string name="ai_err_quota_credits">Dabalataaf kireedii bitadhaa.</string>
     <string name="ai_err_rate_limited">Gaaffiin baay\'ateera. Xiqqoo eegaatii irra deebi\'aa yaalaa.</string>
     <string name="ai_err_not_entitled">Amalli kun paakeejii keessan keessa hin jiru.</string>
     <string name="ai_err_on_device_only">AI meeshaa irratti qofa filattaniittu, kanaaf homtuu hin ergamne. Kana qindaa\'ina AI keessatti jijjiiraa.</string>
@@ -125,6 +128,7 @@
     <string name="ai_link_sign_in">Seenuu</string>
     <string name="ai_link_settings">Qindaa\'ina banaa</string>
     <string name="ai_link_upgrade">Paakeejiiwwan ilaalaa</string>
+    <string name="ai_link_buy_credits">Kireedii bitadhaa</string>
     <string name="ai_link_update">Haaromsaa</string>
 
     <!-- AI panels, direction control and e-mail writer -->

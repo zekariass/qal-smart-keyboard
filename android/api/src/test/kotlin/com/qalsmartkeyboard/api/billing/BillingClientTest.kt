@@ -85,6 +85,43 @@ class BillingClientTest {
         assertEquals(Money(29900, "ETB", 2), order.total)
     }
 
+    @Test fun aCreditPackOrderOmitsTheRenewalPreferenceAndTheOrderReadsTheLot() = runBlocking {
+        server.enqueue(json(201, ORDER.replace("STATUS", "PAID").replace("\"createdAt\"", "\"fulfilment\":{\"creditLotId\":\"$ORDER_ID\"},\"createdAt\"")))
+        val order = billing.createOrder(UUID.randomUUID(), "CREDITS_500", "ONE_TIME", "ET", renewalPreference = null)
+        val body = Json.parseToJsonElement(server.takeRequest().body.readUtf8()) as JsonObject
+        assertEquals(setOf("productCode", "billingPeriod", "marketCountry", "salesChannel"), body.keys)
+        assertEquals(JsonPrimitive("ONE_TIME"), body["billingPeriod"])
+        assertEquals(ORDER_ID, order.creditLotId)
+    }
+
+    @Test fun creditPackProductsCarryUnitsAndValidity() = runBlocking {
+        val pack = """{"productCode":"CREDITS_500","productType":"AI_CREDIT_PACK","displayName":"500 AI credits","creditUnits":500,"creditValidityDays":365,
+            "prices":[{"billingPeriod":"ONE_TIME","renewalModel":"NONE","listPrice":{"amountMinor":19900,"currency":"ETB","exponent":2},"taxBehavior":"INCLUSIVE"}]}"""
+        server.enqueue(json(200, OPTIONS.replace("\"products\":[", "\"products\":[$pack,")))
+        val p = billing.options().products.first { it.productType == "AI_CREDIT_PACK" }
+        assertEquals(500L, p.creditUnits)
+        assertEquals(365, p.creditValidityDays)
+        assertEquals("ONE_TIME", p.prices.single().billingPeriod)
+        server.enqueue(json(200, OPTIONS))
+        assertNull(billing.options().products.single().creditUnits) // a plan carries none
+    }
+
+    @Test fun creditsAndTheLedgerParse() = runBlocking {
+        server.enqueue(json(200, """{"balanceUnits":120.75,"nextExpiryAt":"2027-11-24T09:46:40Z","lots":[{"lotId":"a","originalUnits":100,"remainingUnits":100.5,"source":"PURCHASE","expiresAt":"2027-11-24T09:46:40Z"}]}"""))
+        val c = billing.credits()
+        assertEquals("/api/v1/me/credits", server.takeRequest().path)
+        assertEquals(120.75, c.balanceUnits, 0.0)
+        assertEquals(1_827_049_600_000L, c.nextExpiryAtMs)
+        assertEquals(100.5, c.lots.single().remainingUnits, 0.0)
+
+        server.enqueue(json(200, """{"items":[{"id":"t1","transactionType":"CONSUMPTION","deltaUnits":-0.25,"balanceAfter":20.5,"featureCode":"TRANSLATE","createdAt":"2026-11-19T09:05:00Z"},{"transactionType":"BROKEN"}],"nextCursor":"n1"}"""))
+        val page = billing.creditTransactions("c0", 10)
+        assertEquals("/api/v1/me/credits/transactions?limit=10&cursor=c0", server.takeRequest().path)
+        assertEquals(listOf("t1"), page.items.map { it.id }) // a row without an id is dropped, not fatal
+        assertEquals(-0.25, page.items[0].deltaUnits, 0.0)
+        assertEquals("n1", page.nextCursor)
+    }
+
     @Test fun theDirectBuildSellsOnItsOwnChannel() = runBlocking {
         val direct = client(DistributionChannel.DIRECT_DOWNLOAD)
         server.enqueue(json(200, OPTIONS))

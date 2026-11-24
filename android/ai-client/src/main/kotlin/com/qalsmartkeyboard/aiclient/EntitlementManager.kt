@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -67,6 +68,10 @@ class EntitlementManager(
 
     @Volatile private var entitledKinds: Set<AiTaskKind>? = null
 
+    /** The prepaid credit balance (`creditBalance` of `/me/entitlements`, whole credits rounded down), or null while unknown. */
+    @Volatile var creditBalance: Long? = null
+        private set
+
     val quota: Map<AiTaskKind, AiQuotaHint> get() = quotaByKind.toMap()
     val planLabel: String? get() = plan
 
@@ -93,6 +98,7 @@ class EntitlementManager(
         verified = null
         quotaByKind.clear()
         entitledKinds = null
+        creditBalance = null
         plan = null
         lastQuotaFetch = 0
         lastTokenAttempt = 0
@@ -198,6 +204,7 @@ class EntitlementManager(
                 }
                 quotaByKind.clear()
                 quotaByKind.putAll(fresh)
+                creditBalance = (o["creditBalance"] as? JsonPrimitive)?.doubleOrNull?.takeIf { it >= 0 }?.let { kotlin.math.floor(it + 1e-9).toLong() }
                 entitledKinds = enabled
                 onChanged()
             }

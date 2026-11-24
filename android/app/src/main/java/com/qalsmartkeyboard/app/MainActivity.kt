@@ -209,6 +209,8 @@ class MainActivity : ComponentActivity() {
             var showPlans by rememberSaveable { mutableStateOf(false) }
             // Opened from the keyboard (a lock badge or "See plans", AiLink.UPGRADE): leaving returns to the app the user was typing in.
             var plansFromKeyboard by rememberSaveable { mutableStateOf(false) }
+            // "Buy credits" from the keyboard (T8.10): the plans screen scrolls to its AI credits section once.
+            var plansFocusCredits by rememberSaveable { mutableStateOf(false) }
             // The privacy area (A2.6): null = closed, else a PrivacyRoute name.
             var privacyRoute by rememberSaveable { mutableStateOf<String?>(null) }
             // Opened from the keyboard's gear: settings offer "Back to typing" (and Back) to return to the app.
@@ -241,7 +243,8 @@ class MainActivity : ComponentActivity() {
                         fromKeyboard = true
                         showSignIn = true
                     }
-                    DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true; plansFromKeyboard = true }
+                    DeepLinkAction.SHOW_PLANS -> { showSignIn = false; privacyRoute = null; showPlans = true; plansFromKeyboard = true; plansFocusCredits = false }
+                    DeepLinkAction.SHOW_CREDITS -> { showSignIn = false; privacyRoute = null; showPlans = true; plansFromKeyboard = true; plansFocusCredits = true }
                     DeepLinkAction.OPEN_STORE -> openStorePage(this@MainActivity)
                     DeepLinkAction.SHOW_KEYBOARD_SETTINGS -> {
                         showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
@@ -341,6 +344,7 @@ class MainActivity : ComponentActivity() {
                         showPlans && !showFlow -> {
                             val closePlans = {
                                 showPlans = false
+                                plansFocusCredits = false
                                 if (plansFromKeyboard) {
                                     plansFromKeyboard = false
                                     finishAndRemoveTask()
@@ -351,6 +355,8 @@ class MainActivity : ComponentActivity() {
                                 onBack = closePlans,
                                 onSignIn = { signIn.reset(); showSignIn = true },
                                 onDone = closePlans,
+                                focusCredits = plansFocusCredits,
+                                onCreditsFocused = { plansFocusCredits = false },
                             )
                         }
                         privacyRoute != null && !showFlow -> PrivacyHost(
@@ -403,6 +409,7 @@ class MainActivity : ComponentActivity() {
                                 onLink = { l ->
                                     when (l) {
                                         AiLink.UPGRADE -> showPlans = true
+                                        AiLink.BUY_CREDITS -> { showPlans = true; plansFocusCredits = true }
                                         AiLink.SIGN_IN -> { signIn.reset(); showSignIn = true }
                                         AiLink.UPDATE_APP -> openStorePage(this@MainActivity)
                                         else -> privacyRoute = PrivacyRoute.DASHBOARD.name

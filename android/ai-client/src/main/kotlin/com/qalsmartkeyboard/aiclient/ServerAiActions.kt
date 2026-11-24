@@ -167,6 +167,7 @@ class ServerAiActions(
             return AiAvailability(
                 block, entitlements.quota, entitlements.planLabel, entitlements.gates(online).onDeviceModels, entitlements.entitled,
                 accountGeneration,
+                creditBalance = entitlements.creditBalance,
             )
         }
 

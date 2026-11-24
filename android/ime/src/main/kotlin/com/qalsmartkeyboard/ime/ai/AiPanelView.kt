@@ -196,6 +196,7 @@ class AiPanelView(context: Context) : LinearLayout(context) {
         )
         val link = f.link
         if (link != null) buttons += ui.button(AiMessages.link(context, link), primary = true) { onLink(link) }
+        f.extraLink?.let { l -> buttons += ui.button(AiMessages.link(context, l)) { onLink(l) } }
         if (AiGate.canRetry(f)) buttons += ui.button(context.getString(R.string.ai_retry), AiIcons.REFRESH, primary = link == null) { onRetry() }
         buttons += ui.button(context.getString(R.string.ai_panel_edit_inputs), AiIcons.EDIT) { onBack() }
     }

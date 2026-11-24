@@ -242,6 +242,23 @@ class TranslatePanelViewTest {
         assertEquals(listOf(AiLink.UPGRADE), h.links)
     }
 
+    @Test fun aUsedUpAllowanceOffersSeePlansAndBuyCreditsAndCreditsAloneOffersOnlyBuyCredits() {
+        val h = H().open()
+        h.type("Hello")
+        h.view.translateButtonView.performClick()
+        h.actions.answer(0, FakeAiActions.fail(AiFailure.QuotaExceeded(null, canUpgrade = true, canBuyCredits = true)))
+        assertTrue(h.outputTexts().contains("See plans"))
+        h.button("Buy credits").performClick()
+        h.button("See plans").performClick()
+        assertEquals(listOf(AiLink.BUY_CREDITS, AiLink.UPGRADE), h.links)
+
+        h.view.translateButtonView.performClick()
+        h.actions.answer(1, FakeAiActions.fail(AiFailure.QuotaExceeded(null, canUpgrade = false, canBuyCredits = true)))
+        assertFalse(h.outputTexts().contains("See plans"))
+        h.button("Buy credits").performClick()
+        assertEquals(AiLink.BUY_CREDITS, h.links.last())
+    }
+
     @Test fun signedOutIsOneLineWithItsLinkBeforeAnythingIsSent() {
         val a = FakeAiActions().apply { availability = AiAvailability(block = AiBlock.SIGNED_OUT) }
         val h = H(actions = a).open()

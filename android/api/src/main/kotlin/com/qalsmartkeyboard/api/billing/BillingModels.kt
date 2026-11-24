@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import java.time.OffsetDateTime
@@ -39,6 +40,9 @@ data class Product(
     val displayName: String,
     val description: String?,
     val planCode: String?,
+    /** `AI_CREDIT_PACK` only (T8.10): the credits the pack grants and how many days they stay valid. */
+    val creditUnits: Long? = null,
+    val creditValidityDays: Int? = null,
     val prices: List<Price>,
 )
 
@@ -90,6 +94,8 @@ data class PaymentOrder(
     val paidAtMs: Long?,
     val subscriptionId: String?,
     val receiptId: String?,
+    /** The credit lot a verified credit-pack order granted (T8.10). */
+    val creditLotId: String? = null,
 )
 
 /** `PaymentAttempt`. [checkoutUrl] is the provider's hosted page when [nextActionType] is `REDIRECT`. */
@@ -134,7 +140,28 @@ data class StorePurchaseResult(
     val subscription: Subscription?,
 )
 
+/** One spendable lot of `GET /me/credits`. */
+data class CreditLot(val lotId: String, val originalUnits: Double, val remainingUnits: Double, val source: String, val expiresAtMs: Long?)
+
+/** `CreditSummary` (`GET /me/credits`): [balanceUnits] is exact (6 dp); show it rounded down. */
+data class CreditSummary(val balanceUnits: Double, val nextExpiryAtMs: Long?, val lots: List<CreditLot>)
+
+/** `CreditTransaction`: one ledger row. `transactionType`: PURCHASE, GRANT, CONSUMPTION, REFUND, EXPIRY, ADJUSTMENT, REVERSAL. */
+data class CreditTransaction(
+    val id: String,
+    val transactionType: String,
+    val deltaUnits: Double,
+    val balanceAfter: Double,
+    val featureCode: String?,
+    val createdAtMs: Long?,
+)
+
+/** A page of the ledger, newest first; [nextCursor] is passed back for the next one. */
+data class CreditTransactionPage(val items: List<CreditTransaction>, val nextCursor: String?)
+
 internal object BillingJson {
+    fun double(o: JsonObject?, name: String): Double? = (o?.get(name) as? JsonPrimitive)?.doubleOrNull
+
     fun str(o: JsonObject?, name: String): String? = (o?.get(name) as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
     fun long(o: JsonObject?, name: String): Long? = (o?.get(name) as? JsonPrimitive)?.longOrNull
     fun int(o: JsonObject?, name: String): Int? = (o?.get(name) as? JsonPrimitive)?.intOrNull
@@ -176,6 +203,8 @@ internal object BillingJson {
             displayName = str(o, "displayName") ?: return null,
             description = str(o, "description"),
             planCode = str(o, "planCode"),
+            creditUnits = long(o, "creditUnits"),
+            creditValidityDays = int(o, "creditValidityDays"),
             prices = arr(o, "prices").mapNotNull { price(it) },
         )
     }
@@ -221,6 +250,7 @@ internal object BillingJson {
             paidAtMs = time(o, "paidAt"),
             subscriptionId = str(fulfilment, "subscriptionId"),
             receiptId = str(fulfilment, "receiptId"),
+            creditLotId = str(fulfilment, "creditLotId"),
         )
     }
 
@@ -271,6 +301,40 @@ internal object BillingJson {
             status = str(o, "status") ?: return null,
             expiresAtMs = time(o, "expiresAt"),
             subscription = subscription(obj(o, "subscription")),
+        )
+    }
+
+    fun credits(e: JsonElement?): CreditSummary? {
+        val o = e as? JsonObject ?: return null
+        return CreditSummary(
+            balanceUnits = double(o, "balanceUnits")?.takeIf { it >= 0 } ?: return null,
+            nextExpiryAtMs = time(o, "nextExpiryAt"),
+            lots = arr(o, "lots").mapNotNull { l ->
+                CreditLot(
+                    lotId = str(l, "lotId") ?: return@mapNotNull null,
+                    originalUnits = double(l, "originalUnits") ?: return@mapNotNull null,
+                    remainingUnits = double(l, "remainingUnits") ?: return@mapNotNull null,
+                    source = str(l, "source") ?: "",
+                    expiresAtMs = time(l, "expiresAt"),
+                )
+            },
+        )
+    }
+
+    fun creditPage(e: JsonElement?): CreditTransactionPage? {
+        val o = e as? JsonObject ?: return null
+        return CreditTransactionPage(
+            items = arr(o, "items").mapNotNull { t ->
+                CreditTransaction(
+                    id = str(t, "id") ?: return@mapNotNull null,
+                    transactionType = str(t, "transactionType") ?: return@mapNotNull null,
+                    deltaUnits = double(t, "deltaUnits") ?: return@mapNotNull null,
+                    balanceAfter = double(t, "balanceAfter") ?: 0.0,
+                    featureCode = str(t, "featureCode"),
+                    createdAtMs = time(t, "createdAt"),
+                )
+            },
+            nextCursor = str(o, "nextCursor"),
         )
     }
 }

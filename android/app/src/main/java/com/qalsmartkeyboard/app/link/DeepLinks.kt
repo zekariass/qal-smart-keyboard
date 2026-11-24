@@ -23,6 +23,12 @@ enum class DeepLinkAction {
     /** The plans screen (paywall and checkout, ADR 0047); leaving it returns to the app the user was typing in. */
     SHOW_PLANS,
 
+    /**
+     * The plans screen scrolled to its "AI credits" section (T8.10), from the keyboard's "Buy credits"; leaving it returns
+     * to typing. Same screen and checkout as [SHOW_PLANS].
+     */
+    SHOW_CREDITS,
+
     /** The store page of the app (a 426 / update-required answer). */
     OPEN_STORE,
 
@@ -58,6 +64,7 @@ enum class DeepLinkAction {
  * | `SIGN_IN` | sign-in pane over the keyboard settings; the keyboard settings when already signed in with an account |
  * | `AI_SETTINGS` | privacy dashboard (consents, AI history, export, deletion; A2.6) |
  * | `UPGRADE` | plans screen (paywall; a keyboard lock badge or "See plans"), returning to typing when left |
+ * | `BUY_CREDITS` | plans screen scrolled to the credit packs (the quota notice's "Buy credits", T8.10) |
  * | `UPDATE_APP` | store page (even during first-run setup) |
  * | `SETTINGS` | keyboard settings, opened from the keyboard's gear (with a way back to typing) |
  * | `EMAIL_WRITER` | the e-mail writer with the keyboard's inputs (ADR 0031) |
@@ -78,6 +85,7 @@ object DeepLinks {
         link == AiLink.UPDATE_APP -> DeepLinkAction.OPEN_STORE
         !onboardingCompleted -> DeepLinkAction.NONE
         link == AiLink.SIGN_IN -> if (account == AccountStatus.Registered) DeepLinkAction.SHOW_KEYBOARD_SETTINGS else DeepLinkAction.SHOW_SIGN_IN
+        link == AiLink.BUY_CREDITS -> DeepLinkAction.SHOW_CREDITS
         link == AiLink.AI_SETTINGS -> DeepLinkAction.SHOW_PRIVACY
         link == AiLink.SETTINGS -> DeepLinkAction.SHOW_KEYBOARD_SETTINGS
         link == AiLink.EMAIL_WRITER -> DeepLinkAction.SHOW_EMAIL_WRITER

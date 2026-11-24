@@ -251,6 +251,9 @@ enum class AiLink {
     /** The companion app's "Write Email with AI" screen; the keyboard's inputs travel in memory ([AiEmailHandoff]). */
     EMAIL_WRITER,
 
+    /** The companion app's plans screen scrolled to its "AI credits" section (T8.10): the quota notice's "Buy credits". */
+    BUY_CREDITS,
+
     /** The keyboard settings screen, opened by the top bar's gear (not an AI failure link). */
     SETTINGS,
 
@@ -272,6 +275,9 @@ sealed interface AiFailure {
     val retrySameKey: Boolean get() = false
     val link: AiLink? get() = null
 
+    /** A second action next to [link] (the quota notice's "Buy credits" beside "See plans"), or null. */
+    val extraLink: AiLink? get() = null
+
     /** No connection (known before the call, or the call failed with an I/O error). */
     data object Offline : AiFailure { override val retrySameKey get() = true }
 
@@ -288,9 +294,18 @@ sealed interface AiFailure {
     /** 409 `REQUEST_IN_PROGRESS`: the same key is still running on the server. */
     data object Busy : AiFailure { override val retrySameKey get() = true }
 
-    /** 429 `QUOTA_EXCEEDED`. [resetAtMs] when the allowance renews; [canUpgrade] when the server offered options. */
-    data class QuotaExceeded(val resetAtMs: Long?, val canUpgrade: Boolean) : AiFailure {
-        override val link get() = if (canUpgrade) AiLink.UPGRADE else null
+    /**
+     * 429 `QUOTA_EXCEEDED`. [resetAtMs] when the allowance renews; [canUpgrade] when the server offered a plan upgrade;
+     * [canBuyCredits] when it offered a prepaid credit pack (T8.10; the market sells credits). Credits only: the one link
+     * is "Buy credits"; both: "See plans" and "Buy credits".
+     */
+    data class QuotaExceeded(val resetAtMs: Long?, val canUpgrade: Boolean, val canBuyCredits: Boolean = false) : AiFailure {
+        override val link get() = when {
+            canUpgrade -> AiLink.UPGRADE
+            canBuyCredits -> AiLink.BUY_CREDITS
+            else -> null
+        }
+        override val extraLink get() = if (canUpgrade && canBuyCredits) AiLink.BUY_CREDITS else null
     }
 
     /** 429 `RATE_LIMITED`. */
@@ -369,6 +384,8 @@ data class AiAvailability(
      * it moves on.
      */
     val accountGeneration: Long = 0,
+    /** The prepaid AI credit balance in whole credits (T8.10), or null while unknown. Shown next to the allowance. */
+    val creditBalance: Long? = null,
 ) {
     /** True when the cached plan state says [kind] is not part of the plan. Unknown state never locks. */
     fun locks(kind: AiTaskKind): Boolean = entitled?.let { kind !in it } == true
