@@ -71,12 +71,12 @@
 | Phase 1 | keyboard-core + Android offline alpha (M1) | 22 | 21 | 0 | 0 | 1 | 95% |
 | Phase 2 | Backend + P0 AI (M2) | 39 | 39 | 0 | 0 | 0 | 100% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
-| Phase 4 | Monetisation (M4) | 11 | 2 | 7 | 0 | 2 | 18% |
+| Phase 4 | Monetisation (M4) | 11 | 3 | 6 | 0 | 2 | 27% |
 | Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
 | Phase 6 | Differentiation (M6) | 8 | 0 | 0 | 0 | 8 | 0% |
 | Phase 7 | Expansion + B2B (M7) | 5 | 0 | 0 | 0 | 5 | 0% |
 | Phase 8 | Extended tools (ADR 0048) | 15 | 3 | 0 | 0 | 12 | 20% |
-| **Total** | | **125** | 71 | 7 | 0 | 47 | 57% |
+| **Total** | | **125** | 72 | 6 | 0 | 47 | 58% |
 
 ### Human gates
 
@@ -213,6 +213,7 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 | 2026-11-24 | T8.13 | 🟦 IN PROGRESS | adbe3f1 | T8.2's keyboard UI (owner work, 9010eff) already covered AI Assist paste + Reply with the 6 intents. Added: Translate panel "Paste copied message" chip (empty box, clip description says text; sensitive clip → hint, never read) — one tap reads the clip, fills the box and translates through the Translate button's path (blocked/offline/quota handling); AI Assist paste preselects Reply when no action was chosen (never a plan-locked action). Strings am/ti/om DRAFT (N9). Verified: :ime 893/0, :app play unit tests, play APK builds. Open: device test (phone dropped off wireless adb). |
 | 2026-11-24 | CI fix | 🟩 DONE | 0a29b9d | The payments line and the T8.1/T8.2 line were each green alone; together CI failed: `cargo fmt` on the owner's translit session change, `FlywayBaselineIT` (28 migrations), `AiProviderSeedsIT` (V28 FORMAT_TEXT capabilities and disabled policy). Full backend suite reproduced locally (439 tests, 3 failures → fixed and rerun green). |
 | 2026-11-24 | T8.13 | 🟩 DONE | be07d02 | Device-tested on the owner's phone (SM-A346B, play debug, dev backend on main): message copied in another app's field → Translate panel "Paste copied message" → one tap pasted and translated (en → ti); AI Assist → Reply → Paste from clipboard → stance Agree → Suggest → Insert put the reply into the field. Two defects found and fixed on the way: (1) a Detect translation whose provider reports no source (OpenAI) was labelled with the keyboard language ("Amharic → Tigrinya" for English) — now "Detect language → …" (6b683ca; server-side detection for the LLM path left to T8.14); (2) SMART_REPLY v3 still mixed in a declining reply under AGREE — `V29__smart_reply_intent_wins.sql` adds v4 (the varied-options default only without notes and intent; intent fixes every reply's stance); after V29 the same request gave three agreeing replies. Dev launcher now reads the JDK version from JAVA_HOME. Verified: backend 1308 unit + 439 IT green; :ime 893/0 + TranslatePanelViewTest 42/0. |
+| 2026-11-24 | M4.11 | 🟩 DONE | 015fd7e | Full flow device-tested on the owner's phone (SM-A346B, dev backend, ArifPay sandbox): Pay ETB299.00 → ArifPay in a browser Custom Tab (location prompt shown by the browser) → sandbox payment → return → server verified with ArifPay (`trigger=RETURN`) → order PAID, Premium subscription ACTIVE (source PAYMENT) → Plans shows "Your plan: Premium". Note: the dev account also held an admin-granted BUSINESS plan, which outranks Premium, so Plans first showed Business; revoked that test grant (dev data) and, after an app restart (the plan state is cached), Premium showed. A paid lower plan hiding behind a higher admin grant is a product decision left as is. |
 
 ---
 
@@ -391,7 +392,7 @@ Read SD §16 and the billing tags in API. Always fail closed.
 | M4.8 | Android `direct` flavour (APK distribution, Chapa path, self-update policy) and `billing-play` / `billing-direct` modules. | M4.2, M4.7 | Both flavours build; policy review. | 🟦 IN PROGRESS |
 | M4.9 | ArifPay adapter behind a feature flag. | M4.2 | Flag off by default. | 🟩 DONE |
 | M4.10 | Companion paywall/plan screens, order status polling, receipts, subscription management. | M4.2 | Flow tested. | 🟦 IN PROGRESS |
-| M4.11 | Hosted checkout in a Chrome Custom Tab instead of the in-app WebView (owner decision 2026-11-20: ArifPay's checkout page requires geolocation and stays blank when the WebView declines it). `androidx.browser` Custom Tab, `qalkeyboard://billing/return` deep link (return activity), on resume → server verification + order polling as today; the app requests no location permission. | M4.10 | ArifPay sandbox payment completed on the owner's phone → PAID → Premium unlocked in the keyboard. | 🟦 IN PROGRESS |
+| M4.11 | Hosted checkout in a Chrome Custom Tab instead of the in-app WebView (owner decision 2026-11-20: ArifPay's checkout page requires geolocation and stays blank when the WebView declines it). `androidx.browser` Custom Tab, `qalkeyboard://billing/return` deep link (return activity), on resume → server verification + order polling as today; the app requests no location permission. | M4.10 | ArifPay sandbox payment completed on the owner's phone → PAID → Premium unlocked in the keyboard. | 🟩 DONE |
 
 **Exit M4:** R6 passed; live real-money pilot; zero unverified grants.
 
