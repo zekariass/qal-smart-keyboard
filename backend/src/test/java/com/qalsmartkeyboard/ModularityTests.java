@@ -14,6 +14,6 @@ class ModularityTests {
 	@Test
 	void expectedModulesAreDetected() {
 		var modules = ApplicationModules.of(QalSmartKeyboardApplication.class);
-		org.assertj.core.api.Assertions.assertThat(modules.stream().count()).isEqualTo(21);
+		org.assertj.core.api.Assertions.assertThat(modules.stream().count()).isEqualTo(22);
 	}
 }

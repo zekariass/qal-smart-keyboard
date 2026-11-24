@@ -76,4 +76,10 @@ Starter/Standard/Pro packages (100/500/1,500 credits) are provisional data. Cons
   `/tools/fx-rates`, the new enum values and `intent`) land with their implementation steps, per plan rule 3.
 - Open questions added to SD §26.2: host-app `commitContent` coverage, FX source/licence, Ethiopic OCR coverage,
   GIF encoder licensing, media-AI provider selection, credit-pack pricing.
+- **T8.3 backend (`GET /api/v1/tools/fx-rates`, contract `getFxRates`):** implemented. Anonymous or signed-in
+  (`security: [{}, bearerAuth]`, like `/config`), unmetered, `Cache-Control: public, max-age=3600`. Rates come from the
+  `FxRateSource` port; the shipped adapter reads table `fx_rate_snapshots` (V30), seeded with a dev/test snapshot
+  (`source='seed'`, ~11 currencies against USD, NOT market data). No external call is made. The FX source/licence question
+  stays open: shipping to production needs a licensed provider behind that port (no API change); until then the seed is
+  not fit for real conversions, and a stale snapshot is flagged (`stale`, `qal.tools.fx.stale-after`, default 48h).
 - Phase 8 (`T8.x`) added to the implementation plan.

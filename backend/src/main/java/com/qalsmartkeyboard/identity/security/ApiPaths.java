@@ -30,7 +30,7 @@ final class ApiPaths {
 			post("/api/v1/auth/attestation-nonces"), post("/api/v1/auth/otp/start"), post("/api/v1/auth/otp/verify"),
 			post("/api/v1/auth/oauth/{provider}"), post("/api/v1/auth/email/register"), post("/api/v1/auth/email/login"),
 			post("/api/v1/auth/email/verify"),
-			get("/api/v1/config"), get("/api/v1/ai/capabilities"), get("/api/v1/languages"),
+			get("/api/v1/config"), get("/api/v1/ai/capabilities"), get("/api/v1/tools/fx-rates"), get("/api/v1/languages"),
 			get("/api/v1/languages/{languageCode}/transliteration-profiles"), get("/api/v1/language-resources"),
 			get("/api/v1/language-resources/{resourceId}"), get("/api/v1/resource-signing-keys")));
 

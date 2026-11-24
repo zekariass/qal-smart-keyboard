@@ -51,6 +51,8 @@ tags:
     description: Profile, deletion, data export and consents.
   - name: Config
     description: Remote configuration, feature flags and AI capability matrix.
+  - name: Tools
+    description: Unmetered productivity utilities (no AI credits), e.g. the daily currency-rate snapshot.
   - name: Languages
     description: Language catalogue, transliteration profiles and signed resource manifests.
   - name: Preferences
@@ -926,6 +928,38 @@ paths:
               schema: { type: string, maxLength: 100 }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ---------------------------------------------------------------- Tools
+  /api/v1/tools/fx-rates:
+    get:
+      tags: [Tools]
+      operationId: getFxRates
+      summary: Get the daily currency-rate snapshot for the offline converter
+      description: |
+        One snapshot of exchange rates against `base` (always `USD`): the value of one unit of `base` in each quote
+        currency. A client converts between any two currencies as `amount / rates[from] * rates[to]` (`USD` itself is
+        `1`). Read-only, unmetered (no AI credits) and identical for every caller, so it is publicly cacheable.
+        `asOf` is when the rates were taken; `stale` is `true` when `asOf` is older than the server's staleness
+        threshold (default 48 hours) and the client then shows a "rates may be out of date" note. `source` names the
+        provider (`seed` is the built-in development table, not live market data). A client keeps the last snapshot and
+        converts offline.
+
+        **Caching.** `Cache-Control: public, max-age=3600`.
+      security:
+        - {}
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The current snapshot.
+          headers:
+            Cache-Control:
+              description: '`public, max-age=3600`.'
+              schema: { type: string, maxLength: 100 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FxRates' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
 
   # ---------------------------------------------------------------- Languages
   /api/v1/languages:
@@ -4755,6 +4789,18 @@ components:
           description: Active `app_configurations` values for this platform scope.
           additionalProperties: true
         serverTime: { type: string, format: date-time }
+    FxRates:
+      type: object
+      required: [base, asOf, rates, source, stale]
+      properties:
+        base: { type: string, enum: [USD], description: Currency every rate is quoted against. }
+        asOf: { type: string, format: date-time, description: When the rates were taken. }
+        rates:
+          type: object
+          description: ISO 4217 code to the value of one unit of `base` in that currency.
+          additionalProperties: { type: number, exclusiveMinimum: 0 }
+        source: { type: string, maxLength: 100, description: Provider label; `seed` is the built-in development table. }
+        stale: { type: boolean, description: '`asOf` is older than the server''s staleness threshold.' }
     AiCapabilities:
       type: object
       required: [items, generatedAt]
