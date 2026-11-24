@@ -31,7 +31,9 @@ class NoNetworkTest {
         }
         assertTrue("sources found", files.size > 10)
         val hits = files.flatMap { f ->
-            val text = f.readText()
+            // android.net.Uri is a content address (T8.4 hands exported PNGs to the host app by content:// URI), not a
+            // network API; everything else under android.net stays forbidden.
+            val text = f.readText().replace("android.net.Uri", "")
             forbidden.filter { text.contains(it, ignoreCase = true) }.map { "${f.name}: $it" }
         }
         assertTrue("network references: $hits", hits.isEmpty())
