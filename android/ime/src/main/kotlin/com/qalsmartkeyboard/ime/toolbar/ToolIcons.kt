@@ -24,6 +24,9 @@ enum class ToolIcon {
 
     /** ADR 0043: the key layouts: three rows of key outlines, offset like a keyboard's. */
     LAYOUT,
+
+    // T8.3 productivity tools.
+    CALCULATOR, UNITS, CURRENCY, CALENDAR, QR,
     LOCK, CHECK, GRAMMAR, REWRITE,
 
     /** The AI entry (ADR 0041): an "AI" wordmark in a rounded outline, drawn as paths so it never scales with the font. */
@@ -435,6 +438,55 @@ object ToolIcons {
             Path().apply {
                 for (x in floatArrayOf(2.75f, 9.75f, 16.75f)) rect(x, 4.5f, x + 4.5f, 9.5f, 1.2f)
                 for (x in floatArrayOf(6.25f, 13.25f)) rect(x, 11.5f, x + 4.5f, 16.5f, 1.2f)
+            },
+        )
+        ToolIcon.CALCULATOR -> Glyph(
+            Path().apply {
+                rect(4.5f, 2.5f, 19.5f, 21.5f, 2.5f)
+                poly(8f, 7.5f, 16f, 7.5f)
+            },
+            Path().apply {
+                for (x in floatArrayOf(8.5f, 12f, 15.5f)) for (y in floatArrayOf(12f, 15.2f, 18.4f)) circle(x, y, 1f)
+            },
+        )
+        // A ruler with ticks.
+        ToolIcon.UNITS -> Glyph(
+            Path().apply {
+                rect(2.5f, 7.5f, 21.5f, 16.5f, 1.8f)
+                poly(7f, 7.5f, 7f, 12f); poly(11f, 7.5f, 11f, 10.5f); poly(15f, 7.5f, 15f, 12f); poly(19f, 7.5f, 19f, 10.5f)
+            },
+        )
+        // A coin with an S stroke.
+        ToolIcon.CURRENCY -> Glyph(
+            Path().apply {
+                circle(12f, 12f, 9f)
+                moveTo(15f, 9f)
+                cubicTo(15f, 7.2f, 9f, 7.2f, 9f, 10f)
+                cubicTo(9f, 12.6f, 15f, 11.4f, 15f, 14f)
+                cubicTo(15f, 16.8f, 9f, 16.8f, 9f, 15f)
+                poly(12f, 5.8f, 12f, 7.4f); poly(12f, 16.6f, 12f, 18.2f)
+            },
+        )
+        ToolIcon.CALENDAR -> Glyph(
+            Path().apply {
+                rect(3.5f, 5f, 20.5f, 20.5f, 2.5f)
+                poly(3.5f, 10f, 20.5f, 10f)
+                poly(8f, 3f, 8f, 7f); poly(16f, 3f, 16f, 7f)
+            },
+            Path().apply {
+                for (x in floatArrayOf(8f, 12f, 16f)) circle(x, 14f, 0.95f)
+                for (x in floatArrayOf(8f, 12f)) circle(x, 17.3f, 0.95f)
+            },
+        )
+        // Three finder squares and a few data modules.
+        ToolIcon.QR -> Glyph(
+            Path().apply {
+                rect(3.5f, 3.5f, 10f, 10f, 1.2f); rect(14f, 3.5f, 20.5f, 10f, 1.2f); rect(3.5f, 14f, 10f, 20.5f, 1.2f)
+            },
+            Path().apply {
+                rect(5.5f, 5.5f, 8f, 8f, 0.3f); rect(16f, 5.5f, 18.5f, 8f, 0.3f); rect(5.5f, 16f, 8f, 18.5f, 0.3f)
+                rect(14f, 14f, 16.2f, 16.2f, 0.3f); rect(18.3f, 14f, 20.5f, 16.2f, 0.3f)
+                rect(14f, 18.3f, 16.2f, 20.5f, 0.3f); rect(18.3f, 18.3f, 20.5f, 20.5f, 0.3f)
             },
         )
         ToolIcon.LOCK -> Glyph(

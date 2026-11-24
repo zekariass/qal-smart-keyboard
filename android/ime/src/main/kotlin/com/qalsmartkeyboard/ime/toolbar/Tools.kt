@@ -25,6 +25,15 @@ enum class Tool(val icon: ToolIcon) {
 
     /** ADR 0043: the key layouts of the current language ([ToolPanel.LAYOUT]). */
     LAYOUT(ToolIcon.LAYOUT),
+
+    /** T8.3 deterministic utilities (ADR 0048): free, unmetered, on-device; each opens a panel in place of the keys. */
+    CALCULATOR(ToolIcon.CALCULATOR),
+    UNIT_CONVERTER(ToolIcon.UNITS),
+
+    /** The converter panel on its Currency tab (offline rates snapshot only). */
+    CURRENCY(ToolIcon.CURRENCY),
+    CALENDAR(ToolIcon.CALENDAR),
+    QR(ToolIcon.QR),
     LANGUAGES(ToolIcon.LANGUAGES),
     THEME(ToolIcon.THEME),
     SETTINGS(ToolIcon.SETTINGS),
@@ -63,6 +72,13 @@ data class ToolContext(
      */
     val clipboardAllowed: Boolean
         get() = profile.kind != FieldKind.PASSWORD && profile.learningAllowed && !profile.noTextModel
+
+    /**
+     * T8.3 utilities (calculator, converters, calendar, QR): every field that takes committed text except passwords and raw
+     * key-event fields. They never read the field on their own and are never plan-gated (R-8, ADR 0048).
+     */
+    val utilitiesAllowed: Boolean
+        get() = profile.kind != FieldKind.PASSWORD && !profile.noTextModel
 }
 
 object ToolSet {
@@ -78,6 +94,13 @@ object ToolSet {
         if (c.profile.allowsEmoji && c.emojiReady) add(ToolEntry(Tool.WORD_ART))
         if (c.writingModes) add(ToolEntry(Tool.WRITING_MODE))
         if (c.layouts) add(ToolEntry(Tool.LAYOUT))
+        if (c.utilitiesAllowed) {
+            add(ToolEntry(Tool.CALCULATOR))
+            add(ToolEntry(Tool.UNIT_CONVERTER))
+            add(ToolEntry(Tool.CURRENCY))
+            add(ToolEntry(Tool.CALENDAR))
+            add(ToolEntry(Tool.QR))
+        }
         add(ToolEntry(Tool.LANGUAGES))
         add(ToolEntry(Tool.THEME))
         add(ToolEntry(Tool.SETTINGS))
@@ -132,10 +155,10 @@ interface ToolHost {
 }
 
 /**
- * Which tool panel replaces the key area: the tools grid, the clipboard, the AI tools grid (ADR 0041), or the current
- * language's key layouts (ADR 0043).
+ * Which tool panel replaces the key area: the tools grid, the clipboard, the AI tools grid (ADR 0041), the current
+ * language's key layouts (ADR 0043), or one of the T8.3 utilities (calculator, unit and currency converter, calendar, QR).
  */
-enum class ToolPanel { NONE, TOOLS, CLIPBOARD, AI, LAYOUT }
+enum class ToolPanel { NONE, TOOLS, CLIPBOARD, AI, LAYOUT, CALCULATOR, CONVERTER, CALENDAR, QR }
 
 /**
  * The tools, clipboard and AI tools panels' open state, free of Views (JVM-tested). Only one is open at a time; any
@@ -152,6 +175,10 @@ class ToolsController(
         private set
 
     val isOpen: Boolean get() = panel != ToolPanel.NONE
+
+    /** True when the converter panel was opened by the Currency tile (it then shows its Currency tab). */
+    var converterOnCurrency: Boolean = false
+        private set
 
     /** The tiles for the focused field. */
     fun tiles(): List<ToolEntry> = ToolSet.tiles(context())
@@ -212,6 +239,23 @@ class ToolsController(
                 open(ToolPanel.LAYOUT)
                 return
             }
+            Tool.CALCULATOR -> {
+                open(ToolPanel.CALCULATOR)
+                return
+            }
+            Tool.UNIT_CONVERTER, Tool.CURRENCY -> {
+                converterOnCurrency = tool == Tool.CURRENCY
+                open(ToolPanel.CONVERTER)
+                return
+            }
+            Tool.CALENDAR -> {
+                open(ToolPanel.CALENDAR)
+                return
+            }
+            Tool.QR -> {
+                open(ToolPanel.QR)
+                return
+            }
             else -> Unit
         }
         close()
@@ -224,7 +268,7 @@ class ToolsController(
             Tool.LANGUAGES -> host.openLanguages()
             Tool.THEME -> host.openTheme()
             Tool.SETTINGS -> host.openSettings()
-            Tool.CLIPBOARD, Tool.AI, Tool.LAYOUT -> Unit
+            Tool.CLIPBOARD, Tool.AI, Tool.LAYOUT, Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR -> Unit
         }
     }
 

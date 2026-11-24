@@ -12,6 +12,11 @@ import com.qalsmartkeyboard.ime.emoji.EmojiDataTest
 import com.qalsmartkeyboard.ime.emoji.EmojiLoader
 import com.qalsmartkeyboard.ime.emoji.EmojiPanelView
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
+import com.qalsmartkeyboard.ime.toolbar.Tool
+import com.qalsmartkeyboard.ime.toolbar.calendarNames
+import com.qalsmartkeyboard.ime.toolbar.converterModeLabel
+import com.qalsmartkeyboard.ime.toolbar.toolLabel
+import com.qalsmartkeyboard.ime.utilities.ConverterMode
 import com.qalsmartkeyboard.ime.theme.ThemeNames
 import com.qalsmartkeyboard.ime.voice.VoiceLanguages
 import com.qalsmartkeyboard.ime.wordart.WordArtCatalog
@@ -90,8 +95,38 @@ class UiLocalisationSmokeTest {
         c.getString(R.string.ai_reply_option, 1, 3, "x")
         c.getString(R.string.wordart_row_disabled, "a", "b", "c")
         c.getString(R.string.kb_key_vowel_active, "ሀ", 2)
+        checkUtilityStrings()
         // The platform names other voice languages in the UI language too.
         assertNotEquals("French (France)", VoiceLanguages.displayName("fr-FR"))
+    }
+
+    /** T8.3: the utilities' tiles, month arrays and format strings resolve in this language. */
+    private fun checkUtilityStrings() {
+        val c = ctx
+        for (t in listOf(Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR)) {
+            assertTrue("$t", toolLabel(c, t).isNotBlank())
+        }
+        val names = calendarNames(c)
+        assertEquals(13, names.ethiopianMonths.size)
+        assertEquals(12, names.gregorianMonths.size)
+        assertTrue((names.ethiopianMonths + names.gregorianMonths + listOf(names.ethiopianEra, names.gregorianEra)).all { it.isNotBlank() })
+        assertEquals(13, names.ethiopianMonths.toSet().size)
+        c.getString(R.string.calc_expression_description, "1+1")
+        c.getString(R.string.calc_result_description, "2")
+        c.getString(R.string.conv_from, "km")
+        c.getString(R.string.conv_to, "mi")
+        c.getString(R.string.conv_rates_as_of, "2024-09-11")
+        c.getString(R.string.conv_rates_stale, "2024-09-11")
+        c.getString(R.string.cal_next, "x")
+        c.getString(R.string.cal_previous, "x")
+        c.getString(R.string.cal_date_description, "a", "b")
+        ConverterMode.entries.forEach { assertTrue("$it", converterModeLabel(c, it).isNotBlank()) }
+    }
+
+    @Test @Config(qualifiers = "am-w411dp-h891dp-xxhdpi")
+    fun amharicMonthNamesMatchTheCoreCalendar() {
+        val am = calendarNames(ctx).ethiopianMonths
+        for (m in 1..13) assertEquals("month $m", uniffi.qal_keyboard_core.ethiopianMonthName(m.toUInt()), am[m - 1])
     }
 
     @Test @Config(qualifiers = "am-w411dp-h891dp-xxhdpi")

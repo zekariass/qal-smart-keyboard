@@ -67,11 +67,11 @@ class ToolPanelsTest {
         val (p, picked) = toolsPanel(ToolContext(text, aiReady = true, voiceOffered = true, writingModes = true))
         assertEquals("same height as the keys it replaces", keysPx, p.measuredHeight)
         val labels = texts(p)
-        for (l in listOf("Translate", "AI tools", "Clipboard", "Emoji", "Voice typing", "Word Art", "Writing mode", "Languages", "Theme", "Settings")) {
+        for (l in listOf("Translate", "AI tools", "Clipboard", "Emoji", "Voice typing", "Word Art", "Writing mode", "Languages", "Theme", "Settings", "Calculator", "Units", "Currency", "Calendar", "QR code")) {
             assertTrue("$l in $labels", l in labels)
         }
         // ADR 0041: one AI entry (Assist and Write Email are tiles of the AI tools grid).
-        assertEquals(10, p.shown.size)
+        assertEquals(15, p.shown.size) // the ten tools and the five T8.3 utilities
         assertEquals("AI tools", p.tileFor(Tool.AI)!!.contentDescription.toString())
         // Every tile is one Button node with its name; a tap reports the tool.
         val tile = p.tileFor(Tool.CLIPBOARD)!!
@@ -89,8 +89,9 @@ class ToolPanelsTest {
         assertTrue(first.width >= (411 * d / 4 - 8 * d).toInt())
         assertTrue(first.height >= (48 * d).toInt())
         assertTrue("row 2 below row 1", (fifth.parent as View).top > (first.parent as View).top)
-        // The three rows of a full panel fit a portrait phone's key area without scrolling.
-        val last = p.tileFor(Tool.SETTINGS)!!
+        // The first three rows fit a portrait phone's key area without scrolling; the utilities' row below them is reached by
+        // scrolling (the grid fades its bottom edge).
+        val last = p.tileFor(p.shown[11].tool)!!
         assertTrue("last row ends ${(last.parent as View).bottom} <= $keysPx", (last.parent as View).bottom <= keysPx)
     }
 

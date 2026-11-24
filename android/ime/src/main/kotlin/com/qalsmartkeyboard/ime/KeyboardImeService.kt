@@ -76,7 +76,17 @@ import com.qalsmartkeyboard.ime.toolbar.SystemClipboardSource
 import com.qalsmartkeyboard.ime.toolbar.Tool
 import com.qalsmartkeyboard.ime.toolbar.ToolContext
 import com.qalsmartkeyboard.ime.toolbar.ToolHost
+import com.qalsmartkeyboard.ime.toolbar.CalculatorPanelView
+import com.qalsmartkeyboard.ime.toolbar.CalendarPanelView
+import com.qalsmartkeyboard.ime.toolbar.ConverterPanelView
 import com.qalsmartkeyboard.ime.toolbar.LayoutPanelView
+import com.qalsmartkeyboard.ime.toolbar.QrPanelView
+import com.qalsmartkeyboard.ime.utilities.CalculatorController
+import com.qalsmartkeyboard.ime.utilities.CalendarController
+import com.qalsmartkeyboard.ime.utilities.ConverterController
+import com.qalsmartkeyboard.ime.utilities.ConverterMode
+import com.qalsmartkeyboard.ime.utilities.FxSnapshotCache
+import com.qalsmartkeyboard.ime.utilities.QrController
 import com.qalsmartkeyboard.ime.toolbar.ToolPanel
 import com.qalsmartkeyboard.ime.toolbar.ToolsController
 import com.qalsmartkeyboard.ime.toolbar.ToolsPanelView
@@ -112,6 +122,10 @@ class KeyboardImeService : InputMethodService() {
     private var voicePanel: VoicePanelView? = null
     private var toolsPanel: ToolsPanelView? = null
     private var layoutPanel: LayoutPanelView? = null
+    private var calcPanel: CalculatorPanelView? = null
+    private var converterPanel: ConverterPanelView? = null
+    private var calendarPanel: CalendarPanelView? = null
+    private var qrPanel: QrPanelView? = null
     private var aiToolsPanel: AiToolsPanelView? = null
     private var clipPanel: ClipboardPanelView? = null
     private var seenToolPanel = ToolPanel.NONE
@@ -183,6 +197,10 @@ class KeyboardImeService : InputMethodService() {
         voicePanel?.theme = t
         toolsPanel?.theme = t
         layoutPanel?.theme = t
+        calcPanel?.theme = t
+        converterPanel?.theme = t
+        calendarPanel?.theme = t
+        qrPanel?.theme = t
         aiToolsPanel?.theme = t
         clipPanel?.theme = t
         aiView?.theme = t
@@ -363,6 +381,31 @@ class KeyboardImeService : InputMethodService() {
 
     /** Dictation is running into [b]. */
     private fun dictatingInto(b: EditorBuffer?): Boolean = b != null && voice.isOpen && voiceHost.target?.buffer === b
+
+    // T8.3 utilities (ADR 0048): free, deterministic, on-device. The currency converter reads only the cached rates
+    // snapshot; no source is wired yet ([FxSnapshotCache] defaults to the disabled source), so it says "rates unavailable".
+    private val fxCache = FxSnapshotCache()
+    private val calculator = CalculatorController(onChanged = { calcPanel?.refresh() })
+    private val unitConverter = ConverterController(fx = { fxCache.current() }, onChanged = { })
+    private val dateConverter = CalendarController(onChanged = { })
+    private val qrCode = QrController(onChanged = { qrPanel?.refresh() })
+
+    /** Insert from a utility panel: back to the keys, and the text goes into the field. */
+    private fun insertFromUtility(text: String) {
+        tools.close()
+        controller.pasteText(text)
+    }
+
+    private fun copyFromUtility(text: String) {
+        SystemAiClipboard(ui).copy(text)
+    }
+
+    /** The selection, else the text before the cursor: read only when the QR panel's "Use text in field" is tapped. */
+    private fun fieldTextForQr(): String {
+        controller.commitComposition()
+        val selected = editorOps.getSelectedText()?.toString()?.takeIf { it.isNotEmpty() }
+        return selected ?: editorOps.getTextBeforeCursor(QrController.MAX_SOURCE_CHARS)?.toString().orEmpty()
+    }
 
     // Tools panel and clipboard panel (ADR 0035). The clipboard history lives in memory only and dies with the process.
     private val clipHistory = ClipboardHistory()
@@ -984,6 +1027,44 @@ class KeyboardImeService : InputMethodService() {
             it.haptics = { controller.prefs.hapticsEnabled }
             layoutPanel = it
         }
+        val calcView = CalculatorPanelView(ui).also {
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            it.controller = calculator
+            it.onInsert = ::insertFromUtility
+            it.onCopy = ::copyFromUtility
+            it.haptics = { controller.prefs.hapticsEnabled }
+            calcPanel = it
+        }
+        val converterView = ConverterPanelView(ui).also {
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            it.controller = unitConverter
+            it.cache = fxCache
+            it.onInsert = ::insertFromUtility
+            it.onCopy = ::copyFromUtility
+            it.haptics = { controller.prefs.hapticsEnabled }
+            converterPanel = it
+        }
+        val calendarView = CalendarPanelView(ui).also {
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            it.controller = dateConverter
+            it.onInsert = ::insertFromUtility
+            it.onCopy = ::copyFromUtility
+            it.haptics = { controller.prefs.hapticsEnabled }
+            calendarPanel = it
+        }
+        val qrView = QrPanelView(ui).also {
+            it.visibility = View.GONE
+            it.heightProvider = { k.preferredHeightPx() }
+            it.controller = qrCode
+            it.fieldText = ::fieldTextForQr
+            it.clipboardText = { SystemAiClipboard(ui).readText().orEmpty() }
+            it.onCopy = ::copyFromUtility
+            it.haptics = { controller.prefs.hapticsEnabled }
+            qrPanel = it
+        }
         val aiToolsView = AiToolsPanelView(ui).also {
             it.visibility = View.GONE
             it.heightProvider = { aiPanelHeightPx(k) }
@@ -1034,6 +1115,9 @@ class KeyboardImeService : InputMethodService() {
             addView(voiceView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(toolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(layoutView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            for (v in listOf(calcView, converterView, calendarView, qrView)) {
+                addView(v, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            }
             addView(aiToolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(clipView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
@@ -1297,12 +1381,26 @@ class KeyboardImeService : InputMethodService() {
         clipPanel?.visibility = if (toolPanel == ToolPanel.CLIPBOARD) View.VISIBLE else View.GONE
         aiToolsPanel?.visibility = if (toolPanel == ToolPanel.AI) View.VISIBLE else View.GONE
         layoutPanel?.visibility = if (toolPanel == ToolPanel.LAYOUT) View.VISIBLE else View.GONE
+        calcPanel?.visibility = if (toolPanel == ToolPanel.CALCULATOR) View.VISIBLE else View.GONE
+        converterPanel?.visibility = if (toolPanel == ToolPanel.CONVERTER) View.VISIBLE else View.GONE
+        calendarPanel?.visibility = if (toolPanel == ToolPanel.CALENDAR) View.VISIBLE else View.GONE
+        qrPanel?.visibility = if (toolPanel == ToolPanel.QR) View.VISIBLE else View.GONE
         if (toolPanel != seenToolPanel) {
+            if (seenToolPanel == ToolPanel.QR) qrCode.clear() // the text a code was made from is not kept
             seenToolPanel = toolPanel
             val rise = 8f * resources.displayMetrics.density
             when (toolPanel) {
                 ToolPanel.TOOLS -> toolsPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
                 ToolPanel.LAYOUT -> layoutPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
+                ToolPanel.CALCULATOR -> calcPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
+                ToolPanel.CONVERTER -> converterPanel?.let {
+                    if (tools.converterOnCurrency) unitConverter.selectMode(ConverterMode.CURRENCY)
+                    else if (unitConverter.mode == ConverterMode.CURRENCY) unitConverter.selectMode(ConverterMode.LENGTH)
+                    it.render()
+                    Motion.reveal(it, fromYPx = rise)
+                }
+                ToolPanel.CALENDAR -> calendarPanel?.let { dateConverter.useToday(); it.render(); Motion.reveal(it, fromYPx = rise) }
+                ToolPanel.QR -> qrPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
                 ToolPanel.AI -> aiToolsPanel?.let {
                     // The user opened the AI tools: the cached plan state is rendered at once; a throttled background
                     // refresh may update it (ADR 0007 D40, as the AI row did). No text is read or sent.
@@ -1345,6 +1443,10 @@ class KeyboardImeService : InputMethodService() {
             toolPanel == ToolPanel.CLIPBOARD -> ui.getString(R.string.tool_clipboard)
             toolPanel == ToolPanel.AI -> ui.getString(R.string.top_bar_ai_open)
             toolPanel == ToolPanel.LAYOUT -> ui.getString(R.string.layout_panel_title, LanguageCatalog.displayName(controller.language))
+            toolPanel == ToolPanel.CALCULATOR -> ui.getString(R.string.tool_calculator)
+            toolPanel == ToolPanel.CONVERTER -> ui.getString(if (tools.converterOnCurrency) R.string.tool_currency else R.string.tool_unit_converter)
+            toolPanel == ToolPanel.CALENDAR -> ui.getString(R.string.tool_calendar)
+            toolPanel == ToolPanel.QR -> ui.getString(R.string.tool_qr)
             picker == TranslatePicker.SOURCE -> ui.getString(R.string.translate_from_title)
             picker == TranslatePicker.DESTINATION -> ui.getString(R.string.translate_into_title)
             else -> null

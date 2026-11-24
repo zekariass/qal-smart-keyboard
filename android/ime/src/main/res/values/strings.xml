@@ -638,4 +638,104 @@
     <!-- Translate one-tap paste of a copied message (T8.13). -->
     <string name="translate_paste_message">Paste copied message</string>
     <string name="translate_paste_message_desc">Paste the copied message and translate it</string>
+    <!-- Productivity utilities: calculator, units and currency, Ethiopian calendar, QR (T8.3). -->
+    <string name="tool_calculator">Calculator</string>
+    <string name="tool_unit_converter">Units</string>
+    <string name="tool_currency">Currency</string>
+    <string name="tool_calendar">Calendar</string>
+    <string name="tool_qr">QR code</string>
+    <string name="util_insert">Insert</string>
+    <string name="util_copy">Copy</string>
+    <string name="calc_expression_description">Expression: %1$s</string>
+    <string name="calc_result_description">Result: %1$s</string>
+    <string name="calc_empty_description">No expression</string>
+    <string name="calc_error_incomplete">Finish the expression</string>
+    <string name="calc_error_div0">Can\'t divide by zero</string>
+    <string name="calc_error_large">Number too large</string>
+    <string name="calc_error_invalid">Not a valid expression</string>
+    <string name="calc_error_long">Expression too long</string>
+    <string name="calc_key_clear">Clear</string>
+    <string name="calc_key_backspace">Delete</string>
+    <string name="calc_key_equals">Equals</string>
+    <string name="calc_key_percent">Percent</string>
+    <string name="calc_key_power">Power</string>
+    <string name="calc_key_open">Open bracket</string>
+    <string name="calc_key_close">Close bracket</string>
+    <string name="calc_key_divide">Divide</string>
+    <string name="calc_key_multiply">Multiply</string>
+    <string name="calc_key_minus">Minus</string>
+    <string name="calc_key_plus">Plus</string>
+    <string name="calc_key_dot">Decimal point</string>
+    <string name="conv_mode_length">Length</string>
+    <string name="conv_mode_mass">Mass</string>
+    <string name="conv_mode_temperature">Temperature</string>
+    <string name="conv_mode_volume">Volume</string>
+    <string name="conv_mode_area">Area</string>
+    <string name="conv_mode_speed">Speed</string>
+    <string name="conv_mode_data">Data</string>
+    <string name="conv_from">From %1$s, tap for the next unit</string>
+    <string name="conv_to">To %1$s, tap for the next unit</string>
+    <string name="conv_swap">Swap units</string>
+    <string name="conv_key_negate">Plus or minus</string>
+    <string name="conv_type_number">Type a number</string>
+    <string name="conv_rates_unavailable">Rates unavailable offline</string>
+    <string name="conv_rates_as_of">Rates as of %1$s</string>
+    <string name="conv_rates_stale">Rates as of %1$s, may be out of date</string>
+    <string name="cal_gregorian">Gregorian</string>
+    <string name="cal_ethiopian">Ethiopian</string>
+    <string name="cal_swap">Swap calendars</string>
+    <string name="cal_today">Today</string>
+    <string name="cal_numerals">Ethiopic numerals</string>
+    <string name="cal_year">Year</string>
+    <string name="cal_month">Month</string>
+    <string name="cal_day">Day</string>
+    <string name="cal_next">Next %1$s</string>
+    <string name="cal_previous">Previous %1$s</string>
+    <string name="cal_insert">Insert date</string>
+    <string name="cal_out_of_range">Date out of range</string>
+    <string name="cal_era_ec">E.C.</string>
+    <string name="cal_era_gc">G.C.</string>
+    <string name="cal_date_description">%1$s date: %2$s</string>
+    <string name="qr_kind_text">Text</string>
+    <string name="qr_kind_url">Link</string>
+    <string name="qr_kind_wifi">Wi-Fi</string>
+    <string name="qr_security_wpa">WPA</string>
+    <string name="qr_security_wep">WEP</string>
+    <string name="qr_security_none">Open</string>
+    <string name="qr_use_field">Use text in field</string>
+    <string name="qr_use_clipboard">Use clipboard</string>
+    <string name="qr_hint_text">Type your text in the field, then tap Use text in field.</string>
+    <string name="qr_hint_wifi">Network name on the first line, password on the second.</string>
+    <string name="qr_too_long">Too long for a QR code</string>
+    <string name="qr_copy_text">Copy text</string>
+    <string name="qr_image_description">QR code</string>
+    <string-array name="cal_months_ethiopian">
+        <item>Meskerem</item>
+        <item>Tikimt</item>
+        <item>Hidar</item>
+        <item>Tahsas</item>
+        <item>Tir</item>
+        <item>Yekatit</item>
+        <item>Megabit</item>
+        <item>Miazia</item>
+        <item>Ginbot</item>
+        <item>Sene</item>
+        <item>Hamle</item>
+        <item>Nehase</item>
+        <item>Pagume</item>
+    </string-array>
+    <string-array name="cal_months_gregorian">
+        <item>January</item>
+        <item>February</item>
+        <item>March</item>
+        <item>April</item>
+        <item>May</item>
+        <item>June</item>
+        <item>July</item>
+        <item>August</item>
+        <item>September</item>
+        <item>October</item>
+        <item>November</item>
+        <item>December</item>
+    </string-array>
 </resources>

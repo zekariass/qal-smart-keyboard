@@ -627,4 +627,104 @@
     <!-- Translate one-tap paste of a copied message (T8.13). DRAFT (N9). -->
     <string name="translate_paste_message">የተቀዳውን መልእክት ይለጥፉ</string>
     <string name="translate_paste_message_desc">የተቀዳውን መልእክት ለጥፎ ያስተርጉሙ</string>
+    <!-- Productivity utilities: calculator, units and currency, Ethiopian calendar, QR (T8.3). DRAFT (N9). -->
+    <string name="tool_calculator">ማስሊያ</string>
+    <string name="tool_unit_converter">መለኪያ</string>
+    <string name="tool_currency">ምንዛሬ</string>
+    <string name="tool_calendar">ቀን መቁጠሪያ</string>
+    <string name="tool_qr">QR ኮድ</string>
+    <string name="util_insert">ያስገቡ</string>
+    <string name="util_copy">ይቅዱ</string>
+    <string name="calc_expression_description">ስሌት፦ %1$s</string>
+    <string name="calc_result_description">ውጤት፦ %1$s</string>
+    <string name="calc_empty_description">ስሌት የለም</string>
+    <string name="calc_error_incomplete">ስሌቱን ያጠናቅቁ</string>
+    <string name="calc_error_div0">በዜሮ ማካፈል አይቻልም</string>
+    <string name="calc_error_large">ቁጥሩ በጣም ትልቅ ነው</string>
+    <string name="calc_error_invalid">ትክክለኛ ስሌት አይደለም</string>
+    <string name="calc_error_long">ስሌቱ በጣም ረጅም ነው</string>
+    <string name="calc_key_clear">አጽዳ</string>
+    <string name="calc_key_backspace">ደምስስ</string>
+    <string name="calc_key_equals">እኩል</string>
+    <string name="calc_key_percent">መቶኛ</string>
+    <string name="calc_key_power">ኃይል</string>
+    <string name="calc_key_open">ቅንፍ ክፈት</string>
+    <string name="calc_key_close">ቅንፍ ዝጋ</string>
+    <string name="calc_key_divide">ማካፈል</string>
+    <string name="calc_key_multiply">ማባዛት</string>
+    <string name="calc_key_minus">መቀነስ</string>
+    <string name="calc_key_plus">መደመር</string>
+    <string name="calc_key_dot">ነጥብ</string>
+    <string name="conv_mode_length">ርዝመት</string>
+    <string name="conv_mode_mass">ክብደት</string>
+    <string name="conv_mode_temperature">ሙቀት</string>
+    <string name="conv_mode_volume">ይዘት</string>
+    <string name="conv_mode_area">ስፋት</string>
+    <string name="conv_mode_speed">ፍጥነት</string>
+    <string name="conv_mode_data">ዳታ</string>
+    <string name="conv_from">ከ%1$s፣ ቀጣዩን ክፍል ለመምረጥ ይንኩ</string>
+    <string name="conv_to">ወደ %1$s፣ ቀጣዩን ክፍል ለመምረጥ ይንኩ</string>
+    <string name="conv_swap">ክፍሎቹን ይቀያይሩ</string>
+    <string name="conv_key_negate">አዎንታዊ ወይም አሉታዊ</string>
+    <string name="conv_type_number">ቁጥር ይጻፉ</string>
+    <string name="conv_rates_unavailable">ያለ በይነመረብ ዋጋዎች አይገኙም</string>
+    <string name="conv_rates_as_of">ዋጋዎች እስከ %1$s</string>
+    <string name="conv_rates_stale">ዋጋዎች እስከ %1$s፣ ያለፈባቸው ሊሆን ይችላል</string>
+    <string name="cal_gregorian">ግሪጎሪያን</string>
+    <string name="cal_ethiopian">ኢትዮጵያዊ</string>
+    <string name="cal_swap">አቆጣጠሮቹን ይቀያይሩ</string>
+    <string name="cal_today">ዛሬ</string>
+    <string name="cal_numerals">የግዕዝ ቁጥሮች</string>
+    <string name="cal_year">ዓመት</string>
+    <string name="cal_month">ወር</string>
+    <string name="cal_day">ቀን</string>
+    <string name="cal_next">ቀጣይ %1$s</string>
+    <string name="cal_previous">ቀዳሚ %1$s</string>
+    <string name="cal_insert">ቀኑን ያስገቡ</string>
+    <string name="cal_out_of_range">ቀኑ ከክልል ውጭ ነው</string>
+    <string name="cal_era_ec">ዓ.ም.</string>
+    <string name="cal_era_gc">እ.ኤ.አ.</string>
+    <string name="cal_date_description">የ%1$s ቀን፦ %2$s</string>
+    <string name="qr_kind_text">ጽሑፍ</string>
+    <string name="qr_kind_url">አገናኝ</string>
+    <string name="qr_kind_wifi">Wi-Fi</string>
+    <string name="qr_security_wpa">WPA</string>
+    <string name="qr_security_wep">WEP</string>
+    <string name="qr_security_none">ክፍት</string>
+    <string name="qr_use_field">የመስኩን ጽሑፍ ይጠቀሙ</string>
+    <string name="qr_use_clipboard">ቅንጥብ ሰሌዳውን ይጠቀሙ</string>
+    <string name="qr_hint_text">ጽሑፍዎን በመስኩ ላይ ይጻፉ፣ ከዚያ የመስኩን ጽሑፍ ይጠቀሙ ይንኩ።</string>
+    <string name="qr_hint_wifi">የአውታረ መረቡ ስም በመጀመሪያው መስመር፣ የይለፍ ቃሉ በሁለተኛው።</string>
+    <string name="qr_too_long">ለQR ኮድ በጣም ረጅም ነው</string>
+    <string name="qr_copy_text">ጽሑፉን ይቅዱ</string>
+    <string name="qr_image_description">QR ኮድ</string>
+    <string-array name="cal_months_ethiopian">
+        <item>መስከረም</item>
+        <item>ጥቅምት</item>
+        <item>ኅዳር</item>
+        <item>ታኅሣሥ</item>
+        <item>ጥር</item>
+        <item>የካቲት</item>
+        <item>መጋቢት</item>
+        <item>ሚያዝያ</item>
+        <item>ግንቦት</item>
+        <item>ሰኔ</item>
+        <item>ሐምሌ</item>
+        <item>ነሐሴ</item>
+        <item>ጳጉሜን</item>
+    </string-array>
+    <string-array name="cal_months_gregorian">
+        <item>ጃንዩወሪ</item>
+        <item>ፌብሩወሪ</item>
+        <item>ማርች</item>
+        <item>ኤፕሪል</item>
+        <item>ሜይ</item>
+        <item>ጁን</item>
+        <item>ጁላይ</item>
+        <item>ኦገስት</item>
+        <item>ሴፕቴምበር</item>
+        <item>ኦክቶበር</item>
+        <item>ኖቬምበር</item>
+        <item>ዲሴምበር</item>
+    </string-array>
 </resources>

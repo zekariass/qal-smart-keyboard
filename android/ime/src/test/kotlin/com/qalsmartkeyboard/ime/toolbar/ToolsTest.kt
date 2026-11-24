@@ -28,7 +28,7 @@ class ToolsTest {
         assertEquals(
             listOf(
                 Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.EMOJI, Tool.VOICE, Tool.WORD_ART,
-                Tool.WRITING_MODE, Tool.LANGUAGES, Tool.THEME, Tool.SETTINGS,
+                Tool.WRITING_MODE, Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.LANGUAGES, Tool.THEME, Tool.SETTINGS,
             ),
             tools(full),
         )
@@ -67,7 +67,7 @@ class ToolsTest {
             val p = profile(type)
             assertFalse(p.allowsAi)
             val c = ToolContext(p, voiceOffered = true)
-            assertEquals("$type", listOf(Tool.CLIPBOARD, Tool.VOICE, Tool.LANGUAGES, Tool.THEME, Tool.SETTINGS), tools(c))
+            assertEquals("$type", listOf(Tool.CLIPBOARD, Tool.VOICE, Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.LANGUAGES, Tool.THEME, Tool.SETTINGS), tools(c))
         }
     }
 
@@ -140,7 +140,7 @@ class ToolsTest {
         assertEquals(
             listOf(
                 Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.EMOJI, Tool.VOICE, Tool.WORD_ART,
-                Tool.WRITING_MODE, Tool.LAYOUT, Tool.LANGUAGES, Tool.THEME, Tool.SETTINGS,
+                Tool.WRITING_MODE, Tool.LAYOUT, Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.LANGUAGES, Tool.THEME, Tool.SETTINGS,
             ),
             tools(c),
         )
@@ -208,7 +208,7 @@ class ToolsTest {
 
     @Test fun aToolTheFieldDoesNotOfferDoesNothing() {
         val r = Rig(ToolContext(profile(T.TYPE_CLASS_TEXT or T.TYPE_TEXT_VARIATION_PASSWORD)))
-        for (t in listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.EMOJI, Tool.WORD_ART, Tool.VOICE, Tool.WRITING_MODE)) {
+        for (t in listOf(Tool.TRANSLATE, Tool.AI, Tool.CLIPBOARD, Tool.EMOJI, Tool.WORD_ART, Tool.VOICE, Tool.WRITING_MODE, Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR)) {
             r.c.activate(t)
         }
         r.c.openClipboard()
