@@ -9,6 +9,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod calc;
 pub mod calendar;
 pub mod composer;
 mod engine;

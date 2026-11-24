@@ -259,6 +259,11 @@ const TENS: [char; 9] = ['፲', '፳', '፴', '፵', '፶', '፷', '፸', '፹',
 const HUNDRED: char = '፻';
 const TEN_THOUSAND: char = '፼';
 
+/// True for the characters `ethiopic_to_arabic` accepts (ones, tens, hundred, ten thousand).
+pub(crate) fn is_ethiopic_numeral(c: char) -> bool {
+    ONES.contains(&c) || TENS.contains(&c) || c == HUNDRED || c == TEN_THOUSAND
+}
+
 fn push_pair(out: &mut String, v: u64) {
     if v >= 10 {
         out.push(TENS[(v / 10 - 1) as usize]);
