@@ -16,6 +16,8 @@ data class FxSnapshot(
     val asOfMillis: Long,
     val rates: Map<String, Double>,
     val stale: Boolean = false,
+    /** When this device last got the snapshot from its source (epoch ms; 0 when unknown); it drives the refresh throttle. */
+    val fetchedAtMillis: Long = 0L,
 ) {
     /** Every currency the snapshot can convert, the base included, preferred codes first then alphabetical. */
     val currencies: List<String>
@@ -36,8 +38,9 @@ data class FxSnapshot(
 
 /**
  * Where rates come from. Implementations may do I/O, so they are called only off the key path, from the converter's
- * refresh; the key path reads [FxSnapshotCache.current] alone. The real client (the backend's rates endpoint) is wired
- * later; until then [DisabledFxRateSource] returns nothing and the converter says "rates unavailable offline".
+ * refresh; the key path reads [FxSnapshotCache.current] alone. The real client (the backend's rates endpoint) lives in
+ * `:ai-client` and is handed over through [FxRateSourceHolder]; without one [DisabledFxRateSource] returns nothing and the
+ * converter says "rates unavailable offline".
  */
 fun interface FxRateSource {
     /** The newest snapshot, or null when none can be had (offline, disabled, upstream error). Never throws. */
@@ -53,6 +56,27 @@ object DisabledFxRateSource : FxRateSource {
 interface FxSnapshotStore {
     fun load(): FxSnapshot?
     fun save(snapshot: FxSnapshot)
+}
+
+/**
+ * Hands the keyboard the rates source built by the app (`:ime` has no HTTP code). The app registers a factory in
+ * `Application.onCreate`; it is called on a background thread. Without one (tests, a build with no base URL) the source
+ * stays [DisabledFxRateSource].
+ */
+object FxRateSourceHolder {
+    @Volatile var factory: (() -> FxRateSource?)? = null
+
+    @Volatile private var instance: FxRateSource? = null
+
+    /** The source, built once; [DisabledFxRateSource] when the app registered none. Call off the main thread. */
+    fun create(): FxRateSource = instance ?: synchronized(this) {
+        instance ?: (factory?.invoke() ?: DisabledFxRateSource).also { instance = it }
+    }
+
+    internal fun resetForTest() {
+        factory = null
+        instance = null
+    }
 }
 
 /** In-process store: the cache survives while the keyboard service lives. */
@@ -83,7 +107,11 @@ class FxSnapshotCache(
     private val source: FxRateSource = DisabledFxRateSource,
     private val clock: () -> Long = System::currentTimeMillis,
     private val maxAgeMillis: Long = DAY_MILLIS,
+    /** [refreshIfDue] asks the source at most this often (the endpoint's `max-age` is one hour). */
+    private val minRefreshMillis: Long = HOUR_MILLIS,
 ) {
+    @Volatile private var lastAttempt = 0L
+
     /** The cached snapshot, or null. */
     fun current(): FxSnapshot? = store.load()?.let { it.copy(stale = it.stale || isOld(it)) }
 
@@ -94,8 +122,25 @@ class FxSnapshotCache(
         val fresh = runCatching { source.fetch() }.getOrNull() ?: return false
         val held = store.load()
         if (held != null && held.asOfMillis > fresh.asOfMillis) return false
-        store.save(fresh)
+        store.save(fresh.copy(fetchedAtMillis = clock()))
         return true
+    }
+
+    /**
+     * Whether a background refresh may run now: the last attempt (kept even when it failed, so a dead network is not
+     * retried on every panel open) and the held snapshot's fetch time are both over [minRefreshMillis] old. Memory only.
+     */
+    fun refreshDue(): Boolean {
+        val last = maxOf(lastAttempt, store.load()?.fetchedAtMillis ?: 0L)
+        return clock() - last >= minRefreshMillis || clock() < last
+    }
+
+    /** [refresh] when [refreshDue] (blocking: call it off the main thread). Returns whether the cache changed. */
+    @Synchronized
+    fun refreshIfDue(): Boolean {
+        if (!refreshDue()) return false
+        lastAttempt = clock()
+        return refresh()
     }
 
     fun note(): RatesNote {
@@ -107,6 +152,7 @@ class FxSnapshotCache(
 
     companion object {
         const val DAY_MILLIS = 24L * 60 * 60 * 1000
+        const val HOUR_MILLIS = 60L * 60 * 1000
 
         /** "yyyy-MM-dd" of a UTC instant (API 24 safe, no java.time). */
         fun isoDate(millis: Long): String {

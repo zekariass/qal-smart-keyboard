@@ -398,6 +398,20 @@ class DrawUiTest {
         assertTrue(tall.panel.canvasView.height > r.panel.canvasView.height)
     }
 
+    @Test fun theToolRowsAndTheCanvasFitTheDefaultKeyboardHeightWithoutScrolling() {
+        // 328dp keyboard area less the 44dp bar: three 48dp rows, the canvas and the gaps.
+        val r = rig(heightDp = 284)
+        assertFalse("scrolls", r.panel.scrolls)
+        assertTrue("canvas ${r.panel.canvasView.height / d}dp", r.panel.canvasView.height >= (DrawPanelView.MIN_CANVAS_DP * d).toInt() - 2)
+        for (v in r.panel.controls) {
+            var y = 0
+            var p: View = v
+            while (p !== r.panel) { y += p.top; p = p.parent as View }
+            assertTrue("${v.contentDescription}: bottom ${(y + v.height) / d}dp", y >= 0 && y + v.height <= r.panel.height)
+            assertTrue("${v.contentDescription}: ${v.height / d}dp tall", v.height >= (48 * d).toInt() - 1)
+        }
+    }
+
     @Test fun landscapeAndPortraitSizesBuildAndDraw() {
         for ((w, h) in listOf(411 to 300, 800 to 190, 320 to 260)) {
             val r = rig(h)

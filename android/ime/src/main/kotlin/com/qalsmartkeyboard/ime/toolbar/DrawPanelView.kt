@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.drawable.StateListDrawable
+import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
@@ -149,21 +150,23 @@ class DrawPanelView(context: Context) : UtilityPanelView(context) {
 
         val h = heightProvider().takeIf { it > 0 } ?: dp(260f)
         val canvasH = max(dp(MIN_CANVAS_DP) + dp(4f), h - dp(CHROME_DP))
+        // The status line floats over the canvas's lower edge (no row of its own), so the canvas keeps its height.
+        val status = caption(statusLabel(c.status, c.clearArmed), 12f, 1).apply {
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            setTextColor(theme.specialText)
+            background = card(theme.special)
+            visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
+        }
+        statusView = status
         val holder = FrameLayout(context).apply {
             setPadding(dp(2f), dp(2f), dp(2f), dp(2f))
             background = card(theme.special)
             (canvasView.parent as? ViewGroup)?.removeView(canvasView)
             addView(canvasView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(status, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(6f), 0, dp(6f), dp(6f)) })
         }
         canvasView.contentDescription = str(R.string.draw_canvas_description)
-        column.addView(holder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, canvasH))
-
-        val status = caption(statusLabel(c.status, c.clearArmed), 12f, 1).apply {
-            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-            minHeight = dp(20f)
-        }
-        statusView = status
-        column.addView(status, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        column.addView(holder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, canvasH).apply { bottomMargin = dp(4f) })
 
         val widths = InkDefaults.WIDTHS.indices.map { i ->
             widthButton(i, selected = c.widthIndex == i) { c.selectWidth(i) }
@@ -185,6 +188,7 @@ class DrawPanelView(context: Context) : UtilityPanelView(context) {
         row(
             button(str(R.string.draw_gallery_back), str(R.string.draw_gallery_back), sp = 13f) { c.closeGallery() } to 1f,
             button(str(R.string.draw_gallery_new), str(R.string.draw_gallery_new), PadStyle.ACCENT, sp = 13f) { c.newDrawing() } to 1f,
+            stretch = false,
         )
         val list = c.gallery
         thumbViews.clear()
@@ -465,10 +469,10 @@ class DrawPanelView(context: Context) : UtilityPanelView(context) {
 
     companion object {
         /** The canvas keeps at least this height; a shorter keyboard scrolls the panel instead. */
-        const val MIN_CANVAS_DP = 150f
+        const val MIN_CANVAS_DP = 112f
 
         /** The three control rows, their gaps, the status line and the padding around the canvas. */
-        private const val CHROME_DP = 3 * 52f + 12f + 24f
+        private const val CHROME_DP = 3 * 52f + 8f + 4f
         private const val COLUMNS = 3
         private const val THUMB_DP = 140f
     }

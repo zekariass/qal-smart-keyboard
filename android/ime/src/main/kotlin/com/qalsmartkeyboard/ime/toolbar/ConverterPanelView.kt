@@ -34,8 +34,9 @@ fun converterModeLabel(c: Context, m: ConverterMode): String = c.getString(
  * The unit and currency converter panel (T8.3), opened by the Tools grid's "Units" and "Currency" tiles (the second opens
  * on its Currency tab): tabs for the categories, a from / swap / to row (a tap on a unit moves to the next one, with the
  * other direction on a long press), the typed number and its conversion, a 4-column number pad with Copy and Insert.
- * Currency reads only the offline rates snapshot ([cache]); with none it says "Rates unavailable offline", and an old
- * snapshot carries "Rates as of ... may be out of date". Units and currency codes are the same in every UI language.
+ * Currency reads only the cached rates snapshot ([cache], refreshed in the background by the host through
+ * [onCurrencyOpened]); with none it says "Rates unavailable offline", a snapshot carries "Rates as of <date>", and a stale one
+ * (the server says so, or it is over a day old) "... may be out of date". Units and currency codes are the same in every UI language.
  */
 class ConverterPanelView(context: Context) : UtilityPanelView(context) {
     var controller: ConverterController = ConverterController()
@@ -46,6 +47,9 @@ class ConverterPanelView(context: Context) : UtilityPanelView(context) {
 
     /** The offline rates cache for the note under the result (null in tests that do not care). */
     var cache: FxSnapshotCache? = null
+
+    /** The Currency tab was built (the panel opened on it, or its tab was tapped): the host may refresh the rates in the background. */
+    var onCurrencyOpened: () -> Unit = {}
 
     var onInsert: (String) -> Unit = {}
     var onCopy: (String) -> Unit = {}
@@ -73,7 +77,8 @@ class ConverterPanelView(context: Context) : UtilityPanelView(context) {
         }
         chipStrip(tabs)
 
-        // From, swap, to.
+        // Two panes under the tabs (about 220dp tall): a 3-column digit pad on the left, on the right the unit row, the number
+        // and its conversion (with the rates note) and the actions, so nothing is below the fold at the default height.
         val from = button("", "", sp = 16f) { controller.cycleFrom(1); refresh() }
         val to = button("", "", sp = 16f) { controller.cycleTo(1); refresh() }
         from.setOnLongClickListener { controller.cycleFrom(-1); refresh(); true }
@@ -81,61 +86,70 @@ class ConverterPanelView(context: Context) : UtilityPanelView(context) {
         fromButton = from
         toButton = to
         val swap = button("⇄", s(R.string.conv_swap), PadStyle.SPECIAL) { controller.swap(); refresh() }
-        column.addView(
-            LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(from, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                addView(swap, LinearLayout.LayoutParams(dp(MIN_TARGET_DP + 8f), ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(4f); marginEnd = dp(4f) })
-                addView(to, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4f) },
-        )
+        val units = hbox(from to 1f, swap to 0f, to to 1f).also {
+            (swap.layoutParams as LinearLayout.LayoutParams).apply { width = dp(MIN_TARGET_DP); weight = 0f }
+        }
 
         // The typed number and its conversion.
         val input = TextView(context).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             setTextColor(theme.keyText)
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.START
             textDirection = View.TEXT_DIRECTION_LTR
         }
         val result = TextView(context).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             setTextColor(theme.hintText)
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
             textDirection = View.TEXT_DIRECTION_LTR
+        }
+        val note = TextView(context).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextColor(theme.hintText)
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
         }
         inputView = input
         resultView = result
+        noteView = note
         val display = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14f), dp(6f), dp(14f), dp(6f))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10f), dp(4f), dp(10f), dp(4f))
             background = card(theme.key)
-            minimumHeight = dp(72f)
+            minimumHeight = dp(MIN_TARGET_DP)
             addView(input, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(result, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(note, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
-        column.addView(display, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(2f) })
-        val note = caption("", 12f, 2).apply { gravity = Gravity.END }
-        noteView = note
-        column.addView(note, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(2f) })
 
-        // Pad.
         fun digit(n: Int) = button(n.toString(), n.toString()) { controller.key(NumKey.Digit(n)); refresh() }
-        fun cells(vararg v: View) = v.map { it to 1f }.toTypedArray()
         val back = button("⌫", s(R.string.calc_key_backspace), PadStyle.SPECIAL) { controller.key(NumKey.Backspace); refresh() }
         val clear = button("C", s(R.string.calc_key_clear), PadStyle.SPECIAL) { controller.key(NumKey.Clear); refresh() }
         val neg = button("±", s(R.string.conv_key_negate), PadStyle.SPECIAL) { controller.key(NumKey.Negate); refresh() }
         val dot = button(".", s(R.string.calc_key_dot)) { controller.key(NumKey.Dot); refresh() }
         val copy = button(s(R.string.util_copy), s(R.string.util_copy), sp = 13f) { phrase()?.let(onCopy) }
         val insert = button(s(R.string.util_insert), s(R.string.util_insert), PadStyle.ACCENT, sp = 13f) { phrase()?.let(onInsert) }
-        row(*cells(digit(7), digit(8), digit(9), back))
-        row(*cells(digit(4), digit(5), digit(6), clear))
-        row(*cells(digit(1), digit(2), digit(3), neg))
-        row(*cells(digit(0), dot, copy, insert))
+        val pad = stack(
+            hbox(digit(7) to 1f, digit(8) to 1f, digit(9) to 1f) to 1f,
+            hbox(digit(4) to 1f, digit(5) to 1f, digit(6) to 1f) to 1f,
+            hbox(digit(1) to 1f, digit(2) to 1f, digit(3) to 1f) to 1f,
+            hbox(digit(0) to 1f, dot to 1f, neg to 1f) to 1f,
+        )
+        val side = stack(
+            units to 1f,
+            display to 1.3f,
+            hbox(back to 1f, clear to 1f) to 1f,
+            hbox(copy to 1f, insert to 1f) to 1f,
+        )
+        fill(hbox(pad to 0.46f, side to 0.54f, gapDp = 6f))
         refresh()
+        if (controller.mode == ConverterMode.CURRENCY) onCurrencyOpened()
     }
 
     private fun phrase(): String? = (controller.result() as? ConverterResult.Value)?.phrase

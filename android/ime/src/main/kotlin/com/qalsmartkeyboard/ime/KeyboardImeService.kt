@@ -90,6 +90,8 @@ import com.qalsmartkeyboard.ime.utilities.CalculatorController
 import com.qalsmartkeyboard.ime.utilities.CalendarController
 import com.qalsmartkeyboard.ime.utilities.ConverterController
 import com.qalsmartkeyboard.ime.utilities.ConverterMode
+import com.qalsmartkeyboard.ime.utilities.FileFxSnapshotStore
+import com.qalsmartkeyboard.ime.utilities.FxRateSourceHolder
 import com.qalsmartkeyboard.ime.utilities.FxSnapshotCache
 import com.qalsmartkeyboard.ime.utilities.QrController
 import com.qalsmartkeyboard.ime.toolbar.ToolPanel
@@ -391,7 +393,11 @@ class KeyboardImeService : InputMethodService() {
 
     // T8.3 utilities (ADR 0048): free, deterministic, on-device. The currency converter reads only the cached rates
     // snapshot; no source is wired yet ([FxSnapshotCache] defaults to the disabled source), so it says "rates unavailable".
-    private val fxCache = FxSnapshotCache()
+    // The snapshot is kept in a small private file and refreshed from the backend (at most hourly) in the background when
+    // the Currency tab opens; the source comes from the app through FxRateSourceHolder and stays disabled without one.
+    private val fxStore by lazy { FileFxSnapshotStore(java.io.File(noBackupFilesDir, "fx-rates.json")) }
+    private val fxThread by lazy { java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "fx-rates").apply { isDaemon = true } } }
+    private val fxCache by lazy { FxSnapshotCache(store = fxStore, source = { FxRateSourceHolder.create().fetch() }) }
     private val calculator = CalculatorController(onChanged = { calcPanel?.refresh() })
     private val unitConverter = ConverterController(fx = { fxCache.current() }, onChanged = { })
     private val dateConverter = CalendarController(onChanged = { })
@@ -605,6 +611,19 @@ class KeyboardImeService : InputMethodService() {
         override val senderName: String get() = snapshot.current.emailSenderName
         override fun rememberSenderName(name: String) {
             snapshot.launchUpdate { it.copy(emailSenderName = name) }
+        }
+    }
+
+    /** The Currency tab is showing: read the stored snapshot and, when one is due (hourly), fetch a newer one; never on the main thread. */
+    private fun refreshRatesInBackground() {
+        fxThread.execute {
+            try {
+                fxStore.warm()
+                fxCache.refreshIfDue()
+            } catch (e: Exception) {
+                Log.w(TAG, "rates refresh failed: ${e.javaClass.simpleName}")
+            }
+            main.post { converterPanel?.refresh() }
         }
     }
 
@@ -1055,6 +1074,15 @@ class KeyboardImeService : InputMethodService() {
             it.visibility = View.GONE
             it.heightProvider = { k.preferredHeightPx() }
             it.controller = calculator
+            // The display lives in the panel bar (one line after the back arrow) so the pad takes the whole key area.
+            it.displayInBar = true
+            it.onDisplay = { text, spoken, warn ->
+                if (tools.panel == ToolPanel.CALCULATOR) {
+                    strip?.panelDetailWarn = warn
+                    strip?.panelDetailDescription = spoken
+                    strip?.panelDetail = text
+                }
+            }
             it.onInsert = ::insertFromUtility
             it.onCopy = ::copyFromUtility
             it.haptics = { controller.prefs.hapticsEnabled }
@@ -1065,6 +1093,7 @@ class KeyboardImeService : InputMethodService() {
             it.heightProvider = { k.preferredHeightPx() }
             it.controller = unitConverter
             it.cache = fxCache
+            it.onCurrencyOpened = ::refreshRatesInBackground
             it.onInsert = ::insertFromUtility
             it.onCopy = ::copyFromUtility
             it.haptics = { controller.prefs.hapticsEnabled }
@@ -1480,6 +1509,7 @@ class KeyboardImeService : InputMethodService() {
         }
         seenTranslatePicker = picker
         translateDirty = false
+        if (toolPanel != ToolPanel.CALCULATOR) strip?.panelDetail = null
         strip?.panelTitle = when {
             toolPanel == ToolPanel.TOOLS -> ui.getString(R.string.tools_title)
             toolPanel == ToolPanel.CLIPBOARD -> ui.getString(R.string.tool_clipboard)

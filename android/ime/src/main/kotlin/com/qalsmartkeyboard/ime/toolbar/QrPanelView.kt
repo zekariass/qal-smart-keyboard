@@ -67,23 +67,21 @@ class QrPanelView(context: Context) : UtilityPanelView(context) {
 
     override fun build() {
         fun s(id: Int) = context.getString(id)
-        val kinds = listOf(
+        // One strip: what the code carries, then (Wi-Fi) the network's security, so the body keeps its height.
+        val chips = ArrayList<View>()
+        listOf(
             QrKind.TEXT to R.string.qr_kind_text,
             QrKind.URL to R.string.qr_kind_url,
             QrKind.WIFI to R.string.qr_kind_wifi,
-        ).map { (k, id) ->
-            chip(s(id), s(id), controller.kind == k) { controller.selectKind(k); render() }
-        }
-        chipStrip(kinds)
+        ).forEach { (k, id) -> chips += chip(s(id), s(id), controller.kind == k) { controller.selectKind(k); render() } }
         if (controller.kind == QrKind.WIFI) {
-            chipStrip(
-                listOf(
-                    WifiSecurity.WPA to R.string.qr_security_wpa,
-                    WifiSecurity.WEP to R.string.qr_security_wep,
-                    WifiSecurity.NONE to R.string.qr_security_none,
-                ).map { (sec, id) -> chip(s(id), s(id), controller.security == sec) { controller.selectSecurity(sec); render() } },
-            )
+            listOf(
+                WifiSecurity.WPA to R.string.qr_security_wpa,
+                WifiSecurity.WEP to R.string.qr_security_wep,
+                WifiSecurity.NONE to R.string.qr_security_none,
+            ).forEach { (sec, id) -> chips += chip(s(id), s(id), controller.security == sec) { controller.selectSecurity(sec); render() } }
         }
+        chipStrip(chips)
 
         val img = ImageView(context).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -92,25 +90,30 @@ class QrPanelView(context: Context) : UtilityPanelView(context) {
             setBackgroundColor(0xFFFFFFFF.toInt())
         }
         image = img
-        val source = caption("", 13f, 3)
+        val source = caption("", 13f, 1)
         sourceView = source
-        val hintView = caption("", 12f, 4)
+        val hintView = caption("", 12f, 2)
         hint = hintView
-        val useField = button(s(R.string.qr_use_field), s(R.string.qr_use_field), sp = 13f) { controller.setSource(fieldText()); refresh() }
-        val useClip = button(s(R.string.qr_use_clipboard), s(R.string.qr_use_clipboard), sp = 13f) { controller.setSource(clipboardText()); refresh() }
-        val copy = button(s(R.string.qr_copy_text), s(R.string.qr_copy_text), PadStyle.ACCENT, sp = 13f) {
+        val useField = button(s(R.string.qr_use_field), s(R.string.qr_use_field), sp = 12f) { controller.setSource(fieldText()); refresh() }
+        val useClip = button(s(R.string.qr_use_clipboard), s(R.string.qr_use_clipboard), sp = 12f) { controller.setSource(clipboardText()); refresh() }
+        val copy = button(s(R.string.qr_copy_text), s(R.string.qr_copy_text), PadStyle.ACCENT, sp = 12f) {
             (controller.state() as? QrState.Ready)?.let { onCopy(it.payload) }
         }
+        val imageButtons = if (imageShare == null) emptyList() else listOf(
+            button(s(R.string.draw_insert), s(R.string.qr_insert_image), sp = 12f) { sendImage(insert = true) },
+            button(s(R.string.draw_share), s(R.string.qr_share_image), sp = 12f) { sendImage(insert = false) },
+        )
+        // The actions sit two to a row (three rows at most) beside the code.
+        val buttons = listOf(useField, useClip, copy) + imageButtons
         val side = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(source, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            addView(hintView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4f) })
-            val imageButtons = if (imageShare == null) emptyList() else listOf(
-                button(s(R.string.draw_insert), s(R.string.qr_insert_image), sp = 13f) { sendImage(insert = true) },
-                button(s(R.string.draw_share), s(R.string.qr_share_image), sp = 13f) { sendImage(insert = false) },
-            )
-            for (b in listOf(useField, useClip, copy) + imageButtons) {
-                addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4f) })
+            addView(hintView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(2f) })
+            buttons.chunked(2).forEachIndexed { i, pair ->
+                addView(
+                    hbox(*pair.map { it to 1f }.toTypedArray()),
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0f).apply { if (i > 0) topMargin = dp(4f) },
+                )
             }
         }
         val body = LinearLayout(context).apply {

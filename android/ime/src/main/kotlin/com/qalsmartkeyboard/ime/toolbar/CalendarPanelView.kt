@@ -73,39 +73,42 @@ class CalendarPanelView(context: Context) : UtilityPanelView(context) {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4f) },
         )
 
-        // Steppers.
+        // Steppers: a caption and the value over a previous / next pair (about 104dp).
         val day = stepper(DateField.DAY, s(R.string.cal_day))
         val month = stepper(DateField.MONTH, s(R.string.cal_month))
         val year = stepper(DateField.YEAR, s(R.string.cal_year))
         dayValue = day.second
         monthValue = month.second
         yearValue = year.second
-        row(day.first to 1.1f, month.first to 1.5f, year.first to 1.2f, gapDp = 6f)
+        val steppers = hbox(day.first to 1.1f, month.first to 1.5f, year.first to 1.2f, gapDp = 6f)
+        column.addView(steppers, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4f) })
 
-        // The converted date.
+        // The converted date takes the spare height (one or two lines).
         val result = TextView(context).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
             setTextColor(theme.keyText)
             gravity = Gravity.CENTER
             maxLines = 2
-            setPadding(dp(10f), dp(6f), dp(10f), dp(6f))
-            minimumHeight = dp(64f)
+            setPadding(dp(10f), dp(4f), dp(10f), dp(4f))
+            minimumHeight = dp(44f)
             background = card(theme.key)
         }
         resultView = result
-        column.addView(result, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4f) })
+        fill(result, bottomDp = 4f)
 
-        // Actions.
-        val today = button(s(R.string.cal_today), s(R.string.cal_today), sp = 14f) { controller.useToday(); refresh() }
+        // One row of actions: Today, the numerals toggle, Copy, Insert.
+        val today = button(s(R.string.cal_today), s(R.string.cal_today), sp = 13f) { controller.useToday(); refresh() }
         val num = chip(s(R.string.cal_numerals), s(R.string.cal_numerals), controller.ethiopicNumerals) {
             controller.setEthiopicNumerals(!controller.ethiopicNumerals)
             render()
         }
         numerals = num
-        row(today to 1f, num to 1.5f)
-        val copy = button(s(R.string.util_copy), s(R.string.util_copy), sp = 14f) { controller.resultText(names)?.let(onCopy) }
-        val insert = button(s(R.string.cal_insert), s(R.string.cal_insert), PadStyle.ACCENT, sp = 14f) { controller.resultText(names)?.let(onInsert) }
-        row(copy to 1f, insert to 1.5f)
+        val copy = button(s(R.string.util_copy), s(R.string.util_copy), sp = 13f) { controller.resultText(names)?.let(onCopy) }
+        val insert = button(s(R.string.cal_insert), s(R.string.cal_insert), PadStyle.ACCENT, sp = 13f) { controller.resultText(names)?.let(onInsert) }
+        column.addView(
+            hbox(today to 1f, num to 1.2f, copy to 1f, insert to 1.3f),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+        )
         refresh()
     }
 
@@ -116,7 +119,7 @@ class CalendarPanelView(context: Context) : UtilityPanelView(context) {
             setTextColor(theme.keyText)
             gravity = Gravity.CENTER
             maxLines = 1
-            minimumHeight = dp(40f)
+            minimumHeight = dp(34f)
             background = card(theme.key)
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
         }
@@ -124,7 +127,7 @@ class CalendarPanelView(context: Context) : UtilityPanelView(context) {
         val next = button("+", context.getString(R.string.cal_next, label)) { controller.step(field, 1); refresh() }
         val col = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            addView(caption(label, 12f, 1).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(caption(label, 11f, 1).apply { gravity = Gravity.CENTER; setPadding(dp(4f), 0, dp(4f), 0) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(value, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(
                 LinearLayout(context).apply {
@@ -132,7 +135,7 @@ class CalendarPanelView(context: Context) : UtilityPanelView(context) {
                     addView(prev, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     addView(next, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(4f) })
                 },
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4f) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(3f) },
             )
         }
         return col to value
