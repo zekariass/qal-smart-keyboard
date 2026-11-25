@@ -45,14 +45,7 @@ object CardImages {
         } else {
             val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, maxSide) }
             val decoded = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-            val orientation = try {
-                resolver.openInputStream(uri)?.use {
-                    ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-                } ?: ExifInterface.ORIENTATION_NORMAL
-            } catch (e: IOException) {
-                ExifInterface.ORIENTATION_NORMAL
-            }
-            decoded?.let { upright(it, orientation, maxSide) }
+            decoded?.let { upright(it, orientation(resolver, uri), maxSide) }
         }
     } catch (e: IOException) {
         null
@@ -62,7 +55,8 @@ object CardImages {
         null
     }
 
-    private fun upright(src: Bitmap, orientation: Int, maxSide: Int): Bitmap {
+    /** The transform that turns a picture stored with the EXIF [orientation] tag upright (identity for "normal"). */
+    fun orientationMatrix(orientation: Int): Matrix {
         val m = Matrix()
         when (orientation) {
             ExifInterface.ORIENTATION_ROTATE_90 -> m.postRotate(90f)
@@ -73,6 +67,22 @@ object CardImages {
             ExifInterface.ORIENTATION_TRANSPOSE -> { m.postRotate(90f); m.postScale(-1f, 1f) }
             ExifInterface.ORIENTATION_TRANSVERSE -> { m.postRotate(270f); m.postScale(-1f, 1f) }
         }
+        return m
+    }
+
+    /** The EXIF orientation tag of [uri] (read for the orientation only; nothing else of the metadata is used). */
+    fun orientation(resolver: ContentResolver, uri: Uri): Int = try {
+        resolver.openInputStream(uri)?.use {
+            ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        } ?: ExifInterface.ORIENTATION_NORMAL
+    } catch (e: IOException) {
+        ExifInterface.ORIENTATION_NORMAL
+    } catch (e: RuntimeException) {
+        ExifInterface.ORIENTATION_NORMAL // a damaged metadata block is not a reason to refuse the picture
+    }
+
+    private fun upright(src: Bitmap, orientation: Int, maxSide: Int): Bitmap {
+        val m = orientationMatrix(orientation)
         val longest = max(src.width, src.height)
         if (longest > maxSide) {
             val s = maxSide.toFloat() / longest
@@ -119,15 +129,33 @@ object CardShare {
 
     fun authority(context: Context) = context.packageName + ".cards"
 
-    /** Writes [bytes] as the file to share and returns it, or null when it cannot be written. */
-    fun stage(context: Context, bytes: ByteArray, format: ExportFormat, name: String = "qal-card"): File? = try {
-        val dir = File(context.filesDir, DIR)
-        dir.mkdirs()
-        dir.listFiles()?.forEach { it.delete() } // only the card being shared stays
-        File(dir, "$name.${format.extension}").also { it.writeBytes(bytes) }
+    /**
+     * Writes [bytes] as the file to share and returns it, or null when it cannot be written. [dir] is one of the
+     * directories `xml/cards_file_paths.xml` exposes ([DIR], or the annotator's `annotate_share`).
+     */
+    fun stage(context: Context, bytes: ByteArray, format: ExportFormat, name: String = "qal-card", dir: String = DIR): File? = try {
+        val d = File(context.filesDir, dir)
+        d.mkdirs()
+        d.listFiles()?.forEach { it.delete() } // only the file being shared stays
+        File(d, "$name.${format.extension}").also { it.writeBytes(bytes) }
     } catch (e: IOException) {
         null
     }
+
+    /**
+     * Deletes staged files older than [maxAgeMillis] in [dirs]. The share sheet gives no "done" signal, so a staged copy
+     * cannot be deleted right after use. The studio's tools call this when they start, so a copy left by an earlier
+     * share (older than [STALE_MILLIS], long read by the receiving app) does not stay on the device; the next share
+     * replaces it anyway.
+     */
+    fun sweep(context: Context, dirs: List<String> = listOf(DIR), maxAgeMillis: Long = STALE_MILLIS, now: Long = System.currentTimeMillis()) {
+        for (dir in dirs) {
+            File(context.filesDir, dir).listFiles()?.forEach { if (now - it.lastModified() > maxAgeMillis) it.delete() }
+        }
+    }
+
+    /** A staged copy older than this is no longer being shared. */
+    const val STALE_MILLIS = 30L * 60 * 1000
 
     /** Opens the system share sheet for [file]; false when no app can take it. */
     fun share(context: Context, file: File, format: ExportFormat, title: String): Boolean = try {

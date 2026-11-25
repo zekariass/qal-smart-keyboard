@@ -50,5 +50,8 @@ class ServerFeatureAccess(
     companion object {
         /** `CARD_MAKER` (V27): the quote and greeting card maker's premium templates. */
         const val CARD_MAKER = "CARD_MAKER"
+
+        /** `IMAGE_ANNOTATOR`: the image annotator's advanced tools (blur, pixelate, step markers, spotlight). */
+        const val IMAGE_ANNOTATOR = "IMAGE_ANNOTATOR"
     }
 }

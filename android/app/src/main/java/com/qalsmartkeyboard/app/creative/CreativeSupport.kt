@@ -15,6 +15,7 @@ import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.qalsmartkeyboard.aiclient.FeatureAccess
+import com.qalsmartkeyboard.aiclient.ServerFeatureAccess
 import com.qalsmartkeyboard.app.ai.AiGraph
 
 /**
@@ -32,13 +33,23 @@ inline fun <reified T : ViewModel> activityViewModel(noinline create: CreationEx
 }
 
 /**
- * Whether this device may use the premium parts of the creative tools right now (`CARD_MAKER`), from the same entitlement
+ * Whether this device may use the premium parts of the card maker right now (`CARD_MAKER`), from the same entitlement
  * port family as the premium keyboard themes ([AiGraph.cardMakerAccess] over the verified token and the plan hints).
- * The port may open Keystore-backed files the first time, so it is built off the main thread; until then the answer is
- * "check needed". Basic tools never wait for it.
  */
 @Composable
-fun rememberCardMakerAccess(): State<FeatureAccess> {
+fun rememberCardMakerAccess(): State<FeatureAccess> = rememberFeatureAccess("qal-card-access") { it.cardMakerAccess }
+
+/** Whether this device may use the image annotator's advanced tools right now (`IMAGE_ANNOTATOR`, [AiGraph.annotatorAccess]). */
+@Composable
+fun rememberAnnotatorAccess(): State<FeatureAccess> = rememberFeatureAccess("qal-annotator-access") { it.annotatorAccess }
+
+/**
+ * The answer of one boolean feature gate ([port] of the AI graph), kept current. The port may open Keystore-backed files
+ * the first time, so it is built off the main thread; until then the answer is "check needed". Basic tools never wait
+ * for it.
+ */
+@Composable
+private fun rememberFeatureAccess(threadName: String, port: (AiGraph) -> ServerFeatureAccess): State<FeatureAccess> {
     val state = remember { mutableStateOf(FeatureAccess.NEEDS_CHECK) }
     val context: Context = LocalContext.current
     DisposableEffect(context) {
@@ -49,14 +60,14 @@ fun rememberCardMakerAccess(): State<FeatureAccess> {
             if (graph == null) {
                 if (!closed.get()) state.value = FeatureAccess.NOT_ON_PLAN
             } else if (!closed.get()) {
-                val port = graph.cardMakerAccess
-                state.value = port.access
-                handle = port.addListener { state.value = port.access }
+                val gate = port(graph)
+                state.value = gate.access
+                handle = gate.addListener { state.value = gate.access }
                 // Blocking and throttled: refreshes the token and the plan hints so a plan bought elsewhere shows up.
                 try { graph.entitlements.refresh() } catch (_: Exception) { }
-                if (!closed.get()) state.value = port.access
+                if (!closed.get()) state.value = gate.access
             }
-        }, "qal-card-access")
+        }, threadName)
         thread.start()
         onDispose {
             closed.set(true)
