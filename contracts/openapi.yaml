@@ -6314,7 +6314,7 @@ components:
         listPrice: { $ref: '#/components/schemas/Money' }
         taxBehavior: { $ref: '#/components/schemas/TaxBehavior' }
         displayPrice: { type: string, description: "Localised display string, e.g. \"299.00 ብር\"." }
-        storeProductId: { type: string, description: Store SKU to launch the store billing flow (STORE_BILLING only; the Play / RevenueCat product identifier, e.g. `credits_500`). }
+        storeProductId: { type: string, description: "Store SKU to launch the store billing flow (STORE_BILLING only; the Play / RevenueCat product identifier, e.g. `credits_500`)." }
         storeOfferId: { type: string, description: Play base plan / offer of a store subscription (absent for one-time products). }
         storeOfferingId: { type: string, description: Suggested RevenueCat offering holding `storeProductId` (STORE_BILLING only). }
         storePackageId: { type: string, description: Suggested RevenueCat package identifier inside `storeOfferingId` (STORE_BILLING only). }
