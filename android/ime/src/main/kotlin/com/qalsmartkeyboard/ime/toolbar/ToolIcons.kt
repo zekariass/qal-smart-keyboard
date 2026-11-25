@@ -32,6 +32,9 @@ enum class ToolIcon {
     DRAW, PEN, HIGHLIGHTER, ERASER, UNDO, REDO, TRASH, PAPER, SAVE, IMAGE_INSERT, SHARE, GALLERY, PLUS,
     LOCK, CHECK, GRAMMAR, REWRITE,
 
+    /** T8.7 the sticker maker: a sticker with a peeled corner and a smile. */
+    STICKER,
+
     /** The AI entry (ADR 0041): an "AI" wordmark in a rounded outline, drawn as paths so it never scales with the font. */
     AI,
 
@@ -598,6 +601,28 @@ object ToolIcons {
                 lineTo(16f, 10.5f)
             },
             Path().apply { rect(5f, 10f, 19f, 21f, 2f) },
+        )
+        // T8.7 Sticker maker. A square sticker with a peeled bottom-right corner, a smile and two eyes.
+        ToolIcon.STICKER -> Glyph(
+            Path().apply {
+                moveTo(7f, 3.5f)
+                lineTo(17f, 3.5f)
+                cubicTo(19f, 3.5f, 20.5f, 5f, 20.5f, 7f)
+                lineTo(20.5f, 14f)
+                lineTo(14f, 20.5f)
+                lineTo(7f, 20.5f)
+                cubicTo(5f, 20.5f, 3.5f, 19f, 3.5f, 17f)
+                lineTo(3.5f, 7f)
+                cubicTo(3.5f, 5f, 5f, 3.5f, 7f, 3.5f)
+                close()
+                moveTo(20.5f, 14f)
+                lineTo(16.5f, 14f)
+                cubicTo(15.1f, 14f, 14f, 15.1f, 14f, 16.5f)
+                lineTo(14f, 20.5f)
+                moveTo(8.2f, 13f)
+                cubicTo(9.4f, 15.2f, 11.6f, 15.2f, 12.8f, 13f)
+            },
+            Path().apply { circle(9f, 9.2f, 1.1f); circle(15f, 9.2f, 1.1f) },
         )
         ToolIcon.CHECK -> Glyph(Path().apply { poly(4.5f, 12.5f, 9.5f, 17.5f, 19.5f, 7f) })
         ToolIcon.GRAMMAR -> Glyph(Path().apply { poly(3f, 15f, 7.5f, 4f, 12f, 15f); poly(4.6f, 11f, 10.4f, 11f); poly(11.5f, 17f, 15f, 20.5f, 21f, 12.5f) })

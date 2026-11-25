@@ -88,6 +88,12 @@ import com.qalsmartkeyboard.ime.toolbar.ConverterPanelView
 import com.qalsmartkeyboard.ime.toolbar.LayoutPanelView
 import com.qalsmartkeyboard.ime.toolbar.QrPanelView
 import com.qalsmartkeyboard.ime.toolbar.DrawPanelView
+import com.qalsmartkeyboard.ime.toolbar.StickerFieldBar
+import com.qalsmartkeyboard.ime.toolbar.StickerPanelView
+import com.qalsmartkeyboard.ime.sticker.PackAccess
+import com.qalsmartkeyboard.ime.sticker.StickerController
+import com.qalsmartkeyboard.ime.sticker.StickerStore
+import com.qalsmartkeyboard.ime.sticker.WebpStickerExporter
 import com.qalsmartkeyboard.ime.draw.DrawController
 import com.qalsmartkeyboard.ime.draw.DrawingStore
 import com.qalsmartkeyboard.ime.draw.PngDrawingExporter
@@ -140,6 +146,8 @@ class KeyboardImeService : InputMethodService() {
     private var calendarPanel: CalendarPanelView? = null
     private var qrPanel: QrPanelView? = null
     private var drawPanel: DrawPanelView? = null
+    private var stickerPanel: StickerPanelView? = null
+    private var stickerFieldBar: StickerFieldBar? = null
     private var aiToolsPanel: AiToolsPanelView? = null
     private var clipPanel: ClipboardPanelView? = null
     private var seenToolPanel = ToolPanel.NONE
@@ -217,6 +225,8 @@ class KeyboardImeService : InputMethodService() {
         calendarPanel?.theme = t
         qrPanel?.theme = t
         drawPanel?.theme = t
+        stickerPanel?.theme = t
+        stickerFieldBar?.theme = t
         aiToolsPanel?.theme = t
         clipPanel?.theme = t
         aiView?.theme = t
@@ -448,6 +458,7 @@ class KeyboardImeService : InputMethodService() {
         val tr = translate
         if (tr != null && tr.isOpen && tr.picker == TranslatePicker.NONE && tr.input.buffer === b) return true
         if (aiWorkspace?.typingField?.buffer === b) return true
+        if (stickersOrNull?.typingField?.buffer === b) return true
         return controller.emoji.typingWordArt && controller.emoji.wordArt.buffer === b
     }
 
@@ -481,6 +492,28 @@ class KeyboardImeService : InputMethodService() {
     private val draw by lazy {
         DrawController(drawingStore, PngDrawingExporter(), { imageShare }, onChanged = { drawPanel?.refresh() })
     }
+
+    // T8.7 Sticker maker: personal stickers (512 px WebP) in the app-private files directory, made on the device and kept
+    // there (R-8). Making is free; the bundled packs follow the plan's STICKER_MAKER feature (the cached plan state of the AI
+    // client, [PackAccess]). The text is typed into the keyboard's own field; the host field is never read. Bitmap work runs
+    // on its own thread, never the key path.
+    private val stickerStore by lazy { StickerStore(java.io.File(filesDir, "stickers")) }
+    private val stickerThread by lazy { java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "sticker-work").apply { isDaemon = true } } }
+    private var stickersOrNull: StickerController? = null
+    private val stickers: StickerController
+        get() = stickersOrNull ?: StickerController(
+            stickerStore, WebpStickerExporter(), { imageShare },
+            access = { PackAccess.of(aiToolbar?.availability) },
+            drawing = { draw.session.snapshot() },
+            openLink = ::openCompanion,
+            background = { r -> stickerThread.execute(r) },
+            post = { r -> main.post(r) },
+            onChanged = { stickerPanel?.refresh(); refreshViews() },
+        ).also {
+            it.onInserted = { tools.close() }
+            stickersOrNull = it
+            controller.fieldTyping = ::fieldTyping
+        }
 
     /** Insert from a utility panel: back to the keys, and the text goes into the field. */
     private fun insertFromUtility(text: String) {
@@ -746,6 +779,7 @@ class KeyboardImeService : InputMethodService() {
                             if (aiWorkspace?.isOpen == true) aiPanelDirty = true
                             if (translate?.isOpen == true) translateDirty = true
                             if (tools.panel == ToolPanel.AI) aiToolsPanel?.render() // the notice line and the locks
+                            if (tools.panel == ToolPanel.STICKERS && stickersOrNull?.typing == null) stickerPanel?.render() // the packs' locks
                             if (aiPanelDirty || translateDirty) refreshViews()
                         }
                     }
@@ -785,7 +819,8 @@ class KeyboardImeService : InputMethodService() {
     }
 
     /** The panel field the keys type into: the translate box while translate mode is on, else an AI panel field. */
-    private fun fieldTyping(): FieldTyping? = translate?.fieldTyping() ?: aiWorkspace?.fieldTyping()
+    private fun fieldTyping(): FieldTyping? =
+        translate?.fieldTyping() ?: aiWorkspace?.fieldTyping() ?: if (tools.panel == ToolPanel.STICKERS) stickersOrNull?.fieldTyping() else null
 
     /** Leaves translate mode: a running call is cancelled, the box's text (and an open composition in it) dropped. */
     private fun closeTranslate() {
@@ -865,6 +900,29 @@ class KeyboardImeService : InputMethodService() {
         if (chat) ws.openChat() else if (email) ws.openEmail() else ws.openAssist(action)
         aiPanelDirty = true
         refreshViews()
+    }
+
+    /** Creates the sticker maker's typing strip above the keys on first use (the keyboard column is built without it). */
+    private fun ensureStickerFieldBar() {
+        if (stickerFieldBar != null) return
+        val col = column ?: return
+        val keys = surface ?: return
+        val c = stickers
+        val strip = StickerFieldBar(ui).also {
+            it.controller = c
+            it.visibility = View.GONE
+            it.onDone = {
+                controller.commitComposition() // still routed to the field: the open composition goes in at its cursor
+                c.endTyping()
+            }
+            it.onMic = { c.typingField?.buffer?.let(::startFieldVoice) }
+            it.field.editor.beforeEdit = { controller.commitComposition() }
+            it.field.editor.haptics = { controller.prefs.hapticsEnabled }
+            it.field.clipboard = SystemAiClipboard(ui).forEditor()
+            it.theme = resolvedTheme.theme
+        }
+        col.addView(strip, col.indexOfChild(keys), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        stickerFieldBar = strip
     }
 
     /** The panels' Back (a chat's header arrow): typing → panel, a running call cancels, else the panel closes. */
@@ -1230,6 +1288,20 @@ class KeyboardImeService : InputMethodService() {
             it.haptics = { controller.prefs.hapticsEnabled }
             drawPanel = it
         }
+        val stickerView = StickerPanelView(ui).also {
+            it.visibility = View.GONE
+            it.heightProvider = { aiPanelHeightPx(k) }
+            it.controller = stickers
+            it.executor = stickerThread
+            it.mainPost = { r -> main.post(r) }
+            // The Drawing source: "Open Draw" keeps the canvas as it is, "New drawing" starts a blank one; the Draw panel opens.
+            it.onOpenDraw = { fresh ->
+                if (fresh) draw.newDrawing()
+                tools.activate(Tool.DRAW)
+            }
+            it.haptics = { controller.prefs.hapticsEnabled }
+            stickerPanel = it
+        }
         val aiToolsView = AiToolsPanelView(ui).also {
             it.visibility = View.GONE
             it.heightProvider = { aiPanelHeightPx(k) }
@@ -1270,6 +1342,7 @@ class KeyboardImeService : InputMethodService() {
         aiPanelView = null
         chatPanelView = null
         aiFieldBar = null
+        stickerFieldBar = null
         aiWorkspace?.discard()
         val column = KeyboardColumn(ui, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.also { this.column = it }.apply {
             addView(space, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (POPUP_HEADROOM_DP * d).toInt()))
@@ -1288,7 +1361,7 @@ class KeyboardImeService : InputMethodService() {
             addView(voiceView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(toolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(layoutView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            for (v in listOf(calcView, converterView, calendarView, qrView, drawView)) {
+            for (v in listOf(calcView, converterView, calendarView, qrView, drawView, stickerView)) {
                 addView(v, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             }
             addView(aiToolsView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -1464,6 +1537,14 @@ class KeyboardImeService : InputMethodService() {
             if (voice.pickerOpen) voice.closePicker() else voice.backToKeyboard()
             return true
         }
+        // The sticker maker: Back leaves typing, then the maker, then a selection, before the panel itself closes.
+        if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && tools.panel == ToolPanel.STICKERS) {
+            val st = stickersOrNull
+            if (st != null) {
+                if (st.typing != null) controller.commitComposition()
+                if (st.back()) return true
+            }
+        }
         // The tools, clipboard and AI tools panels: Back returns to the keys.
         if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && tools.back()) return true
         // Translate mode: Back closes a language list, then the panel.
@@ -1500,6 +1581,8 @@ class KeyboardImeService : InputMethodService() {
         tools.close()
         draw.discard() // an unsaved drawing is not kept once the keyboard is hidden
         drawPanel?.let { it.canvasView.session = draw.session; it.release() }
+        stickersOrNull?.discard() // what was typed or chosen for a sticker is not kept
+        stickerPanel?.release()
         clipHistory.prune()
         aiToolbar?.onKeyboardHidden()
         closeAiPanels()
@@ -1531,10 +1614,12 @@ class KeyboardImeService : InputMethodService() {
         val aiPanelShown = ws?.showsPanel == true && aiPanelView != null
         val chatShown = aiPanelShown && ws?.screen == AiScreen.CHAT
         val aiTyping = ws?.typing == true && aiFieldBar != null
+        // T8.7: the sticker maker's text or caption is typed with the keys back and its strip in the bar's place.
+        val stickerTyping = tools.panel == ToolPanel.STICKERS && stickersOrNull?.typing != null
         strip?.let {
             it.visibility = View.VISIBLE
             // While an AI field is typed into the bar is hidden; its candidates would also close the AI row.
-            val candidates = controller.showCandidateStrip && !aiTyping
+            val candidates = controller.showCandidateStrip && !aiTyping && !stickerTyping
             it.show(
                 if (candidates) controller.candidates else emptyList(),
                 autocorrect = if (candidates) controller.autocorrectIndex else -1,
@@ -1566,9 +1651,21 @@ class KeyboardImeService : InputMethodService() {
         calendarPanel?.visibility = if (toolPanel == ToolPanel.CALENDAR) View.VISIBLE else View.GONE
         qrPanel?.visibility = if (toolPanel == ToolPanel.QR) View.VISIBLE else View.GONE
         drawPanel?.visibility = if (toolPanel == ToolPanel.DRAW) View.VISIBLE else View.GONE
+        stickerPanel?.let {
+            val was = it.visibility == View.VISIBLE
+            val show = toolPanel == ToolPanel.STICKERS && !stickerTyping
+            it.visibility = if (show) View.VISIBLE else View.GONE
+            if (show && !was && seenToolPanel == ToolPanel.STICKERS) it.render() // back from typing: the text typed shows in the preview
+        }
         if (toolPanel != seenToolPanel) {
             if (seenToolPanel == ToolPanel.QR) qrCode.clear() // the text a code was made from is not kept
             if (seenToolPanel == ToolPanel.DRAW) drawPanel?.release() // bitmaps and thumbnails are freed with the panel
+            if (seenToolPanel == ToolPanel.STICKERS) {
+                // Thumbnails are freed with the panel; the texts typed are dropped (the choices stay on a trip to Draw).
+                stickerPanel?.release()
+                if (stickersOrNull?.typing != null) controller.onCompositionAbandoned()
+                stickersOrNull?.close(keepMaker = toolPanel == ToolPanel.DRAW)
+            }
             seenToolPanel = toolPanel
             val rise = 8f * resources.displayMetrics.density
             when (toolPanel) {
@@ -1584,6 +1681,12 @@ class KeyboardImeService : InputMethodService() {
                 ToolPanel.CALENDAR -> calendarPanel?.let { dateConverter.useToday(); it.render(); Motion.reveal(it, fromYPx = rise) }
                 ToolPanel.QR -> qrPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
                 ToolPanel.DRAW -> drawPanel?.let { it.render(); Motion.reveal(it, fromYPx = rise) }
+                ToolPanel.STICKERS -> stickerPanel?.let {
+                    aiToolbar?.onToolbarOpened() // the plan state behind the packs' locks (throttled, sends no text)
+                    stickers.open()
+                    it.render()
+                    Motion.reveal(it, fromYPx = rise)
+                }
                 ToolPanel.AI -> aiToolsPanel?.let {
                     // The user opened the AI tools: the cached plan state is rendered at once; a throttled background
                     // refresh may update it (ADR 0007 D40, as the AI row did). No text is read or sent.
@@ -1632,6 +1735,7 @@ class KeyboardImeService : InputMethodService() {
             toolPanel == ToolPanel.CALENDAR -> ui.getString(R.string.tool_calendar)
             toolPanel == ToolPanel.QR -> ui.getString(R.string.tool_qr)
             toolPanel == ToolPanel.DRAW -> ui.getString(R.string.tool_draw)
+            toolPanel == ToolPanel.STICKERS -> ui.getString(R.string.tool_stickers)
             picker == TranslatePicker.SOURCE -> ui.getString(R.string.translate_from_title)
             picker == TranslatePicker.DESTINATION -> ui.getString(R.string.translate_into_title)
             else -> null
@@ -1643,7 +1747,7 @@ class KeyboardImeService : InputMethodService() {
         val translateHidesKeys = translateOpen && !picking && tr?.keysHidden == true
         translatePanel?.compactOutput = translateOpen && tr?.boxEditing == true &&
             resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE || (picking && !searchingLanguages) || translateHidesKeys) View.GONE else View.VISIBLE
+        surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || (toolPanel != ToolPanel.NONE && !stickerTyping) || (picking && !searchingLanguages) || translateHidesKeys) View.GONE else View.VISIBLE
         // T8.12: the follow-up strip sits above the keys and gives way to whatever panel hides them.
         syncFollowUpTimer()
         followUpStrip?.let {
@@ -1652,7 +1756,16 @@ class KeyboardImeService : InputMethodService() {
             if (show) followUpRender?.invoke()
         }
         emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
-        bar?.visibility = if (inSearch || inWordArtTyping || aiTyping) View.GONE else View.VISIBLE
+        bar?.visibility = if (inSearch || inWordArtTyping || aiTyping || stickerTyping) View.GONE else View.VISIBLE
+        if (stickerTyping) ensureStickerFieldBar()
+        stickerFieldBar?.let {
+            it.visibility = if (stickerTyping) View.VISIBLE else View.GONE
+            if (stickerTyping) {
+                it.render()
+                it.micShown = voice.micVisible
+                it.micActive = dictatingInto(stickersOrNull?.typingField?.buffer)
+            }
+        }
         aiFieldBar?.let {
             it.visibility = if (aiTyping) View.VISIBLE else View.GONE
             if (aiTyping) {

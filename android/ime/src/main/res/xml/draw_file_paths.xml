@@ -2,4 +2,7 @@
 <paths>
     <!-- Exported PNGs only; the editable .qdraw files next to them are never exposed. -->
     <files-path name="drawing_png" path="drawings/png/" />
+    <!-- T8.7 stickers: the user's own WebP stickers and the bundled packs' rendered WebPs; the index file beside them is never exposed. -->
+    <files-path name="sticker_webp" path="stickers/webp/" />
+    <files-path name="sticker_pack_webp" path="stickers/pack/" />
 </paths>

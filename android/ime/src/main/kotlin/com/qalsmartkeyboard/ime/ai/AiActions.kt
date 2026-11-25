@@ -409,9 +409,25 @@ data class AiAvailability(
     val accountGeneration: Long = 0,
     /** The prepaid AI credit balance in whole credits (T8.10), or null while unknown. Shown next to the allowance. */
     val creditBalance: Long? = null,
+    /**
+     * The platform (non-AI) features the plan includes, by contract `FeatureCode` (T8.7: `STICKER_MAKER`): the
+     * `accessEnabled` features of `/me/entitlements` that are not AI tasks, plus the features of a valid entitlement token;
+     * or null while unknown (never fetched). Unlike [entitled], an on-device premium feature acts on this: unknown does not
+     * grant it ([grants]).
+     */
+    val platformFeatures: Set<String>? = null,
 ) {
     /** True when the cached plan state says [kind] is not part of the plan. Unknown state never locks. */
     fun locks(kind: AiTaskKind): Boolean = entitled?.let { kind !in it } == true
+
+    /** True only when the cached plan state says the platform feature [code] is part of the plan (unknown never grants). */
+    fun grants(code: String): Boolean = platformFeatures?.contains(code) == true
+}
+
+/** Contract `FeatureCode`s of platform features the keyboard gates on-device (not AI tasks). */
+object PlatformFeature {
+    /** T8.7: the premium sticker packs (backend V27, PREMIUM, PREMIUM_PLUS and BUSINESS). */
+    const val STICKER_MAKER = "STICKER_MAKER"
 }
 
 /**

@@ -44,7 +44,7 @@ class UtilityPanelsTest {
     /** The panel height on the reference phone (1080x2340 at 2.625): the 328dp keyboard area less the 44dp bar. */
     private val PANEL_DP = 284
 
-    private val utilityTools = listOf(Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.DRAW)
+    private val utilityTools = listOf(Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.DRAW, Tool.STICKERS)
 
     private fun profile(type: Int) = InputProfile.from(type, 0, false, 0)
 
@@ -113,6 +113,7 @@ class UtilityPanelsTest {
             Tool.CALENDAR to ToolPanel.CALENDAR,
             Tool.QR to ToolPanel.QR,
             Tool.DRAW to ToolPanel.DRAW,
+            Tool.STICKERS to ToolPanel.STICKERS,
         )
         for ((tool, panel) in expect) {
             t.toggleTools()

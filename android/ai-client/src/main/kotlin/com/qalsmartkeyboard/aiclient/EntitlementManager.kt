@@ -68,6 +68,9 @@ class EntitlementManager(
 
     @Volatile private var entitledKinds: Set<AiTaskKind>? = null
 
+    /** Every `accessEnabled` feature code of the last `/me/entitlements` (AI and platform), or null before the first answer. */
+    @Volatile private var entitledCodes: Set<String>? = null
+
     /** The prepaid credit balance (`creditBalance` of `/me/entitlements`, whole credits rounded down), or null while unknown. */
     @Volatile var creditBalance: Long? = null
         private set
@@ -80,6 +83,18 @@ class EntitlementManager(
      * answer. Only a hint for the panels' "Premium" marks (ADR 0031); the server decides on every call.
      */
     val entitled: Set<AiTaskKind>? get() = entitledKinds
+
+    /**
+     * The platform (non-AI) feature codes the plan includes (T8.7 `STICKER_MAKER`): the last `/me/entitlements` answer's
+     * `accessEnabled` features that are not AI tasks, plus every feature the cached verified token grants right now (its
+     * offline gates). Null while both are unknown. Answers from memory.
+     */
+    fun platformFeatures(online: Boolean): Set<String>? {
+        val server = entitledCodes?.filterTo(HashSet()) { code -> AiTaskKind.entries.none { AiWire.featureCode(it) == code } }
+        val token = gates(online).features
+        if (server == null && token.isEmpty()) return null
+        return (server ?: emptySet()) + token
+    }
 
     /** The offline gates right now (in-memory, no I/O). [online] decides whether a token in its grace period still counts. */
     fun gates(online: Boolean): OfflineGates = OfflineGates.evaluate(verified, maxOf(clock(), newestSeen), online)
@@ -98,6 +113,7 @@ class EntitlementManager(
         verified = null
         quotaByKind.clear()
         entitledKinds = null
+        entitledCodes = null
         creditBalance = null
         plan = null
         lastQuotaFetch = 0
@@ -190,9 +206,12 @@ class EntitlementManager(
                 plan = AiWire.str(o["plan"] as? JsonObject, "displayName") ?: AiWire.str(o["plan"] as? JsonObject, "planCode")
                 val fresh = HashMap<AiTaskKind, AiQuotaHint>()
                 val enabled = HashSet<AiTaskKind>()
+                val codes = HashSet<String>()
                 for (f in (o["features"] as? JsonArray).orEmpty()) {
                     val fo = f as? JsonObject ?: continue
-                    val kind = AiTaskKind.entries.firstOrNull { AiWire.featureCode(it) == AiWire.str(fo, "featureCode") } ?: continue
+                    val code = AiWire.str(fo, "featureCode")
+                    if (code != null && (fo["accessEnabled"] as? JsonPrimitive)?.contentOrNull == "true") codes += code
+                    val kind = AiTaskKind.entries.firstOrNull { AiWire.featureCode(it) == code } ?: continue
                     if ((fo["accessEnabled"] as? JsonPrimitive)?.contentOrNull != "true") continue
                     enabled += kind
                     fresh[kind] = AiQuotaHint(
@@ -206,6 +225,7 @@ class EntitlementManager(
                 quotaByKind.putAll(fresh)
                 creditBalance = (o["creditBalance"] as? JsonPrimitive)?.doubleOrNull?.takeIf { it >= 0 }?.let { kotlin.math.floor(it + 1e-9).toLong() }
                 entitledKinds = enabled
+                entitledCodes = codes
                 onChanged()
             }
         } catch (_: IOException) {

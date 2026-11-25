@@ -252,6 +252,47 @@ class EntitlementManagerTest {
         assertTrue(changes > before)
     }
 
+    private val stickerEntitlements = """{"plan":{"planCode":"PREMIUM","displayName":"Premium","planRank":1,"source":"SUBSCRIPTION"},
+        "features":[{"featureCode":"TRANSLATE","accessEnabled":true,"includedUnits":10,"unit":"REQUEST","resetPeriod":"DAILY","remaining":3},
+                    {"featureCode":"STICKER_MAKER","accessEnabled":true,"unit":"NONE","resetPeriod":"NONE"},
+                    {"featureCode":"GIF_MAKER","accessEnabled":false,"unit":"NONE","resetPeriod":"NONE"}]}"""
+
+    @Test fun platformFeaturesAreTheEnabledNonAiFeaturesOfTheLastAnswer() {
+        server.enqueue(tokenResponse(mint()))
+        server.enqueue(MockResponse().setBody(stickerEntitlements))
+        val m = manager()
+        assertNull("unknown before the first answer", m.platformFeatures(online = true))
+        m.refresh()
+        val f = m.platformFeatures(online = true)!!
+        assertTrue("STICKER_MAKER" in f)
+        assertFalse("a disabled feature is not granted", "GIF_MAKER" in f)
+        assertFalse("AI tasks are not platform features", "TRANSLATE" in f)
+        m.clear() // another account: nothing of the old plan stays
+        assertNull(m.platformFeatures(online = true))
+    }
+
+    @Test fun aPlanWithoutTheFeatureAnswersWithoutIt() {
+        server.enqueue(tokenResponse(mint()))
+        server.enqueue(MockResponse().setBody(entitlementsBody))
+        val m = manager()
+        m.refresh()
+        val f = m.platformFeatures(online = true)!!
+        assertFalse("STICKER_MAKER" in f)
+    }
+
+    @Test fun aVerifiedTokenThatCarriesTheFeatureGrantsItOfflineInsideItsGraceOnly() {
+        server.enqueue(tokenResponse(mint(features = """{"ON_DEVICE_AI_MODELS":false,"STICKER_MAKER":true}""")))
+        server.enqueue(MockResponse().setBody(entitlementsBody)) // the answer does not list it: the token does
+        val m = manager()
+        m.refresh()
+        assertTrue("STICKER_MAKER" in m.platformFeatures(online = true)!!)
+        now += 25 * 3600_000 // past exp, inside the grace: only while offline
+        assertTrue("STICKER_MAKER" in m.platformFeatures(online = false)!!)
+        assertFalse("STICKER_MAKER" in m.platformFeatures(online = true)!!)
+        now += 80 * 3600_000
+        assertFalse("STICKER_MAKER" in m.platformFeatures(online = false)!!)
+    }
+
     @Test fun theTokenStoreKeepsTheTimeFloorAcrossDropsAndIsEncrypted() {
         val s = store()
         s.save("a.b.c", 1_000, 5_000)
