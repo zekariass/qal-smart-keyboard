@@ -11,6 +11,7 @@ import com.qalsmartkeyboard.aiclient.LastDestinationStore
 import com.qalsmartkeyboard.aiclient.PinnedKeys
 import com.qalsmartkeyboard.aiclient.ServerAiActions
 import com.qalsmartkeyboard.aiclient.ServerFxRateSource
+import com.qalsmartkeyboard.aiclient.ServerFeatureAccess
 import com.qalsmartkeyboard.aiclient.ServerThemeAccess
 import com.qalsmartkeyboard.aiclient.SessionAccessInfo
 import com.qalsmartkeyboard.aiclient.TranslationCatalogStore
@@ -85,6 +86,12 @@ class AiGraph private constructor(context: Context) {
 
     /** Premium keyboard themes (`PREMIUM_THEMES`), answered from the cached verified entitlement token. */
     val themeAccess = ServerThemeAccess(entitlements, session, connectivity) { listener -> actions.addAvailabilityListener(listener) }
+
+    /**
+     * The card maker's premium gate (`CARD_MAKER`, T8.7): the verified token when it carries the feature, else the plan hints
+     * of `/me/entitlements`. Basic cards are never gated by it.
+     */
+    val cardMakerAccess = ServerFeatureAccess(ServerFeatureAccess.CARD_MAKER, entitlements, session, connectivity) { listener -> actions.addAvailabilityListener(listener) }
 
     /**
      * The currency converter's rates (`GET /tools/fx-rates`): public data, fetched without the session over the transport's

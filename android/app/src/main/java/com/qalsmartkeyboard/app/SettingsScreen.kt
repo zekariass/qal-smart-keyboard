@@ -83,6 +83,8 @@ fun SettingsScreen(
     onOpenThemes: (previewId: String?) -> Unit = {},
     /** Opens the Word Art screen, owned by the host. */
     onOpenWordArt: () -> Unit = {},
+    /** Opens the Creative studio (T8.7), owned by the host. */
+    onOpenCreative: () -> Unit = {},
     /** Opens the "Write Email with AI" screen, owned by the host (ADR 0031). */
     onOpenEmail: () -> Unit = {},
     /** Opens the privacy area (A2.6), owned by the host. */
@@ -143,6 +145,7 @@ fun SettingsScreen(
                 runSetup = onRunSetup,
                 openEmail = onOpenEmail,
                 openWordArt = onOpenWordArt,
+                openCreative = onOpenCreative,
                 openPrivacy = onOpenPrivacy,
                 backToTyping = onBackToTyping,
                 signIn = onSignIn,

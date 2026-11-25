@@ -73,6 +73,7 @@ import com.qalsmartkeyboard.data.KeyboardSettings
 import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.app.themes.ThemesHost
 import com.qalsmartkeyboard.app.themes.rememberPremiumThemeAccess
+import com.qalsmartkeyboard.app.creative.CreativeStudioRoute
 import com.qalsmartkeyboard.app.wordart.WordArtHost
 import com.qalsmartkeyboard.app.voice.rememberDictation
 import com.qalsmartkeyboard.app.email.EmailWriterModel
@@ -226,6 +227,9 @@ class MainActivity : ComponentActivity() {
             val coreVersion = remember { runCatching { CoreSmoke.coreVersion() }.getOrNull() } // A1.1: proves the UniFFI binding
             // Word Art (ADR 0030).
             var wordArtOpen by rememberSaveable { mutableStateOf(false) }
+            // The Creative studio (T8.7): the hub of the creative tools. Its tool and drafts live in the activity's view models,
+            // so a trip to the plans screen (a locked premium template) returns to the card being made.
+            var creativeOpen by rememberSaveable { mutableStateOf(false) }
             // Write Email with AI (ADR 0031); opened from the keyboard, Back returns to the app the user was writing in.
             var emailOpen by rememberSaveable { mutableStateOf(false) }
             var emailFromKeyboard by rememberSaveable { mutableStateOf(false) }
@@ -238,7 +242,7 @@ class MainActivity : ComponentActivity() {
                     DeepLinkAction.SHOW_PRIVACY -> { showSignIn = false; showPlans = false; plansFromKeyboard = false; rerun = false; privacyRoute = PrivacyRoute.DASHBOARD.name }
                     // ADR 0035: the keyboard's "Sign in to use AI": the sign-in pane over the keyboard settings ("Back to typing").
                     DeepLinkAction.SHOW_SIGN_IN -> {
-                        signIn.reset(); showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        signIn.reset(); showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; creativeOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset() // after the sign-in: the settings home, account first
                         fromKeyboard = true
                         showSignIn = true
@@ -247,31 +251,31 @@ class MainActivity : ComponentActivity() {
                     DeepLinkAction.SHOW_CREDITS -> { showSignIn = false; privacyRoute = null; showPlans = true; plansFromKeyboard = true; plansFocusCredits = true }
                     DeepLinkAction.OPEN_STORE -> openStorePage(this@MainActivity)
                     DeepLinkAction.SHOW_KEYBOARD_SETTINGS -> {
-                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; creativeOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()
                         fromKeyboard = true
                     }
                     DeepLinkAction.SHOW_KEYBOARD_LANGUAGES -> {
-                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; creativeOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()
                         settingsNav.open(SettingsPage.LANGUAGES)
                         fromKeyboard = true
                     }
                     DeepLinkAction.SHOW_KEYBOARD_TRANSLATION -> {
-                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; emailOpen = false; rerun = false
+                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; creativeOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()
                         settingsNav.open(SettingsPage.TRANSLATION)
                         fromKeyboard = true
                     }
                     DeepLinkAction.SHOW_KEYBOARD_THEMES -> {
-                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; wordArtOpen = false; emailOpen = false; rerun = false
+                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; wordArtOpen = false; creativeOpen = false; emailOpen = false; rerun = false
                         settingsNav.reset()
                         themesPreview = null
                         themesOpen = true
                         themesFromKeyboard = true
                     }
                     DeepLinkAction.SHOW_EMAIL_WRITER -> {
-                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; rerun = false
+                        showSignIn = false; showPlans = false; plansFromKeyboard = false; privacyRoute = null; themesOpen = false; wordArtOpen = false; creativeOpen = false; rerun = false
                         emailOpen = true
                         emailFromKeyboard = true
                     }
@@ -395,6 +399,11 @@ class MainActivity : ComponentActivity() {
                                 dictation = dictation,
                             )
                         }
+                        // The studio's screens draw their own top bars (no innerPadding).
+                        creativeOpen && !showFlow -> CreativeStudioRoute(
+                            onBack = { creativeOpen = false },
+                            onUnlock = { plansFromKeyboard = false; showPlans = true },
+                        )
                         emailOpen && !showFlow -> {
                             val closeEmail = {
                                 if (emailFromKeyboard) finishAndRemoveTask()
@@ -457,6 +466,7 @@ class MainActivity : ComponentActivity() {
                             },
                             onOpenThemes = { id -> themesPreview = id; themesOpen = true; themesFromKeyboard = false },
                             onOpenWordArt = { wordArtOpen = true },
+                            onOpenCreative = { creativeOpen = true },
                             onOpenEmail = { emailOpen = true },
                             onOpenPrivacy = { privacyRoute = PrivacyRoute.DASHBOARD.name },
                             syncContent = { DictionarySyncRow(accountStatus) },

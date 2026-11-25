@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- T8.7: the card being shared is staged here, and only here, for the share sheet's one-time read grant.
+         The gallery's own files (noBackupFilesDir/cards/) are never exposed. card_share/ is excluded from backups
+         and device transfer (backup_rules.xml, data_extraction_rules.xml). -->
+    <files-path name="card_share" path="card_share/" />
+</paths>

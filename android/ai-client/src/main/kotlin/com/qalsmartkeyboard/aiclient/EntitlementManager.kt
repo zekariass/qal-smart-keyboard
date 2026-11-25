@@ -67,6 +67,7 @@ class EntitlementManager(
     private val quotaByKind = ConcurrentHashMap<AiTaskKind, AiQuotaHint>()
 
     @Volatile private var entitledKinds: Set<AiTaskKind>? = null
+    @Volatile private var entitledCodes: Set<String>? = null
 
     /** Every `accessEnabled` feature code of the last `/me/entitlements` (AI and platform), or null before the first answer. */
     @Volatile private var entitledCodes: Set<String>? = null
@@ -95,6 +96,13 @@ class EntitlementManager(
         if (server == null && token.isEmpty()) return null
         return (server ?: emptySet()) + token
     }
+
+    /**
+     * Every feature code the plan includes (`accessEnabled` in the last `/me/entitlements`), or null before the first
+     * answer (and again after sign-out). In memory only. The on-device creative tools (card maker, ...) read their
+     * boolean gate from here when the signed token does not carry it (see [ServerFeatureAccess]).
+     */
+    val entitledFeatureCodes: Set<String>? get() = entitledCodes
 
     /** The offline gates right now (in-memory, no I/O). [online] decides whether a token in its grace period still counts. */
     fun gates(online: Boolean): OfflineGates = OfflineGates.evaluate(verified, maxOf(clock(), newestSeen), online)
