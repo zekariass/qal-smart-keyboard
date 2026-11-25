@@ -22,8 +22,8 @@
                 android:resource="@xml/method" />
         </service>
 
-        <!-- T8.4: Draw & Sketch and the QR panel hand an exported PNG to the host app (commitContent) or the share sheet.
-             Only drawings/png/ of the app-private files is exposed, only by a URI grant given on the user's tap. -->
+        <!-- T8.4 / T8.7: Draw & Sketch, the QR panel and the sticker maker hand an exported PNG or WebP to the host app (commitContent) or the share sheet.
+             Only drawings/png/ and stickers/webp, stickers/pack/ of the app-private files are exposed, only by a URI grant given on the user's tap. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.drawings"

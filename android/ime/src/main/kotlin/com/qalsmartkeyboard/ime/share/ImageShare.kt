@@ -29,9 +29,13 @@ enum class ShareOutcome {
 }
 
 /**
- * Puts a PNG file in front of another app (T8.4; used by Draw and by the QR panel). Two ways, one decision in [ImageSender]:
- * [insert] is `InputConnection.commitContent` into the focused field when the field takes `image/png`; [share] is the
- * system share sheet. The file is the user's own, exported on their tap; nothing here logs or keeps its URI.
+ * Puts an image file in front of another app (T8.4: PNGs of Draw and the QR panel; T8.7: WebP stickers). Two ways, one
+ * decision in [ImageSender]: [insert] is `InputConnection.commitContent` into the focused field when the field takes the
+ * image's MIME type; [share] is the system share sheet. The file is the user's own, exported on their tap; nothing here
+ * logs or keeps its URI.
+ *
+ * The three PNG methods are the original contract. The `mime` overloads (T8.7) default to "PNG only" so older
+ * implementations and fakes keep working; [SystemImageShare] implements them for every type in [ImageMimes].
  */
 interface ImageShare {
     /** True when the focused field accepts `image/png` through `commitContent`. */
@@ -42,6 +46,15 @@ interface ImageShare {
 
     /** Opens the system share sheet for [png]; true when it was launched. */
     fun share(png: File, title: String): Boolean
+
+    /** True when the focused field accepts [mime] through `commitContent`. */
+    fun canInsert(mime: String): Boolean = mime == PngContent.MIME && canInsert()
+
+    /** Commits [file] (of type [mime]) into the focused field; true when the host accepted it. */
+    fun insert(file: File, mime: String, description: String): Boolean = mime == PngContent.MIME && insert(file, description)
+
+    /** Opens the system share sheet for [file] (of type [mime]); true when it was launched. */
+    fun share(file: File, mime: String, title: String): Boolean = mime == PngContent.MIME && share(file, title)
 }
 
 /** The choice between inserting and sharing. */
@@ -62,6 +75,19 @@ object ImageSender {
         return if (s.share(png!!, title)) ShareOutcome.SHARED else ShareOutcome.FAILED
     }
 
+    /** [insertOrShare] for an image of any supported type ([ImageMimes]), e.g. a WebP sticker. */
+    fun insertOrShare(s: ImageShare, file: File?, mime: String, description: String, shareTitle: String = description): ShareOutcome {
+        if (!hasImage(file)) return ShareOutcome.NO_IMAGE
+        if (s.canInsert(mime) && s.insert(file!!, mime, description)) return ShareOutcome.INSERTED
+        return if (s.share(file!!, mime, shareTitle)) ShareOutcome.SHARED else ShareOutcome.FAILED
+    }
+
+    /** [shareOnly] for an image of any supported type. */
+    fun shareOnly(s: ImageShare, file: File?, mime: String, title: String): ShareOutcome {
+        if (!hasImage(file)) return ShareOutcome.NO_IMAGE
+        return if (s.share(file!!, mime, title)) ShareOutcome.SHARED else ShareOutcome.FAILED
+    }
+
     private fun hasImage(f: File?) = f != null && f.isFile && f.length() > 0
 }
 
@@ -70,6 +96,15 @@ object PngContent {
     const val MIME = "image/png"
 
     fun accepts(types: Array<String>?): Boolean = types != null && types.any { ClipDescription.compareMimeTypes(MIME, it) }
+}
+
+/** The image types the keyboard hands to other apps. */
+object ImageMimes {
+    const val PNG = PngContent.MIME
+    const val WEBP = "image/webp"
+
+    /** Whether a field's declared content MIME types take [mime]. */
+    fun accepts(types: Array<String>?, mime: String): Boolean = types != null && types.any { ClipDescription.compareMimeTypes(mime, it) }
 }
 
 /**
@@ -82,16 +117,22 @@ class SystemImageShare(
     private val editorInfo: () -> EditorInfo?,
     private val connection: () -> InputConnection?,
 ) : ImageShare {
-    override fun canInsert(): Boolean {
+    override fun canInsert(): Boolean = canInsert(ImageMimes.PNG)
+
+    override fun insert(png: File, description: String): Boolean = insert(png, ImageMimes.PNG, description)
+
+    override fun share(png: File, title: String): Boolean = share(png, ImageMimes.PNG, title)
+
+    override fun canInsert(mime: String): Boolean {
         val info = editorInfo() ?: return false
-        return connection() != null && PngContent.accepts(EditorInfoCompat.getContentMimeTypes(info))
+        return connection() != null && ImageMimes.accepts(EditorInfoCompat.getContentMimeTypes(info), mime)
     }
 
-    override fun insert(png: File, description: String): Boolean {
+    override fun insert(file: File, mime: String, description: String): Boolean {
         val info = editorInfo() ?: return false
         val ic = connection() ?: return false
         return try {
-            val uri = uriFor(png)
+            val uri = uriFor(file)
             var flags = 0
             if (android.os.Build.VERSION.SDK_INT >= 25) {
                 flags = InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION
@@ -99,7 +140,7 @@ class SystemImageShare(
                 // Before API 25 the framework does not grant it: the host app is given read access by hand.
                 info.packageName?.let { context.grantUriPermission(it, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             }
-            val content = InputContentInfoCompat(uri, ClipDescription(description, arrayOf(PngContent.MIME)), null)
+            val content = InputContentInfoCompat(uri, ClipDescription(description, arrayOf(mime)), null)
             InputConnectionCompat.commitContent(ic, info, content, flags, null)
         } catch (e: IllegalArgumentException) {
             false
@@ -108,11 +149,11 @@ class SystemImageShare(
         }
     }
 
-    override fun share(png: File, title: String): Boolean {
+    override fun share(file: File, mime: String, title: String): Boolean {
         return try {
-            val uri = uriFor(png)
+            val uri = uriFor(file)
             val send = Intent(Intent.ACTION_SEND).apply {
-                type = PngContent.MIME
+                type = mime
                 putExtra(Intent.EXTRA_STREAM, uri)
                 clipData = ClipData.newRawUri("", uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
