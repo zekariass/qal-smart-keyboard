@@ -21,7 +21,10 @@ public record ContextPart(Kind kind, UserText text) {
 		RECIPIENT_ROLE("the recipient's role or title"),
 		/** The name the result is signed with. */
 		SENDER_NAME("the name of the sender, the user who writes the result (use it only in the sign-off, never in "
-				+ "the greeting; the sender is never the recipient)");
+				+ "the greeting; the sender is never the recipient)"),
+		/** AI_CHAT (ADR 0048): the text of the host field the user is writing in, context for the conversation. */
+		FIELD_TEXT("the text currently in the field the user is writing in; context for the conversation, which "
+				+ "the user may be asking about");
 
 		private final String description;
 

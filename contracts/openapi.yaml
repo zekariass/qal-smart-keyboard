@@ -1698,6 +1698,103 @@ paths:
         '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/ai/chat:
+    post:
+      tags: [AI]
+      operationId: aiChat
+      summary: One turn of the writing-assistant chat (stateless)
+      description: |
+        Feature `AI_CHAT` (ADR 0048, plan T8.5): a writing-and-language assistant: write or rewrite
+        anything, explain a word or phrase, answer a question while typing, draft social-media
+        captions, brainstorm. Premium AI feature: the plan must include `AI_CHAT` (403
+        `FEATURE_NOT_ENTITLED` otherwise, which is what guests and the Free plan get); one request unit
+        per turn from the plan allowance, then prepaid credits (2 credits per turn), with 429
+        `QUOTA_EXCEEDED` and `upgradeOptions` when both are used up.
+
+        **Stateless.** The server keeps no conversation. The client sends the turns it shows on screen
+        in `messages`, oldest first, and the last one must be a `USER` message; the reply is the
+        assistant's next message, which the client appends to its own list. Nothing of the
+        conversation is stored on the server: no chat table, no message text in `ai_requests` or in
+        logs, nothing in AI history (`saveToHistory: true` is refused with 400 `NOT_AVAILABLE`; there
+        is no opt-in for chat). The only server-side copies are the ones every AI POST has: the
+        response is sealed with the user's data key in the replay cache for at most 10 minutes (so a
+        retry with the same `Idempotency-Key` returns the same reply), and a sealed SHA-256
+        fingerprint of the request body is kept for 24 hours to detect a reused key (see
+        `IdempotencyKey`). The provider call is made with `store: false` and no tools.
+
+        **Limits.** At most 12 messages; each 1 to 4000 characters (Unicode code points); the messages
+        together at most 10000 characters; `context.fieldText` at most 4000. Roles are `USER` and
+        `ASSISTANT` only: a `system` (or any other) role is 400 `VALIDATION_FAILED` on
+        `messages[i].role`, so a client cannot set instructions. Too long is 400 `INPUT_TOO_LONG`.
+        The client keeps the window short (drop the oldest turns first) and decides what to send.
+
+        `language` is the language the reply is written in (any active catalogue language); omitted,
+        the assistant answers in the language of the user's last message. Amharic and Tigrinya are
+        written in Ge'ez script, Afaan Oromoo in Qubee. `context.fieldText` is the text of the host
+        field the user is writing in (the keyboard's "Ask AI" handoff), sent only on an explicit user
+        action; it and every message are data for the assistant, never instructions that change its
+        task. The assistant answers concisely and does not claim certainty on legal, immigration or
+        medical matters.
+
+        Server time budget: about 20 s per provider attempt, 30 s in total (longer than the quick
+        actions: clients should wait about 35 s). Streaming is not served yet (the answer is JSON). 403
+        codes are those of `/ai/translate`. 422 `OUTPUT_GUARDRAIL_FAILED` or `CONTENT_REJECTED` charge
+        nothing; a reply cut off at the provider's output limit is returned with `finishReason: LENGTH`
+        and is charged (the user got text); on a 503 nothing is charged.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ClientSurface'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatRequest' }
+            example:
+              messages:
+                - role: USER
+                  text: What does "kind regards" mean in an Amharic letter?
+                - role: ASSISTANT
+                  text: 'It is the polite closing before your name, like ከሰላምታ ጋር.'
+                - role: USER
+                  text: Write that closing for my boss, formal.
+              language: am
+              context:
+                fieldText: ሰላም አቶ ከበደ፣ ሪፖርቱን ነገ እልካለሁ።
+      responses:
+        '200':
+          description: The assistant's next message.
+          headers:
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimit-Limit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimit-Remaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimit-Reset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatResponse' }
+              example:
+                requestId: 0193a5c2-6f1e-7c3a-9b2d-4e5f6a7b8c9d
+                message:
+                  role: ASSISTANT
+                  text: ከታላቅ አክብሮት ጋር፣
+                language: am
+                finishReason: STOP
+                notes:
+                  - type: QUALITY
+                    message: 'Beta quality: please review the result before sending.'
+                qualityTier: BETA
+                replayed: false
+                usage:
+                  featureCode: AI_CHAT
+                  unitsCharged: 1
+                  unit: REQUEST
+                  usageSource: PLAN_ALLOWANCE
+                  remaining: 99
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/ai/detect-language:
     post:
       tags: [AI]
@@ -5850,6 +5947,62 @@ components:
         qualityTier: { $ref: '#/components/schemas/QualityTier' }
         replayed: { type: boolean }
         historyItemId: { type: string, format: uuid }
+        usage: { $ref: '#/components/schemas/UsageSummary' }
+    ChatMessage:
+      type: object
+      description: One turn of a chat. Held by the client only; the server keeps none (ADR 0048).
+      required: [role, text]
+      properties:
+        role:
+          type: string
+          enum: [USER, ASSISTANT]
+          description: There is no system role, so a client cannot send instructions.
+        text: { type: string, minLength: 1, maxLength: 4000 }
+    ChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 12
+          description: |
+            The visible turns, oldest first; the last must be `USER`. Together at most 10000
+            characters.
+          items: { $ref: '#/components/schemas/ChatMessage' }
+        language:
+          $ref: '#/components/schemas/LanguageCode'
+          description: The language the reply is written in; omitted, the language of the last user message.
+        context:
+          type: object
+          description: What the keyboard's Ask-AI handoff adds. Data for the assistant, not instructions.
+          properties:
+            fieldText:
+              type: string
+              maxLength: 4000
+              description: The text of the host field the user is writing in, sent only on an explicit user action.
+        saveToHistory:
+          type: boolean
+          default: false
+          description: Chat is never saved. `true` is refused with 400 `VALIDATION_FAILED` / `NOT_AVAILABLE`.
+    ChatResponse:
+      type: object
+      required: [requestId, message, finishReason, replayed]
+      properties:
+        requestId: { type: string, format: uuid }
+        message: { $ref: '#/components/schemas/ChatMessage' }
+        language:
+          $ref: '#/components/schemas/LanguageCode'
+          description: The requested reply language; absent when the request named none.
+        finishReason:
+          type: string
+          enum: [STOP, LENGTH]
+          description: "`LENGTH` = the reply was cut off at the provider's output limit; ask the assistant to continue."
+        notes:
+          type: array
+          items: { $ref: '#/components/schemas/AiNote' }
+        qualityTier: { $ref: '#/components/schemas/QualityTier' }
+        replayed: { type: boolean }
         usage: { $ref: '#/components/schemas/UsageSummary' }
     DetectLanguageRequest:
       type: object

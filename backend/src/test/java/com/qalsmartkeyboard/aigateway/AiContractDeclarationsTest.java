@@ -85,6 +85,37 @@ class AiContractDeclarationsTest {
 		assertThat(post("/api/v1/ai/drafts").getDescription()).contains("placeholders", "variation", "Re: ");
 	}
 
+	/** ADR 0048 (T8.5): the stateless writing-assistant chat is declared with its bounds, roles and errors. */
+	@Test
+	void chatDeclaresItsBoundsRolesAnswersAndTheStatelessGuarantee() {
+		Operation chat = post("/api/v1/ai/chat");
+		assertThat(chat.getOperationId()).isEqualTo("aiChat");
+		assertThat(chat.getResponses()).containsKeys("200", "400", "401", "403", "409", "422", "429", "503");
+		assertThat(chat.getParameters()).anyMatch(p -> "Idempotency-Key".equals(p.getName())
+				|| (p.get$ref() != null && p.get$ref().endsWith("/IdempotencyKey")));
+		assertThat(chat.getDescription()).contains("Stateless", "AI_CHAT", "no message text in `ai_requests`",
+				"saveToHistory: true", "upgradeOptions", "FEATURE_NOT_ENTITLED", "system", "At most 12 messages", "4000", "10000", "20 s", "finishReason: LENGTH");
+		Map<String, Schema> schemas = API.getComponents().getSchemas();
+		Map<String, Schema> request = props("ChatRequest");
+		assertThat(schemas.get("ChatRequest").getRequired()).containsExactly("messages");
+		assertThat(request).containsKeys("messages", "language", "context", "saveToHistory");
+		assertThat(request.get("messages").getMinItems()).isEqualTo(1);
+		assertThat(request.get("messages").getMaxItems()).isEqualTo(12);
+		Schema<?> context = request.get("context");
+		assertThat(((Schema<?>) context.getProperties().get("fieldText")).getMaxLength()).isEqualTo(4000);
+		assertThat(request.get("saveToHistory").getDefault()).isEqualTo(false);
+		Map<String, Schema> message = props("ChatMessage");
+		assertThat(message.get("role").getEnum()).containsExactly("USER", "ASSISTANT"); // no system role
+		assertThat(message.get("text").getMaxLength()).isEqualTo(4000);
+		assertThat(message.get("text").getMinLength()).isEqualTo(1);
+		assertThat(schemas.get("ChatMessage").getRequired()).containsExactlyInAnyOrder("role", "text");
+		assertThat(schemas.get("ChatResponse").getRequired()).containsExactlyInAnyOrder("requestId", "message", "finishReason",
+				"replayed");
+		assertThat(props("ChatResponse")).containsKeys("message", "language", "finishReason", "notes", "qualityTier",
+				"usage", "replayed").doesNotContainKey("historyItemId");
+		assertThat(props("ChatResponse").get("finishReason").getEnum()).containsExactly("STOP", "LENGTH");
+	}
+
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	private static Map<String, Schema> props(String schema) {
 		return API.getComponents().getSchemas().get(schema).getProperties();

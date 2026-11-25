@@ -75,9 +75,13 @@ public final class PromptValues {
 				: in.destinationLanguage() != null ? in.destinationLanguageName() : in.languageName();
 		put(v, "outputLanguage", out);
 		put(v, "outputLanguageName", outName);
-		put(v, "outputLanguageInstruction", outName != null && !outName.isBlank()
-				? "Write the result in " + outName + " (" + out + ")."
-				: "Write the result in the same language as the input text.");
+		boolean named = outName != null && !outName.isBlank();
+		put(v, "outputLanguageInstruction", in.feature() == AiFeature.AI_CHAT
+				? (named ? "Write every reply in " + outName + " (" + out + "), whatever language the user writes in."
+						: "Reply in the language of the user's last message; when it mixes languages, use the language of"
+								+ " its main request.")
+				: named ? "Write the result in " + outName + " (" + out + ")."
+						: "Write the result in the same language as the input text.");
 		put(v, "count", in.count() == null ? null : in.count().toString());
 		put(v, "variation", in.variation() == null ? null : in.variation().toString());
 		if (in.today() != null) {

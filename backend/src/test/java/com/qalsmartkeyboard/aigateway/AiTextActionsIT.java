@@ -210,8 +210,8 @@ class AiTextActionsIT {
 				SELECT feature_code FROM ai_prompt_templates
 				 WHERE is_active AND evaluation_status = 'APPROVED'
 				   AND language_scope = '*' AND model_family = '*' ORDER BY feature_code""", String.class);
-		assertThat(features).containsExactly("DRAFT_DOCUMENT", "EXPLAIN_TEXT", "FORMAT_TEXT", "GRAMMAR_CORRECTION",
-				"REWRITE", "SMART_REPLY", "SUMMARIZE", "TONE_ADJUST");
+		assertThat(features).containsExactly("AI_CHAT", "DRAFT_DOCUMENT", "EXPLAIN_TEXT", "FORMAT_TEXT",
+				"GRAMMAR_CORRECTION", "REWRITE", "SMART_REPLY", "SUMMARIZE", "TONE_ADJUST");
 
 		Map<String, String> values = PromptValues.of(new PromptValues.Inputs(AiFeature.DRAFT_DOCUMENT, "REPLY",
 				"PERSUASIVE", null, "MEDIUM", "en", "English", "am", "Amharic", "en", "English",

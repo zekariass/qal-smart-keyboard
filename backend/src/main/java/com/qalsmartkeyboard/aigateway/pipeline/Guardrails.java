@@ -48,6 +48,10 @@ import com.qalsmartkeyboard.aigateway.spi.AiFeature;
  * bracketed placeholders such as {@code [date]} are not counted for the script, and the pipeline passes the user's own
  * notes (not the message being answered) as the protected input. SUMMARIZE, EXPLAIN_TEXT and SMART_REPLY without notes
  * skip PROTECTED_TOKEN_LOST (a summary may drop a number).
+ *
+ * <p>AI_CHAT (ADR 0048) composes like SMART_REPLY: only the model's self-references are a REFUSAL, there is no protected
+ * input, the reply is capped at 4000 characters, and a script or language mismatch is checked only when the user named
+ * a reply language ({@code expectedScript} null otherwise).
  */
 public final class Guardrails {
 
@@ -95,7 +99,8 @@ public final class Guardrails {
 
 		/** The task writes new text (replies, e-mails) rather than transforming the input. */
 		boolean composes() {
-			return feature == AiFeature.SMART_REPLY || feature == AiFeature.DRAFT_DOCUMENT;
+			return feature == AiFeature.SMART_REPLY || feature == AiFeature.DRAFT_DOCUMENT
+					|| feature == AiFeature.AI_CHAT;
 		}
 	}
 
@@ -149,7 +154,7 @@ public final class Guardrails {
 		int in = codePoints(input);
 		int out = codePoints(output);
 		LengthBounds bounds = LengthBounds.of(e.feature(), e.mode());
-		if (e.crossLanguage()) {
+		if (e.crossLanguage() && e.feature() != AiFeature.AI_CHAT) { // a chat reply is capped at 4000 characters
 			bounds = bounds.acrossLanguages();
 		}
 		if (out > bounds.max(in)) {
@@ -418,6 +423,8 @@ public final class Guardrails {
 				};
 				// restructured but not rewritten: titles, bullets and section lines add a little
 				case FORMAT_TEXT -> new LengthBounds(3.0, 60, 0.1);
+				// a chat reply is free text of any length up to the contract's 4000 characters, whatever the question
+				case AI_CHAT -> new LengthBounds(0.0, 4000, 0.0);
 				default -> new LengthBounds(4.0, 80, 0.05);
 			};
 		}

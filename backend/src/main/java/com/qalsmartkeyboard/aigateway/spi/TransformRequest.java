@@ -25,10 +25,13 @@ import java.util.Objects;
  * @param count          SMART_REPLY: how many alternative replies (1..5); 0 for every other task
  * @param variation      0 = first answer; a higher number asks for a different version of the same request
  *                       (regenerate)
+ * @param turns          AI_CHAT (ADR 0048): the whole conversation, oldest first, ending with the user turn being
+ *                       answered ({@code text} is that last turn); empty for every other task. Held by the client and
+ *                       sent with every request: no adapter keeps it
  */
 public record TransformRequest(AiFeature task, UserText text, String language, String mode, String tone,
 		String targetLength, String outputLanguage, Addressee addressee, String instructions, List<ContextPart> context,
-		int count, int variation) {
+		int count, int variation, List<ChatTurn> turns) {
 
 	public TransformRequest {
 		Objects.requireNonNull(task, "task");
@@ -41,6 +44,15 @@ public record TransformRequest(AiFeature task, UserText text, String language, S
 		}
 		addressee = addressee == null ? Addressee.UNSPECIFIED : addressee;
 		context = context == null ? List.of() : List.copyOf(context);
+		turns = turns == null ? List.of() : List.copyOf(turns);
+	}
+
+	/** A request without chat turns (every task but AI_CHAT). */
+	public TransformRequest(AiFeature task, UserText text, String language, String mode, String tone,
+			String targetLength, String outputLanguage, Addressee addressee, String instructions,
+			List<ContextPart> context, int count, int variation) {
+		this(task, text, language, mode, tone, targetLength, outputLanguage, addressee, instructions, context, count,
+				variation, List.of());
 	}
 
 	/** A single-text request (the B5.1 shape). */
@@ -53,9 +65,15 @@ public record TransformRequest(AiFeature task, UserText text, String language, S
 		return new TransformRequest(task, UserText.of(text), language, null, null, null, null, null, null);
 	}
 
-	/** Code points of {@code text} and every context part: what the provider is sent. */
+	/** Code points of {@code text} (or every chat turn) and every context part: what the provider is sent. */
 	public int inputCharacters() {
-		int n = text.characters();
+		int n = 0;
+		if (turns.isEmpty()) {
+			n = text.characters();
+		}
+		for (ChatTurn t : turns) {
+			n += t.text().characters();
+		}
 		for (ContextPart p : context) {
 			n += p.text().characters();
 		}
@@ -65,6 +83,6 @@ public record TransformRequest(AiFeature task, UserText text, String language, S
 	/** The same request with the rendered instructions for one provider. */
 	public TransformRequest withInstructions(String rendered) {
 		return new TransformRequest(task, text, language, mode, tone, targetLength, outputLanguage, addressee, rendered,
-				context, count, variation);
+				context, count, variation, turns);
 	}
 }
