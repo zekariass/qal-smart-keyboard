@@ -183,6 +183,10 @@ class OfflineGates(
     val onDeviceModels: Boolean,
     val premiumThemes: Boolean = false,
     val premiumThemesOnPlan: Boolean = false,
+    /** Every boolean feature the token grants, whether or not the gate is open right now (see [open]). */
+    val grantedFeatures: Set<String> = emptySet(),
+    /** [grantedFeatures] while the gate is open (valid, or offline inside the grace period); empty otherwise. */
+    val openFeatures: Set<String> = emptySet(),
 ) {
     companion object {
         val CLOSED = OfflineGates(GateState.VOID, false)
@@ -197,7 +201,11 @@ class OfflineGates(
             val state = if (nowMs < token.expiresAtMs) GateState.VALID else GateState.OFFLINE_GRACE
             val open = state == GateState.VALID || !online
             val themes = token.features[PREMIUM_THEMES] == true
-            return OfflineGates(state, open && token.features["ON_DEVICE_AI_MODELS"] == true, open && themes, themes)
+            val granted = token.features.filterValues { it }.keys
+            return OfflineGates(
+                state, open && token.features["ON_DEVICE_AI_MODELS"] == true, open && themes, themes,
+                grantedFeatures = granted, openFeatures = if (open) granted else emptySet(),
+            )
         }
     }
 }

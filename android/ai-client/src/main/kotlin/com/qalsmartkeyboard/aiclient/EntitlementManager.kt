@@ -67,6 +67,7 @@ class EntitlementManager(
     private val quotaByKind = ConcurrentHashMap<AiTaskKind, AiQuotaHint>()
 
     @Volatile private var entitledKinds: Set<AiTaskKind>? = null
+    @Volatile private var entitledCodes: Set<String>? = null
 
     /** The prepaid credit balance (`creditBalance` of `/me/entitlements`, whole credits rounded down), or null while unknown. */
     @Volatile var creditBalance: Long? = null
@@ -80,6 +81,13 @@ class EntitlementManager(
      * answer. Only a hint for the panels' "Premium" marks (ADR 0031); the server decides on every call.
      */
     val entitled: Set<AiTaskKind>? get() = entitledKinds
+
+    /**
+     * Every feature code the plan includes (`accessEnabled` in the last `/me/entitlements`), or null before the first
+     * answer (and again after sign-out). In memory only. The on-device creative tools (card maker, ...) read their
+     * boolean gate from here when the signed token does not carry it (see [ServerFeatureAccess]).
+     */
+    val entitledFeatureCodes: Set<String>? get() = entitledCodes
 
     /** The offline gates right now (in-memory, no I/O). [online] decides whether a token in its grace period still counts. */
     fun gates(online: Boolean): OfflineGates = OfflineGates.evaluate(verified, maxOf(clock(), newestSeen), online)
@@ -98,6 +106,7 @@ class EntitlementManager(
         verified = null
         quotaByKind.clear()
         entitledKinds = null
+        entitledCodes = null
         creditBalance = null
         plan = null
         lastQuotaFetch = 0
@@ -190,8 +199,10 @@ class EntitlementManager(
                 plan = AiWire.str(o["plan"] as? JsonObject, "displayName") ?: AiWire.str(o["plan"] as? JsonObject, "planCode")
                 val fresh = HashMap<AiTaskKind, AiQuotaHint>()
                 val enabled = HashSet<AiTaskKind>()
+                val codes = HashSet<String>()
                 for (f in (o["features"] as? JsonArray).orEmpty()) {
                     val fo = f as? JsonObject ?: continue
+                    if ((fo["accessEnabled"] as? JsonPrimitive)?.contentOrNull == "true") AiWire.str(fo, "featureCode")?.let { codes += it }
                     val kind = AiTaskKind.entries.firstOrNull { AiWire.featureCode(it) == AiWire.str(fo, "featureCode") } ?: continue
                     if ((fo["accessEnabled"] as? JsonPrimitive)?.contentOrNull != "true") continue
                     enabled += kind
@@ -206,6 +217,7 @@ class EntitlementManager(
                 quotaByKind.putAll(fresh)
                 creditBalance = (o["creditBalance"] as? JsonPrimitive)?.doubleOrNull?.takeIf { it >= 0 }?.let { kotlin.math.floor(it + 1e-9).toLong() }
                 entitledKinds = enabled
+                entitledCodes = codes
                 onChanged()
             }
         } catch (_: IOException) {
