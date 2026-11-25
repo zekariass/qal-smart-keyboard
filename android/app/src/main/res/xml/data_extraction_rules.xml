@@ -4,16 +4,16 @@
    for details.
 -->
 <data-extraction-rules>
+    <!-- T8.7: the card being shared is staged in files/card_share/ (a copy of a card the user is sharing); never backed up
+         or transferred. The gallery itself is in noBackupFilesDir, which the platform excludes. -->
     <cloud-backup>
+        <exclude domain="file" path="card_share" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
         -->
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="file" path="card_share" />
     </device-transfer>
-    -->
 </data-extraction-rules>

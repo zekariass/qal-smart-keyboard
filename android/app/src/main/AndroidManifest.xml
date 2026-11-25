@@ -70,6 +70,18 @@
             </intent-filter>
         </activity>
 
+        <!-- T8.7: a quote or greeting card the user shares is handed to the share sheet by this provider. Only the
+             files/card_share/ is exposed, only by a URI grant given on the user's tap; nothing is uploaded. -->
+        <provider
+            android:name=".creative.cards.CardFileProvider"
+            android:authorities="${applicationId}.cards"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/cards_file_paths" />
+        </provider>
+
         <!-- ADR 0024: Sentry starts only from QalApplication (a DSN in the build AND the privacy switch on), never by
              itself. Auto-init off, and the SDK's start-up providers are removed from the merged manifest. -->
         <meta-data

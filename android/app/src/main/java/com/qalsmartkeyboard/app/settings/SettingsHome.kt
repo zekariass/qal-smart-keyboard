@@ -48,6 +48,7 @@ data class SettingsHomeActions(
     val runSetup: () -> Unit = {},
     val openEmail: () -> Unit = {},
     val openWordArt: () -> Unit = {},
+    val openCreative: () -> Unit = {},
     val openPrivacy: () -> Unit = {},
     val backToTyping: () -> Unit = {},
     /** Opens the sign-in screen (the keyboard-opened account row while nobody is signed in). */
@@ -109,6 +110,7 @@ fun SettingsHomePage(
         )
         SettingsRow(stringResource(R.string.settings_email_title), actions.openEmail, icon = R.drawable.ic_settings_mail)
         SettingsRow(stringResource(R.string.settings_wordart_title), actions.openWordArt, icon = R.drawable.ic_settings_text_fields)
+        SettingsRow(stringResource(R.string.settings_creative_title), actions.openCreative, summary = stringResource(R.string.settings_creative_summary), icon = R.drawable.ic_settings_palette)
 
         SettingsHeader(stringResource(R.string.settings_group_account))
         if (!state.fromKeyboard) {
