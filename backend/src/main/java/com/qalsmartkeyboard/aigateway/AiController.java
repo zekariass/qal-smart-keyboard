@@ -51,7 +51,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * The AI endpoints of the contract (B5.5): {@code translateText}, {@code transformText} (GRAMMAR_CORRECTION, REWRITE,
  * TONE_ADJUST, SUMMARIZE, EXPLAIN_TEXT; SCRIPT_CONVERSION answers 400 {@code NOT_AVAILABLE}), {@code suggestReplies}
- * (SMART_REPLY) and {@code draftDocument} (DRAFT_DOCUMENT e-mails, ADR 0027), {@code detectLanguage} and
+ * (SMART_REPLY), {@code draftDocument} (DRAFT_DOCUMENT e-mails, ADR 0027), {@code aiChat} (AI_CHAT, ADR 0048),
+ * {@code detectLanguage} and
  * {@code getAiCapabilities}. Each maps the body to an {@link AiCommand}, runs {@link AiPipeline#execute} and returns
  * the contract-shaped {@link AiResult}; every refusal and failure is already an {@code ApiException} with its contract
  * code (the global handler writes the Problem). {@code AiRequestCancelledException} (the calling thread was
@@ -71,6 +72,8 @@ class AiController {
 	static final RateLimitPolicy REPLIES_PER_USER = new RateLimitPolicy("ai.replies.user", 30, Duration.ofMinutes(1));
 	/** An e-mail is a long LLM call: fewer per minute. */
 	static final RateLimitPolicy DRAFTS_PER_USER = new RateLimitPolicy("ai.drafts.user", 10, Duration.ofMinutes(1));
+	/** One chat turn is an LLM call like a reply; a person types slower than this. */
+	static final RateLimitPolicy CHAT_PER_USER = new RateLimitPolicy("ai.chat.user", 20, Duration.ofMinutes(1));
 	static final RateLimitPolicy DETECT_PER_USER = new RateLimitPolicy("ai.detect.user", 60, Duration.ofMinutes(1));
 	static final RateLimitPolicy FEEDBACK_PER_USER = new RateLimitPolicy("ai.feedback.user", 60, Duration.ofMinutes(1));
 	static final RateLimitPolicy CAPABILITIES_PER_CLIENT = new RateLimitPolicy("ai.capabilities.client", 120,
@@ -85,7 +88,8 @@ class AiController {
 	/** The features this gateway serves today (the rest of {@link AiFeature} answers NOT_AVAILABLE or has no endpoint). */
 	private static final Set<AiFeature> SERVED = EnumSet.of(AiFeature.TRANSLATE, AiFeature.DETECT_LANGUAGE,
 			AiFeature.GRAMMAR_CORRECTION, AiFeature.REWRITE, AiFeature.TONE_ADJUST, AiFeature.SUMMARIZE,
-			AiFeature.EXPLAIN_TEXT, AiFeature.FORMAT_TEXT, AiFeature.SMART_REPLY, AiFeature.DRAFT_DOCUMENT);
+			AiFeature.EXPLAIN_TEXT, AiFeature.FORMAT_TEXT, AiFeature.SMART_REPLY, AiFeature.DRAFT_DOCUMENT,
+			AiFeature.AI_CHAT);
 
 	private final AiPipeline pipeline;
 	private final RateLimiter limiter;
@@ -149,6 +153,18 @@ class AiController {
 			@RequestHeader(name = "X-Client-Surface", required = false) String surface, @RequestBody byte[] body) {
 		RateLimitDecision limit = limiter.tryConsume(DRAFTS_PER_USER, caller.userId().toString()).orThrow();
 		return run(parser.drafts(body, caller(caller, key(idempotencyKey), surface)), limit);
+	}
+
+	/**
+	 * ADR 0048: one stateless turn of the writing-assistant chat (AI_CHAT). The client sends the visible turns; nothing
+	 * of the conversation is kept (see {@link AiPipeline}).
+	 */
+	@PostMapping(path = "/api/v1/ai/chat", consumes = MediaType.APPLICATION_JSON_VALUE)
+	ResponseEntity<AiResult> aiChat(@AuthenticationPrincipal AuthenticatedUser caller,
+			@RequestHeader(name = "Idempotency-Key") String idempotencyKey,
+			@RequestHeader(name = "X-Client-Surface", required = false) String surface, @RequestBody byte[] body) {
+		RateLimitDecision limit = limiter.tryConsume(CHAT_PER_USER, caller.userId().toString()).orThrow();
+		return run(parser.chat(body, caller(caller, key(idempotencyKey), surface)), limit);
 	}
 
 	@PostMapping(path = "/api/v1/ai/detect-language", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -284,6 +300,7 @@ class AiController {
 			case DETECT_LANGUAGE -> properties.pipeline().maxDetectCharacters();
 			case SMART_REPLY -> AiPipeline.MAX_REPLY_CONTEXT_CHARACTERS;
 			case DRAFT_DOCUMENT -> AiPipeline.MAX_DRAFT_EMAIL_CHARACTERS;
+			case AI_CHAT -> AiPipeline.MAX_CHAT_TOTAL_CHARACTERS;
 			default -> properties.pipeline().maxTextCharacters();
 		};
 		int max = c.maxInputCharacters() == null ? pipelineMax : Math.min(pipelineMax, c.maxInputCharacters());

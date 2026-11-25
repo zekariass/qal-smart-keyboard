@@ -14,11 +14,12 @@ import com.qalsmartkeyboard.aigateway.spi.UserText;
  * endpoints (B5.5) only copy fields: {@link Translate} = {@code TranslateRequest}, {@link Transform} =
  * {@code TransformRequest} (GRAMMAR_CORRECTION, REWRITE, TONE_ADJUST, SUMMARIZE, EXPLAIN_TEXT), {@link Reply} =
  * {@code RepliesRequest} (SMART_REPLY), {@link Draft} = {@code DraftRequest} (DRAFT_DOCUMENT), {@link Detect} =
- * {@code DetectLanguageRequest}. Enum-valued options travel as their contract names and are validated by the pipeline.
+ * {@code DetectLanguageRequest}, {@link Chat} = {@code ChatRequest} (AI_CHAT, ADR 0048). Enum-valued options travel as their contract names and are validated by the pipeline.
  * Text is {@link UserText} only, so printing a command never prints content.
  */
 public sealed interface AiCommand
-		permits AiCommand.Translate, AiCommand.Transform, AiCommand.Reply, AiCommand.Draft, AiCommand.Detect {
+		permits AiCommand.Translate, AiCommand.Transform, AiCommand.Reply, AiCommand.Draft, AiCommand.Detect,
+		AiCommand.Chat {
 
 	/** Who asks and from where. */
 	Caller caller();
@@ -247,6 +248,43 @@ public sealed interface AiCommand
 				default -> instructions;
 			};
 			return t == null ? UserText.of("") : t;
+		}
+	}
+
+	/**
+	 * Contract {@code ChatRequest} (AI_CHAT, ADR 0048): one stateless turn of the writing-assistant chat. The client
+	 * sends the turns it shows, the server keeps nothing. Every text is {@link UserText}.
+	 *
+	 * @param messages      the visible turns, oldest first; the last must be a USER turn (validated by the pipeline)
+	 * @param language      the language the reply is written in; null = the language of the last user turn
+	 * @param fieldText     the text of the host field the user is writing in (the keyboard's Ask-AI handoff), or null
+	 * @param saveToHistory the request's {@code saveToHistory}; chat is never saved, so {@code true} is refused
+	 */
+	record Chat(Caller caller, List<Turn> messages, String language, UserText fieldText, boolean saveToHistory)
+			implements AiCommand {
+
+		/** Contract {@code ChatMessage}; {@code role} is validated by the pipeline (USER or ASSISTANT only). */
+		public record Turn(String role, UserText text) {
+
+			public Turn {
+				Objects.requireNonNull(text, "text");
+			}
+		}
+
+		public Chat {
+			Objects.requireNonNull(caller, "caller");
+			messages = messages == null ? List.of() : List.copyOf(messages);
+		}
+
+		@Override
+		public AiFeature feature() {
+			return AiFeature.AI_CHAT;
+		}
+
+		/** The last turn's text (the one answered); empty when there is none (the pipeline refuses that). */
+		@Override
+		public UserText text() {
+			return messages.isEmpty() ? UserText.of("") : messages.get(messages.size() - 1).text();
 		}
 	}
 

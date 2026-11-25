@@ -39,6 +39,8 @@ final class AiRequestParser {
 	/** Contract {@code DraftRequest.keyPoints}. */
 	private static final int MAX_KEY_POINTS = 10;
 	private static final int MAX_KEY_POINT_CHARACTERS = 300;
+	/** Contract {@code ChatRequest.messages} maxItems (ADR 0048); the lengths are checked by the pipeline. */
+	static final int MAX_CHAT_MESSAGES = 12;
 
 	private final JsonMapper mapper;
 
@@ -127,6 +129,45 @@ final class AiRequestParser {
 				recipient == null ? null : text(string(recipient, "recipient.name", "name")),
 				recipient == null ? null : text(string(recipient, "recipient.role", "role")), addressee,
 				text(string(n, "senderName")), cultural(n.get("culturalOptions")), integer(n, "variation"),
+				Boolean.TRUE.equals(bool(n, "saveToHistory")));
+	}
+
+	/**
+	 * Contract {@code ChatRequest} (AI_CHAT, ADR 0048). The turns are read as they are; the roles and lengths are
+	 * validated by the pipeline. {@code saveToHistory} is read only so that {@code true} can be refused.
+	 */
+	AiCommand.Chat chat(byte[] body, AiCommand.Caller caller) {
+		JsonNode n = root(body);
+		JsonNode list = n.get("messages");
+		if (list == null || list.isNull() || (list.isArray() && list.isEmpty())) {
+			throw invalid("messages", "REQUIRED");
+		}
+		if (!list.isArray()) {
+			throw invalid("messages", "INVALID_TYPE");
+		}
+		if (list.size() > MAX_CHAT_MESSAGES) {
+			throw invalid("messages", "TOO_MANY");
+		}
+		List<AiCommand.Chat.Turn> turns = new ArrayList<>();
+		for (int i = 0; i < list.size(); i++) {
+			String path = "messages[" + i + "]";
+			JsonNode m = object(list.get(i), path);
+			if (m == null) {
+				throw invalid(path, "REQUIRED");
+			}
+			String role = string(m, path + ".role", "role");
+			if (role == null) {
+				throw invalid(path + ".role", "REQUIRED");
+			}
+			String text = string(m, path + ".text", "text");
+			if (text == null) {
+				throw invalid(path + ".text", "REQUIRED");
+			}
+			turns.add(new AiCommand.Chat.Turn(role, UserText.of(text)));
+		}
+		JsonNode context = object(n.get("context"), "context");
+		String fieldText = context == null ? null : string(context, "context.fieldText", "fieldText");
+		return new AiCommand.Chat(caller, turns, string(n, "language"), text(fieldText),
 				Boolean.TRUE.equals(bool(n, "saveToHistory")));
 	}
 

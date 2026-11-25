@@ -23,7 +23,8 @@ import com.qalsmartkeyboard.aigateway.spi.UserText;
  * the four cultural options, destination profile. Transform: task, language, mode, tone, target length, addressee,
  * glossary, and (only when present, so the digest of a request without it is unchanged) the output language. Replies
  * (ADR 0027): context and reply language, count, tone, addressee, variation, the user's notes. Drafts: document type,
- * mode, language, tone, length, includeSubject, recipient, sender, cultural options, variation and every text. Detect
+ * mode, language, tone, length, includeSubject, recipient, sender, cultural options, variation and every text. Chat
+ * (ADR 0048): the number of turns, every turn's role and text in order, the reply language and the field text. Detect
  * is unmetered and never fingerprinted. Headers (device, surface, data policy) are not part of the body and not
  * covered.
  *
@@ -117,6 +118,17 @@ final class RequestFingerprint {
 				e.add(d.recipientName());
 				e.add(d.recipientRole());
 				e.add(d.senderName());
+			}
+			case AiCommand.Chat c -> {
+				// ADR 0048: every turn in order (role and text), the reply language and the host field's text; the
+				// count first, so no shifting of turns can collide with another conversation
+				e.add(c.messages().size());
+				for (AiCommand.Chat.Turn t : c.messages()) {
+					e.add(t.role());
+					e.add(t.text());
+				}
+				e.add(c.language());
+				e.add(c.fieldText());
 			}
 			case AiCommand.Detect d -> {
 				for (String candidate : d.candidates()) {

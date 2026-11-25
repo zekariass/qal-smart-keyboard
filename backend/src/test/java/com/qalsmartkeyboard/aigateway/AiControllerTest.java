@@ -544,6 +544,142 @@ class AiControllerTest {
 		assertThat(body).doesNotContain(SECRET);
 	}
 
+	// ============================================================================================= chat (ADR 0048)
+
+	static AiResult.ChatResponse chatResult() {
+		return new AiResult.ChatResponse(REQUEST_ID, new AiResult.ChatResponse.Message("ASSISTANT", "ከታላቅ አክብሮት ጋር፣"),
+				"am", "STOP",
+				List.of(new AiResult.AiNote("QUALITY", "Beta quality: please review the result before sending.")),
+				QualityTier.BETA, false, new AiResult.UsageSummary("AI_CHAT", 1, "REQUEST", "PLAN_ALLOWANCE", 99L, null,
+						null, null, Instant.parse("2026-12-01T00:00:00Z")));
+	}
+
+	@Test
+	void chatMapsTheBodyToACommandAndReturnsTheContractResponse() throws Exception {
+		when(pipeline.execute(any())).thenReturn(chatResult());
+		String k = key();
+		mvc.perform(post("/api/v1/ai/chat").header("Authorization", bearer()).header("Idempotency-Key", k)
+				.header("X-Client-Surface", "KEYBOARD").contentType(MediaType.APPLICATION_JSON).content("""
+						{"messages":[{"role":"USER","text":"%s"},{"role":"ASSISTANT","text":"Sure"},
+						             {"role":"USER","text":"Write it"}],
+						 "language":"am","context":{"fieldText":"%s field"},"saveToHistory":false}
+						""".formatted(SECRET, SECRET)))
+				.andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+				.andExpect(header().string("RateLimit-Limit", "20")).andExpect(jsonPath("$.message.role").value("ASSISTANT"))
+				.andExpect(jsonPath("$.message.text").value("ከታላቅ አክብሮት ጋር፣"))
+				.andExpect(jsonPath("$.language").value("am")).andExpect(jsonPath("$.finishReason").value("STOP"))
+				.andExpect(jsonPath("$.usage.featureCode").value("AI_CHAT"))
+				.andExpect(jsonPath("$.usage.remaining").value(99)).andExpect(jsonPath("$.replayed").value(false))
+				.andExpect(jsonPath("$.historyItemId").doesNotExist());
+
+		ArgumentCaptor<AiCommand> captor = ArgumentCaptor.forClass(AiCommand.class);
+		verify(pipeline).execute(captor.capture());
+		AiCommand.Chat c = (AiCommand.Chat) captor.getValue();
+		assertThat(c.feature()).isEqualTo(AiFeature.AI_CHAT);
+		assertThat(c.messages()).extracting(AiCommand.Chat.Turn::role).containsExactly("USER", "ASSISTANT", "USER");
+		assertThat(c.messages().get(0).text().value()).isEqualTo(SECRET);
+		assertThat(c.text().value()).isEqualTo("Write it");
+		assertThat(c.language()).isEqualTo("am");
+		assertThat(c.fieldText().value()).isEqualTo(SECRET + " field");
+		assertThat(c.saveToHistory()).isFalse();
+		assertThat(c.caller().idempotencyKey()).isEqualTo(k);
+		assertThat(c.toString()).doesNotContain(SECRET);
+		assertThat(chatResult().toString()).doesNotContain("አክብሮት");
+		// a truncated reply says so, and the replay marker is part of the contract
+		when(pipeline.execute(any())).thenReturn(new AiResult.ChatResponse(REQUEST_ID,
+				new AiResult.ChatResponse.Message("ASSISTANT", "half an"), null, "LENGTH", List.of(), null, true,
+				null));
+		mvc.perform(post("/api/v1/ai/chat").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"messages\":[{\"role\":\"USER\",\"text\":\"x\"}]}"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.finishReason").value("LENGTH"))
+				.andExpect(jsonPath("$.replayed").value(true)).andExpect(jsonPath("$.language").doesNotExist());
+	}
+
+	@Test
+	void malformedChatBodiesAre400WithoutEchoingTheText() throws Exception {
+		String turn = "{\"role\":\"USER\",\"text\":\"" + SECRET + "\"}";
+		for (String body : List.of("{}", "{\"messages\":[]}", "{\"messages\":\"" + SECRET + "\"}",
+				"{\"messages\":[\"" + SECRET + "\"]}", "{\"messages\":[{\"role\":5,\"text\":\"" + SECRET + "\"}]}",
+				"{\"messages\":[{\"role\":\"USER\"}]}", "{\"messages\":[{\"role\":\"USER\",\"text\":{\"a\":\"" + SECRET + "\"}}]}",
+				"{\"messages\":[" + turn + "],\"context\":\"" + SECRET + "\"}",
+				"{\"messages\":[" + turn + "],\"context\":{\"fieldText\":[\"" + SECRET + "\"]}}",
+				"{\"messages\":[" + turn + "],\"language\":[\"" + SECRET + "\"]}",
+				"{\"messages\":[" + turn + "],\"saveToHistory\":\"" + SECRET + "\"}",
+				"{\"messages\":[" + String.join(",", java.util.Collections.nCopies(13, turn)) + "]}",
+				"[\"" + SECRET + "\"]", "not json " + SECRET)) {
+			String response = mvc.perform(post("/api/v1/ai/chat").header("Authorization", bearer())
+					.header("Idempotency-Key", key()).contentType(MediaType.APPLICATION_JSON).content(body))
+					.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+					.andReturn().getResponse().getContentAsString();
+			assertThat(response).doesNotContain(SECRET);
+		}
+		verifyNoInteractions(pipeline);
+	}
+
+	@Test
+	void chatNeedsATokenAndAUuidKeyAndIsRateLimitedOnItsOwn() throws Exception {
+		String body = "{\"messages\":[{\"role\":\"USER\",\"text\":\"x\"}]}";
+		mvc.perform(post("/api/v1/ai/chat").header("Idempotency-Key", key()).contentType(MediaType.APPLICATION_JSON)
+				.content(body)).andExpect(status().isUnauthorized());
+		mvc.perform(post("/api/v1/ai/chat").header("Authorization", bearer()).header("Idempotency-Key", "nope")
+				.contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors[0].field").value("Idempotency-Key"));
+		mvc.perform(post("/api/v1/ai/chat").header("Authorization", bearer()).contentType(MediaType.APPLICATION_JSON)
+				.content(body)).andExpect(status().isBadRequest());
+		mvc.perform(post("/api/v1/ai/chat").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.header("X-Client-Surface", "WATCH").contentType(MediaType.APPLICATION_JSON).content(body))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("X-Client-Surface"));
+		verifyNoInteractions(pipeline);
+		org.mockito.Mockito.doAnswer(i -> new RateLimitDecision(i.getArgument(0), false, 0, Duration.ofSeconds(9),
+				Duration.ofSeconds(9))).when(limiter).tryConsume(any(), any());
+		mvc.perform(post("/api/v1/ai/chat").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isTooManyRequests())
+				.andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+		ArgumentCaptor<RateLimitPolicy> policy = ArgumentCaptor.forClass(RateLimitPolicy.class);
+		verify(limiter, org.mockito.Mockito.atLeastOnce()).tryConsume(policy.capture(), eq(userId.toString()));
+		assertThat(policy.getValue().name()).isEqualTo("ai.chat.user");
+		assertThat(AiController.CHAT_PER_USER.capacity()).isEqualTo(20);
+		verifyNoInteractions(pipeline);
+	}
+
+	@ParameterizedTest(name = "chat {0}")
+	@MethodSource("chatProblems")
+	void everyChatProblemIsAContractValidProblem(ApiErrorCode code) throws Exception {
+		ApiException problem = code == ApiErrorCode.REQUEST_IN_PROGRESS
+				? new ApiException(code, code.defaultStatus(), "Busy.", List.of(), Map.of(), Map.of("Retry-After", "2"))
+				: new ApiException(code, code.defaultStatus(), "Detail.");
+		when(pipeline.execute(any())).thenThrow(problem);
+		mvc.perform(post("/api/v1/ai/chat").header("Authorization", bearer()).header("Idempotency-Key", key())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"messages\":[{\"role\":\"USER\",\"text\":\"x\"}]}"))
+				.andExpect(status().is(code.defaultStatus().value())).andExpect(jsonPath("$.code").value(code.name()));
+	}
+
+	static Stream<ApiErrorCode> chatProblems() {
+		return Stream.of(ApiErrorCode.VALIDATION_FAILED, ApiErrorCode.INPUT_TOO_LONG,
+				ApiErrorCode.LANGUAGE_NOT_SUPPORTED, ApiErrorCode.ACCOUNT_SUSPENDED, ApiErrorCode.DELETION_PENDING,
+				ApiErrorCode.FEATURE_NOT_ENTITLED, ApiErrorCode.ON_DEVICE_ONLY_PREFERRED,
+				ApiErrorCode.IDEMPOTENCY_KEY_REUSED, ApiErrorCode.REQUEST_IN_PROGRESS,
+				ApiErrorCode.OUTPUT_GUARDRAIL_FAILED, ApiErrorCode.CONTENT_REJECTED, ApiErrorCode.PROVIDER_UNAVAILABLE,
+				ApiErrorCode.PROVIDER_TIMEOUT, ApiErrorCode.GUEST_SESSION_INVALID);
+	}
+
+	@Test
+	void aQuotaProblemOnAChatCarriesTheUpgradeOptionsAndNoText() throws Exception {
+		when(pipeline.execute(any())).thenThrow(new QuotaExceededException("AI_CHAT",
+				Instant.parse("2026-12-01T00:00:00Z"), new BigDecimal("1"),
+				List.of(new QuotaExceededException.UpgradeOption("PLAN", "PREMIUM_PLUS"),
+						new QuotaExceededException.UpgradeOption("CREDIT_PACK", "CREDITS_100"))));
+		String body = mvc.perform(post("/api/v1/ai/chat").header("Authorization", bearer())
+				.header("Idempotency-Key", key()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"messages\":[{\"role\":\"USER\",\"text\":\"" + SECRET + "\"}]}"))
+				.andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("QUOTA_EXCEEDED"))
+				.andExpect(jsonPath("$.featureCode").value("AI_CHAT"))
+				.andExpect(jsonPath("$.upgradeOptions.length()").value(2)).andReturn().getResponse()
+				.getContentAsString();
+		assertThat(body).doesNotContain(SECRET);
+	}
+
 	// ============================================================================================= detect
 
 	@Test

@@ -82,4 +82,19 @@ Starter/Standard/Pro packages (100/500/1,500 credits) are provisional data. Cons
   (`source='seed'`, ~11 currencies against USD, NOT market data). No external call is made. The FX source/licence question
   stays open: shipping to production needs a licensed provider behind that port (no API change); until then the seed is
   not fit for real conversions, and a stale snapshot is flagged (`stale`, `qal.tools.fx.stale-after`, default 48h).
+- **T8.5 backend (`POST /api/v1/ai/chat`, contract `aiChat`, V33):** implemented as one stateless turn. The client sends
+  the visible turns (`messages`, 1 to 12, each 1 to 4000 characters, 10000 in total, roles `USER`/`ASSISTANT` only, the
+  last one `USER`) and optionally the host field's text (`context.fieldText`, at most 4000) for the keyboard's Ask-AI
+  handoff; the answer is the assistant's next message, `finishReason` `STOP`/`LENGTH`, and `usage` like every metered
+  feature (one request unit, then prepaid credits at 2 per turn; guests and Free are `FEATURE_NOT_ENTITLED`). Decisions:
+  (1) the server stores no conversation: no table, no text in `ai_requests`, logs or history (`saveToHistory: true` is
+  refused, there is no opt-in); the only copies are the sealed replay-cache entry (at most 10 minutes) and the sealed
+  request fingerprint (24 hours) that every AI POST has, both under the user's data key; (2) the turns and the field
+  text are data, never template placeholders: the instructions carry only the validated reply-language name and today's
+  date, and the OpenAI adapter sends the turns as `user`/`assistant` messages after the developer message; (3) a chat
+  turn gets the e-mail time budget (20 s per attempt, 30 s in total) and an 8192 output-token cap; a reply that ends at
+  the output limit is returned as `LENGTH` and charged, empty output is still a failure; (4) output guardrails are the
+  composed-reply set (4000-character cap, self-reference refusals, prompt echo), the script/language check only when the
+  user named a reply language; (5) validation failures are 400 like the sibling endpoints (422 stays for guardrail and
+  content refusals). The real-vendor routing policy is seeded disabled, as for every feature since V19.
 - Phase 8 (`T8.x`) added to the implementation plan.

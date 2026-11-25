@@ -44,8 +44,11 @@ record AiGatewayProperties(@DefaultValue("30s") Duration registryCacheTtl, @Defa
 			@DefaultValue("4096") int maxOutputTokens, @DefaultValue("") String reasoningEffort,
 			Map<String, Integer> maxOutputTokensByFeature) {
 
-		/** An e-mail (with a reasoning model's hidden tokens) needs more room than a grammar fix. */
-		static final Map<String, Integer> DEFAULT_MAX_OUTPUT_TOKENS_BY_FEATURE = Map.of("DRAFT_DOCUMENT", 8192);
+		/**
+		 * An e-mail or a chat answer (with a reasoning model's hidden tokens) needs more room than a grammar fix.
+		 */
+		static final Map<String, Integer> DEFAULT_MAX_OUTPUT_TOKENS_BY_FEATURE = Map.of("DRAFT_DOCUMENT", 8192,
+				"AI_CHAT", 8192);
 
 		/** The defaults overlaid with the configured values, keyed by feature; an unknown feature code fails startup. */
 		Map<AiFeature, Integer> featureMaxOutputTokens() {

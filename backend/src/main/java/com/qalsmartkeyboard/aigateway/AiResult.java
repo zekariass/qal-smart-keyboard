@@ -18,7 +18,7 @@ import com.qalsmartkeyboard.aigateway.spi.QualityTier;
  * result by accident leaks nothing (SD 19).
  */
 public sealed interface AiResult permits AiResult.TranslateResponse, AiResult.TransformResponse,
-		AiResult.RepliesResponse, AiResult.DraftResponse, AiResult.DetectLanguageResponse {
+		AiResult.RepliesResponse, AiResult.DraftResponse, AiResult.DetectLanguageResponse, AiResult.ChatResponse {
 
 	/** Contract {@code UsageSummary}; null on a response for an unmetered feature. */
 	UsageSummary usage();
@@ -148,6 +148,34 @@ public sealed interface AiResult permits AiResult.TranslateResponse, AiResult.Tr
 			return "DraftResponse[" + requestId + ", " + mode + ", " + language + ", subject " + length(subject)
 					+ " chars, body " + length(body) + " chars, " + (placeholders == null ? 0 : placeholders.size())
 					+ " placeholders, " + qualityTier + ", " + usage + "]";
+		}
+	}
+
+	/**
+	 * Contract {@code ChatResponse} (AI_CHAT, ADR 0048): the assistant's next message. No history item: chat is never
+	 * saved.
+	 *
+	 * @param language     the requested reply language; null when the request named none
+	 * @param finishReason STOP, or LENGTH when the provider cut the reply off at its output limit
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	record ChatResponse(UUID requestId, Message message, String language, String finishReason, List<AiNote> notes,
+			QualityTier qualityTier, boolean replayed, UsageSummary usage) implements AiResult {
+
+		/** Contract {@code ChatMessage}. */
+		@JsonInclude(JsonInclude.Include.NON_NULL)
+		public record Message(String role, String text) {
+
+			@Override
+			public String toString() {
+				return "Message[" + role + ", " + length(text) + " chars]";
+			}
+		}
+
+		@Override
+		public String toString() {
+			return "ChatResponse[" + requestId + ", " + language + ", " + message + ", " + finishReason + ", "
+					+ qualityTier + ", " + usage + "]";
 		}
 	}
 

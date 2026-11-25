@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.qalsmartkeyboard.aigateway.spi.AiFeature;
 import com.qalsmartkeyboard.aigateway.spi.AiProvider;
 import com.qalsmartkeyboard.aigateway.spi.ContextPart;
 import com.qalsmartkeyboard.aigateway.spi.DetectRequest;
@@ -50,6 +51,11 @@ import com.qalsmartkeyboard.aigateway.spi.UserText;
  * a closing with the sender name or the {@code [your name]} placeholder.</li>
  * <li>FORMAT_TEXT (ADR 0048): the input lines in the shape the rendered template names (bullets, numbered list,
  * paragraphs, report, meeting notes).</li>
+ * <li>AI_CHAT (ADR 0048): {@code Chat reply N: <first 120 characters of the last user turn>} in the output language
+ * (or the language of the turn), N = the number of turns received; with the host field's text a second line
+ * {@code > <its first 60 characters>} (no label word: the line must not count as text in the reply language). A last turn that asks for a long answer ({@code [long]}) gets a
+ * long reply (300 repetitions, within the chat limit), {@code [huge]} one over the limit (a guardrail failure), and
+ * one that contains {@code [cut]} is returned truncated.</li>
  * </ul>
  */
 public final class MockAiProvider implements AiProvider {
@@ -160,19 +166,21 @@ public final class MockAiProvider implements AiProvider {
 			case SMART_REPLY -> replies(request, language);
 			case DRAFT_DOCUMENT -> email(request, language);
 			case FORMAT_TEXT -> format(request);
+			case AI_CHAT -> chat(request, language);
 			default -> otherLanguage ? phrase(output, Phrase.MOCK) + " " + text
 					: "[mock:" + request.task().name().toLowerCase(Locale.ROOT) + "] " + text;
 		};
 		UserText out = UserText.of(result);
 		int in = request.inputCharacters();
+		boolean truncated = request.task() == AiFeature.AI_CHAT && text.contains("[cut]");
 		return new TransformResult(out, List.of(), meta("mock-llm-1", start),
-				new ProviderUsage(in, out.characters(), (long) Math.ceilDiv(in, 4), tokens(out), null));
+				new ProviderUsage(in, out.characters(), (long) Math.ceilDiv(in, 4), tokens(out), null), truncated);
 	}
 
 	// ---------------------------------------------------------------- fixed phrases (ADR 0027)
 
 	private enum Phrase {
-		MOCK, SUMMARY, EXPLANATION, SUBJECT, GREETING, DATE_LINE, CLOSING, YOUR_NAME, RECIPIENT
+		MOCK, SUMMARY, EXPLANATION, SUBJECT, GREETING, DATE_LINE, CLOSING, YOUR_NAME, RECIPIENT, CHAT
 	}
 
 	/** Fixed phrases per output language (en when unknown). Mock text only: not reviewed translations. */
@@ -180,22 +188,22 @@ public final class MockAiProvider implements AiProvider {
 			"en", Map.of(Phrase.MOCK, "[mock]", Phrase.SUMMARY, "Summary:", Phrase.EXPLANATION, "Explanation:",
 					Phrase.SUBJECT, "Mock email subject", Phrase.GREETING, "Dear", Phrase.DATE_LINE,
 					"We can meet on [date].", Phrase.CLOSING, "Best regards,", Phrase.YOUR_NAME, "[your name]",
-					Phrase.RECIPIENT, "[recipient name]"),
+					Phrase.RECIPIENT, "[recipient name]", Phrase.CHAT, "Chat reply"),
 			"am", Map.of(Phrase.MOCK, "[ሙከራ]", Phrase.SUMMARY, "ማጠቃለያ፦", Phrase.EXPLANATION, "ማብራሪያ፦",
 					Phrase.SUBJECT, "የሙከራ ኢሜይል ርዕስ", Phrase.GREETING, "ውድ", Phrase.DATE_LINE, "በ[ቀን] መገናኘት እንችላለን።",
-					Phrase.CLOSING, "ከሰላምታ ጋር፣", Phrase.YOUR_NAME, "[ስምዎ]", Phrase.RECIPIENT, "[የተቀባይ ስም]"),
+					Phrase.CLOSING, "ከሰላምታ ጋር፣", Phrase.YOUR_NAME, "[ስምዎ]", Phrase.RECIPIENT, "[የተቀባይ ስም]", Phrase.CHAT, "የውይይት ምላሽ"),
 			"ti", Map.of(Phrase.MOCK, "[ፈተና]", Phrase.SUMMARY, "ጽማቝ፦", Phrase.EXPLANATION, "መብርሂ፦",
 					Phrase.SUBJECT, "ናይ ፈተና ኢመይል ኣርእስቲ", Phrase.GREETING, "ክቡር", Phrase.DATE_LINE,
 					"ብ[ዕለት] ክንራኸብ ንኽእል ኢና።", Phrase.CLOSING, "ምስ ሰላምታ፣", Phrase.YOUR_NAME, "[ስምኩም]",
-					Phrase.RECIPIENT, "[ስም ተቐባላይ]"),
+					Phrase.RECIPIENT, "[ስም ተቐባላይ]", Phrase.CHAT, "ናይ ዕላል ምላሽ"),
 			"om", Map.of(Phrase.MOCK, "[yaalii]", Phrase.SUMMARY, "Cuunfaa:", Phrase.EXPLANATION, "Ibsa:",
 					Phrase.SUBJECT, "Mata duree imeelii yaalii", Phrase.GREETING, "Kabajamoo", Phrase.DATE_LINE,
 					"Guyyaa [guyyaa] wal arguu dandeenya.", Phrase.CLOSING, "Nagaa wajjin,", Phrase.YOUR_NAME,
-					"[maqaa keessan]", Phrase.RECIPIENT, "[maqaa fudhataa]"),
+					"[maqaa keessan]", Phrase.RECIPIENT, "[maqaa fudhataa]", Phrase.CHAT, "Deebii marii"),
 			"ar", Map.of(Phrase.MOCK, "[تجريبي]", Phrase.SUMMARY, "ملخص:", Phrase.EXPLANATION, "شرح:",
 					Phrase.SUBJECT, "موضوع بريد تجريبي", Phrase.GREETING, "عزيزي", Phrase.DATE_LINE,
 					"يمكننا اللقاء في [التاريخ].", Phrase.CLOSING, "مع أطيب التحيات،", Phrase.YOUR_NAME, "[اسمك]",
-					Phrase.RECIPIENT, "[اسم المستلم]"));
+					Phrase.RECIPIENT, "[اسم المستلم]", Phrase.CHAT, "رد المحادثة"));
 
 	private static final Map<String, List<String>> REPLIES = Map.of(
 			"en", List.of("Thank you for your message.", "Sounds good, I will get back to you soon.", "Thanks, noted.",
@@ -251,6 +259,22 @@ public final class MockAiProvider implements AiProvider {
 			case "MEETING_NOTES" -> "Meeting notes\n\nPoints discussed\n" + bullets.toString().strip();
 			default -> bullets.toString().strip();
 		};
+	}
+
+	/** AI_CHAT (ADR 0048): a deterministic reply that shows the turn count, the last user turn and the field text. */
+	private static String chat(TransformRequest r, String language) {
+		String last = r.text().value().strip();
+		StringBuilder sb = new StringBuilder(phrase(language, Phrase.CHAT)).append(' ')
+				.append(Math.max(1, r.turns().size())).append(": ").append(first(last, 120));
+		String field = part(r, ContextPart.Kind.FIELD_TEXT);
+		if (field != null) {
+			sb.append("\n> ").append(first(field, 60));
+		}
+		int repeat = last.contains("[huge]") ? 600 : last.contains("[long]") ? 300 : 0;
+		if (repeat > 0) {
+			sb.append('\n').append((phrase(language, Phrase.CHAT) + ". ").repeat(repeat));
+		}
+		return sb.toString().strip();
 	}
 
 	private static String replies(TransformRequest r, String language) {

@@ -12,7 +12,8 @@ public enum AiFeature {
 	FORMAT_TEXT(Operation.TRANSFORM),
 	SCRIPT_CONVERSION(Operation.TRANSFORM),
 	SMART_REPLY(Operation.TRANSFORM),
-	DRAFT_DOCUMENT(Operation.TRANSFORM);
+	DRAFT_DOCUMENT(Operation.TRANSFORM),
+	AI_CHAT(Operation.TRANSFORM);
 
 	/** The {@link AiProvider} method that serves a feature. */
 	public enum Operation {
