@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -223,6 +224,39 @@ class SettingsScreenTest {
         compose.onNodeWithText("Recent copies, kept for 1 hour in memory only").assertExists()
         compose.onNodeWithText("Clipboard history").performClick()
         waitFor { !it.clipboardHistoryEnabled }
+    }
+
+    /** ADR 0049 D6: the dictation follow-up switch and the "Insert dictation in" language live on the Voice typing page. */
+    @Test fun voiceTypingPageHasTheFollowUpSwitchAndTheInsertLanguage() {
+        show()
+        compose.onNodeWithText("Voice typing").performClick()
+        compose.onNodeWithText("Offer Fix grammar / Translate after dictation").assertIsOn()
+        compose.onNodeWithText("As spoken").assertExists() // the "Insert dictation in" row's summary
+        compose.onNodeWithText("Offer Fix grammar / Translate after dictation").performClick()
+        waitFor { !it.voiceFollowUps }
+        assertEquals(null, stored().voiceInsertLanguage)
+
+        compose.onNodeWithText("Insert dictation in").performClick()
+        compose.onNodeWithText("ትግርኛ").performClick()
+        waitFor { it.voiceInsertLanguage == "ti" }
+        systemBack()
+        compose.onNodeWithText("Tigrinya").assertExists() // the row's summary
+
+        compose.onNodeWithText("Insert dictation in").performClick()
+        compose.onNodeWithText("As spoken").performClick()
+        waitFor { it.voiceInsertLanguage == null }
+    }
+
+    @Test fun theFollowUpAndInsertRowsAreDisabledWhileVoiceTypingIsOff() {
+        runBlocking { repository.update { it.copy(voiceTypingEnabled = false) } }
+        show()
+        compose.onNodeWithText("Voice typing").performClick()
+        compose.onNodeWithText("Offer Fix grammar / Translate after dictation").assertIsNotEnabled()
+        compose.onNodeWithText("Insert dictation in").performClick() // dimmed and inert: no picker opens
+        compose.onNodeWithText("Offer Fix grammar / Translate after dictation").assertExists()
+        compose.onNodeWithText("Use voice typing").performClick()
+        waitFor { it.voiceTypingEnabled }
+        compose.onNodeWithText("Offer Fix grammar / Translate after dictation").assertIsEnabled()
     }
 
     @Test fun fromTheKeyboardTheArrowAndBackReturnToTyping() {

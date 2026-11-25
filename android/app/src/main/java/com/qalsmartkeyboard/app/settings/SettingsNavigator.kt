@@ -14,6 +14,7 @@ enum class SettingsPage {
     ALL_LANGUAGES,
     PREFERENCES,
     VOICE,
+    VOICE_INSERT_LANGUAGE,
     TRANSLATION,
     DICTIONARY,
     ACCOUNT,

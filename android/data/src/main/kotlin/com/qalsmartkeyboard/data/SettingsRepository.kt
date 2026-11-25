@@ -146,6 +146,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val VOICE_ENABLED = booleanPreferencesKey("voice_typing_enabled")
         private val VOICE_LANGUAGES = stringPreferencesKey("voice_languages")
         private val VOICE_NOTICE = booleanPreferencesKey("voice_notice_shown")
+        private val VOICE_FOLLOW_UPS = booleanPreferencesKey("voice_follow_ups")
+        private val VOICE_INSERT_LANGUAGE = stringPreferencesKey("voice_insert_language")
         private val AI_PREFERRED_TARGET = stringPreferencesKey("ai_preferred_target")
         private val AI_TRANSLATE_PAIRS = stringPreferencesKey("ai_translate_pairs")
         private val EMAIL_SENDER_NAME = stringPreferencesKey("email_sender_name")
@@ -186,6 +188,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             p[VOICE_ENABLED] = s.voiceTypingEnabled
             p[VOICE_LANGUAGES] = encodeMap(s.voiceLanguages)
             p[VOICE_NOTICE] = s.voiceNoticeShown
+            p[VOICE_FOLLOW_UPS] = s.voiceFollowUps
+            p[VOICE_INSERT_LANGUAGE] = s.voiceInsertLanguage.orEmpty()
             p[AI_PREFERRED_TARGET] = s.aiPreferredTarget.orEmpty()
             p[AI_TRANSLATE_PAIRS] = encodeMap(s.aiTranslatePairs)
             p[EMAIL_SENDER_NAME] = s.emailSenderName
@@ -244,6 +248,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 voiceTypingEnabled = p[VOICE_ENABLED] ?: d.voiceTypingEnabled,
                 voiceLanguages = decodeMap(p[VOICE_LANGUAGES]),
                 voiceNoticeShown = p[VOICE_NOTICE] ?: d.voiceNoticeShown,
+                // Additive keys (schema stays 1, ADR 0049): dictation follow-ups switch, "insert in" language (empty = as spoken).
+                voiceFollowUps = p[VOICE_FOLLOW_UPS] ?: d.voiceFollowUps,
+                voiceInsertLanguage = p[VOICE_INSERT_LANGUAGE]?.takeIf { it.isNotEmpty() },
                 // Additive keys (schema stays 1, ADR 0031): translation destination, per-source pairs, e-mail sender name.
                 aiPreferredTarget = p[AI_PREFERRED_TARGET]?.takeIf { it.isNotEmpty() },
                 aiTranslatePairs = decodeMap(p[AI_TRANSLATE_PAIRS]),
