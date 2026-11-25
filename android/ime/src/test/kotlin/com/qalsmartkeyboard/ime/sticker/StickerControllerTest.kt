@@ -67,6 +67,46 @@ class StickerControllerTest {
 
     private fun stroke() = Stroke(listOf(Pt(0f, 0f), Pt(40f, 40f)), InkDefaults.BLACK, 6f)
 
+    // ---- closing (a crash on the phone: the service closes the controller from inside its own refresh) ------------
+
+    @Test fun closingTheControllerDoesNotNotifyThePanel() {
+        c.open()
+        c.startMake(StickerSource.TEXT)
+        c.text.set("Hello")
+        val before = changes
+        c.close()
+        assertEquals("clearing the typed texts is silent", before, changes)
+        assertEquals("", c.text.text)
+        assertEquals(StickerScreen.STRIP, c.screen)
+    }
+
+    @Test fun closingAnAlreadyEmptyPanelIsSilentToo() {
+        val before = changes
+        c.close()
+        c.close(keepMaker = true)
+        assertEquals(before, changes)
+    }
+
+    @Test fun aServiceThatClosesFromItsOwnChangeCallbackDoesNotLoopForever() {
+        // The service's callback refreshes the views, and a refresh that leaves the panel closes the controller again.
+        lateinit var looping: StickerController
+        var depth = 0
+        var maxDepth = 0
+        looping = StickerController(
+            store, exporter, { share }, access = { access }, drawing = { drawing }, openLink = { links += it },
+            background = { r -> r.run() }, post = { r -> r.run() },
+            onChanged = {
+                depth++
+                maxDepth = maxOf(maxDepth, depth)
+                if (depth < 50) looping.close()
+                depth--
+            },
+        )
+        looping.open()
+        looping.close()
+        assertTrue("close() must not re-enter itself (depth $maxDepth)", maxDepth <= 3)
+    }
+
     // ---- making --------------------------------------------------------------------------------------------------
 
     @Test fun makingATextStickerSavesItToThePersonalPackAndShowsItFirst() {

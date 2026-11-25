@@ -157,8 +157,15 @@ class StickerController(
         typing = null
         busy = false
         mine = emptyList()
-        text.clear()
-        caption.clear()
+        // Clearing the two fields is not a change the panel reacts to: the service closes this controller from inside its
+        // own refresh, and a notification here would re-enter that refresh without end (a stack overflow on the phone).
+        closing = true
+        try {
+            text.clear()
+            caption.clear()
+        } finally {
+            closing = false
+        }
         if (keepMaker) return
         source = StickerSource.TEXT
         shape = StickerShape.NONE
@@ -433,7 +440,11 @@ class StickerController(
         return false
     }
 
+    /** True while [close] clears the fields: their change callbacks must not call [onChanged]. */
+    private var closing = false
+
     private fun changed(clearStatus: Boolean = true) {
+        if (closing) return
         deleteArmedId = null
         if (clearStatus && status != StickerStatus.WORKING) status = null
         onChanged()

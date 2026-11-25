@@ -96,7 +96,9 @@ class StickerRenderer(private val strokes: StrokeRenderer = StrokeRenderer()) {
         val minPx = max(8f, w * 0.04f)
         var px = max(minPx, min(maxPx, h))
         var layout = layoutOf(str, px, w.toInt().coerceAtLeast(1))
-        while (px > minPx && layout.height > h) {
+        // Shrink until it fits in height AND no word is cut across two lines ("Sela" / "m"): a word breaks only when even the
+        // smallest size cannot hold it.
+        while (px > minPx && (layout.height > h || widestWord(str, px) > w)) {
             px = max(minPx, px * 0.9f)
             layout = layoutOf(str, px, w.toInt().coerceAtLeast(1))
         }
@@ -113,6 +115,15 @@ class StickerRenderer(private val strokes: StrokeRenderer = StrokeRenderer()) {
         text.color = colour
         layout.draw(canvas)
         canvas.restore()
+    }
+
+    /** The width of the widest whitespace-separated word of [str] at [px]. */
+    private fun widestWord(str: String, px: Float): Float {
+        text.textSize = px
+        text.style = Paint.Style.FILL
+        var widest = 0f
+        for (word in str.split(' ')) for (part in word.lines()) if (part.isNotEmpty()) widest = max(widest, text.measureText(part))
+        return widest
     }
 
     private fun layoutOf(str: String, px: Float, width: Int): StaticLayout {

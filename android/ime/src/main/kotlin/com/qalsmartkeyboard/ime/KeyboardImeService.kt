@@ -1664,6 +1664,7 @@ class KeyboardImeService : InputMethodService() {
                 // Thumbnails are freed with the panel; the texts typed are dropped (the choices stay on a trip to Draw).
                 stickerPanel?.release()
                 if (stickersOrNull?.typing != null) controller.onCompositionAbandoned()
+                seenToolPanel = toolPanel // before closing: anything close() triggers must not see this panel as still shown
                 stickersOrNull?.close(keepMaker = toolPanel == ToolPanel.DRAW)
             }
             seenToolPanel = toolPanel
