@@ -67,7 +67,6 @@ class EntitlementManager(
     private val quotaByKind = ConcurrentHashMap<AiTaskKind, AiQuotaHint>()
 
     @Volatile private var entitledKinds: Set<AiTaskKind>? = null
-    @Volatile private var entitledCodes: Set<String>? = null
 
     /** Every `accessEnabled` feature code of the last `/me/entitlements` (AI and platform), or null before the first answer. */
     @Volatile private var entitledCodes: Set<String>? = null
