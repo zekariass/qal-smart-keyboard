@@ -2284,6 +2284,18 @@ paths:
         market no credit packs. Credit packs (`productType = AI_CREDIT_PACK`) carry `creditUnits`,
         `creditValidityDays` and one `ONE_TIME` price with `renewalModel = NONE` (no subscription, nothing
         to cancel).
+
+        **Store-billed credit packs (T8.10, outside Ethiopia).** With `purchaseFlow = STORE_BILLING` (Google
+        Play through RevenueCat) `products` lists the credit packs sellable through the store in the market
+        (ACTIVE pack, the market offers `AI_CREDITS`, an active store product mapping): one `ONE_TIME` price
+        with `renewalModel = STORE_MANAGED`, `storeProductId` (the Play / RevenueCat product identifier, e.g.
+        `credits_500`) and the suggested RevenueCat `storeOfferingId` / `storePackageId`. Its `listPrice` is a
+        placeholder (the store sets and charges the price): show the store's formatted price for
+        `storeProductId`. Buy with the store SDK, then report the purchase to `/billing/store-purchases`;
+        store purchases never use orders. Store-billed plans keep coming from the RevenueCat offering.
+        A build without store billing (`distributionChannel = DIRECT_DOWNLOAD` or `WEB`) in a store-billing
+        market gets `purchaseUiAllowed = false`, `purchaseFlow = NONE` and a `notice` (no purchase in this
+        build): Play Billing exists only for apps installed from Google Play.
       parameters:
         - name: marketCountry
           in: query
@@ -2317,7 +2329,11 @@ paths:
       tags: [Billing]
       operationId: listBillingProducts
       summary: List sellable products and active prices for a market and channel
-      description: Only ACTIVE products with an active price, of the product families the market offers (see `getBillingOptions`).
+      description: |
+        Only ACTIVE products with an active price, of the product families the market offers (see
+        `getBillingOptions`). Where the market's policy for the channel is `STORE_BILLING` (outside
+        Ethiopia), the store-sellable credit packs with their `storeProductId` instead (whatever the policy's
+        approval; nothing for a channel without store billing).
       parameters:
         - name: marketCountry
           in: query
@@ -2383,8 +2399,9 @@ paths:
         it grants exactly one credit lot (`fulfilment.creditLotId`) of the pack's credit units, expiring
         after the pack's validity; the units and validity are fixed when the order is created. A product
         family the market does not offer (admin market offerings) is 422 `PRODUCT_NOT_AVAILABLE`, like an
-        unknown or inactive product. Store-billed packs (RevenueCat consumables) are not available yet:
-        store-billing markets are 403 `BILLING_POLICY_DENIED` here as for plans.
+        unknown or inactive product. Store-billing markets (outside Ethiopia) never use orders, for plans or
+        packs: 403 `BILLING_POLICY_DENIED`; buy through the store and report the purchase to
+        `/billing/store-purchases`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/ClientPlatform'
@@ -2647,6 +2664,22 @@ paths:
         provider (`qal.billing.store-verification-provider`, default REVENUECAT) by the caller's user id:
         `purchaseToken` / `signedTransactionInfo` are accepted but neither trusted, stored nor logged.
         The RevenueCat App User ID is the access token's `sub` (= `userId`).
+
+        **Credit packs (T8.10, store consumables).** `productId` is the pack's store product id (e.g.
+        `credits_500`, `storeProductId` in the billing options) and `transactionId` the store transaction id
+        (Play order id `GPA.…`; optional: without it the caller's most recent transaction of the product is
+        answered). The server reads the caller's RevenueCat customer (`non_subscriptions`) and grants **one**
+        credit lot per store transaction (`creditLotId`, `creditUnits`, `creditsExpireAt` = store purchase
+        time + the pack's validity), only when the transaction is listed for the caller, of the honoured
+        environment, and the pack is sellable through the store in its market (ACTIVE pack, the market offers
+        AI credits, an approved `STORE_BILLING` policy). Re-reports, the RevenueCat webhook (which also grants
+        on its own, e.g. when the app was closed), replays and concurrent calls never grant twice. A
+        verified purchase that may not be granted yet is kept and granted once the market opens: 403
+        `BILLING_POLICY_DENIED` (policy not approved) or 422 `PRODUCT_NOT_AVAILABLE` (pack or offering off)
+        meanwhile. A transaction of another account, unknown or not (yet) listed: 422
+        `STORE_PURCHASE_INVALID`. A store refund reverses the unused credits (status `REFUNDED`).
+        `distributionChannel` `DIRECT_DOWNLOAD` / `WEB` (a build without store billing): 403
+        `BILLING_POLICY_DENIED`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -6281,8 +6314,10 @@ components:
         listPrice: { $ref: '#/components/schemas/Money' }
         taxBehavior: { $ref: '#/components/schemas/TaxBehavior' }
         displayPrice: { type: string, description: "Localised display string, e.g. \"299.00 ብር\"." }
-        storeProductId: { type: string, description: Store SKU to launch the store billing flow (STORE_BILLING only). }
-        storeOfferId: { type: string }
+        storeProductId: { type: string, description: Store SKU to launch the store billing flow (STORE_BILLING only; the Play / RevenueCat product identifier, e.g. `credits_500`). }
+        storeOfferId: { type: string, description: Play base plan / offer of a store subscription (absent for one-time products). }
+        storeOfferingId: { type: string, description: Suggested RevenueCat offering holding `storeProductId` (STORE_BILLING only). }
+        storePackageId: { type: string, description: Suggested RevenueCat package identifier inside `storeOfferingId` (STORE_BILLING only). }
     Product:
       type: object
       required: [productCode, productType, displayName, prices]
@@ -6349,7 +6384,7 @@ components:
         paymentMethods:
           type: array
           items: { $ref: '#/components/schemas/PaymentMethodOption' }
-        notice: { type: string, description: Optional localised notice (e.g. consumption-only explanation without purchase CTA). }
+        notice: { type: string, description: 'Optional notice without a purchase call-to-action (e.g. consumption only, or a build without store billing in a store-billing market: no purchase in this build).' }
         policyEvaluatedAt: { type: string, format: date-time }
     PromotionValidateRequest:
       type: object
@@ -6535,12 +6570,18 @@ components:
         Google requires `purchaseToken` (+ `packageName`); Apple requires `signedTransactionInfo`;
         RevenueCat (ADR 0046) requires neither: the server reads the caller's RevenueCat customer
         (App User ID = the caller's `userId`). `productId` is the store / RevenueCat product identifier
-        (Play: `subscriptionId:basePlanId`, e.g. `qal_premium:monthly`).
+        (Play: `subscriptionId:basePlanId`, e.g. `qal_premium:monthly`; a credit pack: its in-app product id,
+        e.g. `credits_500`, with the store `transactionId`).
       properties:
         provider:
           type: string
           enum: [GOOGLE_PLAY, APPLE_APP_STORE, REVENUECAT]
         productId: { type: string, maxLength: 255 }
+        transactionId: { type: string, minLength: 1, maxLength: 255, description: 'Store transaction id of a one-time purchase (Play order id `GPA.…`): which credit-pack purchase is reported. A hint only: the server verifies it with the store provider.' }
+        distributionChannel:
+          type: string
+          enum: [GOOGLE_PLAY, APPLE_APP_STORE, DIRECT_DOWNLOAD, WEB]
+          description: The build reporting the purchase. `DIRECT_DOWNLOAD` / `WEB` have no store billing and are refused (403 `BILLING_POLICY_DENIED`).
         purchaseToken: { type: string, maxLength: 4096, writeOnly: true }
         packageName: { type: string, maxLength: 255 }
         signedTransactionInfo: { type: string, maxLength: 16384, writeOnly: true, description: StoreKit 2 JWS transaction. }
@@ -6570,7 +6611,15 @@ components:
         acknowledgedAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
         subscription: { $ref: '#/components/schemas/Subscription' }
-        creditLotId: { type: string, format: uuid }
+        purchaseType:
+          type: string
+          description: '`SUBSCRIPTION` (a store plan) or `CONSUMABLE` (a credit pack: `creditLotId`, no `subscription`).'
+          enum: [SUBSCRIPTION, CONSUMABLE]
+        productCode: { type: string, maxLength: 60, description: 'CONSUMABLE: our pack, e.g. `CREDITS_500`.' }
+        transactionId: { type: string, maxLength: 255, description: 'CONSUMABLE: the store transaction id (the idempotency key).' }
+        creditLotId: { type: string, format: uuid, description: 'CONSUMABLE: the one credit lot this purchase granted (absent while not granted, e.g. REFUNDED before a grant or EXPIRED).' }
+        creditUnits: { type: integer, format: int64, minimum: 1, description: 'CONSUMABLE: credits the pack grants.' }
+        creditsExpireAt: { type: string, format: date-time, description: 'CONSUMABLE: when the granted credits expire (store purchase time + the pack validity).' }
     Subscription:
       type: object
       required: [subscriptionId, planCode, status, sourceType, billingMode]
