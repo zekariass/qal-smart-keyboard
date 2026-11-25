@@ -16,9 +16,9 @@ import java.util.UUID
  * [limit] is the contract's limit in characters (code points, like the server); the field holds more (a pasted e-mail
  * may be longer) up to [HARD_CAP], and the panel shows the count and refuses to send while it is over the limit.
  */
-class AiTextField(val limit: Int, private val onChanged: () -> Unit = {}) {
+class AiTextField(val limit: Int, capacity: Int = HARD_CAP, private val onChanged: () -> Unit = {}) {
     /** The text, the cursor and the selection (ADR 0038). */
-    val buffer = EditorBuffer(HARD_CAP).also { it.onTextChanged = { onChanged() } }
+    val buffer = EditorBuffer(capacity).also { it.onTextChanged = { onChanged() } }
 
     /** The committed text plus the composition in progress. */
     val text: String get() = buffer.text
