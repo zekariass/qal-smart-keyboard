@@ -69,7 +69,7 @@ fun chooseInsertLanguage(language: String?)
 fun replaceDictated(expected: String, replacement: String): Boolean
 
 // VoiceController additions
-constructor params (appended, defaulted): ai: () -> AiActions? = { null }, packageName: () -> String? = { null },
+constructor params (before onChanged, defaulted): ai: () -> AiActions? = { null }, packageName: () -> String? = { null },
     runOnMain: (() -> Unit) -> Unit = { it() }, newRequestId: () -> String = { UUID.randomUUID().toString() }
 val followUp: DictationFollowUp?
 val insertLanguage: String?                 // effective: pref, null when AI unusable

@@ -2,7 +2,10 @@ package com.qalsmartkeyboard.ime.voice
 
 import com.qalsmartkeyboard.ime.FieldKind
 import com.qalsmartkeyboard.ime.InputProfile
+import com.qalsmartkeyboard.ime.ai.AiActions
+import com.qalsmartkeyboard.ime.ai.AiDestination
 import java.util.Locale
+import java.util.UUID
 
 /** Where the voice panel is. [VoiceController.isOpen] is true in every state but [Idle]. */
 sealed interface VoiceState {
@@ -47,6 +50,12 @@ interface VoiceHost {
 
     /** Commits recognised text to the field. Never observed by the word learner (ADR 0029). */
     fun commitVoiceText(text: String)
+
+    /**
+     * T8.12 (ADR 0049 D3): replaces [expected], the text just before the cursor (trailing whitespace kept), with
+     * [replacement] if it still reads so; false when it does not (the field changed) or the editor does not answer.
+     */
+    fun replaceDictated(expected: String, replacement: String): Boolean = false
 }
 
 /** The voice-typing settings the controller reads and writes (device-local, `KeyboardSettings`). */
@@ -64,9 +73,25 @@ interface VoicePrefs {
 
     fun noticeSeen()
 
+    /** T8.12: offer "Fix grammar" / "Translate" after a dictation (default on). */
+    val followUps: Boolean get() = true
+
+    /** T8.12: translate dictation into this language before inserting it (null = as spoken). */
+    val insertLanguage: String? get() = null
+
+    fun chooseInsertLanguage(language: String?) {}
+
     /** For tests and previews: a plain in-memory store. */
-    class InMemory(override var enabled: Boolean = true, override var noticeShown: Boolean = false) : VoicePrefs {
+    class InMemory(
+        override var enabled: Boolean = true,
+        override var noticeShown: Boolean = false,
+        override var followUps: Boolean = true,
+        override var insertLanguage: String? = null,
+    ) : VoicePrefs {
         val choices = HashMap<String, String>()
+        override fun chooseInsertLanguage(language: String?) {
+            insertLanguage = language
+        }
         override fun chosen(keyboardLanguage: String): String? = choices[keyboardLanguage]
         override fun choose(keyboardLanguage: String, tag: String) {
             choices[keyboardLanguage] = tag
@@ -98,6 +123,12 @@ class VoiceController(
     private val prefs: VoicePrefs,
     val support: VoiceSupport = VoiceSupport(provider),
     private val deviceLocale: () -> Locale = { Locale.getDefault() },
+    /** T8.12 (ADR 0049): the AI actions, or null while the app registered none. */
+    private val ai: () -> AiActions? = { null },
+    private val packageName: () -> String? = { null },
+    /** AI callbacks arrive on any thread; this runs a block on the main thread. */
+    private val runOnMain: (() -> Unit) -> Unit = { it() },
+    private val newRequestId: () -> String = { UUID.randomUUID().toString() },
     private val onChanged: () -> Unit,
 ) {
     var state: VoiceState = VoiceState.Idle
@@ -135,6 +166,34 @@ class VoiceController(
     private var autoRetries = 0
 
     val isOpen: Boolean get() = state != VoiceState.Idle
+
+    // ------------------------------------------------------------------ T8.12 voice + AI chain (ADR 0049); S1 implements
+
+    /** The strip after a dictation into the app's field, or null. */
+    var followUp: DictationFollowUp? = null
+        private set
+
+    /** The "Insert in" language in effect: the preference, or null (as spoken) when AI is unusable. */
+    val insertLanguage: String? get() = null
+
+    /** The final result is being translated before it is inserted. */
+    val insertTranslating: Boolean get() = false
+
+    /** The plain languages the "Insert in" picker offers (the translation catalogue). */
+    fun insertLanguageChoices(): List<AiDestination> = emptyList()
+
+    fun chooseInsertLanguage(language: String?) {}
+
+    fun fixGrammar() {}
+
+    fun translateFollowUp(destination: AiDestination? = null) {}
+
+    fun undoFollowUp() {}
+
+    fun dismissFollowUp() {}
+
+    /** The host: the editor changed for a reason other than this controller's own commit (typing, cursor move, field change). */
+    fun onEditorChanged() {}
 
     /** The mic is offered: setting on, a recogniser installed, and the field allows it (not a password field). */
     val micVisible: Boolean get() = prefs.enabled && provider.available && fieldAllows
