@@ -13,6 +13,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -24,6 +27,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
@@ -44,14 +48,14 @@ class CardMakerScreenTest {
     private var news = 0
     private var picks = 0
 
-    private fun show(access: FeatureAccess, section: CardSection = CardSection.TEMPLATE, doc: CardDoc? = null) {
+    private fun show(access: FeatureAccess, section: CardSection = CardSection.TEMPLATE, doc: CardDoc? = null, direction: LayoutDirection = LayoutDirection.Ltr) {
         editor = CardEditor(doc ?: CardTemplates.default.newDoc(resolve = { "start$it" })).also { it.section = section }
         compose.setContent {
-            CardMakerScreen(
+            CompositionLocalProvider(LocalLayoutDirection provides direction) { CardMakerScreen(
                 editor = editor, access = access, preview = null, templateThumbs = emptyMap(),
                 onPickPhoto = { picks++ }, onSave = { saves++ }, onShare = { shares++ }, onUnlock = { unlocks++ },
                 onBack = { backs++ }, onNew = { news++ }, resolve = resolve,
-            )
+            ) }
         }
     }
 
@@ -198,5 +202,50 @@ class CardMakerScreenTest {
         compose.onNodeWithText("Choose a photo").performScrollTo()
         val button = compose.onNodeWithText("Choose a photo").getUnclippedBoundsInRoot()
         assertTrue(button.height >= 20.dp) // the text; its Button parent is 40 dp+, with the 48 dp interactive minimum
+    }
+
+    private fun assertWithinScreen(description: String, vararg nodes: androidx.compose.ui.test.SemanticsNodeInteraction) {
+        for (n in nodes) {
+            val b = n.performScrollTo().getUnclippedBoundsInRoot()
+            assertTrue("$description: ${b.left}..${b.right}", b.left >= 0.dp && b.right <= 360.dp)
+        }
+    }
+
+    @Test fun nothingOverflowsAt360dpWithFontScale1_3() {
+        RuntimeEnvironment.setFontScale(1.3f)
+        show(FeatureAccess.NOT_ON_PLAN, CardSection.EXPORT, CardTemplates.find("wedding")!!.newDoc(resolve = { "x" }))
+        assertWithinScreen(
+            "export",
+            compose.onNodeWithText("This card uses Premium parts"), compose.onNodeWithText("Unlock with Premium"),
+            compose.onNodeWithText("Share"), compose.onNodeWithText("Save to my cards"),
+            compose.onNodeWithText("Your card is made on this device. Nothing is uploaded. You choose where to share it."),
+        )
+    }
+
+    @Test fun theBackgroundAndTextStepsFitAt360dpWithFontScale1_3() {
+        RuntimeEnvironment.setFontScale(1.3f)
+        show(FeatureAccess.ALLOWED, CardSection.BACKGROUND)
+        assertWithinScreen(
+            "background",
+            compose.onNodeWithText("Choose a photo"), compose.onNodeWithText("The photo stays on this device. It is never uploaded."),
+            compose.onNodeWithContentDescription("Colour #FFFFFF"), compose.onNodeWithContentDescription("Colour #4E342E"),
+        )
+    }
+
+    @Test fun theTextFieldsFitAt360dpWithFontScale1_3() {
+        RuntimeEnvironment.setFontScale(1.3f)
+        show(FeatureAccess.ALLOWED, CardSection.TEXT)
+        for (n in compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().indices) {
+            val b = compose.onAllNodes(hasSetTextAction())[n].getUnclippedBoundsInRoot()
+            assertTrue("field $n ${b.right}", b.right <= 360.dp)
+        }
+    }
+
+    @Test fun theLayoutMirrorsInARightToLeftLocaleWithoutLosingAnyControl() {
+        show(FeatureAccess.ALLOWED, CardSection.TEMPLATE, direction = LayoutDirection.Rtl)
+        // The back arrow sits at the start edge, which is the right one now; the grid still has its cards.
+        assertTrue(compose.onNodeWithContentDescription("Back").getUnclippedBoundsInRoot().left > 180.dp)
+        compose.onNodeWithText("Free templates").assertExists()
+        compose.onNodeWithContentDescription("Wedding, premium template").performScrollTo().assertHasClickAction()
     }
 }
