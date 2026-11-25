@@ -57,6 +57,9 @@ class RoutedVoiceHost(
     /** T8.12: follow-ups exist only for the app's field; with a keyboard-own field routed nothing is replaced. */
     override fun replaceDictated(expected: String, replacement: String): Boolean =
         target == null && appField.replaceDictated(expected, replacement)
+
+    /** T8.12: only the app's field offers the dictation follow-up strip (the keyboard's own fields have their own AI controls). */
+    override val insertsIntoAppField: Boolean get() = target == null
 }
 
 /** How much text before the cursor voice typing reads to space what it inserts (never stored). */

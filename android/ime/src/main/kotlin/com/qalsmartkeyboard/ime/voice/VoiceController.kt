@@ -3,7 +3,15 @@ package com.qalsmartkeyboard.ime.voice
 import com.qalsmartkeyboard.ime.FieldKind
 import com.qalsmartkeyboard.ime.InputProfile
 import com.qalsmartkeyboard.ime.ai.AiActions
+import com.qalsmartkeyboard.ime.ai.AiBlock
+import com.qalsmartkeyboard.ime.ai.AiCall
 import com.qalsmartkeyboard.ime.ai.AiDestination
+import com.qalsmartkeyboard.ime.ai.AiFailure
+import com.qalsmartkeyboard.ime.ai.AiLanguages
+import com.qalsmartkeyboard.ime.ai.AiOutcome
+import com.qalsmartkeyboard.ime.ai.AiRequest
+import com.qalsmartkeyboard.ime.ai.AiTask
+import com.qalsmartkeyboard.ime.ai.AiTextTarget
 import java.util.Locale
 import java.util.UUID
 
@@ -56,6 +64,12 @@ interface VoiceHost {
      * [replacement] if it still reads so; false when it does not (the field changed) or the editor does not answer.
      */
     fun replaceDictated(expected: String, replacement: String): Boolean = false
+
+    /**
+     * T8.12: dictation goes into the app's field (true), not into one of the keyboard's own fields, which have their own
+     * AI controls: only then is a follow-up strip offered.
+     */
+    val insertsIntoAppField: Boolean get() = true
 }
 
 /** The voice-typing settings the controller reads and writes (device-local, `KeyboardSettings`). */
@@ -167,33 +181,253 @@ class VoiceController(
 
     val isOpen: Boolean get() = state != VoiceState.Idle
 
-    // ------------------------------------------------------------------ T8.12 voice + AI chain (ADR 0049); S1 implements
+    // ------------------------------------------------------------------ T8.12 voice + AI chain (ADR 0049)
 
-    /** The strip after a dictation into the app's field, or null. */
+    /**
+     * The strip after a dictation into the app's field, or null. Its text is the dictation as committed, trimmed (the
+     * space voice typing put before it stays in the field); after [FollowUpPhase.Done] it is the result. It is user text:
+     * held here only until dismissed (N2).
+     */
     var followUp: DictationFollowUp? = null
         private set
 
-    /** The "Insert in" language in effect: the preference, or null (as spoken) when AI is unusable. */
-    val insertLanguage: String? get() = null
+    private var followCall: AiCall? = null
+    private var followToken = 0
+    private var followOriginal: String? = null
 
-    /** The final result is being translated before it is inserted. */
-    val insertTranslating: Boolean get() = false
+    /** The final result is being translated before it is inserted ("Insert in" mode). */
+    var insertTranslating: Boolean = false
+        private set
 
-    /** The plain languages the "Insert in" picker offers (the translation catalogue). */
-    fun insertLanguageChoices(): List<AiDestination> = emptyList()
+    private var translateCall: AiCall? = null
+    private var translateToken = 0
 
-    fun chooseInsertLanguage(language: String?) {}
+    /** The "Insert in" language in effect: the preference when AI is usable and the language is translatable, else null (as spoken). */
+    val insertLanguage: String?
+        get() {
+            val a = usableAi() ?: return null
+            return prefs.insertLanguage?.takeIf { a.translationCatalog().isDestination(it) }
+        }
 
-    fun fixGrammar() {}
+    /** The plain languages the "Insert in" picker offers (the translation catalogue). Empty while AI is unusable. */
+    fun insertLanguageChoices(): List<AiDestination> {
+        val a = usableAi() ?: return emptyList()
+        return a.translationCatalog().destinations.map { AiLanguages.plain(it.code) }
+    }
 
-    fun translateFollowUp(destination: AiDestination? = null) {}
+    fun chooseInsertLanguage(language: String?) {
+        prefs.chooseInsertLanguage(language)
+        onChanged()
+    }
 
-    fun undoFollowUp() {}
+    /** Fix grammar of the dictated text (in its own language). Sends it to the server: only on the user's tap. */
+    fun fixGrammar() = runFollowUp(FollowUpAction.GRAMMAR, null)
 
-    fun dismissFollowUp() {}
+    /** Translate the dictated text into [destination] (default: the strip's destination). Only on the user's tap. */
+    fun translateFollowUp(destination: AiDestination? = null) = runFollowUp(FollowUpAction.TRANSLATE, destination)
+
+    /** Puts the original dictation back in place of the result, then dismisses the strip. */
+    fun undoFollowUp() {
+        val f = followUp ?: return
+        val original = followOriginal
+        if (f.phase is FollowUpPhase.Done && original != null) host.replaceDictated(f.text, original)
+        dismissFollowUp()
+    }
+
+    /** The strip's cross (also used for every other way the strip ends): cancels a running request, forgets the text. */
+    fun dismissFollowUp() {
+        if (clearFollowUp()) onChanged()
+    }
+
+    /**
+     * The 20 second timer of the strip: the host (which owns a Handler; the controller has no timers) calls this 20 s
+     * after the strip appeared or changed. Dismisses an offered or finished ([FollowUpPhase.Done]) strip; a running or
+     * failed one stays (the failure message goes with typing or the cross).
+     */
+    fun onFollowUpTimeout() {
+        val phase = followUp?.phase
+        if (phase == FollowUpPhase.Offer || phase is FollowUpPhase.Done) dismissFollowUp()
+    }
 
     /** The host: the editor changed for a reason other than this controller's own commit (typing, cursor move, field change). */
-    fun onEditorChanged() {}
+    fun onEditorChanged() = dismissFollowUp()
+
+    private fun usableAi(): AiActions? = ai()?.takeIf { it.availability.block == AiBlock.NONE }
+
+    private fun blockFailure(block: AiBlock?): AiFailure = when (block) {
+        AiBlock.OFFLINE -> AiFailure.Offline
+        AiBlock.SIGNED_OUT -> AiFailure.SignInRequired
+        AiBlock.UPDATE_REQUIRED -> AiFailure.UpdateRequired
+        else -> AiFailure.Other
+    }
+
+    /** Forgets the strip and its request without telling the view. True when there was one. */
+    private fun clearFollowUp(): Boolean {
+        followToken++
+        followCall?.cancel()
+        followCall = null
+        followOriginal = null
+        val had = followUp != null
+        followUp = null
+        return had
+    }
+
+    private fun cancelTranslation() {
+        translateToken++
+        translateCall?.cancel()
+        translateCall = null
+        insertTranslating = false
+    }
+
+    private fun spokenLanguage(tag: String): String = VoiceLanguages.languageOf(tag)
+
+    /** Where Translate goes by default: the app's destination as a plain language, never the spoken language itself. */
+    private fun followDestination(a: AiActions, spoken: String): AiDestination {
+        var d = a.defaultDestination(packageName())
+        if (d.isProfile) d = AiLanguages.plain(d.language)
+        if (VoiceLanguages.languageOf(d.language) == spoken) d = AiLanguages.plain(AiLanguages.defaultTarget(spoken))
+        return d
+    }
+
+    /** After a dictation was committed to the app's field: offers the strip when the conditions of ADR 0049 D2 hold. */
+    private fun offerFollowUp(committed: String, spoken: String) {
+        clearFollowUp()
+        if (!host.insertsIntoAppField || !prefs.followUps) return
+        val a = usableAi() ?: return
+        val text = committed.trim()
+        if (text.isEmpty() || text.length > AiTextTarget.MAX_CHARS) return
+        followUp = DictationFollowUp(text, spoken, followDestination(a, spoken))
+    }
+
+    private fun runFollowUp(action: FollowUpAction, chosen: AiDestination?) {
+        val f = followUp ?: return
+        if (f.phase !is FollowUpPhase.Offer && f.phase !is FollowUpPhase.Failed) return
+        val dest = chosen ?: f.destination
+        if (chosen != null && chosen != f.destination) ai()?.rememberDestination(packageName(), chosen)
+        val text = f.text
+        val a = ai()
+        val block = a?.availability?.block
+        val failure = when {
+            a == null -> AiFailure.Other
+            block != AiBlock.NONE -> blockFailure(block)
+            text.isBlank() -> AiFailure.NothingToProcess
+            text.length > AiTextTarget.MAX_CHARS -> AiFailure.TooLong
+            else -> null
+        }
+        if (a == null || failure != null) {
+            followUp = DictationFollowUp(text, f.spokenLanguage, dest, FollowUpPhase.Failed(failure, false, action))
+            onChanged()
+            return
+        }
+        followCall?.cancel()
+        followCall = null
+        val token = ++followToken
+        followUp = DictationFollowUp(text, f.spokenLanguage, dest, FollowUpPhase.Working(action))
+        onChanged()
+        val task = if (action == FollowUpAction.GRAMMAR) AiTask.Grammar else AiTask.Translate(dest, sourceLanguage = f.spokenLanguage)
+        val call = try {
+            a.submit(AiRequest(newRequestId(), task, text)) { outcome ->
+                runOnMain { onFollowUpOutcome(token, action, f.spokenLanguage, dest, text, outcome) }
+            }
+        } catch (e: RuntimeException) {
+            if (token == followToken) {
+                followUp = DictationFollowUp(text, f.spokenLanguage, dest, FollowUpPhase.Failed(AiFailure.Other, false, action))
+                onChanged()
+            }
+            return
+        }
+        if (token == followToken && followUp?.phase is FollowUpPhase.Working) followCall = call
+    }
+
+    private fun onFollowUpOutcome(token: Int, action: FollowUpAction, spoken: String, dest: AiDestination, text: String, outcome: AiOutcome) {
+        if (token != followToken || followUp == null) return // dismissed or replaced meanwhile
+        followCall = null
+        val phase = when (outcome) {
+            is AiOutcome.Failure -> FollowUpPhase.Failed(outcome.failure, false, action)
+            is AiOutcome.Success -> {
+                val result = outcome.result.text.trim()
+                when {
+                    result.isEmpty() -> FollowUpPhase.Failed(AiFailure.Other, false, action)
+                    host.replaceDictated(text, result) -> {
+                        followOriginal = text
+                        followUp = DictationFollowUp(result, spoken, dest, FollowUpPhase.Done(action))
+                        onChanged()
+                        return
+                    }
+                    else -> FollowUpPhase.Failed(null, true, action) // the field changed meanwhile: nothing was inserted
+                }
+            }
+        }
+        followUp = DictationFollowUp(text, spoken, dest, phase)
+        onChanged()
+    }
+
+    /** A dictation result [heard] in [tag]: inserted as it is, or translated first in "Insert in" mode (ADR 0049 D4). */
+    private fun finish(heard: String, tag: String) {
+        val a = ai()
+        val lang = prefs.insertLanguage?.let { VoiceLanguages.languageOf(it) }
+            ?.takeIf { a != null && a.translationCatalog().isDestination(it) && it != VoiceLanguages.languageOf(tag) }
+        if (a == null || lang == null) {
+            val committed = insert(heard, VoiceText.isEnglish(tag))
+            offerFollowUp(committed, spokenLanguage(tag))
+            closeSession()
+            return
+        }
+        val dest = AiLanguages.plain(lang)
+        val text = heard.trim()
+        val block = a.availability.block
+        if (block != AiBlock.NONE) {
+            commitOriginal(heard, tag, dest, blockFailure(block))
+            return
+        }
+        if (text.length > AiTextTarget.MAX_CHARS) {
+            commitOriginal(heard, tag, dest, AiFailure.TooLong)
+            return
+        }
+        val token = ++translateToken
+        insertTranslating = true
+        session = null
+        state = VoiceState.Processing(partialOf(state))
+        level = 0f
+        onChanged()
+        val task = AiTask.Translate(dest, sourceLanguage = spokenLanguage(tag))
+        val call = try {
+            a.submit(AiRequest(newRequestId(), task, text)) { outcome ->
+                runOnMain { onTranslated(token, heard, tag, lang, dest, outcome) }
+            }
+        } catch (e: RuntimeException) {
+            if (token == translateToken && insertTranslating) {
+                insertTranslating = false
+                commitOriginal(heard, tag, dest, AiFailure.Other)
+            }
+            return
+        }
+        if (token == translateToken && insertTranslating) translateCall = call
+    }
+
+    private fun onTranslated(token: Int, heard: String, tag: String, lang: String, dest: AiDestination, outcome: AiOutcome) {
+        if (token != translateToken || !insertTranslating) return // cancelled meanwhile: nothing is inserted
+        insertTranslating = false
+        translateCall = null
+        val result = (outcome as? AiOutcome.Success)?.result?.text?.trim().orEmpty()
+        if (result.isNotEmpty()) {
+            insert(result, VoiceText.isEnglish(lang))
+            closeSession()
+        } else {
+            commitOriginal(heard, tag, dest, (outcome as? AiOutcome.Failure)?.failure ?: AiFailure.Other)
+        }
+    }
+
+    /** The translation could not be made: what the user said is inserted as spoken, with a Translate retry on the strip. */
+    private fun commitOriginal(heard: String, tag: String, dest: AiDestination, failure: AiFailure) {
+        val committed = insert(heard, VoiceText.isEnglish(tag))
+        clearFollowUp()
+        val text = committed.trim()
+        if (host.insertsIntoAppField && text.isNotEmpty() && text.length <= AiTextTarget.MAX_CHARS) {
+            followUp = DictationFollowUp(text, spokenLanguage(tag), dest, FollowUpPhase.Failed(failure, false, FollowUpAction.TRANSLATE))
+        }
+        closeSession()
+    }
 
     /** The mic is offered: setting on, a recogniser installed, and the field allows it (not a password field). */
     val micVisible: Boolean get() = prefs.enabled && provider.available && fieldAllows
@@ -230,6 +464,7 @@ class VoiceController(
     /** Settings changed: turning voice typing off closes the panel. */
     fun onPreferencesChanged() {
         if (!prefs.enabled) cancel()
+        if (!prefs.followUps) dismissFollowUp()
     }
 
     // ------------------------------------------------------------------ user actions
@@ -298,11 +533,18 @@ class VoiceController(
     /** Back to the keys; nothing is inserted. */
     fun backToKeyboard() = cancel()
 
-    /** Ends everything without inserting. Safe in every state. */
+    /** Ends everything without inserting (also the follow-up strip and a running translation). Safe in every state. */
     fun cancel() {
+        val had = clearFollowUp()
+        if (!closeSession() && had) onChanged()
+    }
+
+    /** Closes the panel and the session; the follow-up strip is left alone. True when it told the view. */
+    private fun closeSession(): Boolean {
         sessionId++
         session?.cancel()
         session = null
+        cancelTranslation()
         val wasOpen = isOpen || pickerOpen
         state = VoiceState.Idle
         pickerOpen = false
@@ -311,6 +553,7 @@ class VoiceController(
         showNotice = false
         level = 0f
         if (wasOpen) onChanged()
+        return wasOpen
     }
 
     // ------------------------------------------------------------------ language picker
@@ -321,6 +564,7 @@ class VoiceController(
         sessionId++
         session?.cancel()
         session = null
+        cancelTranslation()
         level = 0f
         state = VoiceState.Ready
         pickerOpen = true
@@ -389,6 +633,8 @@ class VoiceController(
         val wanted = tags.distinct()
         session?.cancel()
         session = null
+        cancelTranslation()
+        clearFollowUp() // a new dictation: the old strip goes
         val id = ++sessionId
         choice = null
         pendingTag = VoiceLanguages.normalize(wanted.first())
@@ -419,10 +665,11 @@ class VoiceController(
         onChanged()
     }
 
-    private fun insert(text: String, tag: String) {
-        val english = VoiceText.isEnglish(tag)
+    /** Commits [text] to the field; returns what was committed ("" when nothing). */
+    private fun insert(text: String, english: Boolean): String {
         val out = VoiceText.prepare(text, host.textBeforeCursor(), english, english && host.wantsCapital())
         if (out.isNotEmpty()) host.commitVoiceText(out)
+        return out
     }
 
     private fun partialOf(s: VoiceState): String = when (s) {
@@ -432,7 +679,7 @@ class VoiceController(
     }
 
     private inner class Listener(private val id: Int, private val c: VoiceChoice, private val tags: List<String>) : VoiceListener {
-        private val live get() = id == sessionId
+        private val live get() = id == sessionId && !insertTranslating
 
         override fun onReady() {
             if (!live || state != VoiceState.Preparing) return
@@ -476,8 +723,7 @@ class VoiceController(
                 fail(VoiceErrorKind.NO_MATCH, c.tag)
                 return
             }
-            insert(heard, c.tag)
-            cancel()
+            finish(heard, c.tag)
         }
 
         override fun onError(kind: VoiceErrorKind) {
@@ -485,8 +731,7 @@ class VoiceController(
             session = null
             val partial = partialOf(state)
             if ((kind == VoiceErrorKind.NO_MATCH || kind == VoiceErrorKind.NO_SPEECH) && partial.isNotBlank()) {
-                insert(partial, c.tag) // stopped before a final result: keep what was recognised
-                cancel()
+                finish(partial, c.tag) // stopped before a final result: keep what was recognised
                 return
             }
             if (kind == VoiceErrorKind.LANGUAGE_NOT_SUPPORTED) {
