@@ -22,6 +22,11 @@ record Channel(String platform, String distribution) {
 		};
 	}
 
+	/** A build installed from a store, the only kind with store billing (Play Billing, StoreKit). */
+	boolean storeDistribution() {
+		return "GOOGLE_PLAY".equals(distribution) || "APPLE_APP_STORE".equals(distribution);
+	}
+
 	static Optional<Channel> of(String platform, String distribution) {
 		if (platform == null || distribution == null) {
 			return Optional.empty();

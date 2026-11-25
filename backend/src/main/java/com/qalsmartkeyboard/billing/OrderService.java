@@ -138,6 +138,14 @@ final class OrderService {
 		Decision policyOnly = routing.decide(new ProviderRouting.Query(market, Confidence.HIGH, channel, null, null));
 		boolean gatewayFlow = "LOCAL_GATEWAY_IN_APP".equals(policyOnly.purchaseFlow())
 				|| "EXTERNAL_WEB_CHECKOUT".equals(policyOnly.purchaseFlow());
+		if (policyOnly.purchaseUiAllowed() && "STORE_BILLING".equals(policyOnly.purchaseFlow())) {
+			// store-billed plans and credit packs never use gateway orders (N6): the app buys through the store and
+			// reports the purchase to POST /billing/store-purchases
+			log.info("billing order refused market={} channel={} reason=STORE_BILLING_FLOW", market,
+					channel.salesChannel());
+			throw BillingErrors.problem(ApiErrorCode.BILLING_POLICY_DENIED,
+					"Purchases in this market are made through the store, not through orders.");
+		}
 		if (!policyOnly.purchaseUiAllowed() || !gatewayFlow) {
 			log.info("billing order refused market={} channel={} reason={}", market, channel.salesChannel(),
 					policyOnly.denial() != null ? policyOnly.denial() : "FLOW_" + policyOnly.purchaseFlow());

@@ -54,7 +54,8 @@ class UnownedTablesExport implements UserExportParticipant {
 						""", user));
 		out.section("storePurchases", "Financial records", "App-store purchases: store, transaction ids, status and "
 				+ "dates (the purchase token is not included).", ExportRows.query(jdbc, """
-						SELECT id, provider_type, original_transaction_id, latest_transaction_id, environment,
+						SELECT id, provider_type, purchase_type, store_transaction_id, original_transaction_id,
+						       latest_transaction_id, environment,
 						       storefront_country_code, purchase_status, auto_renewing, purchased_at, expires_at,
 						       acknowledged_at, last_verified_at, created_at, updated_at
 						FROM store_purchases WHERE user_id = :u ORDER BY purchased_at, id

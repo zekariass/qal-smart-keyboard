@@ -84,3 +84,13 @@ REST API v1 is used because the webhook docs recommend `GET /subscribers` after 
 Direct Play / App Store verification (those shapes go through RevenueCat), non-subscription store
 products, a live RevenueCat test (no keys yet, OI-PAY-14), refunds and the provider-vs-ledger report (OI-PAY-12).
 Open items: OI-PAY-7, OI-PAY-13, OI-PAY-14.
+
+## Amendment (2026-11-25, T8.10 store-billed credit packs)
+Owner rule: all billing outside Ethiopia uses Google Play billing through RevenueCat. Non-subscription store products are
+now in scope for the prepaid AI credit packs (ADR 0048 §4): Play **consumables** `credits_100` / `credits_500` /
+`credits_1500` (V32 mappings, inactive), read from `subscriber.non_subscriptions`, recorded as `store_purchases` rows of
+`purchase_type = CONSUMABLE` keyed by the store transaction id, each granting exactly one `ai_credit_lots` row
+(`store_purchase_id`; a PURCHASE lot is backed by an order xor a store purchase). The same verify-then-grant rule applies
+(client report and `NON_RENEWING_PURCHASE` webhook both re-read the customer); a `CANCELLATION` confirmed by the REST
+API reverses the unused credits. Store providers are never offered to a `DIRECT_DOWNLOAD` build. Details and the go-live
+steps: backend README "Billing: store-billed credit packs outside Ethiopia".

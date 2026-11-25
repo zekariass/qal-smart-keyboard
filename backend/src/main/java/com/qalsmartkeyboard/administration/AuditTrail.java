@@ -74,6 +74,22 @@ public class AuditTrail {
 
 	/** Writes the row in the current transaction (if any). */
 	public UUID record(Entry entry) {
+		return write("ADMIN", entry);
+	}
+
+	/**
+	 * Writes a row whose actor is not an admin, in the current transaction (if any): {@code SYSTEM} (a job) or
+	 * {@code PROVIDER} (a verified provider event, e.g. a store refund that reversed credits). {@code actorUserId} of the
+	 * entry is normally null.
+	 */
+	public UUID recordAs(String actorType, Entry entry) {
+		if (!"SYSTEM".equals(actorType) && !"PROVIDER".equals(actorType)) {
+			throw new IllegalArgumentException("actorType must be SYSTEM or PROVIDER");
+		}
+		return write(actorType, entry);
+	}
+
+	private UUID write(String actorType, Entry entry) {
 		require(entry.actionCode(), 100, "actionCode");
 		require(entry.entityType(), 80, "entityType");
 		if (entry.entityId() != null && entry.entityId().length() > 100) {
@@ -91,7 +107,7 @@ public class AuditTrail {
 		jdbc.update("""
 				INSERT INTO audit_events (id, actor_type, actor_user_id, approved_by_user_id, action_code, entity_type,
 				    entity_id, outcome, correlation_id, metadata, created_at)
-				VALUES (?, 'ADMIN', ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)""", id, entry.actorUserId(), entry.approvedByUserId(),
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)""", id, actorType, entry.actorUserId(), entry.approvedByUserId(),
 				entry.actionCode(), entry.entityType(), entry.entityId(), entry.outcome().name(), correlation, metadata,
 				OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC));
 		return id;

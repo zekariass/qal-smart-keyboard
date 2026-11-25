@@ -36,7 +36,13 @@ final class BillingDtos {
 	/** {@code Price}. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	record PriceDto(String billingPeriod, String renewalModel, MoneyDto listPrice, String taxBehavior,
-			String displayPrice) {
+			String displayPrice, String storeProductId, String storeOfferId, String storeOfferingId,
+			String storePackageId) {
+
+		PriceDto(String billingPeriod, String renewalModel, MoneyDto listPrice, String taxBehavior,
+				String displayPrice) {
+			this(billingPeriod, renewalModel, listPrice, taxBehavior, displayPrice, null, null, null, null);
+		}
 	}
 
 	/** {@code Product}. */
@@ -130,7 +136,8 @@ final class BillingDtos {
 	record StorePurchaseRequest(@NotNull @Pattern(regexp = "^(GOOGLE_PLAY|APPLE_APP_STORE|REVENUECAT)$") String provider,
 			@NotBlank @Size(max = 255) String productId, @Size(max = 4096) String purchaseToken,
 			@Size(max = 255) String packageName, @Size(max = 16384) String signedTransactionInfo,
-			UUID appAccountToken) {
+			UUID appAccountToken, @Size(min = 1, max = 255) String transactionId,
+			@Pattern(regexp = "^(GOOGLE_PLAY|APPLE_APP_STORE|DIRECT_DOWNLOAD|WEB)$") String distributionChannel) {
 
 		@Override
 		public String toString() {
@@ -141,7 +148,9 @@ final class BillingDtos {
 	/** {@code StorePurchaseResult}. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	record StorePurchaseResultDto(UUID storePurchaseId, String productId, String status, String environment,
-			Boolean autoRenewing, Instant acknowledgedAt, Instant expiresAt, SubscriptionDto subscription) {
+			Boolean autoRenewing, Instant acknowledgedAt, Instant expiresAt, SubscriptionDto subscription,
+			UUID creditLotId, String purchaseType, String productCode, String transactionId, Long creditUnits,
+			Instant creditsExpireAt) {
 	}
 
 	/** {@code WebhookAck}. */

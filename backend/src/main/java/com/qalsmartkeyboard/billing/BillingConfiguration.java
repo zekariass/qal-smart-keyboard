@@ -61,8 +61,9 @@ class BillingConfiguration {
 	}
 
 	@Bean
-	BillingCatalog billingCatalog(JdbcTemplate jdbc, ProviderRouting routing, ObjectProvider<Clock> clock) {
-		return new BillingCatalog(jdbc, routing, clock(clock));
+	BillingCatalog billingCatalog(JdbcTemplate jdbc, ProviderRouting routing, BillingProperties properties,
+			ObjectProvider<Clock> clock) {
+		return new BillingCatalog(jdbc, routing, properties.environment(), clock(clock));
 	}
 
 	@Bean
@@ -120,10 +121,17 @@ class BillingConfiguration {
 	}
 
 	@Bean
+	StoreConsumables billingStoreConsumables(JdbcTemplate jdbc, Credits credits, ProviderRouting routing,
+			AuditTrail audit, JsonMapper json) {
+		return new StoreConsumables(jdbc, credits, routing, audit, json);
+	}
+
+	@Bean
 	StorePurchases billingStorePurchases(JdbcTemplate jdbc, TransactionTemplate transactions,
 			ProviderRegistry registry, OutboxPublisher outbox, SubscriptionQueries subscriptions,
-			BillingProperties properties, JsonMapper json, ObjectProvider<Clock> clock) {
-		return new StorePurchases(jdbc, transactions, registry, outbox, subscriptions, properties, json, clock(clock));
+			BillingProperties properties, JsonMapper json, ObjectProvider<Clock> clock, StoreConsumables consumables) {
+		return new StorePurchases(jdbc, transactions, registry, outbox, subscriptions, properties, json, clock(clock),
+				consumables);
 	}
 
 	@Bean

@@ -71,11 +71,26 @@ final class JdbcCredits implements Credits, CreditWallet {
 	public CreditLot grant(UUID userId, BigDecimal units, CreditSource source, String sourceRef, Instant expiresAt) {
 		Objects.requireNonNull(userId, "userId");
 		Objects.requireNonNull(source, "source");
-		BigDecimal amount = positive(units, "units");
+		positive(units, "units");
 		if (sourceRef == null || sourceRef.isBlank() || sourceRef.length() > 100) {
 			throw new IllegalArgumentException("sourceRef must be 1-100 characters");
 		}
 		UUID paymentOrder = source == CreditSource.PURCHASE ? parseUuid(sourceRef) : null;
+		return grantLot(userId, units, source, sourceRef, expiresAt, paymentOrder, null);
+	}
+
+	@Override
+	public CreditLot grantStorePurchase(UUID userId, BigDecimal units, UUID storePurchaseId, Instant expiresAt) {
+		Objects.requireNonNull(storePurchaseId, "storePurchaseId");
+		return grantLot(userId, units, CreditSource.PURCHASE, storeRef(storePurchaseId), expiresAt, null,
+				storePurchaseId);
+	}
+
+	/** A PURCHASE lot carries exactly one backing: {@code paymentOrder} or {@code storePurchase} (V32). */
+	private CreditLot grantLot(UUID userId, BigDecimal units, CreditSource source, String sourceRef, Instant expiresAt,
+			UUID paymentOrder, UUID storePurchase) {
+		Objects.requireNonNull(userId, "userId");
+		BigDecimal amount = positive(units, "units");
 		return tx.execute(status -> {
 			Instant now = clock.instant();
 			Account account = lockOrCreateAccount(userId);
@@ -94,11 +109,12 @@ final class JdbcCredits implements Credits, CreditWallet {
 			}
 			jdbc.sql("""
 					INSERT INTO ai_credit_lots (id, credit_account_id, lot_source, initial_units, remaining_units,
-					                            expires_at, payment_order_id, created_at, updated_at)
-					VALUES (:id, :account, :source, :units, :units, :expires, :order, :now, :now)
+					                            expires_at, payment_order_id, store_purchase_id, created_at, updated_at)
+					VALUES (:id, :account, :source, :units, :units, :expires, :order, :store, :now, :now)
 					""").param("id", lotId).param("account", account.id()).param("source", source.name())
 					.param("units", amount).param("expires", expiresAt == null ? null : Timestamp.from(expiresAt))
-					.param("order", paymentOrder).param("now", Timestamp.from(now)).update();
+					.param("order", paymentOrder).param("store", storePurchase).param("now", Timestamp.from(now))
+					.update();
 			BigDecimal after = account.balance().add(amount);
 			insertTx(account.id(), lotId, null, paymentOrder, openingType(source), amount, after,
 					"grant:" + source + ":" + sourceRef, source + " " + sourceRef, now);
@@ -121,6 +137,26 @@ final class JdbcCredits implements Credits, CreditWallet {
 
 	@Override
 	public BigDecimal reverse(UUID userId, CreditSource source, String sourceRef) {
+		// an order reference that is not a UUID can never have been granted: its lot is simply not found
+		UUID paymentOrder = null;
+		if (source == CreditSource.PURCHASE) {
+			try {
+				paymentOrder = UUID.fromString(sourceRef);
+			}
+			catch (IllegalArgumentException e) {
+				paymentOrder = null;
+			}
+		}
+		return reverseLot(userId, source, sourceRef, paymentOrder);
+	}
+
+	@Override
+	public BigDecimal reverseStorePurchase(UUID userId, UUID storePurchaseId) {
+		Objects.requireNonNull(storePurchaseId, "storePurchaseId");
+		return reverseLot(userId, CreditSource.PURCHASE, storeRef(storePurchaseId), null);
+	}
+
+	private BigDecimal reverseLot(UUID userId, CreditSource source, String sourceRef, UUID paymentOrder) {
 		return tx.execute(status -> {
 			Optional<Account> account = lockAccount(userId);
 			if (account.isEmpty()) {
@@ -134,7 +170,6 @@ final class JdbcCredits implements Credits, CreditWallet {
 			Lot lot = found.get();
 			Instant now = clock.instant();
 			BigDecimal after = account.get().balance().subtract(lot.remaining());
-			UUID paymentOrder = source == CreditSource.PURCHASE ? parseUuid(sourceRef) : null;
 			int rows = insertTx(account.get().id(), lotId, null, paymentOrder, "REVERSAL", lot.remaining().negate(),
 					after, "reverse:" + sourceRef, "reversed " + source + " " + sourceRef, now);
 			if (rows == 0) {
@@ -403,6 +438,11 @@ final class JdbcCredits implements Credits, CreditWallet {
 
 	private static String openingType(CreditSource source) {
 		return source == CreditSource.PROMOTION ? "GRANT" : source.name();
+	}
+
+	/** The source reference of a store purchase's lot (never a UUID string, so it cannot collide with an order id). */
+	static String storeRef(UUID storePurchaseId) {
+		return "store:" + storePurchaseId;
 	}
 
 	/** Deterministic lot id, so a replayed grant hits the primary key instead of needing a reference column. */

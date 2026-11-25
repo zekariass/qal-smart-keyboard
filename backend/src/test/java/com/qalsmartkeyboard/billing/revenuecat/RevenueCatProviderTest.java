@@ -125,4 +125,42 @@ class RevenueCatProviderTest {
 		assertThat(apple.environment()).isEqualTo(PaymentEnvironment.PRODUCTION);
 		assertThat(provider(null).toString()).doesNotContain("sk_test_never_logged", AUTH);
 	}
+
+	@Test
+	void mapsNonSubscriptionsAndTheEventTransactionIds() {
+		String body = """
+				{"subscriber":{"original_app_user_id":"u","subscriptions":{},"non_subscriptions":{
+				"credits_500":[{"id":"cadba0c81b","is_sandbox":true,"purchase_date":"2026-11-25T09:00:00Z",
+				"original_purchase_date":"2026-11-25T09:00:00Z","store":"play_store","store_transaction_id":"GPA.1111-2222"},
+				{"id":"cadba0c81c","is_sandbox":true,"purchase_date":"2026-11-25T10:00:00Z","store":"play_store",
+				"store_transaction_id":"GPA.3333-4444","refunded_at":"2026-11-25T11:00:00Z"}],
+				"credits_100":[{"id":"x1","is_sandbox":false,"purchase_date":"2026-11-24T09:00:00Z","store":"app_store",
+				"store_transaction_id":2000000652379790}],
+				"onetime":[{"id":"cadba0c81d","is_sandbox":true,"purchase_date":"2019-04-05T21:52:45Z","store":"app_store"}],
+				"broken":{"id":"not-an-array"}}}}""";
+		StoreCustomer c = RevenueCatProvider.mapSubscriber("u", JsonMapper.builder().build().readTree(body));
+		assertThat(c.subscriptions()).isEmpty();
+		assertThat(c.nonSubscriptions()).hasSize(4);
+		var first = c.nonSubscriptions().get(0);
+		assertThat(first.productId()).isEqualTo("credits_500");
+		assertThat(first.providerId()).isEqualTo("cadba0c81b");
+		assertThat(first.storeTransactionId()).isEqualTo("GPA.1111-2222");
+		assertThat(first.store()).isEqualTo("play_store");
+		assertThat(first.environment()).isEqualTo(PaymentEnvironment.SANDBOX);
+		assertThat(first.purchasedAt()).isEqualTo(Instant.parse("2026-11-25T09:00:00Z"));
+		assertThat(first.refundedAt()).isNull();
+		assertThat(c.nonSubscriptions().get(1).refundedAt()).isEqualTo(Instant.parse("2026-11-25T11:00:00Z"));
+		assertThat(c.nonSubscriptions().get(2).storeTransactionId()).isEqualTo("2000000652379790");
+		assertThat(c.nonSubscriptions().get(2).environment()).isEqualTo(PaymentEnvironment.PRODUCTION);
+		// the documented minimal shape (no store_transaction_id): read, and never granted by the core
+		assertThat(c.nonSubscriptions().get(3).storeTransactionId()).isNull();
+
+		String event = EVENT.replace("\"type\":\"INITIAL_PURCHASE\"", "\"type\":\"NON_RENEWING_PURCHASE\"")
+				.replace("\"transaction_id\":\"GPA.1\",\"original_transaction_id\":\"GPA.1\"",
+						"\"transaction_id\":\"GPA.1111-2222\",\"original_transaction_id\":\"GPA.1111-2222\"");
+		StoreNotification n = provider(null).parseNotification(request(event, Map.of()));
+		assertThat(n.eventType()).isEqualTo("NON_RENEWING_PURCHASE");
+		assertThat(n.transactionIds()).containsExactly("GPA.1111-2222");
+		assertThat(provider(null).parseNotification(request(EVENT, Map.of())).transactionIds()).containsExactly("GPA.1");
+	}
 }

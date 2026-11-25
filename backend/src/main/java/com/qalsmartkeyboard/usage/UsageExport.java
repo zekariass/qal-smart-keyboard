@@ -49,7 +49,7 @@ class UsageExport implements UserExportParticipant {
 		out.section("creditLots", "Financial records", "Credit lots: source, initial and remaining units, expiry.",
 				ExportRows.query(jdbc, """
 						SELECT l.id, l.credit_account_id, l.lot_source, l.initial_units, l.remaining_units, l.expires_at,
-						       l.payment_order_id, l.created_at, l.updated_at
+						       l.payment_order_id, l.store_purchase_id, l.created_at, l.updated_at
 						FROM ai_credit_lots l JOIN ai_credit_accounts a ON a.id = l.credit_account_id
 						WHERE a.user_id = :u ORDER BY l.created_at, l.id
 						""", user));
