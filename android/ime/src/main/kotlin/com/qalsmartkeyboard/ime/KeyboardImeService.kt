@@ -62,6 +62,7 @@ import com.qalsmartkeyboard.ime.userdict.UserDictionary
 import com.qalsmartkeyboard.ime.voice.DictatedEdit
 import com.qalsmartkeyboard.ime.voice.DictationFollowUp
 import com.qalsmartkeyboard.ime.voice.OwnEditWindow
+import com.qalsmartkeyboard.ime.voice.DictationFollowUpView
 import com.qalsmartkeyboard.ime.voice.PlatformVoiceProvider
 import com.qalsmartkeyboard.ime.voice.VoiceController
 import com.qalsmartkeyboard.ime.voice.VoiceHost
@@ -206,6 +207,7 @@ class KeyboardImeService : InputMethodService() {
         wordArtPanel?.theme = t
         wordArtBar?.theme = t
         voicePanel?.theme = t
+        followUpStrip?.theme = t
         toolsPanel?.theme = t
         layoutPanel?.theme = t
         calcPanel?.theme = t
@@ -315,13 +317,12 @@ class KeyboardImeService : InputMethodService() {
             voiceNoticeSeen = true
             snapshot.launchUpdate { it.copy(voiceNoticeShown = true) }
         }
-        // T8.12-S3 merge point: once KeyboardSettings has voiceFollowUps / voiceInsertLanguage (S3), add here:
-        //   override val followUps: Boolean get() = snapshot.current.voiceFollowUps
-        //   override val insertLanguage: String? get() = snapshot.current.voiceInsertLanguage
-        //   override fun chooseInsertLanguage(language: String?) {
-        //       if (snapshot.current.voiceInsertLanguage == language) return
-        //       snapshot.launchUpdate { it.copy(voiceInsertLanguage = language) }
-        //   }
+        override val followUps: Boolean get() = snapshot.current.voiceFollowUps
+        override val insertLanguage: String? get() = snapshot.current.voiceInsertLanguage
+        override fun chooseInsertLanguage(language: String?) {
+            if (snapshot.current.voiceInsertLanguage == language) return
+            snapshot.launchUpdate { it.copy(voiceInsertLanguage = language) }
+        }
     }
     private val fieldVoiceHost = object : VoiceHost {
         override val keyboardLanguage: String get() = controller.language
@@ -374,8 +375,7 @@ class KeyboardImeService : InputMethodService() {
     }
 
     private val followUpTimeout = Runnable {
-        // T8.12-S1 merge point: S1 adds VoiceController.onFollowUpTimeout(); call it here instead of dismissFollowUp().
-        voice.dismissFollowUp()
+        voice.onFollowUpTimeout()
     }
     private var timedFollowUp: DictationFollowUp? = null
 
@@ -389,8 +389,7 @@ class KeyboardImeService : InputMethodService() {
     }
 
     // The strip's place (ADR 0049 D2): directly above the keys, gone unless there is a follow-up and the keys are on screen.
-    // T8.12-S2 merge point: set both in the view building (see the comment before `val column`); refreshViews drives them.
-    private var followUpStrip: View? = null
+    private var followUpStrip: DictationFollowUpView? = null
     private var followUpRender: (() -> Unit)? = null
 
     // ADR 0038: dictation into the keyboard's own fields (the translate box, an AI panel field, Word Art's text) uses the
@@ -1227,15 +1226,11 @@ class KeyboardImeService : InputMethodService() {
         }
         seenToolPanel = ToolPanel.NONE
         val space = View(ui).also { headroom = it }
-        // T8.12-S2 merge point: replace the two `null` lines below by the strip (the addView above `addView(k, ...)` uses it):
-        //   followUpStrip = DictationFollowUpView(ui).also {
-        //       it.visibility = View.GONE
-        //       it.controller = voice
-        //       followUpRender = { it.render() }
-        //   }
-        // plus: import com.qalsmartkeyboard.ime.voice.DictationFollowUpView, and set its `theme` wherever applyTheme sets the voice panel's.
-        followUpStrip = null
-        followUpRender = null
+        followUpStrip = DictationFollowUpView(ui).also {
+            it.visibility = View.GONE
+            it.controller = voice
+            followUpRender = { it.render() }
+        }
         // A new input view: the AI panel views (if any) belonged to the old one and are created again on the next open.
         aiPanelView = null
         aiFieldBar = null
