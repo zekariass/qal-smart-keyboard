@@ -107,14 +107,38 @@ class UiLocalisationSmokeTest {
         c.getString(R.string.kb_key_vowel_active, "ሀ", 2)
         checkUtilityStrings()
         checkChatStrings()
+        checkStickerStrings()
         // The platform names other voice languages in the UI language too.
         assertNotEquals("French (France)", VoiceLanguages.displayName("fr-FR"))
+    }
+
+    /** T8.7: every sticker string resolves in this language, formats take their arguments, and the labels are translated. */
+    private fun checkStickerStrings() {
+        val c = ctx
+        val ids = R.string::class.java.fields.filter { it.name.startsWith("sticker_") || it.name == "tool_stickers" }
+        assertTrue(ids.size >= 60)
+        for (f in ids) assertTrue(f.name, c.getString(f.getInt(null)).isNotBlank())
+        c.getString(R.string.sticker_pack_locked_desc, "x")
+        c.getString(R.string.sticker_pack_item_locked_desc, "x")
+        c.getString(R.string.sticker_item_desc, 1, 2)
+        c.getString(R.string.sticker_size_desc, "x")
+        c.getString(R.string.sticker_emoji_desc, "x")
+        c.getString(R.string.sticker_ink_desc, "x")
+        c.getString(R.string.sticker_shape_desc, "x")
+        c.getString(R.string.sticker_fill_desc, 1)
+        c.getString(R.string.sticker_status_full, 60)
+        c.getString(R.string.sticker_field_spoken, "x", "y")
+        if (c.resources.configuration.locales[0].language != "en") {
+            assertNotEquals("Make", c.getString(R.string.sticker_make))
+            assertNotEquals("My stickers", c.getString(R.string.sticker_tab_mine))
+            assertNotEquals("Stickers", c.getString(R.string.tool_stickers))
+        }
     }
 
     /** T8.3: the utilities' tiles, month arrays and format strings resolve in this language. */
     private fun checkUtilityStrings() {
         val c = ctx
-        for (t in listOf(Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.DRAW)) {
+        for (t in listOf(Tool.CALCULATOR, Tool.UNIT_CONVERTER, Tool.CURRENCY, Tool.CALENDAR, Tool.QR, Tool.DRAW, Tool.STICKERS)) {
             assertTrue("$t", toolLabel(c, t).isNotBlank())
         }
         val names = calendarNames(c)

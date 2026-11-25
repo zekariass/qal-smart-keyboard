@@ -20,6 +20,7 @@ fun toolLabel(c: Context, tool: Tool): String = c.getString(
         Tool.CALENDAR -> R.string.tool_calendar
         Tool.QR -> R.string.tool_qr
         Tool.DRAW -> R.string.tool_draw
+        Tool.STICKERS -> R.string.tool_stickers
         Tool.LANGUAGES -> R.string.tool_languages
         Tool.THEME -> R.string.tool_theme
         Tool.SETTINGS -> R.string.tool_settings
