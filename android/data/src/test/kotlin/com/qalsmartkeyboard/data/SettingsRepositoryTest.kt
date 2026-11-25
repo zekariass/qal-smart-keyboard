@@ -542,6 +542,43 @@ class SettingsRepositoryTest {
         assertEquals(mapOf("am" to "am-ET", "om" to "cmn-Hans-CN"), s.voiceLanguages)
     }
 
+    // ------------------------------------------------------------------ dictation follow-ups and insert language (ADR 0049 D4, D6)
+
+    @Test fun dictationFollowUpsDefaultOnAndInsertLanguageAsSpoken() = runBlocking {
+        val s = open().current()
+        assertTrue(s.voiceFollowUps)
+        assertNull(s.voiceInsertLanguage)
+    }
+
+    @Test fun dictationFollowUpsAndInsertLanguagePersistAcrossRestart() = runBlocking {
+        val repo = open()
+        repo.update { it.copy(voiceFollowUps = false, voiceInsertLanguage = "zh-CN") }
+        closeAll()
+        val repo2 = open()
+        val s = repo2.current()
+        assertFalse(s.voiceFollowUps)
+        assertEquals("zh-CN", s.voiceInsertLanguage)
+        repo2.update { it.copy(voiceInsertLanguage = null) }
+        closeAll()
+        assertNull("as spoken again", open().current().voiceInsertLanguage)
+    }
+
+    @Test fun insertLanguageKeepsCatalogueCodesAndDropsTheRest() {
+        for (ok in listOf("en", "fr", "fil", "zh-CN", "pt-BR")) {
+            assertEquals(ok, KeyboardSettings(voiceInsertLanguage = ok).sanitized().voiceInsertLanguage)
+        }
+        for (bad in listOf("", " ", "EN", "e", "abcd", "en US", "en|x", "en-", "fr\n", "en-a-b-c-d")) {
+            assertNull("'$bad'", KeyboardSettings(voiceInsertLanguage = bad).sanitized().voiceInsertLanguage)
+        }
+        assertNull(KeyboardSettings().sanitized().voiceInsertLanguage)
+    }
+
+    @Test fun dictationSettingsAreNotPartOfTheSyncItems() {
+        // Only the typing languages are synced; the voice fields are device-local and change nothing in the sync view.
+        val base = KeyboardSettings()
+        assertEquals(base.toSyncItems(), base.copy(voiceFollowUps = false, voiceInsertLanguage = "fr").toSyncItems())
+    }
+
     // ------------------------------------------------------------------ AI panels (ADR 0031)
 
     @Test fun aiChoicesDefaultToAutomaticAndEmpty() = runBlocking {
