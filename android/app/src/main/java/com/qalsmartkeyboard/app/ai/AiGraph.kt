@@ -94,6 +94,12 @@ class AiGraph private constructor(context: Context) {
     val cardMakerAccess = ServerFeatureAccess(ServerFeatureAccess.CARD_MAKER, entitlements, session, connectivity) { listener -> actions.addAvailabilityListener(listener) }
 
     /**
+     * The image annotator's premium gate (`IMAGE_ANNOTATOR`, T8.7): the same mechanism for its advanced tools. Basic
+     * annotation (and the solid redaction box) is never gated by it.
+     */
+    val annotatorAccess = ServerFeatureAccess(ServerFeatureAccess.IMAGE_ANNOTATOR, entitlements, session, connectivity) { listener -> actions.addAvailabilityListener(listener) }
+
+    /**
      * The currency converter's rates (`GET /tools/fx-rates`): public data, fetched without the session over the transport's
      * bearer-free client, at the same base URL as the AI calls (both flavours). Null when the build has no base URL.
      */
