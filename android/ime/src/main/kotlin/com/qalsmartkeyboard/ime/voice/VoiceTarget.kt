@@ -53,6 +53,9 @@ class RoutedVoiceHost(
         val t = target
         if (t != null) t.insert(text) else appField.commitVoiceText(text)
     }
+
+    /** T8.12: only the app's field offers the dictation follow-up strip (the keyboard's own fields have their own AI controls). */
+    override val insertsIntoAppField: Boolean get() = target == null
 }
 
 /** How much text before the cursor voice typing reads to space what it inserts (never stored). */
