@@ -65,6 +65,8 @@
 
 ### Progress summary
 
+_% = done ÷ (steps − skipped). Skipped steps are owner scope cuts (see the Notes log, 2026-11-25) and are not counted as outstanding._
+
 | Phase | Name | Steps | 🟩 Done | 🟦 In progress | 🟥 Blocked | ⬜ Todo | % |
 |---|---|---|---|---|---|---|---|
 | Phase 0 | Foundations (M0) | 6 | 6 | 0 | 0 | 0 | 100% |
@@ -72,11 +74,11 @@
 | Phase 2 | Backend + P0 AI (M2) | 39 | 39 | 0 | 0 | 0 | 100% |
 | Phase 3 | Hardening + launch (M3) | 6 | 0 | 0 | 0 | 6 | 0% |
 | Phase 4 | Monetisation (M4) | 11 | 3 | 6 | 0 | 2 | 27% |
-| Phase 5 | iOS + voice + P1 (M5) | 13 | 0 | 0 | 0 | 13 | 0% |
-| Phase 6 | Differentiation (M6) | 8 | 0 | 0 | 0 | 8 | 0% |
-| Phase 7 | Expansion + B2B (M7) | 5 | 0 | 0 | 0 | 5 | 0% |
-| Phase 8 | Extended tools (ADR 0048) | 15 (2 skipped) | 7 | 2 | 0 | 4 | 47% |
-| **Total** | | **125** (2 skipped) | 76 | 8 | 0 | 39 | 61% |
+| Phase 5 | iOS + voice + P1 (M5) | 13 (7 skipped) | 0 | 0 | 0 | 6 | 0% |
+| Phase 6 | Differentiation (M6) | 8 (8 skipped) | 0 | 0 | 0 | 0 | — |
+| Phase 7 | Expansion + B2B (M7) | 5 (5 skipped) | 0 | 0 | 0 | 0 | — |
+| Phase 8 | Extended tools (ADR 0048) | 15 (4 skipped) | 7 | 2 | 0 | 2 | 64% |
+| **Total** | | **125** (24 skipped) | 76 | 8 | 0 | 17 | 75% |
 
 ### Human gates
 
@@ -223,6 +225,7 @@ Append newest at the bottom. Format: `YYYY-MM-DD | step ID | status | PR/commit 
 | 2026-11-25 | T8.12 | 🟦 IN PROGRESS | ADR 0049, branch t8-12-voice-ai | Keyboard side built and unit-tested (all modules + play/direct flavours + both assembles green): one-tap "Fix grammar" / "Translate" strip after dictation into the app's field (ADR 0049 D2–D3, undo, auto-dismiss 20 s, dismissed by any editor change), and an "Insert in" mode on the voice panel (D4: translate before inserting; on failure the original dictation is inserted and Translate is offered as a retry). Settings: `voiceFollowUps` (default on) and `voiceInsertLanguage`, device-local. No backend change (existing /ai/transform and /ai/translate; each call meters as GRAMMAR / TRANSLATE). Open: owner device test in am and en (needs Google speech services for Amharic); server-ASR second metering waits for V5.1; companion-app Dictation screen not covered. Strip is 48 dp (touch targets): check the keyboard height on the phone. |
 | 2026-11-25 | T8.6, T8.11 | ⏭️ SKIPPED | — | The owner dropped the form assistant (T8.6) and media AI / image generation (T8.11) as not required. Their catalogue and seed code stays inactive; nothing is removed. Next in order: T8.7 creative tools. |
 | 2026-11-25 | T8.7 | 🟦 IN PROGRESS | f8cb8e6 | Three Android-only steps, all merged, no backend table change (V27 already seeds STICKER_MAKER, CARD_MAKER, IMAGE_ANNOTATOR). S1 sticker maker (Sonnet): Stickers tile in the keyboard tools grid; text, emoji+caption and drawing stickers to 512x512 WebP in a personal pack (cap 60); 3 premium packs of 8 (emoji+caption, no third-party art) gated by STICKER_MAKER; insert via commitContent image/webp or share sheet. S2 quote/greeting cards (Sonnet): Settings > Creative studio hub; 16 templates (8 free, 8 premium), backgrounds incl. picked photo (local only), Fidel/Latin text, PNG/JPEG export, personal gallery (cap 100) gated by CARD_MAKER via the generic `ServerFeatureAccess`. S3 image annotator (Opus): pen/arrow/shapes/highlighter/text/crop free; blur, pixelate, numbered steps, spotlight premium (IMAGE_ANNOTATOR); solid box always free and offered as the exit when a locked blur blocks export; redaction is CPU pixel replacement (3-pass box blur, pre-blurred noisy mosaic, solid) applied before marks and encode, with an irreversibility proof suite, crop discards pixels, EXIF stripped. Also: the entitlement token now carries the three creative gates offline (`qal.entitlements.token.offline-features`). Verified: full Android parity command green on the merged tree (annotator branch run after its last commit; stickers+cards merged tree 6m42s), token tests on JDK 21 in a clean worktree. One merge bug (duplicate `entitledCodes`) caught by the build and fixed. Open: device tests of all three tools; owner confirms the annotator free/premium split; am/ti/om DRAFT strings; backup exclusion of Draw/stickers (stickers sit in filesDir); annotator share-sheet entry point not built. |
+| 2026-11-25 | Scope cut | ⏭️ SKIPPED | — | Owner decision: not needed and not to be implemented — T8.8 (GIF maker), T8.9 (OCR); Phase 5 except iOS (V5.1–V5.3 speech-to-text, P5.1–P5.4 P1 features; the iOS app I5.1–I5.6 stays as future work); all of Phase 6 (D6.1–D6.8); all of Phase 7 (E7.1–E7.5). Together with T8.6 and T8.11 that is 24 skipped steps; rows are kept and marked, not deleted, so the record shows what was dropped. Consequences: no server speech-to-text or on-device models (the `ON_DEVICE_AI_MODELS` token gate and BUSINESS plan rows already in the backend stay but get no further work); T8.12 dictation keeps using the phone's recognizer; T8.14 (model router) does not depend on E7.x. Still open: H3.1–H3.6, A1.9, M4.3, M4.4, the iOS app (future), T8.14, T8.15 and the T8.7/T8.12 device tests. |
 
 ---
 
@@ -409,6 +412,8 @@ Read SD §16 and the billing tags in API. Always fail closed.
 
 ## Phase 5 — iOS + voice + P1 features (milestone M5)
 
+> **Scope cut by the owner, 2026-11-25:** only the iOS app (I5.1–I5.6) is kept, as future work. Speech-to-text (V5.1–V5.3) and the P1 features (P5.1–P5.4) are not needed and will not be implemented. Tone adjust and smart replies already exist on Android through the Phase 2/8 AI toolbar; they need no separate step.
+
 | ID | Step | Depends on | Done when | Status |
 |---|---|---|---|---|
 | I5.1 | Xcode workspace, UniFFI Swift bindings (XCFramework), App Group, shared Swift package for API client. | C1.1 | Builds on device. | ⬜ TODO |
@@ -417,13 +422,13 @@ Read SD §16 and the billing tags in API. Always fail closed.
 | I5.4 | Companion app (SwiftUI): onboarding to enable keyboard + Full Access explanation, sign-in (Sign in with Apple if Google is offered), settings, privacy. | I5.1 | Flow tested. | ⬜ TODO |
 | I5.5 | StoreKit 2 purchases, server notifications V2, `store_purchases` validation. | M4.7 | Sandbox test. | ⬜ TODO |
 | I5.6 | iOS AI toolbar (translate/grammar/rewrite) + **pending-insert flow** (companion → keyboard handoff for voice). | I5.3, B5.5 | Tested. | ⬜ TODO |
-| V5.1 | **Speech-to-text API**: provider adapters (ASR), per-second metering, language hints, size/duration limits; streaming endpoint for Android. | B5.1, B4.2 | Metering rounds to seconds, not minutes. | ⬜ TODO |
-| V5.2 | Android streaming dictation (mic permission UX, foreground-service-free IME recording per policy, partial results). | V5.1, A2.5 | Latency budget met. | ⬜ TODO |
-| V5.3 | iOS voice in companion app (keyboard extensions can't use the mic reliably) → pending-insert. | V5.1, I5.6 | Tested. | ⬜ TODO |
-| P5.1 | Tone adjust + smart replies endpoints and UI; smart replies only on explicit trigger with clipboard/selection consent. | B5.5 | Tested. | ⬜ TODO |
-| P5.2 | Destination profiles + Android app rules in the IME UI; iOS destination picker. | B3.4 | Tested. | ⬜ TODO |
-| P5.3 | Opt-in translation history UI on both platforms. | B5.7 | Tested. | ⬜ TODO |
-| P5.4 | Pack channels (stable/beta), delta updates. | B3.1 | Delta apply + rollback test. | ⬜ TODO |
+| V5.1 | **Speech-to-text API**: provider adapters (ASR), per-second metering, language hints, size/duration limits; streaming endpoint for Android. | B5.1, B4.2 | Metering rounds to seconds, not minutes. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| V5.2 | Android streaming dictation (mic permission UX, foreground-service-free IME recording per policy, partial results). | V5.1, A2.5 | Latency budget met. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| V5.3 | iOS voice in companion app (keyboard extensions can't use the mic reliably) → pending-insert. | V5.1, I5.6 | Tested. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| P5.1 | Tone adjust + smart replies endpoints and UI; smart replies only on explicit trigger with clipboard/selection consent. | B5.5 | Tested. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| P5.2 | Destination profiles + Android app rules in the IME UI; iOS destination picker. | B3.4 | Tested. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| P5.3 | Opt-in translation history UI on both platforms. | B5.7 | Tested. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| P5.4 | Pack channels (stable/beta), delta updates. | B3.1 | Delta apply + rollback test. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
 
 **Exit M5:** App Review approved; voice evaluation thresholds met.
 
@@ -431,16 +436,18 @@ Read SD §16 and the billing tags in API. Always fail closed.
 
 ## Phase 6 — Differentiation (milestone M6)
 
+> **Skipped by the owner, 2026-11-25:** the whole of Phase 6 (D6.1–D6.8) is not needed and will not be implemented.
+
 | ID | Step | Depends on | Done when | Status |
 |---|---|---|---|---|
-| D6.1 | `SCRIPT_CONVERSION` (Latin ↔ Ge'ez, romanised Amharic/Tigrinya → Fidel) server endpoint + on-device fast path. | B5.5, C1.4 | Evaluation passed. | ⬜ TODO |
-| D6.2 | Cultural intelligence to PRODUCTION tier: addressee formality/gender handling, honorific registers, Ethiopian calendar/clock/numerals in outputs; native-speaker evaluation. | B5.3 | Honorific/gender evaluation passed. | ⬜ TODO |
-| D6.3 | Explain text, summarise, document/email/letter drafting endpoints and UI. | B5.5 | Tested. | ⬜ TODO |
-| D6.4 | TTS and pronunciation (`TEXT_TO_SPEECH`, character metering), audio caching without storing user text beyond policy. | B5.1 | Tested. | ⬜ TODO |
-| D6.5 | Personal writing style (opt-in `PERSONAL_STYLE` consent): on-device style features or encrypted embeddings; delete-on-withdraw. | B3.5 | Withdrawal purges data. | ⬜ TODO |
-| D6.6 | Names/places dictionary expansion programme: dataset ingestion with licences, community suggestions (`COMMUNITY_CONTRIBUTION`) moderation queue in admin, pack rebuild. | B3.2 | Pipeline tested. | ⬜ TODO |
-| D6.7 | **Realtime WebSocket**: ticket via `Sec-WebSocket-Protocol`, close codes 4001/4002/4003/4500, session metering, reconnect/resume. | B4.2 | Protocol tests. | ⬜ TODO |
-| D6.8 | Voice-to-voice and live conversation (companion apps): ASR → MT → TTS pipeline with latency budget, turn-taking, speaker labels. | D6.4, D6.7, V5.1 | Latency budget met. | ⬜ TODO |
+| D6.1 | `SCRIPT_CONVERSION` (Latin ↔ Ge'ez, romanised Amharic/Tigrinya → Fidel) server endpoint + on-device fast path. | B5.5, C1.4 | Evaluation passed. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| D6.2 | Cultural intelligence to PRODUCTION tier: addressee formality/gender handling, honorific registers, Ethiopian calendar/clock/numerals in outputs; native-speaker evaluation. | B5.3 | Honorific/gender evaluation passed. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| D6.3 | Explain text, summarise, document/email/letter drafting endpoints and UI. | B5.5 | Tested. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| D6.4 | TTS and pronunciation (`TEXT_TO_SPEECH`, character metering), audio caching without storing user text beyond policy. | B5.1 | Tested. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| D6.5 | Personal writing style (opt-in `PERSONAL_STYLE` consent): on-device style features or encrypted embeddings; delete-on-withdraw. | B3.5 | Withdrawal purges data. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| D6.6 | Names/places dictionary expansion programme: dataset ingestion with licences, community suggestions (`COMMUNITY_CONTRIBUTION`) moderation queue in admin, pack rebuild. | B3.2 | Pipeline tested. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| D6.7 | **Realtime WebSocket**: ticket via `Sec-WebSocket-Protocol`, close codes 4001/4002/4003/4500, session metering, reconnect/resume. | B4.2 | Protocol tests. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| D6.8 | Voice-to-voice and live conversation (companion apps): ASR → MT → TTS pipeline with latency budget, turn-taking, speaker labels. | D6.4, D6.7, V5.1 | Latency budget met. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
 
 **Exit M6:** native-speaker honorific/gender evaluation passed; realtime latency budget met.
 
@@ -448,13 +455,15 @@ Read SD §16 and the billing tags in API. Always fail closed.
 
 ## Phase 7 — Expansion and B2B (milestone M7)
 
+> **Skipped by the owner, 2026-11-25:** the whole of Phase 7 (E7.1–E7.5: new languages, on-device models, organisations, glossaries, partner API) is not needed and will not be implemented. The BUSINESS plan rows already seeded in the backend stay as they are; nothing further is built for organisations.
+
 | ID | Step | Depends on | Done when | Status |
 |---|---|---|---|---|
-| E7.1 | New-language onboarding playbook: profile + lexicon + eval set + licence + gates R1/R2/R7 per language (candidates: Somali, Afar, Sidama, Wolaytta, Swahili). Add via data/migrations, not code forks. | L1.1 | One language shipped via playbook only. | ⬜ TODO |
-| E7.2 | On-device models: language ID/spell first, then MT/ASR; model downloads as signed packs; licence gate (N10); device capability checks; `ON_DEVICE_AI_MODELS` entitlement. | C1.2 | Commercial-licensed model benchmarked on-device. | ⬜ TODO |
-| E7.3 | Organisations: seats, invites, roles, org-level billing and usage source `ORGANIZATION`, BUSINESS plan (finalise DRAFT). | M4.1 | Isolation tests. | ⬜ TODO |
-| E7.4 | Custom glossaries (`PREFER`/`STRICT` enforcement) applied in translation pipeline. | B5.3 | Tests. | ⬜ TODO |
-| E7.5 | Partner API: API keys with scopes `translate, transform, transliterate, detect_language, speech, usage_read`, per-key rate limits, contract metering (`PARTNER_CONTRACT`), docs portal. | B4.2 | Scope + isolation tests; SLA tests. | ⬜ TODO |
+| E7.1 | New-language onboarding playbook: profile + lexicon + eval set + licence + gates R1/R2/R7 per language (candidates: Somali, Afar, Sidama, Wolaytta, Swahili). Add via data/migrations, not code forks. | L1.1 | One language shipped via playbook only. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| E7.2 | On-device models: language ID/spell first, then MT/ASR; model downloads as signed packs; licence gate (N10); device capability checks; `ON_DEVICE_AI_MODELS` entitlement. | C1.2 | Commercial-licensed model benchmarked on-device. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| E7.3 | Organisations: seats, invites, roles, org-level billing and usage source `ORGANIZATION`, BUSINESS plan (finalise DRAFT). | M4.1 | Isolation tests. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| E7.4 | Custom glossaries (`PREFER`/`STRICT` enforcement) applied in translation pipeline. | B5.3 | Tests. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| E7.5 | Partner API: API keys with scopes `translate, transform, transliterate, detect_language, speech, usage_read`, per-key rate limits, contract metering (`PARTNER_CONTRACT`), docs portal. | B4.2 | Scope + isolation tests; SLA tests. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
 
 **Exit M7:** per-language gates; partner SLA and isolation tests pass.
 
@@ -474,8 +483,8 @@ packs and media AI. Steps are scheduled across M5–M7 by their §4 phases; they
 | T8.5 | `POST /ai/chat` (`AI_CHAT`, stateless turns) + companion chat UI and keyboard Ask-AI chat (the companion-app chat screen and the §6.4 pending-insert chip are deferred, not needed for the keyboard flow). | B5.5 | Contract tests; no server-side content persistence proven. | 🟩 DONE |
 | T8.6 | `POST /ai/form-assist` + UI (social media assistant dropped by the owner 2026-11-24; its catalogue code stays inactive); R-7 verify/disclaimer notices in the review UI (snapshot-tested incl. legal/immigration variant). | B5.5 | Contract + UI tests; notice always present. | ⏭️ SKIPPED (owner 2026-11-25: not required) |
 | T8.7 | Creative tools: sticker maker (WebP pack + strip), quote/card maker, image annotator; premium-tier boolean entitlements gating; basic tiers free. | T8.4 | Entitlement + render tests. | 🟦 IN PROGRESS |
-| T8.8 | GIF maker: trim/image-sequence → animated WebP (GIF fallback); codec/encoder licence checked first (N10, open question SD §26.2). | T8.7 | Licence recorded; export tests. | ⬜ TODO |
-| T8.9 | OCR: on-device recognition (basic scripts, free) + `POST /ai/ocr` (`OCR_SCAN`, PRINTED/HANDWRITING) for Ethiopic/handwriting/layouts; transient-image rule tested. | B5.5 | Transience test; contract tests. | ⬜ TODO |
+| T8.8 | GIF maker: trim/image-sequence → animated WebP (GIF fallback); codec/encoder licence checked first (N10, open question SD §26.2). | T8.7 | Licence recorded; export tests. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
+| T8.9 | OCR: on-device recognition (basic scripts, free) + `POST /ai/ocr` (`OCR_SCAN`, PRINTED/HANDWRITING) for Ethiopic/handwriting/layouts; transient-image rule tested. | B5.5 | Transience test; contract tests. | ⏭️ SKIPPED (owner 2026-11-25: not needed) |
 | T8.10 | Prepaid credit packs: `AI_CREDIT_PACK` products/prices seeded (SD §15.6 packages), purchase through §16 pipeline, guest-buy guard, balance/expiry UI ("no subscription" copy), `QUOTA_EXCEEDED` buy-credits path. | M4.4 | End-to-end sandbox purchase → lot; ledger tests. | 🟩 DONE |
 | T8.11 | Media AI (P3): `POST /ai/images` for SKETCH_ENHANCE/DOODLE_TO_IMAGE/AI_STICKER_GEN/AI_IMAGE_GEN + `HANDWRITING` mode of `/ai/ocr`; task-based route classes per SD §11.2. | T8.4, E7.2 | Route/cost tests; image lifecycle (transient output objects). | ⏭️ SKIPPED (owner 2026-11-25: not required) |
 | T8.12 | Voice + AI (Implementation_notes §6): after dictation, one-tap "Fix grammar" and "Translate" on the transcript (existing `/ai/transform` GRAMMAR_CORRECTION and `/ai/translate`), a "speak in one language, insert in another" mode; premium voice quota counts seconds once server ASR (V5.1) exists. No audio or transcript stored (N2). | V5.2 (platform recognizer, done), B5.5; quota: V5.1 | Dictation → grammar / translate chain tested on device in am and en; nothing persisted. | 🟦 IN PROGRESS |
@@ -511,8 +520,8 @@ Recommended order (each step goes through the delegation workflow; launch-path s
 4. **T8.10** prepaid credit packs (reuses the §16 payments pipeline; Starter/Standard/Pro priced per market, ETB in Ethiopia).
 5. **T8.5** AI chat, then **T8.6** form assistant (R-7 verify notice; social media assistant dropped by the owner 2026-11-24).
 6. **H3.6** admin console (plans/quotas, provider routes, premium theme list) with **T8.14** model router pages.
-7. **T8.12** voice + AI (quota needs V5.1 server ASR).
-8. **T8.7** creative tools → **T8.9** OCR → **T8.8** GIF → **T8.15** Draw phase 2 → **T8.11** media AI.
+7. **T8.12** voice + AI (keyboard side built; the server speech-to-text API V5.1 was dropped 2026-11-25, so dictation stays on the phone's own recognizer).
+8. **T8.7** creative tools (merged; phone tests in progress) → **T8.15** Draw phase 2. T8.8 GIF maker, T8.9 OCR and T8.11 media AI were dropped by the owner.
 
 Launch path in parallel: H3.5 (Play listing, Data safety, policies), H3.2 (security hardening), A1.9 (performance/QA),
 H3.4 (hosting — needs the owner's decision).
@@ -527,7 +536,7 @@ After Phase 0, three tracks can run concurrently by separate agents:
 
 1. **Core + Android** (C1.x → A1.x → A2.x)
 2. **Backend** (B1.x → B6.x → M4.x)
-3. **Language data + admin** (L1.x → H3.6 → D6.6)
+3. **Language data + admin** (L1.x → H3.6)
 
 Sync points: pack format (C1.2 ↔ B3.2), API contract (B1.3 ↔ A2.1), entitlement token (B4.4 ↔ A2.5).
 
