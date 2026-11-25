@@ -18,6 +18,8 @@ import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.qalsmartkeyboard.ime.R
+import com.qalsmartkeyboard.ime.ai.AiDestination
+import com.qalsmartkeyboard.ime.ai.AiLanguages
 import com.qalsmartkeyboard.ime.theme.KeyboardTheme
 import com.qalsmartkeyboard.ime.theme.ThemeCatalog
 
@@ -26,7 +28,9 @@ import com.qalsmartkeyboard.ime.theme.ThemeCatalog
  * does not jump. Top row: the recognition-language chip (opens the picker) and "ABC" (back to the keyboard). Middle:
  * the one-time privacy note, the status line (listening, processing, error message), the preview of what was heard
  * (not in the field until it is final), the big button (stop while listening, with a level ring that follows the
- * voice; a microphone to start or retry) and Try again after an error. The picker replaces the middle: am, ti, om, en
+ * voice; a microphone to start or retry) and Try again after an error. Next to the language chip, "Insert in: <language |
+ * As spoken>" (T8.12, ADR 0049 D4) appears only while the controller offers insert languages; it opens a picker of the
+ * same kind, and the status line says "Translating…" while the final result is being translated. The picker replaces the middle: am, ti, om, en
  * with whether each works here, then "More languages" when the speech service lists its languages.
  *
  * Standard views, so TalkBack reads every control with its role; the status line is a polite live region, so state
@@ -61,6 +65,18 @@ class VoicePanelView(context: Context) : LinearLayout(context) {
         ellipsize = TextUtils.TruncateAt.END
         setOnClickListener { controller?.let { c -> if (c.pickerOpen) c.closePicker() else c.openPicker() } }
     }
+    /** "Insert in: Amharic" (T8.12): shown only while the controller offers insert languages. */
+    val insertChip: TextView = pill().apply {
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+        visibility = GONE
+        setOnClickListener {
+            val c = controller ?: return@setOnClickListener
+            if (c.pickerOpen) c.closePicker()
+            insertPickerOpen = !insertPickerOpen
+            render()
+        }
+    }
     val back: TextView = pill().apply {
         text = context.getString(R.string.voice_back_label)
         contentDescription = context.getString(R.string.voice_back)
@@ -79,6 +95,28 @@ class VoicePanelView(context: Context) : LinearLayout(context) {
     val retry: TextView = pill().apply {
         text = context.getString(R.string.voice_retry)
         setOnClickListener { controller?.retry() }
+    }
+
+    private var insertPickerOpen = false
+
+    /** The status / button area, hidden while a picker covers it (tests). */
+    internal val bodyView: View get() = body
+
+    /** What the "Insert in" chip reads and does; null reads the controller (a test supplies its own). */
+    internal var insertSource: InsertLanguageSource? = null
+
+    internal interface InsertLanguageSource {
+        val choices: List<AiDestination>
+        val current: String?
+        val translating: Boolean
+        fun choose(language: String?)
+    }
+
+    private class ControllerInsert(private val c: VoiceController) : InsertLanguageSource {
+        override val choices get() = c.insertLanguageChoices()
+        override val current get() = c.insertLanguage
+        override val translating get() = c.insertTranslating
+        override fun choose(language: String?) = c.chooseInsertLanguage(language)
     }
 
     private val body = LinearLayout(context).apply {
@@ -108,6 +146,7 @@ class VoicePanelView(context: Context) : LinearLayout(context) {
             val p = (8 * d).toInt()
             setPadding(p, p, p, p)
             addView(chip, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = (8 * d).toInt() })
+            addView(insertChip, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = (8 * d).toInt() })
             addView(back, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
         }
         addView(top, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
@@ -145,7 +184,7 @@ class VoicePanelView(context: Context) : LinearLayout(context) {
     private fun applyTheme() {
         val t = theme
         background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, if (t.isGradient) t.backgroundStops else intArrayOf(t.bgTop, t.bgTop))
-        for (v in listOf(chip, back, retry)) {
+        for (v in listOf(chip, insertChip, back, retry)) {
             v.background = GradientDrawable().apply {
                 cornerRadius = 20f * d
                 setColor(t.special)
@@ -167,11 +206,23 @@ class VoicePanelView(context: Context) : LinearLayout(context) {
         val name = VoiceLanguages.displayName(tag)
         chip.text = "$name  ▾"
         chip.contentDescription = context.getString(R.string.voice_language_chip, name)
-        notice.visibility = if (c.showNotice && !c.pickerOpen) VISIBLE else GONE
+        val ins = insertSource ?: ControllerInsert(c)
+        val choices = ins.choices
+        if (choices.isEmpty() || c.pickerOpen) insertPickerOpen = false
+        insertChip.visibility = if (choices.isEmpty()) GONE else VISIBLE
+        if (choices.isNotEmpty()) {
+            val current = ins.current
+            val target = current?.let { l -> choices.firstOrNull { it.language == l }?.label ?: AiLanguages.name(l) }
+                ?: context.getString(R.string.voice_insert_as_spoken)
+            insertChip.text = "${context.getString(R.string.voice_insert_chip, target)}  ▾"
+            insertChip.contentDescription = context.getString(R.string.voice_insert_chip_desc, target)
+        }
+        val pickerShown = c.pickerOpen || insertPickerOpen
+        notice.visibility = if (c.showNotice && !pickerShown) VISIBLE else GONE
         val s = c.state
         val failed = s is VoiceState.Failed
         status.setTextColor(if (failed) theme.warn else theme.stripText)
-        status.text = statusText(s)
+        status.text = if (s is VoiceState.Processing && ins.translating) context.getString(R.string.voice_translating) else statusText(s)
         val partial = when (s) {
             is VoiceState.Listening -> s.partial
             is VoiceState.Processing -> s.partial
@@ -194,9 +245,13 @@ class VoicePanelView(context: Context) : LinearLayout(context) {
         button.isEnabled = button.mode != MainButton.Mode.BUSY
         if (button.mode != MainButton.Mode.STOP) button.setLevel(0f)
         retry.visibility = if (failed && (s as VoiceState.Failed).kind != VoiceErrorKind.UNAVAILABLE) VISIBLE else GONE
-        body.visibility = if (c.pickerOpen) INVISIBLE else VISIBLE
-        picker.visibility = if (c.pickerOpen) VISIBLE else GONE
-        if (c.pickerOpen) renderPicker(c) else shownOptions = emptyList()
+        body.visibility = if (pickerShown) INVISIBLE else VISIBLE
+        picker.visibility = if (pickerShown) VISIBLE else GONE
+        when {
+            insertPickerOpen -> renderInsertPicker(c, ins)
+            c.pickerOpen -> renderPicker(c)
+            else -> shownOptions = emptyList()
+        }
     }
 
     private fun statusText(s: VoiceState): String = when (s) {
@@ -230,6 +285,28 @@ class VoicePanelView(context: Context) : LinearLayout(context) {
             pickerList.addView(row(title, state, selected = o.selected) { c.selectLanguage(o.tag) })
         }
         if (hasMore) pickerList.addView(row(context.getString(R.string.voice_more_languages) + "  ›", null) { c.showMore(true) })
+    }
+
+    /** The "Insert in" picker: As spoken, then the translation languages; the current one is marked and selected = done. */
+    private fun renderInsertPicker(c: VoiceController, ins: InsertLanguageSource) {
+        val choices = ins.choices
+        val current = ins.current
+        val key: List<Any> = listOf("insert", current ?: "") + choices.map { it.language to it.label }
+        if (key == shownOptions) return
+        shownOptions = key
+        pickerList.removeAllViews()
+        pickerList.addView(rowLabel(context.getString(R.string.voice_insert_picker_title), bold = true))
+        fun choose(language: String?) {
+            ins.choose(language)
+            insertPickerOpen = false
+            render()
+        }
+        val spoken = context.getString(R.string.voice_insert_as_spoken)
+        pickerList.addView(row(if (current == null) "✓ $spoken" else spoken, null, selected = current == null) { choose(null) })
+        for (o in choices) {
+            val on = o.language == current
+            pickerList.addView(row(if (on) "✓ ${o.label}" else o.label, null, selected = on) { choose(o.language) })
+        }
     }
 
     private fun rowLabel(text: String, bold: Boolean) = label(if (bold) 15f else 13f).apply {

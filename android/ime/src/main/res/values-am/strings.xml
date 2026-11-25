@@ -792,4 +792,20 @@
         <item>ኖቬምበር</item>
         <item>ዲሴምበር</item>
     </string-array>
+    <!-- Voice + AI chain: dictation follow-ups and Insert in (T8.12, ADR 0049). DRAFT (N9). -->
+    <string name="voice_insert_chip">የሚገባበት ቋንቋ፦ %1$s</string>
+    <string name="voice_insert_chip_desc">ንግግሩ የሚገባበት ቋንቋ፦ %1$s። ይቀይሩ</string>
+    <string name="voice_insert_as_spoken">እንደተነገረ</string>
+    <string name="voice_insert_picker_title">ንግግሩ የሚገባበት ቋንቋ</string>
+    <string name="voice_translating">በመተርጎም ላይ…</string>
+    <string name="voice_followup_strip">ከንግግር በኋላ የሚቀርቡ አማራጮች</string>
+    <string name="voice_followup_fix_desc">አሁን የተናገሩትን ጽሑፍ ሰዋስው ያርሙ</string>
+    <string name="voice_followup_translate_desc">አሁን የተናገሩትን ጽሑፍ ወደ %1$s ይተርጉሙ</string>
+    <string name="voice_followup_fixed">ተስተካክሏል</string>
+    <string name="voice_followup_translated">ተተርጉሟል</string>
+    <string name="voice_followup_undo">ቀልብስ</string>
+    <string name="voice_followup_undo_desc">ይቀልብሱ እና የተናገሩትን ጽሑፍ ይመልሱ</string>
+    <string name="voice_followup_retry_desc">እንደገና ይሞክሩ፦ %1$s</string>
+    <string name="voice_followup_dismiss">አማራጮቹን ዝጋ</string>
+    <string name="voice_followup_moved">ጽሑፉ ተቀይሯል - ምንም አልተተካም</string>
 </resources>

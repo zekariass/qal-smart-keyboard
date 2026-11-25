@@ -639,4 +639,10 @@
         <item quantity="other">guyyaa %1$d tajaajila</item>
     </plurals>
     <string name="plans_account_summary">Paakeejii kee, gatiiwwan fi kaffaltii</string>
+    <!-- ADR 0049: dictation follow-ups and insert language. DRAFT (N9). -->
+    <string name="settings_voice_follow_ups">Sagalee barreessuun booda \'Seerluga sirreessi\' / \'Hiiki\' dhiheessi</string>
+    <string name="settings_voice_insert_in">Sagalee itti barreessu</string>
+    <string name="settings_voice_insert_as_spoken">Akka dubbatametti</string>
+    <string name="settings_voice_insert_as_spoken_hint">Waan dubbattan sirriitti barreessi, hiikaa malee</string>
+    <string name="settings_voice_insert_body">Sagaleen barreeffamuu isaa dura gara afaan kanaatti hiikama. Hiikuun yoo hin danda\'amne, waan dubbattan akka dubbatametti barreeffama.</string>
 </resources>

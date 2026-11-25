@@ -27,6 +27,7 @@ import com.qalsmartkeyboard.app.settings.SettingsNavigator
 import com.qalsmartkeyboard.app.settings.SettingsPage
 import com.qalsmartkeyboard.app.settings.SettingsUpdate
 import com.qalsmartkeyboard.app.settings.TranslationPage
+import com.qalsmartkeyboard.app.settings.VoiceInsertLanguagePage
 import com.qalsmartkeyboard.app.settings.VoiceTypingPage
 import com.qalsmartkeyboard.app.settings.appLanguageLabel
 import com.qalsmartkeyboard.app.settings.rememberSettingsNavigator
@@ -184,7 +185,11 @@ fun SettingsScreen(
             modifier = modifier,
         )
         SettingsPage.PREFERENCES -> PreferencesPage(settings, back, update, modifier)
-        SettingsPage.VOICE -> VoiceTypingPage(settings, back, update, modifier)
+        SettingsPage.VOICE -> VoiceTypingPage(settings, back, update, modifier, onOpenInsertLanguage = { navigator.open(SettingsPage.VOICE_INSERT_LANGUAGE) })
+        SettingsPage.VOICE_INSERT_LANGUAGE -> {
+            val catalog by produceState(TranslationCatalog.BUNDLED, translationCatalog) { value = translationCatalog() }
+            VoiceInsertLanguagePage(settings, back, update, modifier, catalog)
+        }
         SettingsPage.TRANSLATION -> {
             val catalog by produceState(TranslationCatalog.BUNDLED, translationCatalog) { value = translationCatalog() }
             TranslationPage(settings, back, update, modifier, catalog)
