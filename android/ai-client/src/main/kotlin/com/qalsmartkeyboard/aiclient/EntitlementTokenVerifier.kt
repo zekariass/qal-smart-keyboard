@@ -183,6 +183,8 @@ class OfflineGates(
     val onDeviceModels: Boolean,
     val premiumThemes: Boolean = false,
     val premiumThemesOnPlan: Boolean = false,
+    /** Every feature the token grants while its gates are open (a feature the server adds to the token needs no client change). */
+    val features: Set<String> = emptySet(),
 ) {
     companion object {
         val CLOSED = OfflineGates(GateState.VOID, false)
@@ -197,7 +199,8 @@ class OfflineGates(
             val state = if (nowMs < token.expiresAtMs) GateState.VALID else GateState.OFFLINE_GRACE
             val open = state == GateState.VALID || !online
             val themes = token.features[PREMIUM_THEMES] == true
-            return OfflineGates(state, open && token.features["ON_DEVICE_AI_MODELS"] == true, open && themes, themes)
+            val granted = if (open) token.features.filterValues { it }.keys else emptySet()
+            return OfflineGates(state, open && token.features["ON_DEVICE_AI_MODELS"] == true, open && themes, themes, granted)
         }
     }
 }
