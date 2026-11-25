@@ -405,6 +405,9 @@ class KeyboardController(
         shift = if (wants) ShiftState.ONCE else ShiftState.OFF
     }
 
+    /** T8.12: a key or a candidate edited the field through the composer (the host dismisses the dictation strip). */
+    var onTyped: () -> Unit = {}
+
     fun onKey(key: Key) {
         when (key.kind) {
             KeyKind.CHAR -> {
@@ -697,6 +700,7 @@ class KeyboardController(
         val redirect = emoji.redirect ?: fieldTyping()?.sink
         val searching = redirect != null
         (redirect ?: sink).apply(update)
+        onTyped()
         val m = effectiveMode
         // A Latin word typed in ABC is not an Amharic or Tigrinya word (SD 7.4: learn per language and script). Languages
         // without a core dictionary (Arabic, ADR 0034) learn nothing: no word would ever be suggested back.

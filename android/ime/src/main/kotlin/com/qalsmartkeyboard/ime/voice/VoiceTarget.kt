@@ -53,6 +53,10 @@ class RoutedVoiceHost(
         val t = target
         if (t != null) t.insert(text) else appField.commitVoiceText(text)
     }
+
+    /** T8.12: follow-ups exist only for the app's field; with a keyboard-own field routed nothing is replaced. */
+    override fun replaceDictated(expected: String, replacement: String): Boolean =
+        target == null && appField.replaceDictated(expected, replacement)
 }
 
 /** How much text before the cursor voice typing reads to space what it inserts (never stored). */

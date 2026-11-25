@@ -59,6 +59,9 @@ import com.qalsmartkeyboard.ime.theme.ThemeAccess
 import com.qalsmartkeyboard.ime.theme.ThemeAccessHolder
 import com.qalsmartkeyboard.ime.theme.ThemeResolver
 import com.qalsmartkeyboard.ime.userdict.UserDictionary
+import com.qalsmartkeyboard.ime.voice.DictatedEdit
+import com.qalsmartkeyboard.ime.voice.DictationFollowUp
+import com.qalsmartkeyboard.ime.voice.OwnEditWindow
 import com.qalsmartkeyboard.ime.voice.PlatformVoiceProvider
 import com.qalsmartkeyboard.ime.voice.VoiceController
 import com.qalsmartkeyboard.ime.voice.VoiceHost
@@ -260,7 +263,7 @@ class KeyboardImeService : InputMethodService() {
             adapter, settingsPrefs, settingsPrefs, userDictionary,
             SettingsEmojiStore({ snapshot.current }, { change -> snapshot.launchUpdate(change) }), emojiLoader, emojiExecutor,
             clipboard = ::copyToClipboard,
-        ) { refreshViews() }
+        ) { refreshViews() }.also { it.onTyped = ::onFieldTyped }
     }
 
     /**
@@ -312,6 +315,13 @@ class KeyboardImeService : InputMethodService() {
             voiceNoticeSeen = true
             snapshot.launchUpdate { it.copy(voiceNoticeShown = true) }
         }
+        // T8.12-S3 merge point: once KeyboardSettings has voiceFollowUps / voiceInsertLanguage (S3), add here:
+        //   override val followUps: Boolean get() = snapshot.current.voiceFollowUps
+        //   override val insertLanguage: String? get() = snapshot.current.voiceInsertLanguage
+        //   override fun chooseInsertLanguage(language: String?) {
+        //       if (snapshot.current.voiceInsertLanguage == language) return
+        //       snapshot.launchUpdate { it.copy(voiceInsertLanguage = language) }
+        //   }
     }
     private val fieldVoiceHost = object : VoiceHost {
         override val keyboardLanguage: String get() = controller.language
@@ -333,8 +343,55 @@ class KeyboardImeService : InputMethodService() {
         }
         override fun textBeforeCursor(): CharSequence? = adapter.editorOps()?.getTextBeforeCursor(VOICE_CONTEXT_CHARS)
         override fun wantsCapital(): Boolean = controller.wantsCapitalAtCursor()
-        override fun commitVoiceText(text: String) = controller.commitVoiceText(text)
+        override fun commitVoiceText(text: String) = ownEdit { controller.commitVoiceText(text) }
+
+        // T8.12 (ADR 0049 D3): straight through the input connection (like the AI toolbar's Replace), never the composer or learner.
+        override fun replaceDictated(expected: String, replacement: String): Boolean {
+            val ed = adapter.editorOps() ?: return false
+            return ownEdit {
+                DictatedEdit.replace(ed, expected, replacement).also { if (it) adapter.editedExternally() }
+            }
+        }
     }
+
+    // T8.12: our own edits (a dictation commit, a follow-up's replace) must not dismiss the follow-up strip. [editingOwn] covers
+    // the synchronous key path; [ownEdits] the editor's late `onUpdateSelection` echo.
+    private var editingOwn = false
+    private val ownEdits = OwnEditWindow({ android.os.SystemClock.uptimeMillis() })
+    private inline fun <T> ownEdit(block: () -> T): T {
+        editingOwn = true
+        try {
+            return block()
+        } finally {
+            editingOwn = false
+            ownEdits.mark()
+        }
+    }
+
+    /** A key or candidate typed into the field (not our own edit): the follow-up strip goes away. */
+    private fun onFieldTyped() {
+        if (!editingOwn) voice.onEditorChanged()
+    }
+
+    private val followUpTimeout = Runnable {
+        // T8.12-S1 merge point: S1 adds VoiceController.onFollowUpTimeout(); call it here instead of dismissFollowUp().
+        voice.dismissFollowUp()
+    }
+    private var timedFollowUp: DictationFollowUp? = null
+
+    /** Arms the 20 s auto-dismiss when a follow-up (or a new phase of it) appears; cancels it when there is none. */
+    private fun syncFollowUpTimer() {
+        val fu = voice.followUp
+        if (fu === timedFollowUp) return
+        timedFollowUp = fu
+        main.removeCallbacks(followUpTimeout)
+        if (fu != null) main.postDelayed(followUpTimeout, FOLLOW_UP_TIMEOUT_MS)
+    }
+
+    // The strip's place (ADR 0049 D2): directly above the keys, gone unless there is a follow-up and the keys are on screen.
+    // T8.12-S2 merge point: set both in the view building (see the comment before `val column`); refreshViews drives them.
+    private var followUpStrip: View? = null
+    private var followUpRender: (() -> Unit)? = null
 
     // ADR 0038: dictation into the keyboard's own fields (the translate box, an AI panel field, Word Art's text) uses the
     // same controller, recogniser and permission flow; only the target changes. Before listening, the composition is
@@ -344,7 +401,12 @@ class KeyboardImeService : InputMethodService() {
         tools.close()
     }
     private val voice: VoiceController by lazy {
-        VoiceController(voiceHost, voiceProvider, voicePrefs) {
+        VoiceController(
+            voiceHost, voiceProvider, voicePrefs,
+            ai = { aiActions },
+            packageName = { currentInputEditorInfo?.packageName },
+            runOnMain = { block -> if (Looper.myLooper() === Looper.getMainLooper()) block() else main.post(block) },
+        ) {
             if (!voice.isOpen) voiceHost.target = null
             refreshViews()
         }
@@ -936,6 +998,7 @@ class KeyboardImeService : InputMethodService() {
         AppLanguage.removeListener(onAppLanguageChanged)
         drawThread.shutdownNow()
         voice.cancel()
+        main.removeCallbacks(followUpTimeout)
         clipSource.stop()
         clipHistory.clear()
         themeAccessHandle?.close()
@@ -1164,6 +1227,15 @@ class KeyboardImeService : InputMethodService() {
         }
         seenToolPanel = ToolPanel.NONE
         val space = View(ui).also { headroom = it }
+        // T8.12-S2 merge point: replace the two `null` lines below by the strip (the addView above `addView(k, ...)` uses it):
+        //   followUpStrip = DictationFollowUpView(ui).also {
+        //       it.visibility = View.GONE
+        //       it.controller = voice
+        //       followUpRender = { it.render() }
+        //   }
+        // plus: import com.qalsmartkeyboard.ime.voice.DictationFollowUpView, and set its `theme` wherever applyTheme sets the voice panel's.
+        followUpStrip = null
+        followUpRender = null
         // A new input view: the AI panel views (if any) belonged to the old one and are created again on the next open.
         aiPanelView = null
         aiFieldBar = null
@@ -1177,6 +1249,8 @@ class KeyboardImeService : InputMethodService() {
             addView(wordArtStrip, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             // The translate language list sits where the keys are; above them while the keys type into its search (ADR 0040).
             addView(languagesView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            // T8.12 (the strip's place, directly above the keys; GONE unless there is a follow-up; see the merge point above):
+            followUpStrip?.let { addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)) }
             addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(wordArt, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -1314,6 +1388,7 @@ class KeyboardImeService : InputMethodService() {
         )
         controller.startField(profile)
         voice.onFieldStarted(VoiceController.fieldAllowsVoice(profile, info.privateImeOptions), sameField = restarting)
+        if (!restarting) voice.onEditorChanged() // T8.12: a new field; the follow-up strip goes away
         tools.close() // a new field: the tools, clipboard and AI tools panels start closed
         // A new field: an open AI panel and its texts never carry over (and a running call is cancelled).
         if (aiWorkspace?.isOpen == true) closeAiPanels()
@@ -1344,6 +1419,8 @@ class KeyboardImeService : InputMethodService() {
     ) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         adapter.onSelectionUpdate(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        // T8.12: a cursor or selection change that is not an echo of our own edit dismisses the follow-up strip.
+        if ((newSelStart != oldSelStart || newSelEnd != oldSelEnd) && !editingOwn && !ownEdits.active()) voice.onEditorChanged()
     }
 
     /**
@@ -1385,6 +1462,7 @@ class KeyboardImeService : InputMethodService() {
     override fun onFinishInputView(finishingInput: Boolean) {
         // Keyboard hidden: the editor keeps the composition as plain text; voice typing never listens while hidden.
         voice.onKeyboardHidden()
+        voice.dismissFollowUp()
         adapter.finishComposition()
         controller.emoji.close()
         controller.onCompositionAbandoned()
@@ -1534,6 +1612,13 @@ class KeyboardImeService : InputMethodService() {
         translatePanel?.compactOutput = translateOpen && tr?.boxEditing == true &&
             resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         surface?.visibility = if (inPanel || inWordArt || voiceOpen || aiPanelShown || toolPanel != ToolPanel.NONE || (picking && !searchingLanguages) || translateHidesKeys) View.GONE else View.VISIBLE
+        // T8.12: the follow-up strip sits above the keys and gives way to whatever panel hides them.
+        syncFollowUpTimer()
+        followUpStrip?.let {
+            val show = voice.followUp != null && surface?.visibility == View.VISIBLE
+            it.visibility = if (show) View.VISIBLE else View.GONE
+            if (show) followUpRender?.invoke()
+        }
         emojiPanel?.visibility = if (inPanel) View.VISIBLE else View.GONE
         bar?.visibility = if (inSearch || inWordArtTyping || aiTyping) View.GONE else View.VISIBLE
         aiFieldBar?.let {
@@ -1597,5 +1682,8 @@ class KeyboardImeService : InputMethodService() {
 
         /** Characters read before the cursor to space dictated text (never stored). */
         private const val VOICE_CONTEXT_CHARS = 4
+
+        /** T8.12: a dictation follow-up strip goes away after this long without a change or tap (ADR 0049 D2). */
+        private const val FOLLOW_UP_TIMEOUT_MS = 20_000L
     }
 }
