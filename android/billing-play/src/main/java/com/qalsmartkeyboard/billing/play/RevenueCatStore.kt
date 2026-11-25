@@ -3,6 +3,7 @@ package com.qalsmartkeyboard.billing.play
 import android.app.Activity
 import android.content.Context
 import com.revenuecat.purchases.LogLevel
+import com.revenuecat.purchases.Offering
 import com.revenuecat.purchases.PackageType
 import com.revenuecat.purchases.PurchaseParams
 import com.revenuecat.purchases.Purchases
@@ -20,10 +21,14 @@ import kotlinx.coroutines.sync.withLock
 data class RcOffer(val id: String, val productId: String, val period: String, val title: String, val price: String)
 
 sealed interface RcOutcome {
-    data class Purchased(val productId: String, val purchaseToken: String) : RcOutcome {
+    /** [transactionId] is the store's order id of the purchase (Play GPA.…), when the store gave one. */
+    data class Purchased(val productId: String, val purchaseToken: String, val transactionId: String? = null) : RcOutcome {
         override fun toString() = "Purchased(productId=$productId)"
     }
     data object Pending : RcOutcome
+
+    /** Play still holds an earlier, unconsumed purchase of this one-time product (ITEM_ALREADY_OWNED). */
+    data object AlreadyOwned : RcOutcome
     data object Cancelled : RcOutcome
     data class Failed(val code: String) : RcOutcome
 }
@@ -60,9 +65,16 @@ class RevenueCatStore(private val context: Context, private val apiKey: String) 
         p
     }
 
-    suspend fun offers(appUserId: String): List<RcOffer> {
-        val offering = instance(appUserId).awaitOfferings().current ?: return emptyList()
-        return offering.availablePackages.map { pkg ->
+    /** The packages of the **current** offering (the store plans). */
+    suspend fun offers(appUserId: String): List<RcOffer> =
+        instance(appUserId).awaitOfferings().current?.let(::offersOf).orEmpty()
+
+    /** The packages of the offering named [offeringId] (the credit packs live in the `credits` one); empty when it is not there. */
+    suspend fun offering(appUserId: String, offeringId: String): List<RcOffer> =
+        instance(appUserId).awaitOfferings().all[offeringId]?.let(::offersOf).orEmpty()
+
+    private fun offersOf(offering: Offering): List<RcOffer> =
+        offering.availablePackages.map { pkg ->
             RcOffer(
                 id = pkg.identifier,
                 productId = pkg.product.id,
@@ -75,18 +87,20 @@ class RevenueCatStore(private val context: Context, private val apiKey: String) 
                 price = pkg.product.price.formatted,
             )
         }
-    }
 
-    suspend fun purchase(activity: Activity, appUserId: String, packageId: String): RcOutcome {
+    /** Buys package [packageId] of the offering [offeringId] (null: the current one). */
+    suspend fun purchase(activity: Activity, appUserId: String, packageId: String, offeringId: String? = null): RcOutcome {
         val purchases = instance(appUserId)
-        val pkg = purchases.awaitOfferings().current?.availablePackages?.firstOrNull { it.identifier == packageId }
+        val offerings = purchases.awaitOfferings()
+        val offering = if (offeringId == null) offerings.current else offerings.all[offeringId]
+        val pkg = offering?.availablePackages?.firstOrNull { it.identifier == packageId }
             ?: return RcOutcome.Failed("PACKAGE_NOT_FOUND")
         return try {
             val result = purchases.awaitPurchase(PurchaseParams.Builder(activity, pkg).build())
             val tx = result.storeTransaction
             when (tx.purchaseState) {
                 PurchaseState.PENDING -> RcOutcome.Pending
-                else -> RcOutcome.Purchased(tx.productIds.firstOrNull() ?: pkg.product.id, tx.purchaseToken)
+                else -> RcOutcome.Purchased(tx.productIds.firstOrNull() ?: pkg.product.id, tx.purchaseToken, tx.orderId)
             }
         } catch (e: PurchasesTransactionException) {
             if (e.userCancelled) RcOutcome.Cancelled else outcomeOf(e)
@@ -96,7 +110,11 @@ class RevenueCatStore(private val context: Context, private val apiKey: String) 
     }
 
     private fun outcomeOf(e: PurchasesException): RcOutcome =
-        if (e.code.name == "PaymentPendingError") RcOutcome.Pending else RcOutcome.Failed(e.code.name)
+        when (e.code.name) {
+            "PaymentPendingError" -> RcOutcome.Pending
+            "ProductAlreadyPurchasedError" -> RcOutcome.AlreadyOwned
+            else -> RcOutcome.Failed(e.code.name)
+        }
 
     /** The user signed out: RevenueCat forgets the identity (it would otherwise keep it until the next log-in). */
     fun logOut() {

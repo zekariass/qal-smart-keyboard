@@ -554,8 +554,9 @@
     <string name="pay_error_body">ብወገንና ጸገም ተፈጢሩ። ቁሩብ ጸኒሕኩም እንደገና ፈትኑ።</string>
     <string name="pay_retry">እንደገና ፈትኑ</string>
     <string name="pay_unavailable_title">ጥቕልታት ኣብዚ ገና ኣይርከቡን</string>
+    <string name="pay_unavailable_store_title">ኣብዚ ስሪት ምግዛእ ኣይከኣልን</string>
     <string name="pay_unavailable_body">ብዚ ስሪት ናይቲ መተግበሪ ኣብ ከባቢኹም ጥቕልታት ምግዛእ ገና ኣይከኣልን። ናይ ሕጂ ጥቕልኹምን ኣብ ስልኪኹም ዘሎ ኩሉን ምስራሕ ይቕጽል።</string>
-    <string name="pay_unavailable_store_body">እዚ ስሪት ናይቲ መተግበሪ ኣብ ከባቢኹም ጥቕልታት ክገዝእ ኣይኽእልን። ንምምዝጋብ Qal Smart Keyboard ካብ Google Play ጽዓኑ።</string>
+    <string name="pay_unavailable_store_body">እዚ ስሪት ናይቲ መተግበሪ ጥቕልታትን ናይ AI ክረዲትን ክገዝእ ኣይኽእልን። ንምግዛእ Qal Smart Keyboard ካብ Google Play ጽዓኑ።</string>
     <string name="pay_msg_offline">ርክብ የለን። ኢንተርኔትኩም ኣረጋግጹ እሞ እንደገና ፈትኑ።</string>
     <string name="pay_msg_server">ጸገም ተፈጢሩ። ቁሩብ ጸኒሕኩም እንደገና ፈትኑ።</string>
     <string name="pay_msg_needs_account">ጥቕሊ ንምግዛእ ብሕሳብ እተዉ።</string>
@@ -571,6 +572,7 @@
     <string name="pay_still_title">ገና የረጋግጽ ኣሎ። ክንሕብረኩም ኢና</string>
     <string name="pay_still_body">ክፍሊትኩም ገና ኣይተረጋገጸን። እንተ ከፊልኩም፣ ልክዕ ምስ ተረጋገጸ ጥቕልኹም ይውላዕ።</string>
     <string name="pay_store_still_body">ዕድግኹም ኣብ Google Play በጺሑ ኣሎ። ልክዕ ምስ ኣረጋገጽናዮ ጥቕልኹም ይውላዕ።</string>
+    <string name="pay_store_credits_still_body">ዕድግኹም ኣብ Google Play በጺሑ ኣሎ። ልክዕ ምስ ኣረጋገጽናዮ ክረዲትኩም ኣብዚ ይርአይ፣ ካብዚ ገጽ እኳ እንተ ወጻእኩም።</string>
     <string name="pay_refresh">ኣሐድስ</string>
     <string name="pay_reopen">ገጽ ክፍሊት እንደገና ክፈቱ</string>
     <string name="pay_not_completed_title">ክፍሊት ኣይተማልአን</string>
@@ -609,6 +611,7 @@
     <string name="pay_pack_terms_short">ሓደ ግዜ ዕዳጋ · ምዝገባ የለን</string>
     <string name="pay_pack_buy">ብ%1$s ግዝኡ</string>
     <string name="pay_credits_terms">ክረዲት ሓደ ግዜ እዩ ዝኽፈል። ዋላ ሓደ ኣይሕደስን፣ ብነብሱ ዋላ ሓደ ኣይእሰርን። ቅድም ዝውድእ ክረዲት ቅድም ይጥቀም።</string>
+    <string name="pay_credits_terms_store">Google Play እቲ ዝርአ ዋጋ ሓደ ግዜ ይቖርጽ። ዋላ ሓደ ኣይሕደስን፣ ብነብሱ ዋላ ሓደ ኣይእሰርን። ቅድም ዝውድእ ክረዲት ቅድም ይጥቀም።</string>
     <string name="pay_credits_guest_note">ክረዲት ንምግዛእ ሕሳብ የድሊ፣ ስለዚ ክረዲትኩም ኣብ ዝዀነ ስልኪ ናትኩም ኮይኑ ይጸንሕ።</string>
     <string name="pay_credits_history">ታሪኽ ክረዲት</string>
     <string name="pay_credits_paid_title">ክረዲት ተወሲኹ</string>

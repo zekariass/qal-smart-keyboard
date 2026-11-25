@@ -552,8 +552,9 @@
     <string name="pay_error_body">በእኛ በኩል ችግር ተፈጥሯል። ትንሽ ቆይተው እንደገና ይሞክሩ።</string>
     <string name="pay_retry">እንደገና ይሞክሩ</string>
     <string name="pay_unavailable_title">ጥቅሎች እዚህ ገና አይገኙም</string>
+    <string name="pay_unavailable_store_title">በዚህ ስሪት መግዛት አይቻልም</string>
     <string name="pay_unavailable_body">በዚህ የመተግበሪያው ስሪት በአካባቢዎ ጥቅሎችን መግዛት ገና አይቻልም። አሁን ያለዎት ጥቅልና በስልክዎ ላይ ያለው ሁሉ መሥራቱን ይቀጥላል።</string>
-    <string name="pay_unavailable_store_body">ይህ የመተግበሪያው ስሪት በአካባቢዎ ጥቅሎችን መግዛት አይችልም። ለመመዝገብ Qal Smart Keyboardን ከGoogle Play ይጫኑ።</string>
+    <string name="pay_unavailable_store_body">ይህ የመተግበሪያው ስሪት ጥቅሎችንም ሆነ የAI ክሬዲትን መግዛት አይችልም። ለመግዛት Qal Smart Keyboardን ከGoogle Play ይጫኑ።</string>
     <string name="pay_msg_offline">ግንኙነት የለም። ኢንተርኔትዎን ያረጋግጡና እንደገና ይሞክሩ።</string>
     <string name="pay_msg_server">ችግር ተፈጥሯል። ትንሽ ቆይተው እንደገና ይሞክሩ።</string>
     <string name="pay_msg_needs_account">ጥቅል ለመግዛት በመለያ ይግቡ።</string>
@@ -569,6 +570,7 @@
     <string name="pay_still_title">አሁንም በማረጋገጥ ላይ ነው። እናሳውቅዎታለን</string>
     <string name="pay_still_body">ክፍያዎ ገና አልተረጋገጠም። ከከፈሉ፣ ልክ እንደተረጋገጠ ጥቅልዎ ይበራል።</string>
     <string name="pay_store_still_body">ግዢዎ Google Play ጋር ደርሷል። ልክ እንዳረጋገጥነው ጥቅልዎ ይበራል።</string>
+    <string name="pay_store_credits_still_body">ግዢዎ Google Play ጋር ደርሷል። ልክ እንዳረጋገጥነው ክሬዲትዎ እዚህ ይታያል፤ ከዚህ ገጽ ቢወጡም።</string>
     <string name="pay_refresh">አድስ</string>
     <string name="pay_reopen">የክፍያ ገጹን እንደገና ይክፈቱ</string>
     <string name="pay_not_completed_title">ክፍያው አልተጠናቀቀም</string>
@@ -607,6 +609,7 @@
     <string name="pay_pack_terms_short">አንድ ጊዜ ግዢ · ደንበኝነት የለም</string>
     <string name="pay_pack_buy">በ%1$s ይግዙ</string>
     <string name="pay_credits_terms">ክሬዲት የሚከፈለው አንድ ጊዜ ነው። ምንም አይታደስም፣ በራስ-ሰር ምንም አይቆረጥም። መጀመሪያ የሚያበቃው ክሬዲት መጀመሪያ ጥቅም ላይ ይውላል።</string>
+    <string name="pay_credits_terms_store">Google Play የሚታየውን ዋጋ አንድ ጊዜ ብቻ ይቆርጣል። ምንም አይታደስም፣ በራስ-ሰር ምንም አይቆረጥም። መጀመሪያ የሚያበቃው ክሬዲት መጀመሪያ ጥቅም ላይ ይውላል።</string>
     <string name="pay_credits_guest_note">ክሬዲት ለመግዛት መለያ ያስፈልጋል፤ ስለዚህ ክሬዲትዎ በማንኛውም ስልክ ላይ የእርስዎ ሆኖ ይቆያል።</string>
     <string name="pay_credits_history">የክሬዲት ታሪክ</string>
     <string name="pay_credits_paid_title">ክሬዲት ተጨምሯል</string>

@@ -46,6 +46,7 @@ class PlansViewModel(val model: PlansModel, session: SessionManager?) : ViewMode
     fun loadMoreHistory() { viewModelScope.launch { model.loadMoreHistory() } }
     fun closeHistory() = model.closeHistory()
     fun buyFromStore(host: PurchaseHost) = run { model.buyFromStore(host) }
+    fun buyPackFromStore(host: PurchaseHost, productCode: String) = run { model.buyPackFromStore(host, productCode) }
     fun onReturned(result: String?) = run { model.onReturned(result) }
     fun onCheckoutClosed() = run { model.onCheckoutClosed() }
     fun reopenCheckout() = run { model.reopenCheckout() }
