@@ -67,7 +67,7 @@ enum class AiAssistField { SOURCE, NOTE }
 enum class AiAssistProblem { NO_TEXT, TEXT_TOO_LONG, NOTE_TOO_LONG }
 
 /** A short confirmation shown in the panel after an action. */
-enum class AiNotice { NONE, COPIED, COPY_FAILED, CLIPBOARD_EMPTY, INSERT_FAILED }
+enum class AiNotice { NONE, COPIED, COPY_FAILED, CLIPBOARD_EMPTY, INSERT_FAILED, FIELD_EMPTY }
 
 /** The step of the Assist panel. */
 sealed interface AiAssistStep {

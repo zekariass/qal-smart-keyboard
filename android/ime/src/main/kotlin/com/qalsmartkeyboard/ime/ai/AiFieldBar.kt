@@ -43,6 +43,7 @@ class AiFieldBar(context: Context) : EditorStrip(context) {
                 AiEmailField.SUBJECT -> R.string.ai_email_subject
                 AiEmailField.BODY, null -> R.string.ai_email_body
             }
+            AiScreen.CHAT -> R.string.chat_message_label
             AiScreen.CLOSED -> R.string.ai_source_typed
         },
     )

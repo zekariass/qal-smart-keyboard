@@ -4,7 +4,17 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.text.InputType as T
 import android.view.View
+import com.qalsmartkeyboard.ime.ai.AiLanguagePrefs
+import com.qalsmartkeyboard.ime.ai.AiMessages
+import com.qalsmartkeyboard.ime.ai.AiOutcome
+import com.qalsmartkeyboard.ime.ai.AiResult
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
+import com.qalsmartkeyboard.ime.ai.AiTool
+import com.qalsmartkeyboard.ime.ai.AiWorkspace
+import com.qalsmartkeyboard.ime.ai.ChatPanelView
+import com.qalsmartkeyboard.ime.ai.ChatStarter
+import com.qalsmartkeyboard.ime.ai.FakeAiEditor
+import com.qalsmartkeyboard.ime.ai.FakeClipboard
 import com.qalsmartkeyboard.ime.ai.AiToolbarView
 import com.qalsmartkeyboard.ime.ai.EditorAiAccess
 import com.qalsmartkeyboard.ime.ai.FakeAiActions
@@ -96,6 +106,7 @@ class UiLocalisationSmokeTest {
         c.getString(R.string.wordart_row_disabled, "a", "b", "c")
         c.getString(R.string.kb_key_vowel_active, "ሀ", 2)
         checkUtilityStrings()
+        checkChatStrings()
         // The platform names other voice languages in the UI language too.
         assertNotEquals("French (France)", VoiceLanguages.displayName("fr-FR"))
     }
@@ -123,6 +134,54 @@ class UiLocalisationSmokeTest {
         ConverterMode.entries.forEach { assertTrue("$it", converterModeLabel(c, it).isNotBlank()) }
         checkDrawStrings()
     }
+
+    /** T8.5: the Ask AI chat's strings resolve and format in this language, differ from the English ones, and the panel draws. */
+    private fun checkChatStrings() {
+        val c = ctx
+        val ids = R.string::class.java.fields.filter { it.name.startsWith("chat_") || it.name == "tool_ask_ai" }
+        assertTrue(ids.size >= 30)
+        for (f in ids) assertTrue(f.name, c.getString(f.getInt(null)).isNotBlank())
+        c.getString(R.string.chat_input_spoken, "x")
+        c.getString(R.string.chat_reply_in_desc, "x")
+        c.getString(R.string.chat_message_you_desc, "x")
+        c.getString(R.string.chat_message_ai_desc, "x")
+        for (s in ChatStarter.entries) {
+            assertTrue("$s", AiMessages.starter(c, s).isNotBlank() && AiMessages.starterPrefill(c, s).isNotBlank())
+            assertNotEquals("$s is translated", ENGLISH_STARTERS.getValue(s), AiMessages.starter(c, s))
+        }
+        assertNotEquals("Ask AI", c.getString(R.string.chat_title))
+        assertNotEquals("Send", c.getString(R.string.chat_send))
+        assertNotEquals("Ask AI", AiMessages.tool(c, AiTool.CHAT))
+        val actions = FakeAiActions()
+        lateinit var panel: ChatPanelView
+        val ws = AiWorkspace(
+            actions, FakeAiEditor("selected", "text"), FakeClipboard(), AiLanguagePrefs.InMemory(), post = { it() },
+            keyboardLanguage = { "am" }, translateDefault = { "en" }, onChanged = { panel.render() },
+        )
+        panel = ChatPanelView(c).also { it.controller = ws.chat; it.heightProvider = { (316 * c.resources.displayMetrics.density).toInt() } }
+        ws.openChat()
+        panel.visibility = View.VISIBLE
+        val w = (411 * c.resources.displayMetrics.density).toInt()
+        panel.measureAndDraw(w) // the empty chat with its starters
+        ws.chat.attachFieldText()
+        ws.chat.input.set("Hi")
+        ws.chat.send()
+        actions.answer(0, AiOutcome.Success(AiResult("Hello", truncated = true)))
+        panel.measureAndDraw(w) // a conversation, a cut-off reply, the field chip
+        ws.chat.input.set("More")
+        ws.chat.send()
+        actions.answer(1, FakeAiActions.fail(com.qalsmartkeyboard.ime.ai.AiFailure.QuotaExceeded(null, true, true)))
+        panel.measureAndDraw(w) // the quota banner with its two links
+        val texts = ArrayList<String>()
+        fun collect(v: View) { if (v is android.widget.TextView) texts += v.text.toString(); if (v is android.view.ViewGroup) for (i in 0 until v.childCount) collect(v.getChildAt(i)) }
+        collect(panel)
+        assertTrue(texts.toString(), texts.none { it == "Send" || it == "Insert" || it == "Reply in" })
+    }
+
+    private val ENGLISH_STARTERS = mapOf(
+        ChatStarter.WRITE to "Write a message", ChatStarter.EXPLAIN_WORD to "Explain a word",
+        ChatStarter.IMPROVE to "Improve my text", ChatStarter.BRAINSTORM to "Brainstorm ideas",
+    )
 
     /** T8.4: every Draw & Sketch string resolves and its format arguments format in this language. */
     private fun checkDrawStrings() {

@@ -212,6 +212,7 @@ object AiMessages {
         AiNotice.COPY_FAILED -> c.getString(R.string.ai_copy_failed)
         AiNotice.CLIPBOARD_EMPTY -> c.getString(R.string.ai_clipboard_empty)
         AiNotice.INSERT_FAILED -> c.getString(R.string.ai_apply_failed)
+        AiNotice.FIELD_EMPTY -> c.getString(R.string.chat_field_empty)
     }
 
     /** A tile's short label in the AI tools grid (ADR 0041): at most two lines in every UI language. */
@@ -229,6 +230,7 @@ object AiMessages {
         AiTool.CLARIFY -> c.getString(R.string.ai_tool_clarify)
         AiTool.EMAIL -> c.getString(R.string.tool_email)
         AiTool.ASSIST -> c.getString(R.string.tool_ai_assist)
+        AiTool.CHAT -> c.getString(R.string.tool_ask_ai)
         else -> tone(c, t.tone!!)
     }
 
@@ -263,6 +265,36 @@ object AiMessages {
         val credits = a.creditBalance?.takeIf { it > 0 }?.let { c.getString(R.string.ai_grid_credits, it) }
         return listOfNotNull(allowance, credits).takeIf { it.isNotEmpty() }?.joinToString(" · ")
     }
+
+    /** The chat panel's allowance line: "12 left today", with "AI credits: 120" after it when the balance is known and above 0. */
+    fun chatNotice(c: Context, a: AiAvailability): String? {
+        val allowance = quota(c, a.quota[AiTaskKind.CHAT]).takeIf { it.isNotEmpty() }
+        val credits = a.creditBalance?.takeIf { it > 0 }?.let { c.getString(R.string.ai_grid_credits, it) }
+        return listOfNotNull(allowance, credits).takeIf { it.isNotEmpty() }?.joinToString(" · ")
+    }
+
+    /** The chat's reply language: a name, or "Same as I write" for null. */
+    fun chatLanguage(c: Context, code: String?): String = if (code == null) c.getString(R.string.chat_language_same) else AiLanguages.name(code)
+
+    /** A quick starter's chip label. */
+    fun starter(c: Context, s: ChatStarter): String = c.getString(
+        when (s) {
+            ChatStarter.WRITE -> R.string.chat_starter_write
+            ChatStarter.EXPLAIN_WORD -> R.string.chat_starter_explain
+            ChatStarter.IMPROVE -> R.string.chat_starter_improve
+            ChatStarter.BRAINSTORM -> R.string.chat_starter_brainstorm
+        },
+    )
+
+    /** What a quick starter puts in the input (the user finishes it). */
+    fun starterPrefill(c: Context, s: ChatStarter): String = c.getString(
+        when (s) {
+            ChatStarter.WRITE -> R.string.chat_prefill_write
+            ChatStarter.EXPLAIN_WORD -> R.string.chat_prefill_explain
+            ChatStarter.IMPROVE -> R.string.chat_prefill_improve
+            ChatStarter.BRAINSTORM -> R.string.chat_prefill_brainstorm
+        },
+    )
 
     fun quota(c: Context, q: AiQuotaHint?): String {
         val left = q?.remaining ?: return ""

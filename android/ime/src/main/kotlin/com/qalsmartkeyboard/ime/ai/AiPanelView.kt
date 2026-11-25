@@ -111,7 +111,7 @@ class AiPanelView(context: Context) : LinearLayout(context) {
                 stepKey = "email:" + r.first
                 announce = r.second
             }
-            AiScreen.CLOSED -> return
+            AiScreen.CHAT, AiScreen.CLOSED -> return // the chat has its own panel ([ChatPanelView])
         }
         footer.removeAllViews()
         footer.addView(LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; buttons.forEach { addView(it) } })

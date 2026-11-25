@@ -19,7 +19,9 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -101,15 +103,35 @@ internal object AiWire {
                 if (t.variation > 0) put("variation", t.variation)
             }
             is AiTask.Email -> "/ai/drafts" to emailBody(t.spec)
+            is AiTask.Chat -> "/ai/chat" to chatBody(t)
         }
         // Sent only when the user turned history on (A2.6); the server still needs the preference, the consent and the plan.
-        val sent = if (saveToHistory) JsonObject(body + ("saveToHistory" to JsonPrimitive(true))) else body
+        // Chat is never saved (ADR 0048): its body says so itself and the history setting is ignored.
+        val sent = if (saveToHistory && r.task !is AiTask.Chat) JsonObject(body + ("saveToHistory" to JsonPrimitive(true))) else body
         return Request.Builder()
             .url(baseUrl.trimEnd('/') + "/api/v1" + path)
             .header("Accept", "application/json")
             .header("Idempotency-Key", r.requestId)
             .post(Json.encodeToString(JsonObject.serializer(), sent).toRequestBody(JSON))
             .build()
+    }
+
+    /**
+     * `ChatRequest` (T8.5): the window of turns (oldest first), the reply language when the user chose one, the host
+     * field's text only when the user attached it, and `saveToHistory: false` (the server refuses `true`).
+     */
+    fun chatBody(t: AiTask.Chat): JsonObject = buildJsonObject {
+        putJsonArray("messages") {
+            t.messages.forEach { m ->
+                addJsonObject {
+                    put("role", m.role.name)
+                    put("text", m.text)
+                }
+            }
+        }
+        t.language?.let { put("language", it) }
+        t.fieldText?.takeIf { it.isNotBlank() }?.let { f -> putJsonObject("context") { put("fieldText", f) } }
+        put("saveToHistory", false)
     }
 
     /**
@@ -141,6 +163,7 @@ internal object AiWire {
         when (task) {
             is AiTask.Reply -> return replies(o)
             is AiTask.Email -> return draft(o)
+            is AiTask.Chat -> return chat(o)
             else -> Unit
         }
         val text = str(o, if (task is AiTask.Translate) "translatedText" else "resultText")?.takeIf { it.isNotBlank() } ?: return null
@@ -181,6 +204,22 @@ internal object AiWire {
         )
     }
 
+    /** `ChatResponse`: the assistant's message (required); `finishReason: LENGTH` marks a cut-off reply. */
+    private fun chat(o: JsonObject): AiResult? {
+        val reply = (o["message"] as? JsonObject)?.takeIf { str(it, "role") in setOf(null, "ASSISTANT") }
+        val text = str(reply, "text")?.takeIf { it.isNotBlank() } ?: return null
+        val usage = o["usage"] as? JsonObject
+        return AiResult(
+            text = text,
+            notes = notes(o),
+            remaining = (usage?.get("remaining") as? JsonPrimitive)?.intOrNull,
+            resetsAtMs = str(usage, "resetsAt")?.let(::parseInstantMs),
+            replayed = (o["replayed"] as? JsonPrimitive)?.booleanOrNull ?: false,
+            language = str(o, "language"),
+            truncated = str(o, "finishReason") == "LENGTH",
+        )
+    }
+
     /** `DraftResponse`: the body (required), the subject when present, the placeholders to fill in. */
     private fun draft(o: JsonObject): AiResult? {
         val body = str(o, "body")?.takeIf { it.isNotBlank() } ?: return null
@@ -208,6 +247,7 @@ internal object AiWire {
         AiTaskKind.REPLY -> "SMART_REPLY"
         AiTaskKind.EMAIL -> "DRAFT_DOCUMENT"
         AiTaskKind.FORMAT -> "FORMAT_TEXT"
+        AiTaskKind.CHAT -> "AI_CHAT"
     }
 
     /** Maps the client's [ApiError] to what the toolbar shows. Switches on `code`, never on a title. */

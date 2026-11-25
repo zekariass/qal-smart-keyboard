@@ -89,6 +89,7 @@ class AiToolsGridTest {
             override fun runQuick(action: AiQuickAction) = quick.run(action)
             override fun openAssist(action: AiAssistAction?) = workspace.openAssist(action)
             override fun openEmail() = workspace.openEmail()
+            override fun openChat() = workspace.openChat()
         }
         val host = object : ToolHost {
             override fun openTranslate() = aiHost.openTranslate()
@@ -195,7 +196,7 @@ class AiToolsGridTest {
                 AiTool.REPLY, AiTool.EMAIL, AiTool.EXPLAIN, AiTool.SUMMARIZE,
                 AiTool.PROFESSIONAL, AiTool.FRIENDLY, AiTool.POLITE, AiTool.CONCISE,
                 AiTool.APOLOGETIC, AiTool.HONORIFIC, AiTool.ROMANTIC, AiTool.CONFIDENT,
-                AiTool.FUNNY, AiTool.PERSUASIVE, AiTool.ASSIST,
+                AiTool.FUNNY, AiTool.PERSUASIVE, AiTool.CHAT, AiTool.ASSIST,
             ),
             r.grid.shown.map { it.tool },
         )
@@ -254,7 +255,7 @@ class AiToolsGridTest {
             setOf(
                 AiTool.EMAIL, AiTool.REPLY, AiTool.EXPLAIN, AiTool.SUMMARIZE, AiTool.FORMAT,
                 AiTool.PROFESSIONAL, AiTool.FRIENDLY, AiTool.POLITE, AiTool.CONCISE, AiTool.APOLOGETIC, AiTool.HONORIFIC,
-                AiTool.ROMANTIC, AiTool.CONFIDENT, AiTool.FUNNY, AiTool.PERSUASIVE,
+                AiTool.ROMANTIC, AiTool.CONFIDENT, AiTool.FUNNY, AiTool.PERSUASIVE, AiTool.CHAT,
             ),
             locked,
         )
@@ -268,6 +269,48 @@ class AiToolsGridTest {
         assertTrue(r.actions.submitted.isEmpty())
         // Unknown plan state never locks.
         assertTrue(AiToolSet.tiles(AiAvailability()).none { it.locked })
+    }
+
+    // ---------------------------------------------------------------- Ask AI (T8.5)
+
+    @Test fun askAiIsATileWithItsOwnLabelIconAndName() {
+        val r = Rig()
+        r.openFromBar()
+        assertEquals(AiTool.CHAT, r.grid.shown[r.grid.shown.size - 2].tool) // just before AI Assist, which stays last
+        assertEquals(AiTool.ASSIST, r.grid.shown.last().tool)
+        assertEquals(com.qalsmartkeyboard.ime.toolbar.ToolIcon.CHAT, AiTool.CHAT.icon)
+        assertEquals("Ask AI", r.labelOf(AiTool.CHAT).text.toString())
+        assertEquals("Ask AI", r.tile(AiTool.CHAT).contentDescription.toString())
+        assertEquals(button, r.tile(AiTool.CHAT).createAccessibilityNodeInfo().className)
+        assertFalse(r.grid.shown.first { it.tool == AiTool.CHAT }.locked)
+    }
+
+    @Test fun askAiOpensTheChatAndSendsAndReadsNothing() {
+        val r = Rig()
+        r.openFromBar()
+        r.tile(AiTool.CHAT).performClick()
+        assertEquals(AiScreen.CHAT, r.workspace.screen)
+        assertTrue(r.workspace.chat.isOpen)
+        assertTrue(r.workspace.showsPanel)
+        assertTrue(r.actions.submitted.isEmpty())
+        assertNull("the host field is not read by opening", r.workspace.chat.fieldText)
+    }
+
+    @Test fun askAiIsLockedOnlyByTheChatFeatureAndStillOpensToSayWhy() {
+        val r = Rig()
+        r.actions.availability = AiAvailability(entitled = AiTaskKind.entries.filter { it != AiTaskKind.CHAT }.toSet())
+        r.openFromBar()
+        assertTrue(r.grid.shown.first { it.tool == AiTool.CHAT }.locked)
+        assertEquals("Ask AI, locked", r.tile(AiTool.CHAT).contentDescription.toString())
+        assertFalse("AI Assist does not depend on the chat", r.grid.shown.first { it.tool == AiTool.ASSIST }.locked)
+        assertEquals(listOf(AiTool.CHAT), r.grid.shown.filter { it.locked }.map { it.tool })
+        r.tile(AiTool.CHAT).performClick()
+        assertEquals(AiFailure.NotEntitled, r.workspace.chat.blocker)
+        // A plan with only the chat leaves Assist locked only when nothing else is included.
+        assertTrue(AiTool.CHAT.lockedBy(AiAvailability(entitled = emptySet())))
+        assertFalse(AiTool.CHAT.lockedBy(AiAvailability(entitled = setOf(AiTaskKind.CHAT))))
+        assertFalse(AiTool.CHAT.lockedBy(AiAvailability()))
+        assertTrue("Assist is locked when no text action is included, the chat does not count", AiTool.ASSIST.lockedBy(AiAvailability(entitled = setOf(AiTaskKind.CHAT, AiTaskKind.EMAIL))))
     }
 
     @Test fun signedOutIsOneLineWithSignInAndNoLocks() {

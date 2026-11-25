@@ -61,11 +61,15 @@ object AiTimeouts {
     const val LONG_FORM_SECONDS = 20L + MARGIN_SECONDS
     const val EMAIL_SECONDS = 30L + MARGIN_SECONDS
 
+    /** Chat (T8.5): the server's budget is about 20 s per provider attempt, 30 s in total; the client waits about 35 s. */
+    const val CHAT_SECONDS = 30L + MARGIN_SECONDS
+
     fun callTimeoutSeconds(kind: AiTaskKind): Long = when (kind) {
         AiTaskKind.TRANSLATE -> TRANSLATE_SECONDS
         AiTaskKind.GRAMMAR, AiTaskKind.REWRITE, AiTaskKind.TONE, AiTaskKind.FORMAT -> QUICK_LLM_SECONDS
         AiTaskKind.EXPLAIN, AiTaskKind.SUMMARIZE, AiTaskKind.REPLY -> LONG_FORM_SECONDS
         AiTaskKind.EMAIL -> EMAIL_SECONDS
+        AiTaskKind.CHAT -> CHAT_SECONDS
     }
 }
 

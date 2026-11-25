@@ -792,6 +792,39 @@
         <item>ኖቬምበር</item>
         <item>ዲሴምበር</item>
     </string-array>
+    <!-- Ask AI chat (T8.5). DRAFT (N9) -->
+    <string name="tool_ask_ai">AIን ይጠይቁ</string>
+    <string name="chat_title">AIን ይጠይቁ</string>
+    <string name="chat_message_label">መልዕክት</string>
+    <string name="chat_hint">ይጠይቁ ወይም መልዕክት ይጻፉ</string>
+    <string name="chat_input_spoken">መልዕክት፦ %1$s</string>
+    <string name="chat_send">ይላኩ</string>
+    <string name="chat_send_desc">መልዕክቱን ይላኩ</string>
+    <string name="chat_new">አዲስ ውይይት</string>
+    <string name="chat_empty">ስለ አጻጻፍ፣ ቃላት ወይም ሐሳቦች እገዛ ይጠይቁ።</string>
+    <string name="chat_starter_write">መልዕክት ይጻፉ</string>
+    <string name="chat_starter_explain">ቃል ያብራሩ</string>
+    <string name="chat_starter_improve">ጽሑፌን ያሻሽሉ</string>
+    <string name="chat_starter_brainstorm">ሐሳብ ያመንጩ</string>
+    <string name="chat_prefill_write">መልዕክት ጻፍልኝ፦</string>
+    <string name="chat_prefill_explain">ይህን ቃል አብራራልኝ፦</string>
+    <string name="chat_prefill_improve">ጽሑፌን አሻሽልልኝ፦</string>
+    <string name="chat_prefill_brainstorm">ሐሳቦችን አመንጭልኝ፦</string>
+    <string name="chat_use_field">የመስኩን ጽሑፍ ይጠቀሙ</string>
+    <string name="chat_field_attached">የመስኩ ጽሑፍ ተያይዟል</string>
+    <string name="chat_field_remove">የተያያዘውን የመስክ ጽሑፍ ያስወግዱ</string>
+    <string name="chat_field_empty">በመስኩ ውስጥ የሚጠቀሙበት ጽሑፍ የለም።</string>
+    <string name="chat_reply_in">መልስ በ</string>
+    <string name="chat_reply_in_desc">የመልስ ቋንቋ፦ %1$s። ይቀይሩ</string>
+    <string name="chat_language_same">እንደምጽፈው</string>
+    <string name="chat_you">እርስዎ</string>
+    <string name="chat_message_you_desc">እርስዎ፦ %1$s</string>
+    <string name="chat_message_ai_desc">AI፦ %1$s</string>
+    <string name="chat_thinking">AI እየጻፈ ነው…</string>
+    <string name="chat_cut_off">ይህ መልስ ተቋርጧል።</string>
+    <string name="chat_continue">ይቀጥሉ</string>
+    <string name="chat_continue_message">ቀጥል</string>
+    <string name="chat_transcript_desc">ውይይት</string>
     <!-- Voice + AI chain: dictation follow-ups and Insert in (T8.12, ADR 0049). DRAFT (N9). -->
     <string name="voice_insert_chip">የሚገባበት ቋንቋ፦ %1$s</string>
     <string name="voice_insert_chip_desc">ንግግሩ የሚገባበት ቋንቋ፦ %1$s። ይቀይሩ</string>

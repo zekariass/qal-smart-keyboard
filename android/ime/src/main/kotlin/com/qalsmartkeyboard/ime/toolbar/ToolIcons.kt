@@ -36,7 +36,7 @@ enum class ToolIcon {
     AI,
 
     // The AI tools grid (ADR 0041): one icon per action.
-    ASSIST, SIMPLIFY, EXPLAIN, SUMMARIZE, REPLY, PROFESSIONAL, FRIENDLY, POLITE, CONCISE, APOLOGETIC, HONORIFIC,
+    ASSIST, CHAT, SIMPLIFY, EXPLAIN, SUMMARIZE, REPLY, PROFESSIONAL, FRIENDLY, POLITE, CONCISE, APOLOGETIC, HONORIFIC,
     FORMAT, SHORTEN, EXPAND_TEXT, CLARIFY, ROMANTIC, CONFIDENT, FUNNY, PERSUASIVE,
 
     // The text field's action row (ADR 0038) when its labels do not fit.
@@ -171,6 +171,11 @@ object ToolIcons {
         ToolIcon.ASSIST -> Glyph(
             Path().apply { poly(3.5f, 20.5f, 14f, 10f) },
             Path().apply { sparkle(17.5f, 6.5f, 4f); sparkle(8f, 5f, 2.2f); sparkle(19.5f, 16f, 2.2f) },
+        )
+        // A speech bubble with a sparkle: Ask AI, the in-keyboard chat (T8.5).
+        ToolIcon.CHAT -> Glyph(
+            Path().apply { rect(3f, 3.5f, 21f, 16f, 3.5f); poly(8f, 16f, 8f, 20.5f, 12.5f, 16f) },
+            Path().apply { sparkle(12f, 9.75f, 3.4f) },
         )
         // A tangled line, an arrow down, a straight line.
         ToolIcon.SIMPLIFY -> Glyph(

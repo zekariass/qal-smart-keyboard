@@ -99,6 +99,89 @@ class AiWorkspaceTest {
         assertNull(h.ws.fieldTyping())
     }
 
+    // ------------------------------------------------------------ Ask AI chat (T8.5)
+
+    @Test fun keysTypeIntoTheChatMessageAndEnterSendsIt() {
+        val h = H()
+        h.ws.openChat()
+        assertEquals(AiScreen.CHAT, h.ws.screen)
+        assertTrue(h.ws.showsPanel)
+        h.ws.chat.startTyping()
+        assertTrue(h.ws.typing)
+        assertFalse(h.ws.typingMultiline)
+        h.tap("h")
+        h.tap("i")
+        assertEquals("hi", h.ws.chat.input.text)
+        assertEquals("nothing reaches the host field", "", h.host.out.toString())
+        h.tapKind(KeyKind.ENTER) // Enter in the message sends it; the panel is back to show the answer
+        assertEquals(1, h.actions.submitted.size)
+        assertEquals(listOf("hi"), h.ws.chat.entries.map { it.text })
+        assertFalse(h.ws.typing)
+        assertTrue(h.ws.showsPanel)
+        assertEquals("", h.host.out.toString())
+        h.tap("z")
+        assertEquals("after the typing ends the keys type into the host again", "z", h.host.out.toString())
+    }
+
+    @Test fun backStepsOutOfTheChatOneLevelAtATime() {
+        val h = H()
+        h.ws.openChat()
+        h.ws.chat.startTyping()
+        assertTrue(h.ws.back()) // typing -> the panel
+        assertFalse(h.ws.typing)
+        assertTrue(h.ws.isOpen)
+        h.ws.chat.toggleLanguagePicker()
+        assertTrue(h.ws.back()) // the language list closes
+        assertFalse(h.ws.chat.languagePickerOpen)
+        h.ws.chat.input.set("Hi")
+        h.ws.chat.send()
+        assertTrue(h.ws.chat.busy)
+        assertTrue(h.ws.back()) // a running call is cancelled
+        assertFalse(h.ws.chat.busy)
+        assertTrue(h.actions.submitted[0].cancelled)
+        assertTrue(h.ws.isOpen)
+        assertTrue(h.ws.back()) // then the panel closes
+        assertFalse(h.ws.isOpen)
+        assertFalse(h.ws.chat.isOpen)
+        assertFalse(h.ws.back())
+    }
+
+    @Test fun closingOrDiscardingTheWorkspaceDropsTheChat() {
+        val h = H()
+        h.ws.openChat()
+        h.ws.chat.input.set("private")
+        h.ws.chat.send()
+        h.ws.close()
+        assertEquals(AiScreen.CLOSED, h.ws.screen)
+        assertTrue(h.actions.submitted[0].cancelled)
+        assertTrue(h.ws.chat.entries.isEmpty())
+        assertTrue(h.ws.chat.input.isBlank)
+        h.ws.openChat()
+        h.ws.chat.input.set("again")
+        h.ws.chat.send()
+        h.ws.discard() // a new field or the keyboard hiding
+        assertEquals(AiScreen.CLOSED, h.ws.screen)
+        assertTrue(h.ws.chat.entries.isEmpty())
+        assertTrue(h.actions.submitted[1].cancelled)
+    }
+
+    @Test fun theChatDoesNotOpenWhereAiIsNotAllowedAndKeepsThePanelThatWas() {
+        val actions = FakeAiActions()
+        var allowed = true
+        val ws = AiWorkspace(
+            actions, FakeAiEditor(), FakeClipboard(), AiLanguagePrefs.InMemory(), post = { it() },
+            keyboardLanguage = { "en" }, translateDefault = { "am" }, chatFieldAllowed = { allowed },
+        )
+        ws.openAssist()
+        allowed = false
+        ws.openChat()
+        assertEquals("the chat did not open, the open panel stays", AiScreen.ASSIST, ws.screen)
+        allowed = true
+        ws.openChat()
+        assertEquals(AiScreen.CHAT, ws.screen)
+        assertFalse("the Assist texts were dropped", ws.assist.step is AiAssistStep.Working)
+    }
+
     @Test fun theTextFieldCountsCodePointsAndDeletesGraphemes() {
         val f = AiTextField(3)
         f.sink.apply(ComposerUpdate(commit = "ሰላም"))

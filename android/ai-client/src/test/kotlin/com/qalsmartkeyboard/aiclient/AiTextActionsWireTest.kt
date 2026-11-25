@@ -273,7 +273,7 @@ class AiTextActionsWireTest {
 
     @Test fun everyKindHasItsFeatureCode() {
         assertEquals(
-            listOf("TRANSLATE", "GRAMMAR_CORRECTION", "REWRITE", "TONE_ADJUST", "EXPLAIN_TEXT", "SUMMARIZE", "SMART_REPLY", "DRAFT_DOCUMENT", "FORMAT_TEXT"),
+            listOf("TRANSLATE", "GRAMMAR_CORRECTION", "REWRITE", "TONE_ADJUST", "EXPLAIN_TEXT", "SUMMARIZE", "SMART_REPLY", "DRAFT_DOCUMENT", "FORMAT_TEXT", "AI_CHAT"),
             AiTaskKind.entries.map(AiWire::featureCode),
         )
     }
