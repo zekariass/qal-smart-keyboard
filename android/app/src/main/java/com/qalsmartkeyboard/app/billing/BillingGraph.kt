@@ -26,6 +26,9 @@ class BillingGraph private constructor(context: Context) {
     /** RevenueCat on the `play` flavour with a key; [StoreBilling.Unavailable] otherwise. Built on first use. */
     val store: StoreBilling by lazy { StoreBillingFactory.create(app) }
 
+    /** Credit-pack purchases the store charged but the backend has not confirmed: reported again when Plans opens (memory only). */
+    val creditOutbox = StoreCreditOutbox()
+
     /** The keyboard's entitlement token and plan hints, fetched again past the client throttles (blocking). */
     val refresher = PlanRefresher { AiGraph.get(app).entitlements.planChanged() }
 
@@ -49,6 +52,7 @@ class BillingGraph private constructor(context: Context) {
         store = store,
         locale = { Locale.getDefault().toLanguageTag() },
         packageName = app.packageName,
+        outbox = creditOutbox,
     )
 
     companion object {

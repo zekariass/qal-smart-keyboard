@@ -168,4 +168,100 @@ class PlansScreenCreditsTest {
         compose.onNodeWithText("Credits expire on").assertExists()
         compose.onNodeWithText("500").assertExists()
     }
+
+    // ------------------------------------------------------------ store-billed packs (T8.10)
+
+    private val storePacks = listOf(
+        CreditPack("CREDITS_100", "100 AI credits", null, 100, 365, Money(1, "USD", 2), "\$0.99", "credits_100", "credits", "credits_100"),
+        CreditPack("CREDITS_500", "500 AI credits", null, 500, 365, Money(1, "USD", 2), "\$3.99", "credits_500", "credits", "credits_500"),
+    )
+    private val storePlans = listOf(StoreOffer("monthly", "premium_monthly", "MONTHLY", "Premium", "\$4.99"))
+
+    private fun storeState(
+        plans: List<StoreOffer> = storePlans,
+        packs: List<CreditPack> = storePacks,
+        buyer: BuyerKind = BuyerKind.REGISTERED,
+        checkout: CheckoutState = CheckoutState(),
+        message: PlansMessage? = null,
+    ) = PlansState(
+        phase = PlansPhase.READY, buyer = buyer, storeFlow = true, storeOffers = plans, packs = packs,
+        selectedOffer = plans.firstOrNull()?.id, credits = CreditsInfo(120, nov2027, 100), checkout = checkout, message = message,
+    )
+
+    @Test fun storeMarketShowsPlansAndPacksWithTheStorePricesAndTheTerms() {
+        show(storeState())
+        compose.onNodeWithText("Choose a plan").assertExists()
+        compose.onNodeWithTag("pay_button").assertExists()
+        compose.onNodeWithTag("credits_header").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("\$0.99").performScrollTo().assertExists()
+        compose.onNodeWithText("Buy for \$3.99").performScrollTo().assertExists()
+        compose.onAllNodesWithText("One-time purchase · no subscription · valid 365 days", substring = true).assertCountEquals(2)
+        compose.onNodeWithText("Google Play charges the price shown, once.", substring = true).performScrollTo().assertExists()
+        compose.onNodeWithText("500 credits").assertExists()
+        compose.onNodeWithTag("pack_buy_CREDITS_500").performScrollTo().assertIsEnabled().performClick()
+        assertEquals(listOf("CREDITS_500"), packsBought)
+    }
+
+    @Test fun storeCreditsOnlyHasNoPlanChooserAndTheCreditsTitle() {
+        show(storeState(plans = emptyList()))
+        compose.onAllNodesWithText("AI credits").assertCountEquals(2)
+        compose.onAllNodesWithText("Choose a plan").assertCountEquals(0)
+        compose.onNodeWithTag("pay_button").assertDoesNotExist()
+        compose.onNodeWithTag("pack_buy_CREDITS_100").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun storePremiumOnlyHasNoCreditsSection() {
+        show(storeState(packs = emptyList()))
+        compose.onNodeWithText("Choose a plan").assertExists()
+        compose.onNodeWithTag("credits_header").assertDoesNotExist()
+    }
+
+    @Test fun aStoreGuestSeesPacksWithoutAPriceAndSignsInToBuy() {
+        show(storeState(plans = emptyList(), buyer = BuyerKind.GUEST, packs = storePacks.map { it.copy(displayPrice = null) }))
+        compose.onNodeWithTag("pack_buy_CREDITS_100").performScrollTo().performClick()
+        assertEquals(1, signIns)
+        assertTrue(packsBought.isEmpty())
+        compose.onAllNodesWithText("Buy for", substring = true).assertCountEquals(0)
+        compose.onAllNodesWithText("1 USD", substring = true).assertCountEquals(0) // the server's placeholder never shows
+    }
+
+    @Test fun theDirectBuildExplainsThatItCannotBuyAndOffersNothing() {
+        val notice = "Purchases are not available in this version of the app. Install the app from Google Play to buy plans or AI credits."
+        Locale.setDefault(Locale.US)
+        compose.setContent {
+            PlansScreen(
+                PlansState(phase = PlansPhase.NOT_AVAILABLE, buyer = BuyerKind.REGISTERED, unavailable = UnavailableReason.STORE_NOT_IN_BUILD, notice = notice),
+                PlansActions(),
+            )
+        }
+        compose.onNodeWithText("Buying isn't available in this version").assertExists()
+        compose.onNodeWithText("Install Qal Smart Keyboard from Google Play to buy.", substring = true).assertExists()
+        compose.onAllNodesWithText(notice).assertCountEquals(0) // said once, in the app's own words
+        compose.onNodeWithTag("credits_header").assertDoesNotExist()
+        compose.onNodeWithTag("pay_button").assertDoesNotExist()
+    }
+
+    @Test fun aStillConfirmingStoreCreditPurchaseSaysCreditsAppearAutomaticallyAndRefreshes() {
+        var refreshes = 0
+        Locale.setDefault(Locale.US)
+        compose.setContent {
+            PlansScreen(
+                storeState(checkout = CheckoutState(CheckoutStep.STILL_CONFIRMING, store = true, credits = true), message = PlansMessage.OFFLINE),
+                PlansActions(refresh = { refreshes++ }),
+            )
+        }
+        compose.onNodeWithText("Google Play has your purchase. Your credits appear here as soon as we confirm it", substring = true).assertExists()
+        compose.onNodeWithText("No connection", substring = true).assertExists() // the retry message
+        compose.onNodeWithText("Refresh").performClick()
+        assertEquals(1, refreshes)
+    }
+
+    @Test fun theStoreCreditReceiptShowsTheCreditsTheStorePriceAndTheirExpiry() {
+        val receipt = Receipt(null, "100 AI credits", "ONE_TIME", null, "\$0.99", nov2027, nov2027 + 365L * 86_400_000L, credits = 100)
+        show(storeState(checkout = CheckoutState(CheckoutStep.PAID, store = true, credits = true, receipt = receipt)))
+        compose.onNodeWithText("Credits added").assertExists()
+        compose.onNodeWithText("Credits expire on").assertExists()
+        compose.onNodeWithText("100").assertExists()
+        compose.onNodeWithText("\$0.99").assertExists()
+    }
 }
