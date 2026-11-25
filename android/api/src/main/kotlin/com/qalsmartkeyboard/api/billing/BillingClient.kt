@@ -128,12 +128,22 @@ class BillingClient(private val clients: ApiClients) {
     /**
      * `POST /billing/store-purchases` (Google Play through RevenueCat, ADR 0047): the server verifies the purchase
      * with the store and grants the plan; the app then reads the plan the server shows. [purchaseToken] is never
-     * logged or stored by this class.
+     * logged or stored by this class. [transactionId] is the store's transaction id (the Play order id) of a one-time
+     * credit-pack purchase (T8.10): the server grants one credit lot per transaction and never trusts the report (it
+     * verifies with the store provider). The build's channel (`GOOGLE_PLAY`) goes along as `distributionChannel`.
      */
-    suspend fun reportStorePurchase(idempotencyKey: UUID, productId: String, purchaseToken: String, packageName: String): StorePurchaseResult {
+    suspend fun reportStorePurchase(
+        idempotencyKey: UUID,
+        productId: String,
+        purchaseToken: String,
+        packageName: String,
+        transactionId: String? = null,
+    ): StorePurchaseResult {
         val body = buildJsonObject {
             put("provider", "GOOGLE_PLAY")
             put("productId", productId)
+            transactionId?.takeIf { it.isNotBlank() }?.let { put("transactionId", it) }
+            channel?.let { put("distributionChannel", it.apiValue) }
             put("purchaseToken", purchaseToken)
             put("packageName", packageName)
         }

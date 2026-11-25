@@ -826,4 +826,20 @@
     <string name="chat_continue">Itti fufaa</string>
     <string name="chat_continue_message">Itti fufi</string>
     <string name="chat_transcript_desc">Haasaa</string>
+    <!-- Voice + AI chain: dictation follow-ups and Insert in (T8.12, ADR 0049). DRAFT (N9). -->
+    <string name="voice_insert_chip">Afaan galchamu: %1$s</string>
+    <string name="voice_insert_chip_desc">Dubbiin afaan kanaan galcha: %1$s. Jijjiiraa</string>
+    <string name="voice_insert_as_spoken">Akka dubbatametti</string>
+    <string name="voice_insert_picker_title">Afaan dubbiin itti galchamu</string>
+    <string name="voice_translating">Hiikaa jira…</string>
+    <string name="voice_followup_strip">Filannoowwan dubbii booda</string>
+    <string name="voice_followup_fix_desc">Barreeffama amma dubbattan seerluga sirreessaa</string>
+    <string name="voice_followup_translate_desc">Barreeffama amma dubbattan gara %1$s tti hiikaa</string>
+    <string name="voice_followup_fixed">Sirraa\'eera</string>
+    <string name="voice_followup_translated">Hiikameera</string>
+    <string name="voice_followup_undo">Deebisi</string>
+    <string name="voice_followup_undo_desc">Deebisaatii barreeffama dubbattan deebisaa</string>
+    <string name="voice_followup_retry_desc">Irra deebi\'aa yaalaa: %1$s</string>
+    <string name="voice_followup_dismiss">Filannoowwan cufaa</string>
+    <string name="voice_followup_moved">Barreeffamni jijjiirameera - homaa hin bakka bu\'in</string>
 </resources>

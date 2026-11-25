@@ -42,6 +42,9 @@ class PlansModelTest {
     private var creditsBody: String? = CREDITS
     private var historyPages = mutableListOf(HISTORY_1, HISTORY_2)
     private var orderProduct = "PLAN_PREMIUM"
+    private var storeReport: (RecordedRequest) -> MockResponse = { json(200, """{"storePurchaseId":"$ORDER_ID","status":"ACTIVE","environment":"SANDBOX"}""") }
+    private var onPause: (Int) -> Unit = {}
+    private val outbox = StoreCreditOutbox()
     private lateinit var model: PlansModel
 
     @Before fun setUp() {
@@ -58,11 +61,15 @@ class PlansModelTest {
 
     @After fun tearDown() { runCatching { server.shutdown() } }
 
-    private fun model(store: StoreBilling = StoreBilling.Unavailable): PlansModel {
+    private fun model(
+        store: StoreBilling = StoreBilling.Unavailable,
+        channel: DistributionChannel = DistributionChannel.DIRECT_DOWNLOAD,
+        outbox: StoreCreditOutbox = this.outbox,
+    ): PlansModel {
         val clients = ApiClients(
             TransportConfig(
                 baseUrl = "http://localhost:${server.port}",
-                client = ClientInfo("1.0", ClientSurface.COMPANION, distributionChannel = DistributionChannel.DIRECT_DOWNLOAD),
+                client = ClientInfo("1.0", ClientSurface.COMPANION, distributionChannel = channel),
                 readTimeoutMs = 5_000,
             ),
             SessionManager(InMemoryTokenStore(TokenPair("access-token", "refresh-token"))),
@@ -76,7 +83,8 @@ class PlansModelTest {
             store = store,
             locale = { "am" },
             packageName = "com.qalsmartkeyboard.app",
-            pause = { pauses += it },
+            outbox = outbox,
+            pause = { pauses += it; onPause(pauses.size) },
             now = { NOW },
         )
     }
@@ -96,7 +104,7 @@ class PlansModelTest {
             path == "/billing/orders/$ORDER_ID/attempts/$ATTEMPT_ID" -> json(200, attempt(attemptStatus))
             path == "/billing/orders/$ORDER_ID" -> json(200, order(orderStatus, orderProduct))
             path == "/billing/return/$ATTEMPT_ID" -> MockResponse().setResponseCode(303).setHeader("Location", "qalkeyboard://billing/return")
-            path == "/billing/store-purchases" -> json(200, """{"storePurchaseId":"$ORDER_ID","status":"ACTIVE","environment":"SANDBOX"}""")
+            path == "/billing/store-purchases" -> storeReport(r)
             else -> MockResponse().setResponseCode(404)
         }
     }
@@ -383,16 +391,21 @@ class PlansModelTest {
     @Test fun storePurchaseIsReportedAndOnlyTheServerUnlocks() = runBlocking {
         optionsBody = STORE_OPTIONS
         val fake = FakeStore()
-        val m = model(fake)
+        val m = model(fake, DistributionChannel.GOOGLE_PLAY)
         m.load()
         assertEquals(PlansPhase.READY, m.state.value.phase)
         assertTrue(m.state.value.storeFlow)
         assertEquals("monthly", m.state.value.selectedOffer)
+        assertTrue(m.state.value.packs.isEmpty())
         plan = "PREMIUM"
         m.buyFromStore { throw UnsupportedOperationException("no activity in JVM tests") }
         assertEquals(CheckoutStep.PAID, m.state.value.checkout.step)
         val report = requests.first { it.path!!.endsWith("/billing/store-purchases") }
-        assertTrue(report.body.clone().readUtf8().contains("\"purchaseToken\":\"tok\""))
+        val body = report.body.clone().readUtf8()
+        assertTrue(body.contains("\"purchaseToken\":\"tok\""))
+        // A subscription report names the channel but carries no transaction id.
+        assertTrue(body, body.contains("\"distributionChannel\":\"GOOGLE_PLAY\""))
+        assertFalse(body, body.contains("transactionId"))
         assertNotNull(report.getHeader("Idempotency-Key"))
         assertEquals(1, refreshes)
     }
@@ -406,10 +419,302 @@ class PlansModelTest {
         assertFalse(calls().any { it.endsWith("/billing/store-purchases") })
     }
 
-    private class FakeStore(val outcome: StorePurchaseOutcome = StorePurchaseOutcome.Purchased("premium_monthly", "tok", "com.qalsmartkeyboard.app")) : StoreBilling {
+    // ------------------------------------------------------------ store-billed credit packs (T8.10)
+
+    private val host = PurchaseHost { throw UnsupportedOperationException("no activity in JVM tests") }
+
+    private fun storeModel(fake: FakeStore = FakeStore.withPacks(), outbox: StoreCreditOutbox = this.outbox) =
+        model(fake, DistributionChannel.GOOGLE_PLAY, outbox)
+
+    @Test fun storeMarketListsPlansAndPacksWithTheStorePriceNotTheServerPlaceholder() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_500, STORE_PACK_100)
+        val m = storeModel()
+        m.load()
+        val s = m.state.value
+        assertEquals(PlansPhase.READY, s.phase)
+        assertTrue(s.storeFlow)
+        assertFalse(s.creditsOnly)
+        assertEquals(listOf("monthly"), s.storeOffers.map { it.id })
+        assertEquals(listOf("CREDITS_100", "CREDITS_500"), s.packs.map { it.productCode })
+        assertEquals(listOf("\$0.99", "\$3.99"), s.packs.map { it.displayPrice })
+        assertEquals(listOf("credits_100", "credits_500"), s.packs.map { it.storePackageId })
+        assertEquals(listOf("credits", "credits"), s.packs.map { it.storeOfferingId })
+        assertEquals(listOf(100L, 500L), s.packs.map { it.credits })
+        assertEquals(listOf(365, 365), s.packs.map { it.validityDays })
+        assertEquals(120L, s.credits!!.balance)
+    }
+
+    @Test fun storeCreditsOnlyHasNoPlanChooser() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_500, STORE_PACK_100)
+        val m = storeModel(FakeStore.withPacks(plans = emptyList()))
+        m.load()
+        val s = m.state.value
+        assertEquals(PlansPhase.READY, s.phase)
+        assertTrue(s.storeOffers.isEmpty())
+        assertTrue(s.creditsOnly)
+        assertEquals(2, s.packs.size)
+        assertNull(s.selectedOffer)
+    }
+
+    @Test fun storePremiumOnlyListsNoPacksAndKeepsThePlans() = runBlocking {
+        optionsBody = STORE_OPTIONS // the server lists no credit pack
+        val m = storeModel()
+        m.load()
+        val s = m.state.value
+        assertEquals(PlansPhase.READY, s.phase)
+        assertEquals(1, s.storeOffers.size)
+        assertTrue(s.packs.isEmpty())
+        assertFalse(s.creditsOnly)
+        assertFalse(calls().any { it.contains("billing/products") })
+    }
+
+    @Test fun aServerPackTheStoreDidNotReturnIsHidden() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_500, STORE_PACK_100)
+        val fake = FakeStore.withPacks(credits = listOf(CREDIT_100_OFFER)) // no credits_500 in the store's offering
+        val m = storeModel(fake)
+        m.load()
+        assertEquals(listOf("CREDITS_100"), m.state.value.packs.map { it.productCode })
+        // The store returned nothing for the packs and has no plans: nothing to sell, retry.
+        val none = storeModel(FakeStore.withPacks(plans = emptyList(), credits = emptyList()))
+        none.load()
+        assertEquals(PlansPhase.ERROR, none.state.value.phase)
+        assertTrue(none.state.value.packs.isEmpty())
+    }
+
+    @Test fun aGuestSeesTheStorePacksWithoutAPriceAndBuyingNeedsAnAccount() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_100)
+        buyer = BuyerKind.GUEST
+        val fake = FakeStore.withPacks()
+        val m = storeModel(fake)
+        m.load()
+        assertEquals(PlansPhase.READY, m.state.value.phase)
+        assertEquals(listOf("CREDITS_100"), m.state.value.packs.map { it.productCode })
+        assertNull(m.state.value.packs.single().displayPrice) // never the placeholder
+        assertEquals(0, fake.offeringCalls)
+        m.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(PlansMessage.NEEDS_ACCOUNT, m.state.value.message)
+        assertTrue(fake.purchases.isEmpty())
+    }
+
+    @Test fun buyingAStorePackReportsTheTransactionIdAndShowsTheCreditReceipt() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_500, STORE_PACK_100)
+        val fake = FakeStore.withPacks(outcome = StorePurchaseOutcome.Purchased("credits_100", "secret-tok", "com.qalsmartkeyboard.app", "GPA.3333-4444"))
+        fake.onPurchase = { creditsBody = CREDITS_AFTER }
+        storeReport = { json(200, STORE_GRANTED) }
+        val m = storeModel(fake)
+        m.load()
+        m.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(listOf(Triple("user-1", "credits_100", "credits")), fake.purchases)
+        val report = requests.last { it.path!!.endsWith("/billing/store-purchases") }
+        val body = report.body.clone().readUtf8()
+        assertTrue(body, body.contains("\"transactionId\":\"GPA.3333-4444\""))
+        assertTrue(body, body.contains("\"distributionChannel\":\"GOOGLE_PLAY\""))
+        assertTrue(body, body.contains("\"productId\":\"credits_100\"") && body.contains("\"purchaseToken\":\"secret-tok\""))
+        assertNotNull(report.getHeader("Idempotency-Key"))
+        assertFalse(calls().any { it.contains("/billing/orders") }) // store purchases never use orders
+        val s = m.state.value
+        assertEquals(CheckoutStep.PAID, s.checkout.step)
+        assertTrue(s.checkout.store && s.checkout.credits)
+        val r = s.checkout.receipt!!
+        assertEquals(100L, r.credits)
+        assertEquals("100 AI credits", r.planName)
+        assertEquals("\$0.99", r.storePrice)
+        assertEquals(1_827_049_600_000L, r.validUntilMs) // creditsExpireAt of the answer
+        assertEquals(620L, s.credits!!.balance) // the balance was read again
+        assertEquals(1, refreshes)
+        assertTrue(outbox.all().isEmpty())
+        assertTrue(pauses.isEmpty())
+    }
+
+    @Test fun aPendingReportIsBeingConfirmedAndPollsAtMostTheWindowThenKeepsTheOutbox() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_100)
+        storeReport = { json(200, STORE_PENDING) }
+        val m = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.Purchased("credits_100", "tok", "com.qalsmartkeyboard.app", "GPA.1")))
+        m.load()
+        m.buyPackFromStore(host, "CREDITS_100")
+        val s = m.state.value
+        assertEquals(CheckoutStep.STILL_CONFIRMING, s.checkout.step)
+        assertTrue(s.checkout.store && s.checkout.credits)
+        assertNull(s.message) // not a failure
+        assertEquals(PlansModel.CREDIT_SETTLE_MS.drop(1), pauses) // bounded
+        assertEquals(PlansModel.CREDIT_SETTLE_MS.size, requests.count { it.path!!.endsWith("/billing/store-purchases") })
+        assertEquals(1, outbox.all().size)
+        assertEquals(0, refreshes)
+    }
+
+    @Test fun aPendingPurchaseThatTheWebhookGrantsShowsTheCreditsWithoutLeavingTheScreen() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_100)
+        storeReport = { json(200, STORE_PENDING) }
+        onPause = { n -> if (n == 2) creditsBody = CREDITS_AFTER } // the webhook lands during the second wait
+        val m = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.Purchased("credits_100", "tok", "com.qalsmartkeyboard.app", "GPA.1")))
+        m.load()
+        m.buyPackFromStore(host, "CREDITS_100")
+        val s = m.state.value
+        assertEquals(CheckoutStep.PAID, s.checkout.step)
+        assertEquals(2, pauses.size)
+        assertEquals(100L, s.checkout.receipt!!.credits)
+        assertEquals(1_827_049_600_000L, s.checkout.receipt!!.validUntilMs) // the new lot's own expiry
+        assertEquals(620L, s.credits!!.balance)
+        assertTrue(outbox.all().isEmpty())
+    }
+
+    @Test fun serverAnswersThatKeepAVerifiedPurchaseAreConfirmingNotFailures() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_100)
+        for ((status, code) in listOf(403 to "BILLING_POLICY_DENIED", 422 to "PRODUCT_NOT_AVAILABLE", 422 to "STORE_PURCHASE_INVALID")) {
+            storeReport = { json(status, """{"type":"about:blank","title":"t","status":$status,"code":"$code","correlationId":"c"}""") }
+            val m = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.Purchased("credits_100", "tok", "com.qalsmartkeyboard.app", "GPA.1")), StoreCreditOutbox())
+            m.load()
+            m.buyPackFromStore(host, "CREDITS_100")
+            assertEquals(code, CheckoutStep.STILL_CONFIRMING, m.state.value.checkout.step)
+            assertNull(code, m.state.value.message)
+        }
+    }
+
+    @Test fun aReportThatFailsOfflineIsRetriedWhenPlansOpensAgain() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_100)
+        storeReport = { MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST) }
+        val fake = FakeStore.withPacks(outcome = StorePurchaseOutcome.Purchased("credits_100", "tok", "com.qalsmartkeyboard.app", "GPA.9"))
+        val first = storeModel(fake)
+        first.load()
+        first.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(CheckoutStep.STILL_CONFIRMING, first.state.value.checkout.step)
+        assertEquals(PlansMessage.OFFLINE, first.state.value.message) // the retry message
+        assertEquals(1, outbox.all().size)
+        val keyOfFirst = requests.first { it.path!!.endsWith("/billing/store-purchases") }.getHeader("Idempotency-Key")
+
+        // Back online; a new screen (a new model sharing the outbox) reports it again with the same idempotency key.
+        storeReport = { json(200, STORE_GRANTED) }
+        creditsBody = CREDITS_AFTER
+        val reopened = storeModel(FakeStore.withPacks())
+        reopened.load()
+        val s = reopened.state.value
+        assertEquals(CheckoutStep.PAID, s.checkout.step)
+        assertEquals(100L, s.checkout.receipt!!.credits)
+        assertEquals(keyOfFirst, requests.last { it.path!!.endsWith("/billing/store-purchases") }.getHeader("Idempotency-Key"))
+        assertTrue(requests.last { it.path!!.endsWith("/billing/store-purchases") }.body.clone().readUtf8().contains("\"transactionId\":\"GPA.9\""))
+        assertTrue(outbox.all().isEmpty())
+    }
+
+    @Test fun refreshOfAStillConfirmingPurchaseReportsOnceMore() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_100)
+        storeReport = { json(200, STORE_PENDING) }
+        val m = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.Purchased("credits_100", "tok", "com.qalsmartkeyboard.app", "GPA.1")))
+        m.load()
+        m.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(CheckoutStep.STILL_CONFIRMING, m.state.value.checkout.step)
+        storeReport = { json(200, STORE_GRANTED) }
+        m.refreshCheckout()
+        assertEquals(CheckoutStep.PAID, m.state.value.checkout.step)
+        assertTrue(outbox.all().isEmpty())
+    }
+
+    @Test fun cancelledFailedAndAlreadyOwnedStorePacks() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_100)
+        val cancelled = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.Cancelled))
+        cancelled.load()
+        cancelled.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(CheckoutStep.IDLE, cancelled.state.value.checkout.step)
+        assertNull(cancelled.state.value.message) // cancelling is no error
+        assertNull(cancelled.state.value.buyingPack)
+        assertFalse(calls().any { it.endsWith("/billing/store-purchases") })
+
+        val failed = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.Failed("StoreProblemError")))
+        failed.load()
+        failed.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(PlansMessage.STORE_FAILED, failed.state.value.message)
+        assertEquals(CheckoutStep.IDLE, failed.state.value.checkout.step)
+
+        val owned = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.AlreadyOwned))
+        owned.load()
+        owned.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(CheckoutStep.STILL_CONFIRMING, owned.state.value.checkout.step)
+        assertTrue(owned.state.value.checkout.credits)
+        assertFalse(calls().any { it.endsWith("/billing/store-purchases") }) // nothing to report: the store has no new transaction
+
+        val pending = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.Pending))
+        pending.load()
+        pending.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(CheckoutStep.STILL_CONFIRMING, pending.state.value.checkout.step)
+        assertNull(pending.state.value.message)
+    }
+
+    @Test fun guestNotAllowedAndARefundedPurchaseEndTheWait() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_100)
+        storeReport = { json(403, """{"type":"about:blank","title":"t","status":403,"code":"GUEST_NOT_ALLOWED","correlationId":"c"}""") }
+        val m = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.Purchased("credits_100", "tok", "com.qalsmartkeyboard.app", "GPA.1")), StoreCreditOutbox())
+        m.load()
+        m.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(PlansMessage.NEEDS_ACCOUNT, m.state.value.message)
+        assertEquals(CheckoutStep.IDLE, m.state.value.checkout.step)
+
+        storeReport = { json(200, STORE_PENDING.replace("PENDING", "REFUNDED")) }
+        val o = StoreCreditOutbox()
+        val refunded = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.Purchased("credits_100", "tok", "com.qalsmartkeyboard.app", "GPA.2")), o)
+        refunded.load()
+        refunded.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(PlansMessage.STORE_FAILED, refunded.state.value.message)
+        assertTrue(o.all().isEmpty())
+    }
+
+    @Test fun theDirectBuildInAStoreMarketSellsNothingAndSaysSo() = runBlocking {
+        optionsBody = """{"marketCountry":"ZZ","purchaseFlow":"NONE","purchaseUiAllowed":false,"products":[],"paymentMethods":[],
+            "notice":"Purchases are not available in this version of the app. Install the app from Google Play to buy plans or AI credits.",
+            "policyEvaluatedAt":"2026-11-20T09:00:00Z"}"""
+        model.load() // the direct flavour: StoreBilling.Unavailable
+        val s = model.state.value
+        assertEquals(PlansPhase.NOT_AVAILABLE, s.phase)
+        assertEquals(UnavailableReason.STORE_NOT_IN_BUILD, s.unavailable)
+        assertTrue(s.packs.isEmpty() && s.offers.isEmpty() && s.storeOffers.isEmpty())
+        assertNotNull(s.notice)
+        model.buyPackFromStore(host, "CREDITS_100")
+        assertFalse(calls().any { it.endsWith("/billing/store-purchases") })
+    }
+
+    @Test fun aStoreMarketWithoutAKeyInThePlayBuildHidesThePacksToo() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_100)
+        model.load() // StoreBilling.Unavailable (no key)
+        assertEquals(UnavailableReason.STORE_NOT_IN_BUILD, model.state.value.unavailable)
+        assertTrue(model.state.value.packs.isEmpty())
+    }
+
+    @Test fun signingOutForgetsTheUnreportedCreditPurchases() = runBlocking {
+        optionsBody = storeOptions(STORE_PACK_100)
+        storeReport = { json(200, STORE_PENDING) }
+        val m = storeModel(FakeStore.withPacks(outcome = StorePurchaseOutcome.Purchased("credits_100", "tok", "com.qalsmartkeyboard.app", "GPA.1")))
+        m.load()
+        m.buyPackFromStore(host, "CREDITS_100")
+        assertEquals(1, outbox.all().size)
+        m.signedOut()
+        assertTrue(outbox.all().isEmpty())
+    }
+
+    private class FakeStore(
+        val outcome: StorePurchaseOutcome = StorePurchaseOutcome.Purchased("premium_monthly", "tok", "com.qalsmartkeyboard.app"),
+        val plans: List<StoreOffer> = listOf(StoreOffer("monthly", "premium_monthly", "MONTHLY", "Premium", "\$4.99")),
+        val credits: List<StoreOffer> = emptyList(),
+    ) : StoreBilling {
         override val available = true
-        override suspend fun offers(appUserId: String) = listOf(StoreOffer("monthly", "premium_monthly", "MONTHLY", "Premium", "\$4.99"))
-        override suspend fun purchase(host: PurchaseHost, appUserId: String, offerId: String) = outcome
+        val purchases = mutableListOf<Triple<String, String, String?>>()
+        var offeringCalls = 0
+        var onPurchase: () -> Unit = {}
+        override suspend fun offers(appUserId: String) = plans
+        override suspend fun offering(appUserId: String, offeringId: String): List<StoreOffer> {
+            offeringCalls++
+            return if (offeringId == "credits") credits else emptyList()
+        }
+        override suspend fun purchase(host: PurchaseHost, appUserId: String, offerId: String, offeringId: String?): StorePurchaseOutcome {
+            purchases += Triple(appUserId, offerId, offeringId)
+            onPurchase()
+            return outcome
+        }
+
+        companion object {
+            fun withPacks(
+                outcome: StorePurchaseOutcome = StorePurchaseOutcome.Purchased("credits_100", "tok", "com.qalsmartkeyboard.app", "GPA.1"),
+                plans: List<StoreOffer> = listOf(StoreOffer("monthly", "premium_monthly", "MONTHLY", "Premium", "\$4.99")),
+                credits: List<StoreOffer> = listOf(CREDIT_500_OFFER, CREDIT_100_OFFER),
+            ) = FakeStore(outcome, plans, credits)
+        }
     }
 
     companion object {
@@ -429,6 +734,27 @@ class PlansModelTest {
         val STORE_OPTIONS = """{"marketCountry":"ZZ","purchaseFlow":"STORE_BILLING","purchaseUiAllowed":true,"products":[],
             "paymentMethods":[{"methodCode":"REVENUECAT_STORE","providerCode":"REVENUECAT","displayName":"Google Play","methodType":"APP_STORE","priority":1,"isDefault":true}],
             "policyEvaluatedAt":"2026-11-20T09:00:00Z"}"""
+
+        val CREDIT_100_OFFER = StoreOffer("credits_100", "credits_100", "OTHER", "100 credits (Qal)", "\$0.99")
+        val CREDIT_500_OFFER = StoreOffer("credits_500", "credits_500", "OTHER", "500 credits (Qal)", "\$3.99")
+
+        /** The server's store-billed packs: a placeholder list price, the store ids, and listed largest first on purpose. */
+        val STORE_PACK_500 = """{"productCode":"CREDITS_500","productType":"AI_CREDIT_PACK","displayName":"500 AI credits","creditUnits":500,"creditValidityDays":365,
+              "prices":[{"billingPeriod":"ONE_TIME","renewalModel":"STORE_MANAGED","listPrice":{"amountMinor":1,"currency":"USD","exponent":2},
+              "storeProductId":"credits_500","storeOfferingId":"credits","storePackageId":"credits_500"}]}"""
+        val STORE_PACK_100 = """{"productCode":"CREDITS_100","productType":"AI_CREDIT_PACK","displayName":"100 AI credits","creditUnits":100,"creditValidityDays":365,
+              "prices":[{"billingPeriod":"ONE_TIME","renewalModel":"STORE_MANAGED","listPrice":{"amountMinor":1,"currency":"USD","exponent":2},
+              "storeProductId":"credits_100","storeOfferingId":"credits","storePackageId":"credits_100"}]}"""
+
+        fun storeOptions(vararg products: String): String {
+            val i = STORE_OPTIONS.indexOf("\"products\":[")
+            val j = STORE_OPTIONS.indexOf("\"paymentMethods\"")
+            return STORE_OPTIONS.substring(0, i) + "\"products\":[" + products.joinToString(",") + "]," + STORE_OPTIONS.substring(j)
+        }
+
+        val STORE_GRANTED = """{"storePurchaseId":"$ORDER_ID","status":"ACTIVE","environment":"SANDBOX","purchaseType":"CONSUMABLE","productCode":"CREDITS_100",
+            "transactionId":"GPA.1","creditUnits":100,"creditsExpireAt":"2027-11-24T09:46:40Z","creditLotId":"0193a5c2-7a10-7d11-8e2f-cccccccccccc"}"""
+        val STORE_PENDING = """{"storePurchaseId":"$ORDER_ID","status":"PENDING","environment":"SANDBOX","purchaseType":"CONSUMABLE","productCode":"CREDITS_100","transactionId":"GPA.1"}"""
 
         const val LOT_ID = "0193a5c2-7a10-7d11-8e2f-aaaaaaaaaaaa"
 

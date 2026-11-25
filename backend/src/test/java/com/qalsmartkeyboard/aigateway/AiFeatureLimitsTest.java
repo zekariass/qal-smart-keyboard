@@ -30,6 +30,9 @@ class AiFeatureLimitsTest {
 				pipeline(null).resolvedFeatureTimeouts());
 		assertThat(s.deadlineFor(AiFeature.DRAFT_DOCUMENT)).isEqualTo(Duration.ofSeconds(30));
 		assertThat(s.attemptTimeoutFor(AiFeature.DRAFT_DOCUMENT)).isEqualTo(Duration.ofSeconds(20));
+		// ADR 0048: a chat turn gets the e-mail budget (20 s per attempt, 30 s in total)
+		assertThat(s.deadlineFor(AiFeature.AI_CHAT)).isEqualTo(Duration.ofSeconds(30));
+		assertThat(s.attemptTimeoutFor(AiFeature.AI_CHAT)).isEqualTo(Duration.ofSeconds(20));
 		for (AiFeature f : new AiFeature[] { AiFeature.SUMMARIZE, AiFeature.EXPLAIN_TEXT, AiFeature.SMART_REPLY }) {
 			assertThat(s.deadlineFor(f)).as(f.name()).isEqualTo(Duration.ofSeconds(20));
 			assertThat(s.attemptTimeoutFor(f)).as(f.name()).isEqualTo(Duration.ofSeconds(12));
@@ -82,10 +85,10 @@ class AiFeatureLimitsTest {
 					assertThat(t.get(AiFeature.DRAFT_DOCUMENT).deadline()).isEqualTo(Duration.ofSeconds(40));
 					assertThat(t.get(AiFeature.SMART_REPLY).attemptTimeout()).isEqualTo(Duration.ofSeconds(9));
 					assertThat(p.openai().featureMaxOutputTokens()).containsEntry(AiFeature.DRAFT_DOCUMENT, 8192)
-							.containsEntry(AiFeature.SUMMARIZE, 2048).hasSize(2);
+							.containsEntry(AiFeature.AI_CHAT, 8192).containsEntry(AiFeature.SUMMARIZE, 2048).hasSize(3);
 				});
 		new ApplicationContextRunner().withUserConfiguration(Properties.class).run(ctx -> assertThat(
 				ctx.getBean(AiGatewayProperties.class).openai().featureMaxOutputTokens())
-				.containsExactly(Map.entry(AiFeature.DRAFT_DOCUMENT, 8192)));
+				.containsOnly(Map.entry(AiFeature.DRAFT_DOCUMENT, 8192), Map.entry(AiFeature.AI_CHAT, 8192)));
 	}
 }

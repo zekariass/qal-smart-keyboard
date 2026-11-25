@@ -560,8 +560,9 @@
     <string name="pay_error_body">Something went wrong on our side. Try again in a moment.</string>
     <string name="pay_retry">Try again</string>
     <string name="pay_unavailable_title">Plans aren\'t available here yet</string>
+    <string name="pay_unavailable_store_title">Buying isn\'t available in this version</string>
     <string name="pay_unavailable_body">Plans can\'t be bought in your region with this version of the app yet. Your current plan and everything on your phone keep working.</string>
-    <string name="pay_unavailable_store_body">This version of the app can\'t buy plans in your region. Install Qal Smart Keyboard from Google Play to subscribe.</string>
+    <string name="pay_unavailable_store_body">This version of the app can\'t buy plans or AI credits. Install Qal Smart Keyboard from Google Play to buy.</string>
     <string name="pay_msg_offline">No connection. Check your internet and try again.</string>
     <string name="pay_msg_server">Something went wrong. Try again in a moment.</string>
     <string name="pay_msg_needs_account">Sign in with an account to buy a plan.</string>
@@ -577,6 +578,7 @@
     <string name="pay_still_title">Still confirming. We\'ll update you</string>
     <string name="pay_still_body">Your payment hasn\'t been confirmed yet. If you paid, your plan switches on as soon as it is.</string>
     <string name="pay_store_still_body">Google Play has your purchase. Your plan switches on as soon as we confirm it.</string>
+    <string name="pay_store_credits_still_body">Google Play has your purchase. Your credits appear here as soon as we confirm it, even if you leave this screen.</string>
     <string name="pay_refresh">Refresh</string>
     <string name="pay_reopen">Open the payment page again</string>
     <string name="pay_not_completed_title">Payment not completed</string>
@@ -615,6 +617,7 @@
     <string name="pay_pack_terms_short">One-time purchase · no subscription</string>
     <string name="pay_pack_buy">Buy for %1$s</string>
     <string name="pay_credits_terms">Credits are paid once. Nothing renews and nothing is charged automatically. Credits that expire first are used first.</string>
+    <string name="pay_credits_terms_store">Google Play charges the price shown, once. Nothing renews and nothing is charged automatically. Credits that expire first are used first.</string>
     <string name="pay_credits_guest_note">Buying credits needs an account, so your credits stay yours on any phone.</string>
     <string name="pay_credits_history">Credit history</string>
     <string name="pay_credits_paid_title">Credits added</string>
@@ -642,4 +645,10 @@
         <item quantity="other">valid %1$d days</item>
     </plurals>
     <string name="plans_account_summary">Your plan, prices and payment</string>
+    <!-- ADR 0049: dictation follow-ups and insert language. -->
+    <string name="settings_voice_follow_ups">Offer Fix grammar / Translate after dictation</string>
+    <string name="settings_voice_insert_in">Insert dictation in</string>
+    <string name="settings_voice_insert_as_spoken">As spoken</string>
+    <string name="settings_voice_insert_as_spoken_hint">Type exactly what you said, with no translation</string>
+    <string name="settings_voice_insert_body">Dictation is translated into this language before it is typed. If translating isn\'t possible, what you said is typed as spoken.</string>
 </resources>

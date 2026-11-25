@@ -827,4 +827,20 @@
     <string name="chat_continue">ቀጽሉ</string>
     <string name="chat_continue_message">ቀጽል</string>
     <string name="chat_transcript_desc">ዕላል</string>
+    <!-- Voice + AI chain: dictation follow-ups and Insert in (T8.12, ADR 0049). DRAFT (N9). -->
+    <string name="voice_insert_chip">ዝኣቱ ቋንቋ፦ %1$s</string>
+    <string name="voice_insert_chip_desc">ዝርርብ ዝኣቱ ቋንቋ፦ %1$s። ቀይሩ</string>
+    <string name="voice_insert_as_spoken">ከምዝተዛረበ</string>
+    <string name="voice_insert_picker_title">ዝርርብ ዝኣቱ ቋንቋ</string>
+    <string name="voice_translating">ይትርጐም ኣሎ…</string>
+    <string name="voice_followup_strip">ድሕሪ ዝርርብ ዝቐርቡ ኣማራጺታት</string>
+    <string name="voice_followup_fix_desc">ሕጂ ዝተዛረብዎ ጽሑፍ ሰዋሰው ኣዕርዩ</string>
+    <string name="voice_followup_translate_desc">ሕጂ ዝተዛረብዎ ጽሑፍ ናብ %1$s ተርጉሙ</string>
+    <string name="voice_followup_fixed">ተኣሪሙ</string>
+    <string name="voice_followup_translated">ተተርጒሙ</string>
+    <string name="voice_followup_undo">ተመለስ</string>
+    <string name="voice_followup_undo_desc">ተመለስ እሞ ዝተዛረብዎ ጽሑፍ መልሱ</string>
+    <string name="voice_followup_retry_desc">ደጊምኩም ፈትኑ፦ %1$s</string>
+    <string name="voice_followup_dismiss">ኣማራጺታት ዕጸዉ</string>
+    <string name="voice_followup_moved">እቲ ጽሑፍ ተቐይሩ - ዝተተክአ የለን</string>
 </resources>

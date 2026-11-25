@@ -11,6 +11,7 @@ import java.util.Objects;
 
 import org.springframework.http.HttpHeaders;
 
+import com.qalsmartkeyboard.aigateway.spi.AiFeature;
 import com.qalsmartkeyboard.aigateway.spi.AiProvider;
 import com.qalsmartkeyboard.aigateway.spi.DetectRequest;
 import com.qalsmartkeyboard.aigateway.spi.DetectResult;
@@ -106,6 +107,11 @@ public final class HttpJsonAiProvider implements AiProvider {
 			body.put("context", request.context().stream()
 					.map(p -> Map.of("kind", p.kind().name(), "text", p.text().value())).toList());
 		}
+		if (!request.turns().isEmpty()) {
+			// ADR 0048 (AI_CHAT): the conversation, oldest first; the last turn is also "text"
+			body.put("messages", request.turns().stream()
+					.map(t -> Map.of("role", t.role().name(), "text", t.text().value())).toList());
+		}
 		if (request.count() > 0) {
 			body.put("count", request.count());
 		}
@@ -117,12 +123,13 @@ public final class HttpJsonAiProvider implements AiProvider {
 		if ("content_filter".equals(finish)) {
 			throw new ProviderException.ContentRejected(code());
 		}
-		if (finish != null && !"stop".equals(finish)) {
+		if (finish != null && !"stop".equals(finish)
+				&& !("length".equals(finish) && request.task() == AiFeature.AI_CHAT)) {
 			throw new ProviderException.InvalidResponse(code(), null); // truncated or unknown: cannot be shown or settled
 		}
 		UserText out = UserText.of(requiredString(x.json, "output"));
 		return new TransformResult(out, List.of(), x.metadata(string(x.json, "model")),
-				usage(request.text(), out, x.json));
+				usage(request.text(), out, x.json), "length".equals(finish) && request.task() == AiFeature.AI_CHAT);
 	}
 
 	@Override

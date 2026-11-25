@@ -836,4 +836,20 @@
     <string name="chat_continue">Continue</string>
     <string name="chat_continue_message">Continue</string>
     <string name="chat_transcript_desc">Conversation</string>
+    <!-- Voice + AI chain: dictation follow-ups and Insert in (T8.12, ADR 0049). -->
+    <string name="voice_insert_chip">Insert in: %1$s</string>
+    <string name="voice_insert_chip_desc">Dictation is inserted in: %1$s. Change</string>
+    <string name="voice_insert_as_spoken">As spoken</string>
+    <string name="voice_insert_picker_title">Insert dictation in</string>
+    <string name="voice_translating">Translating…</string>
+    <string name="voice_followup_strip">Dictation suggestions</string>
+    <string name="voice_followup_fix_desc">Fix the grammar of the text you just dictated</string>
+    <string name="voice_followup_translate_desc">Translate the text you just dictated to %1$s</string>
+    <string name="voice_followup_fixed">Fixed</string>
+    <string name="voice_followup_translated">Translated</string>
+    <string name="voice_followup_undo">Undo</string>
+    <string name="voice_followup_undo_desc">Undo and put back the text you dictated</string>
+    <string name="voice_followup_retry_desc">Try again: %1$s</string>
+    <string name="voice_followup_dismiss">Dismiss suggestions</string>
+    <string name="voice_followup_moved">The text changed - nothing was replaced</string>
 </resources>

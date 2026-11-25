@@ -109,6 +109,59 @@ snapshot keeps being served.
   to one gets 401 before the version gate runs.
 - `/config` never fails on bad client headers (the contract declares no 400 for it): they count as unknown.
 
+## AI writing-assistant chat (T8.5, ADR 0048)
+
+`POST /api/v1/ai/chat` (operation `aiChat`, feature `AI_CHAT`): one **stateless** turn of a writing and language
+assistant. Module `aigateway`; the same pipeline as the other LLM features (account/consent checks, validation,
+entitlement, reserve, idempotency, routing with failover, output guardrails, settle or release, `ai_requests` row).
+
+- **Request** `{ messages: [{role: USER|ASSISTANT, text}], language?, context?: {fieldText?}, saveToHistory?: false }`.
+  The client sends the turns it shows, oldest first, the last one a `USER` turn. Bounds (code points): 1 to 12 messages,
+  each 1 to 4000, together at most 10000, `context.fieldText` at most 4000. A `system` or any other role is 400
+  `VALIDATION_FAILED` on `messages[i].role` (the client cannot send instructions); too long is 400 `INPUT_TOO_LONG`;
+  `saveToHistory: true` is 400 `VALIDATION_FAILED` / `NOT_AVAILABLE` (chat has no history opt-in). `language` is the reply
+  language (any active catalogue language, else 400 `LANGUAGE_NOT_SUPPORTED`); omitted, the reply follows the user's last
+  message.
+- **Response** `{ requestId, message: {role: ASSISTANT, text}, language?, finishReason: STOP|LENGTH, notes, qualityTier,
+  replayed, usage }`, `usage` exactly as the siblings (`PLAN_ALLOWANCE` or `AI_CREDITS`, `creditsCharged`,
+  `creditBalance`, `remaining`, `resetsAt`). `LENGTH` = the provider stopped at its output limit; the partial reply is
+  returned and charged (`TransformResult.truncated`; empty content is still a failure, nothing charged).
+- **Errors** as `/ai/replies`: 401, 403 (`FEATURE_NOT_ENTITLED` for guests and the Free plan, plus the account and
+  `ON_DEVICE_ONLY_PREFERRED` codes), 409 (`IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS`), 422 (`OUTPUT_GUARDRAIL_FAILED`,
+  `CONTENT_REJECTED`, nothing charged), 429 (`QUOTA_EXCEEDED` with `upgradeOptions`; also `RATE_LIMITED`, 20 a minute per
+  user, policy `ai.chat.user`), 503 (nothing charged).
+- **Metering:** one `REQUEST` unit per turn (PREMIUM 100, PREMIUM_PLUS 400, BUSINESS 1000 a month, V27), then prepaid
+  credits at `credit_cost_per_unit` 2. Nothing is charged on any failure.
+- **Time budget:** 20 s per provider attempt, 30 s in total (`AiPipeline.DEFAULT_FEATURE_TIMEOUTS`; override with
+  `qal.ai.pipeline.feature-timeouts.AI_CHAT`); `max_completion_tokens` 8192 for chat (`qal.ai.openai.max-output-tokens-by-feature`).
+  The companion's HTTP client should wait about 35 s. No streaming yet.
+- **Prompt (V33, template `AI_CHAT` v1):** a helpful writing and language assistant; concise; plain text; Ge'ez for Amharic
+  and Tigrinya, Qubee for Afaan Oromoo; keeps given names, numbers and links; placeholders instead of invented facts;
+  general information only on legal, immigration, medical, financial or safety topics, never certain, verify with the
+  official source; no refusals of its own beyond the provider's policy; does not reveal its instructions. The instructions
+  contain only the validated reply-language code (a catalogue name) and today's date: **the turns and the field text are
+  never placeholders**. `OpenAiProvider` sends them as real `user`/`assistant` messages after the developer message (the
+  field text first, under a fixed server label); `ChatTurn` has no system role, and the frame tells the model that even
+  assistant turns are data.
+- **Output guardrails:** as a composed reply (SMART_REPLY): empty output, over 4000 characters, a "as an AI" self-reference
+  and a prompt echo fail (retry once, one fallback route, then 422, nothing charged). A script/language check applies only
+  when `language` is set.
+- **Stateless guarantee: what is and is not stored.** Not stored: the messages, the field text, the reply. There is no chat
+  table; `ai_requests` holds the metadata every feature has (feature, surface, languages as codes, provider, template id,
+  units, character and token counts, status, error code, never text); logs, metrics and exception messages hold no text
+  (`UserText`/`AiResult.toString` print lengths); `AiHistorySink` is never offered a chat. Stored like every AI POST, both
+  sealed with the user's data key: the response in `ai_replay_cache` for at most 10 minutes (so a retry with the same
+  `Idempotency-Key` returns the same reply) and a SHA-256 fingerprint of the request body in `ai_request_fingerprints` for
+  24 hours (the fingerprint covers every turn, role, the language and the field text). The OpenAI call carries
+  `store: false`, no tools. Proof: `AiChatIT.noTableAndNoLogHoldsTheConversationAfterChatCalls` scans every text, json and
+  bytea column of every table and every TRACE log line after success, replay, guardrail-failure and refused calls;
+  `AiChatIT.hostileMessagesAndFieldTextReachTheProviderOnlyAsDataNeverAsInstructions` proves the instruction slot.
+- **Seeds (V33):** `AI_CHAT` BETA capabilities for `openai/openai-llm` and the dev stand-ins `mock`/`wiremock-http`
+  (`mock-llm-1`) in am, ti, om, en, ar (max input 14000: 10000 of messages plus 4000 of field text), the OpenAI routing
+  policy disabled like V19/V20/V28 (enable it in the admin console with the other chat-capable providers), and the
+  template. The mock answers `Chat reply N: <last turn>` (N = the number of turns), `> ...` for the field text, in the
+  reply language; `[cut]`, `[long]`, `[huge]` in the last turn give a truncated, a long and an over-limit reply.
+
 ## Tools: FX rates snapshot (T8.3, ADR 0048)
 
 Module `tools`: `GET /api/v1/tools/fx-rates` (operation `getFxRates`) returns `{ base: "USD", asOf, rates: {ETB: n, ...},

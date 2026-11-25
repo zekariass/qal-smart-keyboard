@@ -36,6 +36,7 @@ import com.qalsmartkeyboard.aigateway.pipeline.PromptTemplates;
 import com.qalsmartkeyboard.aigateway.pipeline.PromptValues;
 import com.qalsmartkeyboard.aigateway.spi.Addressee;
 import com.qalsmartkeyboard.aigateway.spi.AiFeature;
+import com.qalsmartkeyboard.aigateway.spi.ChatTurn;
 import com.qalsmartkeyboard.aigateway.spi.ContextPart;
 import com.qalsmartkeyboard.aigateway.spi.DetectRequest;
 import com.qalsmartkeyboard.aigateway.spi.DetectResult;
@@ -110,6 +111,14 @@ import io.micrometer.core.instrument.MeterRegistry;
  * (notes, names) sent as separate {@link ContextPart}s and the output read by {@link OutputFormats}. Features listed in
  * {@link Settings#featureTimeouts()} get their own per-attempt timeout and deadline (an LLM writing an e-mail needs far
  * more than the keyboard's 4 s / 8 s).
+ *
+ * <p><b>Chat (ADR 0048).</b> AI_CHAT ({@link AiCommand.Chat}) is one stateless turn: the client sends the visible
+ * messages (and optionally the host field's text) with every request, the pipeline validates them, renders the chat
+ * template (instructions: only the validated reply-language code and today's date), and passes the turns to the
+ * provider as data ({@link ChatTurn}, a {@link ContextPart} for the field text). The turns are never recorded:
+ * {@code ai_requests} gets lengths, codes and counts like every feature, the history sink is never offered a chat
+ * ({@code saveToHistory: true} is refused), and the only copy of the reply is the sealed replay cache entry every AI
+ * POST has.
  */
 public class AiPipeline {
 
@@ -153,6 +162,11 @@ public class AiPipeline {
 	public static final int MAX_DRAFT_EMAIL_CHARACTERS = 8000;
 	public static final int MAX_NAME_CHARACTERS = 120;
 	public static final int MAX_VARIATION = 20;
+	/** Contract {@code ChatRequest} bounds (ADR 0048; code points). */
+	public static final int MAX_CHAT_MESSAGES = AiRequestParser.MAX_CHAT_MESSAGES;
+	public static final int MAX_CHAT_MESSAGE_CHARACTERS = 4000;
+	public static final int MAX_CHAT_TOTAL_CHARACTERS = 10000;
+	public static final int MAX_CHAT_FIELD_TEXT_CHARACTERS = 4000;
 	public static final int DEFAULT_REPLY_COUNT = 3;
 	public static final int MAX_REPLY_COUNT = 5;
 
@@ -177,6 +191,9 @@ public class AiPipeline {
 			AiFeature.EXPLAIN_TEXT, new Timeouts(Duration.ofSeconds(12), Duration.ofSeconds(20)),
 			AiFeature.SMART_REPLY, new Timeouts(Duration.ofSeconds(12), Duration.ofSeconds(20)),
 			AiFeature.DRAFT_DOCUMENT, new Timeouts(Duration.ofSeconds(20), Duration.ofSeconds(30)),
+			// ADR 0048: a chat turn is a free-form LLM answer (a reasoning model may think for a while), but the user
+			// waits on a screen: the same budget as an e-mail
+			AiFeature.AI_CHAT, new Timeouts(Duration.ofSeconds(20), Duration.ofSeconds(30)),
 			// Quick actions that also route to the LLM: a real gpt-6-luna translation took ~4 s end to end, so the 4 s
 			// attempt would time out; Google Translate stays a fast fallback inside the 12 s deadline.
 			AiFeature.TRANSLATE, new Timeouts(Duration.ofSeconds(8), Duration.ofSeconds(12)),
@@ -402,9 +419,15 @@ public class AiPipeline {
 	 * @param count          SMART_REPLY: replies asked for; 0 otherwise
 	 * @param variation      0 = first answer
 	 * @param includeSubject DRAFT_DOCUMENT: return the subject line
+	 * @param turns          AI_CHAT: the conversation, oldest first; empty otherwise
 	 */
 	private record Extras(UserText checkInput, UserText protectedInput, boolean crossLanguage, List<ContextPart> parts,
-			int count, int variation, boolean includeSubject) {
+			int count, int variation, boolean includeSubject, List<ChatTurn> turns) {
+
+		Extras(UserText checkInput, UserText protectedInput, boolean crossLanguage, List<ContextPart> parts, int count,
+				int variation, boolean includeSubject) {
+			this(checkInput, protectedInput, crossLanguage, parts, count, variation, includeSubject, List.of());
+		}
 
 		static Extras of(UserText text) {
 			return new Extras(text, text, false, List.of(), 0, 0, true);
@@ -418,6 +441,9 @@ public class AiPipeline {
 			}
 			case AiCommand.Draft d -> {
 				return prepareDraft(d);
+			}
+			case AiCommand.Chat c -> {
+				return prepareChat(c);
 			}
 			default -> {
 			}
@@ -437,6 +463,7 @@ public class AiPipeline {
 			case AiCommand.Detect d -> prepareDetect(d);
 			case AiCommand.Reply r -> prepareReply(r);
 			case AiCommand.Draft d -> prepareDraft(d);
+			case AiCommand.Chat c -> prepareChat(c);
 		};
 	}
 
@@ -680,6 +707,73 @@ public class AiPipeline {
 				out.code(), null, true, addressee, mode, tone, length, conversions, values, extras);
 	}
 
+	/**
+	 * AI_CHAT (ADR 0048): validates the turns the client sent, field by field, before anything is reserved. Roles are
+	 * USER and ASSISTANT only (no client-supplied system role), the last turn is the user's, lengths are bounded per
+	 * turn, in total and for the field text. Nothing here reaches the instructions but the validated language code.
+	 */
+	private Prepared prepareChat(AiCommand.Chat c) {
+		if (c.saveToHistory()) {
+			throw validation("saveToHistory", "NOT_AVAILABLE", "Chat is never saved to history.");
+		}
+		List<AiCommand.Chat.Turn> given = c.messages();
+		if (given.isEmpty()) {
+			throw validation("messages", "REQUIRED", "messages must hold at least one message.");
+		}
+		if (given.size() > MAX_CHAT_MESSAGES) {
+			throw validation("messages", "TOO_MANY", "messages holds at most " + MAX_CHAT_MESSAGES + " messages.");
+		}
+		List<ChatTurn> turns = new ArrayList<>();
+		StringBuilder all = new StringBuilder();
+		int total = 0;
+		for (int i = 0; i < given.size(); i++) {
+			String field = "messages[" + i + "]";
+			AiCommand.Chat.Turn t = given.get(i);
+			ChatTurn.Role role = switch (t.role() == null ? "" : t.role()) {
+				case "USER" -> ChatTurn.Role.USER;
+				case "ASSISTANT" -> ChatTurn.Role.ASSISTANT;
+				default -> throw validation(field + ".role", "INVALID_VALUE", "The role must be USER or ASSISTANT.");
+			};
+			if (t.text().value().isBlank()) {
+				throw validation(field + ".text", "REQUIRED", "A message must not be empty.");
+			}
+			tooLong(t.text(), MAX_CHAT_MESSAGE_CHARACTERS, field + ".text");
+			total += t.text().characters();
+			turns.add(new ChatTurn(role, t.text()));
+			all.append(t.text().value()).append("\n\n");
+		}
+		if (turns.get(turns.size() - 1).role() != ChatTurn.Role.USER) {
+			throw validation("messages[" + (turns.size() - 1) + "].role", "MUST_BE_USER",
+					"The last message must be a USER message.");
+		}
+		if (total > MAX_CHAT_TOTAL_CHARACTERS) {
+			throw new ApiException(ApiErrorCode.INPUT_TOO_LONG, HttpStatus.BAD_REQUEST,
+					"The messages are longer than " + MAX_CHAT_TOTAL_CHARACTERS + " characters together.",
+					List.of(new ApiFieldError("messages", "TOO_LONG", "At most " + MAX_CHAT_TOTAL_CHARACTERS
+							+ " characters in total.")), Map.of());
+		}
+		UserText fieldText = nonBlank(c.fieldText());
+		tooLong(fieldText, MAX_CHAT_FIELD_TEXT_CHARACTERS, "context.fieldText");
+		if (fieldText != null) {
+			all.append(fieldText.value());
+		}
+		LanguageCatalog.Language out = c.language() == null ? null : language(c.language(), "language");
+		UserText input = UserText.of(all.toString().strip());
+		UnicodeScript inputScript = dominantScript(input.value());
+		boolean cross = out != null && differs(null, inputScript, out);
+		AiUserContext.Defaults defaults = users.defaults(c.caller().userId());
+		LocalDate today = LocalDate.now(clock.withZone(defaults.timeZone()));
+		Map<String, String> values = PromptValues.of(new PromptValues.Inputs(AiFeature.AI_CHAT, null, null, null, null,
+				null, null, null, null, null, null, null, null, null, null, null, true, true, today,
+				out == null ? null : out.code(), out == null ? null : out.englishName(), null, null));
+		List<ContextPart> parts = fieldText == null ? List.of()
+				: List.of(new ContextPart(ContextPart.Kind.FIELD_TEXT, fieldText));
+		Extras extras = new Extras(input, null, cross, parts, 0, 0, true, List.copyOf(turns));
+		return new Prepared(c, AiFeature.AI_CHAT, c.text(), null, out == null ? null : out.code(), null,
+				out == null ? null : out.script(), out == null ? null : out.code(), "*", null, true,
+				Addressee.UNSPECIFIED, null, null, null, false, values, extras);
+	}
+
 	private Prepared prepareDetect(AiCommand.Detect d) {
 		for (String c : d.candidates()) {
 			language(c, "candidates");
@@ -825,6 +919,7 @@ public class AiPipeline {
 				case AiCommand.Reply r -> routeWithGuardrails(p, transformRoute(p),
 						res -> String.join("\n\n", replies(p, res)));
 				case AiCommand.Draft d -> routeWithGuardrails(p, transformRoute(p), res -> checkedEmail(p, res));
+				case AiCommand.Chat c -> routeWithGuardrails(p, transformRoute(p), r -> r.resultText().value());
 				case AiCommand.Detect d -> routeWithGuardrails(p, detectRoute(p), null);
 			};
 		} catch (RuntimeException e) {
@@ -889,7 +984,8 @@ public class AiPipeline {
 	private FeatureRoute<TransformResult> transformRoute(Prepared p) {
 		Extras x = p.extras();
 		TransformRequest spi = new TransformRequest(p.feature(), p.text(), p.language(), p.mode(), p.tone(),
-				p.targetLength(), p.destinationLanguage(), p.addressee(), null, x.parts(), x.count(), x.variation());
+				p.targetLength(), p.destinationLanguage(), p.addressee(), null, x.parts(), x.count(), x.variation(),
+				x.turns());
 		RouteRequest<TransformResult> base = RouteRequest.transform(spi, null, p.command().caller().dataPolicy());
 		Map<String, Prompt> prompts = prompts(p, base);
 		RouteRequest<TransformResult> request = base.withCall((adapter, timeout) -> adapter.llmTransform(
@@ -1112,6 +1208,7 @@ public class AiPipeline {
 			case AiCommand.Transform t -> t.saveToHistory();
 			case AiCommand.Reply r -> r.saveToHistory();
 			case AiCommand.Draft d -> d.saveToHistory();
+			case AiCommand.Chat c -> false; // chat is never offered to the history sink (ADR 0048)
 			case AiCommand.Detect d -> false;
 		};
 		String output = switch (result) {
@@ -1245,6 +1342,7 @@ public class AiPipeline {
 			case AiCommand.Reply r -> repliesResponse(p, r.tone(), (TransformResult) routed.value(), requestId, notes,
 					tier, usage);
 			case AiCommand.Draft d -> draftResponse(p, (TransformResult) routed.value(), requestId, notes, tier, usage);
+			case AiCommand.Chat c -> chatResponse(p, (TransformResult) routed.value(), requestId, notes, tier, usage);
 			default -> providerResponse(p, routed, requestId, notes, tier, usage);
 		};
 	}
@@ -1255,6 +1353,13 @@ public class AiPipeline {
 				.map(s -> new AiResult.RepliesResponse.Suggestion(s, tone)).toList();
 		return new AiResult.RepliesResponse(requestId, p.destinationLanguage(), suggestions, notes, tier, false, null,
 				usage);
+	}
+
+	private static AiResult chatResponse(Prepared p, TransformResult result, UUID requestId,
+			List<AiResult.AiNote> notes, QualityTier tier, AiResult.UsageSummary usage) {
+		return new AiResult.ChatResponse(requestId,
+				new AiResult.ChatResponse.Message("ASSISTANT", result.resultText().value()), p.destinationLanguage(),
+				result.truncated() ? "LENGTH" : "STOP", notes, tier, false, usage);
 	}
 
 	private static AiResult draftResponse(Prepared p, TransformResult result, UUID requestId,

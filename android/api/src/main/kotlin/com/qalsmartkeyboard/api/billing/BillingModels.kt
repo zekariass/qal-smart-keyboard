@@ -30,7 +30,12 @@ data class Price(
     val taxBehavior: String?,
     /** The server's localised display string, when it sends one. */
     val displayPrice: String?,
+    /** Store billing only: the Play / RevenueCat product id (`credits_100`) the store sells. */
     val storeProductId: String?,
+    /** Store billing only: the suggested RevenueCat offering holding [storeProductId] (`credits`). */
+    val storeOfferingId: String? = null,
+    /** Store billing only: the suggested RevenueCat package identifier inside [storeOfferingId]. */
+    val storePackageId: String? = null,
 )
 
 /** `Product`. */
@@ -132,12 +137,23 @@ data class CurrentPlan(
     val effectiveUntilMs: Long?,
 )
 
-/** `StorePurchaseResult` (`POST /billing/store-purchases`). */
+/**
+ * `StorePurchaseResult` (`POST /billing/store-purchases`). A credit pack (`purchaseType` `CONSUMABLE`, T8.10) carries
+ * the granted lot ([creditLotId], [creditUnits], [creditsExpireAtMs]); while the server has not granted it (the purchase
+ * is kept `PENDING`) [creditLotId] is null.
+ */
 data class StorePurchaseResult(
     val storePurchaseId: String?,
     val status: String,
     val expiresAtMs: Long?,
     val subscription: Subscription?,
+    /** `SUBSCRIPTION` or `CONSUMABLE`; null from an older server. */
+    val purchaseType: String? = null,
+    val productCode: String? = null,
+    val transactionId: String? = null,
+    val creditUnits: Long? = null,
+    val creditsExpireAtMs: Long? = null,
+    val creditLotId: String? = null,
 )
 
 /** One spendable lot of `GET /me/credits`. */
@@ -193,6 +209,8 @@ internal object BillingJson {
             taxBehavior = str(o, "taxBehavior"),
             displayPrice = str(o, "displayPrice"),
             storeProductId = str(o, "storeProductId"),
+            storeOfferingId = str(o, "storeOfferingId"),
+            storePackageId = str(o, "storePackageId"),
         )
     }
 
@@ -301,6 +319,12 @@ internal object BillingJson {
             status = str(o, "status") ?: return null,
             expiresAtMs = time(o, "expiresAt"),
             subscription = subscription(obj(o, "subscription")),
+            purchaseType = str(o, "purchaseType"),
+            productCode = str(o, "productCode"),
+            transactionId = str(o, "transactionId"),
+            creditUnits = long(o, "creditUnits"),
+            creditsExpireAtMs = time(o, "creditsExpireAt"),
+            creditLotId = str(o, "creditLotId"),
         )
     }
 
