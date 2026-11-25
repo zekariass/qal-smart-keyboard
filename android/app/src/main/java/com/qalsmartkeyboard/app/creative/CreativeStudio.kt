@@ -48,6 +48,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import com.qalsmartkeyboard.app.R
+import com.qalsmartkeyboard.app.creative.annotate.AnnotatorRoute
+import com.qalsmartkeyboard.app.creative.annotate.AnnotatorViewModel
+import com.qalsmartkeyboard.app.creative.annotate.SavedAnnotation
 import com.qalsmartkeyboard.app.creative.cards.CardImages
 import com.qalsmartkeyboard.app.creative.cards.CardMakerRoute
 import com.qalsmartkeyboard.app.creative.cards.CardMakerViewModel
@@ -55,6 +58,7 @@ import com.qalsmartkeyboard.app.creative.cards.CardOutcome
 import com.qalsmartkeyboard.app.creative.cards.CardShare
 import com.qalsmartkeyboard.app.creative.cards.SavedCard
 import com.qalsmartkeyboard.app.settings.SettingsScaffold
+import java.io.File
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
@@ -85,7 +89,7 @@ class CreativeTool(
 object CreativeTools {
     val all: List<CreativeTool> = listOf(
         CreativeTool("cards", R.string.card_title, R.string.studio_cards_summary, R.drawable.ic_settings_palette) { host, modifier -> CardMakerRoute(host, modifier) },
-        // CreativeTool("annotator", ...) is the next line (T8.7 S3).
+        CreativeTool("annotator", R.string.annot_title, R.string.studio_annot_summary, R.drawable.ic_annot_tool) { host, modifier -> AnnotatorRoute(host, modifier) },
     )
 
     fun find(id: String?): CreativeTool? = all.firstOrNull { it.id == id }
@@ -111,8 +115,10 @@ fun CreativeStudioRoute(onBack: () -> Unit, onUnlock: () -> Unit, modifier: Modi
     }
     BackHandler(onBack = onBack)
     val cards = activityViewModel(CardMakerViewModel.create)
+    val annotations = activityViewModel(AnnotatorViewModel.create)
     CreativeStudioScreen(
         cards = cards,
+        annotations = annotations,
         onOpenTool = { studio.openTool = it.id },
         onCardOpened = { studio.openTool = "cards" },
         onBack = onBack,
@@ -120,7 +126,10 @@ fun CreativeStudioRoute(onBack: () -> Unit, onUnlock: () -> Unit, modifier: Modi
     )
 }
 
-/** The hub: the tool cards, then "Your cards" (the personal gallery, T8.7; the full gallery follows in T8.15). */
+/**
+ * The hub: the tool cards, then "Your cards" and "Your annotated pictures" (the personal gallery, T8.7; the full gallery
+ * follows in T8.15). An annotated picture is flattened, so it is shared or deleted, not edited.
+ */
 @Composable
 internal fun CreativeStudioScreen(
     cards: CardMakerViewModel,
@@ -129,12 +138,17 @@ internal fun CreativeStudioScreen(
     onCardOpened: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    annotations: AnnotatorViewModel? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var confirmDelete by remember { mutableStateOf<SavedCard?>(null) }
-    LaunchedEffect(Unit) { cards.refreshGallery() }
+    var confirmDeletePicture by remember { mutableStateOf<SavedAnnotation?>(null) }
+    LaunchedEffect(Unit) {
+        cards.refreshGallery()
+        annotations?.refreshGallery()
+    }
     val openFailed = stringResource(R.string.studio_card_open_failed)
     val shareFailed = stringResource(R.string.card_share_failed)
     val shareTitle = stringResource(R.string.card_share_title)
@@ -168,6 +182,31 @@ internal fun CreativeStudioScreen(
                         onDelete = { confirmDelete = card },
                     )
                 }
+                if (annotations != null) {
+                    val pictureShareTitle = stringResource(R.string.annot_share_title)
+                    val pictureShareFailed = stringResource(R.string.annot_share_failed)
+                    Text(
+                        stringResource(R.string.studio_annot_mine),
+                        style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp).semantics { heading() },
+                    )
+                    if (annotations.gallery.isEmpty()) {
+                        Text(stringResource(R.string.studio_annot_mine_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    for (item in annotations.gallery) {
+                        SavedItemRow(
+                            item.modifiedMillis, item.image, R.string.studio_annot_item_desc,
+                            onEdit = null,
+                            onShare = {
+                                scope.launch {
+                                    val r = annotations.stageSaved(item)
+                                    if (r !is CardOutcome.Shareable || !CardShare.share(context, r.file, r.format, pictureShareTitle)) snackbar.showSnackbar(pictureShareFailed)
+                                }
+                            },
+                            onDelete = { confirmDeletePicture = item },
+                        )
+                    }
+                }
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
@@ -181,6 +220,17 @@ internal fun CreativeStudioScreen(
                 TextButton(onClick = { confirmDelete = null; scope.launch { cards.delete(card.id) } }) { Text(stringResource(R.string.pv_delete_item)) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.pd_cancel)) } },
+        )
+    }
+    confirmDeletePicture?.let { item ->
+        AlertDialog(
+            onDismissRequest = { confirmDeletePicture = null },
+            title = { Text(stringResource(R.string.studio_annot_delete_title)) },
+            text = { Text(stringResource(R.string.studio_delete_body)) },
+            confirmButton = {
+                TextButton(onClick = { confirmDeletePicture = null; scope.launch { annotations?.delete(item.id) } }) { Text(stringResource(R.string.pv_delete_item)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeletePicture = null }) { Text(stringResource(R.string.pd_cancel)) } },
         )
     }
 }
@@ -204,12 +254,17 @@ private fun ToolCard(tool: CreativeTool, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SavedCardRow(card: SavedCard, onEdit: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
-    val date = remember(card.modifiedMillis) { DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(card.modifiedMillis)) }
-    val thumb: ImageBitmap? by produceState<ImageBitmap?>(null, card.image) {
-        value = withContext(Dispatchers.IO) { CardImages.thumbnail(card.image, THUMB_PX)?.asImageBitmap() }
+private fun SavedCardRow(card: SavedCard, onEdit: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) =
+    SavedItemRow(card.modifiedMillis, card.image, R.string.studio_card_item_desc, onEdit, onShare, onDelete)
+
+/** One saved item of the gallery: its picture, its date, and Edit (when it is editable), Share and Delete. */
+@Composable
+private fun SavedItemRow(modifiedMillis: Long, image: File, @StringRes describe: Int, onEdit: (() -> Unit)?, onShare: () -> Unit, onDelete: () -> Unit) {
+    val date = remember(modifiedMillis) { DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(modifiedMillis)) }
+    val thumb: ImageBitmap? by produceState<ImageBitmap?>(null, image) {
+        value = withContext(Dispatchers.IO) { CardImages.thumbnail(image, THUMB_PX)?.asImageBitmap() }
     }
-    val description = stringResource(R.string.studio_card_item_desc, date)
+    val description = stringResource(describe, date)
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -222,7 +277,7 @@ private fun SavedCardRow(card: SavedCard, onEdit: () -> Unit, onShare: () -> Uni
                 Text(date, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.studio_card_edit), maxLines = 1) }
+                if (onEdit != null) TextButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.studio_card_edit), maxLines = 1) }
                 TextButton(onClick = onShare, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.card_share), maxLines = 1) }
                 TextButton(onClick = onDelete, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.pv_delete_item), maxLines = 1) }
             }

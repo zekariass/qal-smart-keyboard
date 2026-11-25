@@ -10,6 +10,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.qalsmartkeyboard.app.R
+import com.qalsmartkeyboard.app.creative.annotate.AnnotationDraftStore
+import com.qalsmartkeyboard.app.creative.annotate.AnnotatorViewModel
+import com.qalsmartkeyboard.app.creative.annotate.FileAnnotationStore
 import com.qalsmartkeyboard.app.creative.cards.CardFileProvider
 import com.qalsmartkeyboard.app.creative.cards.CardMakerViewModel
 import com.qalsmartkeyboard.app.creative.cards.CardShare
@@ -46,11 +49,17 @@ class CreativeStudioTest {
     private val app: Application = RuntimeEnvironment.getApplication()
     private lateinit var dir: File
     private lateinit var vm: CardMakerViewModel
+    private lateinit var annotations: AnnotatorViewModel
     private val resolve: (Int) -> String = { "x" }
 
     @Before fun setUp() {
         dir = Files.createTempDirectory("studio-test").toFile()
         vm = CardMakerViewModel(app, store = FileCardStore(File(dir, "cards")))
+        annotations = AnnotatorViewModel(
+            app,
+            store = FileAnnotationStore(File(dir, "annotations")),
+            drafts = AnnotationDraftStore(File(dir, "annotator/draft.json")),
+        )
         // The manifest's card FileProvider, registered the way the merged manifest declares it (also checks the paths file).
         val info = ProviderInfo().apply {
             authority = CardShare.authority(app)
@@ -70,13 +79,14 @@ class CreativeStudioTest {
         (vm.store.save(null, CardTemplates.find(template)!!.newDoc(resolve), PNG, null) as SaveResult.Saved).id
 
     private fun showHub(onBack: () -> Unit = {}, onOpened: () -> Unit = {}) = compose.setContent {
-        CreativeStudioScreen(cards = vm, onOpenTool = {}, onCardOpened = onOpened, onBack = onBack)
+        CreativeStudioScreen(cards = vm, onOpenTool = {}, onCardOpened = onOpened, onBack = onBack, annotations = annotations)
     }
 
     // ---- The registry -----------------------------------------------------------------------------------------------
 
-    @Test fun theRegistryHoldsTheCardMakerAndFindsToolsById() {
-        assertEquals(listOf("cards"), CreativeTools.all.map { it.id })
+    @Test fun theRegistryHoldsTheCardMakerAndTheAnnotatorAndFindsToolsById() {
+        assertEquals(listOf("cards", "annotator"), CreativeTools.all.map { it.id })
+        assertNotNull(CreativeTools.find("annotator"))
         assertEquals(CreativeTools.all.map { it.id }.size, CreativeTools.all.map { it.id }.toSet().size)
         assertNotNull(CreativeTools.find("cards"))
         assertEquals(null, CreativeTools.find("nope"))
@@ -90,7 +100,55 @@ class CreativeStudioTest {
         showHub()
         compose.onNodeWithText("Creative studio").assertExists()
         compose.onNodeWithText("Quote & greeting cards").assertExists()
+        compose.onNodeWithText("Image annotator").assertExists()
         compose.onNodeWithText("Cards you save appear here.").performScrollTo().assertExists()
+        compose.onNodeWithText("Your annotated pictures").performScrollTo().assertExists()
+        compose.onNodeWithText("Pictures you save appear here.").performScrollTo().assertExists()
+    }
+
+    @Test fun savedAnnotatedPicturesAreListedWithShareAndDeleteButNoEdit() {
+        // A saved annotated picture is flattened: it can be shared or deleted, never re-opened for editing.
+        annotations.store.save(PNG, ExportFormat.PNG)
+        showHub()
+        compose.waitUntil(5_000) { count("Delete") == 1 }
+        assertEquals(1, count("Share"))
+        assertEquals(0, count("Edit"))
+        compose.onNodeWithText("Delete").performScrollTo().performClick()
+        compose.onNodeWithText("Delete this picture?").assertExists()
+        compose.onAllNodesWithText("Delete")[1].performClick()
+        compose.waitUntil(5_000) { annotations.store.count() == 0 }
+    }
+
+    @Test fun theAnnotatorStagesItsShareCopyInItsOwnExcludedDirectory() {
+        val file = CardShare.stage(app, byteArrayOf(1, 2), ExportFormat.PNG, "qal-annotated", AnnotatorViewModel.SHARE_DIR)!!
+        assertEquals(File(app.filesDir, "annotate_share"), file.parentFile)
+        // The provider's paths and the backup rules name the directory (it is exposed only for the share, never backed up).
+        val paths = app.resources.getXml(R.xml.cards_file_paths).let { p ->
+            val names = ArrayList<String>()
+            while (p.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (p.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && p.name == "files-path") names += p.getAttributeValue(null, "path")
+            }
+            names
+        }
+        assertEquals(listOf("card_share/", "annotate_share/"), paths)
+        for (rules in listOf(R.xml.backup_rules, R.xml.data_extraction_rules)) {
+            val excluded = ArrayList<String>()
+            val p = app.resources.getXml(rules)
+            while (p.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (p.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && p.name == "exclude") excluded += p.getAttributeValue(null, "path")
+            }
+            assertTrue("$rules: $excluded", excluded.contains("annotate_share") && excluded.contains("card_share"))
+        }
+    }
+
+    @Test fun staleShareCopiesAreSweptButAFreshOneStays() {
+        val old = CardShare.stage(app, byteArrayOf(1), ExportFormat.PNG, "qal-annotated", AnnotatorViewModel.SHARE_DIR)!!
+        val now = System.currentTimeMillis()
+        old.setLastModified(now - CardShare.STALE_MILLIS - 60_000)
+        val fresh = CardShare.stage(app, byteArrayOf(2), ExportFormat.JPEG, "qal-card")!!
+        CardShare.sweep(app, listOf(CardShare.DIR, AnnotatorViewModel.SHARE_DIR), now = now)
+        assertFalse(old.exists())
+        assertTrue(fresh.exists())
     }
 
     @Test fun savedCardsAreListedWithEditShareAndDelete() {

@@ -4,4 +4,8 @@
          The gallery's own files (noBackupFilesDir/cards/) are never exposed. card_share/ is excluded from backups
          and device transfer (backup_rules.xml, data_extraction_rules.xml). -->
     <files-path name="card_share" path="card_share/" />
+    <!-- T8.7: the image annotator's flattened copy being shared (redactions already burnt in; never the picked original,
+         never the draft). The gallery (noBackupFilesDir/annotations/) and the draft are never exposed. Excluded from
+         backups and device transfer like card_share/. -->
+    <files-path name="annotate_share" path="annotate_share/" />
 </paths>

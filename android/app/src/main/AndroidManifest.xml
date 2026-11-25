@@ -70,8 +70,9 @@
             </intent-filter>
         </activity>
 
-        <!-- T8.7: a quote or greeting card the user shares is handed to the share sheet by this provider. Only the
-             files/card_share/ is exposed, only by a URI grant given on the user's tap; nothing is uploaded. -->
+        <!-- T8.7: a quote or greeting card, or an annotated picture (always the flattened copy), the user shares is handed
+             to the share sheet by this provider. Only files/card_share/ and files/annotate_share/ are exposed, only by a
+             URI grant given on the user's tap; nothing is uploaded. -->
         <provider
             android:name=".creative.cards.CardFileProvider"
             android:authorities="${applicationId}.cards"

@@ -5,9 +5,11 @@
 -->
 <data-extraction-rules>
     <!-- T8.7: the card being shared is staged in files/card_share/ (a copy of a card the user is sharing); never backed up
-         or transferred. The gallery itself is in noBackupFilesDir, which the platform excludes. -->
+         or transferred; files/annotate_share/ likewise for the image annotator. The galleries and the annotator's draft are in
+         noBackupFilesDir, which the platform excludes. -->
     <cloud-backup>
         <exclude domain="file" path="card_share" />
+        <exclude domain="file" path="annotate_share" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
@@ -15,5 +17,6 @@
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="card_share" />
+        <exclude domain="file" path="annotate_share" />
     </device-transfer>
 </data-extraction-rules>
