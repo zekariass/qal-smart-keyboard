@@ -228,6 +228,26 @@ class ProviderRoutingTest {
 	}
 
 	@Test
+	void aStoreProviderIsNeverOfferedToABuildWithoutStoreBilling() {
+		// even an (erroneously) approved STORE_BILLING policy for the sideloaded APK offers nothing: no Play Billing there
+		data.routes.put("ZZANDROIDDIRECT_DOWNLOAD", List.of(route("REVENUECAT", REVENUECAT, "APP_STORE", true, 1)));
+		data.policies.put("ZZANDROIDDIRECT_DOWNLOAD", approved("STORE_BILLING", false));
+		stores.add(store("REVENUECAT"));
+		Decision d = decide("US", Confidence.HIGH, DIRECT);
+		assertThat(d.options()).isEmpty();
+		assertThat(d.evaluations().get(0).reason()).isEqualTo("NO_STORE_IN_CHANNEL");
+		assertThat(d.policyFlow()).isEqualTo("STORE_BILLING");
+		// the same provider is offered to the Play build
+		data.routes.put("ZZANDROIDGOOGLE_PLAY", List.of(route("REVENUECAT", REVENUECAT, "APP_STORE", true, 1)));
+		assertThat(decide("US", Confidence.HIGH, PLAY).options()).hasSize(1);
+		// the policy's own flow is reported even when it is not approved
+		data.policies.put("ZZANDROIDDIRECT_DOWNLOAD", new Policy("STORE_BILLING", "REVIEW_REQUIRED", false, false, null,
+				null));
+		assertThat(decide("US", Confidence.HIGH, DIRECT).policyFlow()).isEqualTo("STORE_BILLING");
+		assertThat(decide("US", Confidence.HIGH, DIRECT).purchaseFlow()).isEqualTo("NONE");
+	}
+
+	@Test
 	void aCountryWithOwnRoutesNeverBorrowsTheGlobalPolicy() {
 		data.policies.remove("ETANDROIDDIRECT_DOWNLOAD");
 		data.policies.put("ZZANDROIDDIRECT_DOWNLOAD", approved("LOCAL_GATEWAY_IN_APP", true));

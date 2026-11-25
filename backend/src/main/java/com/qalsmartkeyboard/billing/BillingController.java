@@ -119,7 +119,7 @@ class BillingController {
 		if (Channel.ofSalesChannel(salesChannel).isEmpty()) {
 			throw BillingErrors.invalid("salesChannel", "INVALID", "Unknown sales channel.");
 		}
-		return noStore(new ProductListDto(catalog.products(marketCountry, salesChannel)));
+		return noStore(new ProductListDto(catalog.listed(marketCountry, salesChannel)));
 	}
 
 	@PostMapping(path = "/api/v1/billing/orders", consumes = MediaType.APPLICATION_JSON_VALUE)

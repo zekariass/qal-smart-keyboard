@@ -42,7 +42,8 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>Process ({@link #process}): the event's user references that are our user ids are synced through
  * {@link StorePurchases#sync}, which re-reads the customer from the provider: the body is never trusted, so order does
- * not matter. A provider that cannot be reached is retried by the outbox.
+ * not matter. A provider that cannot be reached is retried by the outbox, and so is a refund event for a granted
+ * one-time purchase (a credit pack) that the provider's API does not confirm yet (nothing is reversed on the body).
  */
 final class StoreNotificationIntake {
 
@@ -99,6 +100,7 @@ final class StoreNotificationIntake {
 		redacted.put("environment", event.environment() == null ? null : event.environment().name());
 		redacted.put("eventTime", event.eventTime() == null ? null : event.eventTime().toString());
 		redacted.put("test", event.test());
+		redacted.put("transactionIds", event.transactionIds());
 		redacted.put("event", event.redactedEvent());
 		boolean stored = store(providerId, event.eventId(), event.eventType(), WebhookAuthentication.VALID,
 				event.test() ? "IGNORED" : "RECEIVED", sha, redacted, !event.test());
@@ -160,14 +162,21 @@ final class StoreNotificationIntake {
 					event.eventType());
 			return;
 		}
+		int unconfirmedRefunds = 0;
 		for (UUID user : users) {
 			try {
-				purchases.sync(user, provider, "WEBHOOK", eventId, event);
+				unconfirmedRefunds += purchases.sync(user, provider, "WEBHOOK", eventId, event).unconfirmedRefunds();
 			}
 			catch (PaymentProviderException e) {
 				markProcessing(eventId, attempts, "PROVIDER_" + e.kind().name());
 				throw new IllegalStateException("store provider unavailable");
 			}
+		}
+		if (unconfirmedRefunds > 0) {
+			// a refund event for a granted one-time purchase that the provider's API does not (yet) confirm: nothing was
+			// reversed (the body is never trusted); retried by the outbox until the API agrees or the event goes DEAD
+			markProcessing(eventId, attempts, "REFUND_NOT_CONFIRMED");
+			throw new IllegalStateException("store refund not confirmed by the provider yet");
 		}
 		finish(eventId, "PROCESSED", attempts, null);
 	}
@@ -193,6 +202,12 @@ final class StoreNotificationIntake {
 	private StoreNotification notification(JsonNode payload) {
 		List<String> refs = new ArrayList<>();
 		payload.path("userReferences").forEach(n -> refs.add(n.asString()));
+		List<String> transactions = new ArrayList<>();
+		payload.path("transactionIds").forEach(n -> {
+			if (n.isString() && !n.asString().isBlank()) {
+				transactions.add(n.asString());
+			}
+		});
 		String env = text(payload.path("environment"));
 		String time = text(payload.path("eventTime"));
 		@SuppressWarnings("unchecked")
@@ -201,7 +216,7 @@ final class StoreNotificationIntake {
 				: Map.of();
 		return new StoreNotification(text(payload.path("eventId")), text(payload.path("eventType")), refs,
 				text(payload.path("productId")), env == null ? null : PaymentEnvironment.valueOf(env),
-				time == null ? null : Instant.parse(time), event, payload.path("test").asBoolean(false));
+				time == null ? null : Instant.parse(time), event, payload.path("test").asBoolean(false), transactions);
 	}
 
 	private void markProcessing(UUID eventId, int attempts, String code) {

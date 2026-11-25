@@ -3,6 +3,7 @@ package com.qalsmartkeyboard.billing;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,7 +47,10 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code store_purchase_events} row whenever it changes or a notification names it (the redacted raw event), and a
  * {@code user_subscriptions} row (source STORE, billing mode STORE_MANAGED) with a {@code subscription_events} row per
  * change.</li>
- * <li>A purchase the provider no longer lists for the user (transferred to another app user id) is REVOKED.</li>
+ * <li>A subscription the provider no longer lists for the user (transferred to another app user id) is REVOKED.</li>
+ * <li>One-time purchases (store-billed credit packs, {@code purchase_type} CONSUMABLE) are applied by
+ * {@link StoreConsumables} in the same transaction: one credit lot per store transaction, refunds reverse the unused
+ * remainder.</li>
  * <li>Any change writes {@code billing.subscription.changed} to the outbox: the entitlements module drops its cache.
  * Entitlements never depend on the user's current country.</li>
  * </ul>
@@ -62,9 +66,17 @@ final class StorePurchases {
 			boolean autoRenewing, Instant expiresAt, Instant acknowledgedAt, UUID subscriptionId, boolean changed) {
 	}
 
-	/** A sync's outcome; {@code otherEnvironment} lists product ids skipped for their environment. */
-	record SyncResult(List<Synced> purchases, int unmapped, Set<String> otherEnvironment, boolean changed) {
+	/**
+	 * A sync's outcome; {@code otherEnvironment} lists product ids skipped for their environment, {@code consumables} the
+	 * caller's one-time purchases (credit packs, {@link StoreConsumables}), {@code unconfirmedRefunds} refund events the
+	 * provider's API did not confirm (the webhook is retried).
+	 */
+	record SyncResult(List<Synced> purchases, List<StoreConsumables.Consumable> consumables, int unmapped,
+			Set<String> otherEnvironment, boolean changed, int unconfirmedRefunds) {
 	}
+
+	/** Store distribution channels: the only builds with store billing. */
+	private static final Set<String> STORE_CHANNELS = Set.of("GOOGLE_PLAY", "APPLE_APP_STORE");
 
 	private record Mapping(UUID mappingId, UUID priceId, UUID productId, UUID planId) {
 	}
@@ -77,10 +89,11 @@ final class StorePurchases {
 	private final BillingProperties properties;
 	private final JsonMapper json;
 	private final Clock clock;
+	private final StoreConsumables consumables;
 
 	StorePurchases(JdbcTemplate jdbc, TransactionTemplate transactions, ProviderRegistry registry,
 			OutboxPublisher outbox, SubscriptionQueries subscriptions, BillingProperties properties, JsonMapper json,
-			Clock clock) {
+			Clock clock, StoreConsumables consumables) {
 		this.jdbc = jdbc;
 		this.transactions = transactions;
 		this.registry = registry;
@@ -89,6 +102,7 @@ final class StorePurchases {
 		this.properties = properties;
 		this.json = json;
 		this.clock = clock;
+		this.consumables = consumables;
 	}
 
 	// ------------------------------------------------------------------------------------------------ client report
@@ -99,6 +113,11 @@ final class StorePurchases {
 			throw BillingErrors.problem(ApiErrorCode.GUEST_NOT_ALLOWED, "Sign in to buy a plan.");
 		}
 		BillingErrors.idempotencyKey(idempotencyKey);
+		if (body.distributionChannel() != null && !STORE_CHANNELS.contains(body.distributionChannel())) {
+			// a sideloaded APK (or the web) has no store billing: it can neither buy nor report a store purchase here
+			throw BillingErrors.problem(ApiErrorCode.BILLING_POLICY_DENIED,
+					"Purchases are not available in this version of the app. Install the app from the store to buy.");
+		}
 		// A store without a direct adapter (GOOGLE_PLAY, APPLE_APP_STORE today) is verified through the configured
 		// store-verification provider (RevenueCat) by the caller's user id; its token is never trusted, stored or logged.
 		StoreBillingProvider provider = registry.store(body.provider())
@@ -121,7 +140,16 @@ final class StorePurchases {
 					"The store cannot be reached. Try again in a moment.");
 		}
 		String product = baseProduct(body.productId());
+		List<StoreConsumables.Consumable> packs = result.consumables().stream()
+				.filter(c -> c.productId().equals(body.productId()) || c.productId().equals(product)).toList();
+		if (!packs.isEmpty()) {
+			return creditPack(provider, body, packs, result);
+		}
 		Optional<Synced> hit = result.purchases().stream().filter(p -> p.productId().equals(product)).findFirst();
+		if (hit.isEmpty() && body.transactionId() != null) {
+			// a one-time purchase named by its transaction that is not (yet) listed for the caller
+			return creditPack(provider, body, packs, result);
+		}
 		if (hit.isEmpty()) {
 			String detail = result.otherEnvironment().contains(product)
 					? "This purchase was made in a store environment this server does not honour."
@@ -133,7 +161,47 @@ final class StorePurchases {
 		Synced p = hit.get();
 		return new StorePurchaseResultDto(p.storePurchaseId(), p.productId(), p.purchaseStatus(), p.environment(),
 				p.autoRenewing(), p.acknowledgedAt(), p.expiresAt(),
-				p.subscriptionId() == null ? null : subscriptions.one(user.userId(), p.subscriptionId()).orElse(null));
+				p.subscriptionId() == null ? null : subscriptions.one(user.userId(), p.subscriptionId()).orElse(null),
+				null, "SUBSCRIPTION", null, null, null, null);
+	}
+
+	/**
+	 * The report of a one-time purchase (a credit pack): the transaction named by {@code transactionId}, else the
+	 * caller's most recent one of the product. Granted (or refunded / expired) purchases answer 200; a verified purchase
+	 * that may not be granted now is 403 {@code BILLING_POLICY_DENIED} (market/channel policy) or 422
+	 * {@code PRODUCT_NOT_AVAILABLE} (pack, mapping or offering off); nothing listed for the caller is 422
+	 * {@code STORE_PURCHASE_INVALID}.
+	 */
+	private StorePurchaseResultDto creditPack(StoreBillingProvider provider, StorePurchaseRequest body,
+			List<StoreConsumables.Consumable> packs, SyncResult result) {
+		Optional<StoreConsumables.Consumable> hit = body.transactionId() != null
+				? packs.stream().filter(c -> body.transactionId().equals(c.storeTransactionId())).findFirst()
+				: packs.stream().max(Comparator.comparing(StoreConsumables.Consumable::purchasedAt,
+						Comparator.nullsFirst(Comparator.naturalOrder())));
+		if (hit.isEmpty()) {
+			String product = baseProduct(body.productId());
+			String detail = result.otherEnvironment().contains(body.productId())
+					|| result.otherEnvironment().contains(product)
+							? "This purchase was made in a store environment this server does not honour."
+							: "No such purchase was found for this account.";
+			log.info("store credit pack report not confirmed provider={} product={}", provider.providerCode(),
+					body.productId());
+			throw BillingErrors.problem(ApiErrorCode.STORE_PURCHASE_INVALID, detail);
+		}
+		StoreConsumables.Consumable c = hit.get();
+		if ("PENDING".equals(c.purchaseStatus())) {
+			log.info("store credit pack report refused storePurchaseId={} reason={}", c.storePurchaseId(),
+					c.blockedReason());
+			if (StoreConsumables.BLOCKED_POLICY.equals(c.blockedReason())) {
+				throw BillingErrors.problem(ApiErrorCode.BILLING_POLICY_DENIED,
+						"Credit packs cannot be bought through the store in this market yet.");
+			}
+			throw BillingErrors.problem(ApiErrorCode.PRODUCT_NOT_AVAILABLE, "This credit pack is not available.");
+		}
+		return new StorePurchaseResultDto(c.storePurchaseId(), c.productId(), c.purchaseStatus(), c.environment(),
+				Boolean.FALSE, c.acknowledgedAt(), null, null, c.creditLotId(), "CONSUMABLE", c.productCode(),
+				c.storeTransactionId(), c.creditUnits() == null ? null : c.creditUnits().longValue(),
+				c.creditsExpireAt());
 	}
 
 	// ------------------------------------------------------------------------------------------------ sync
@@ -153,9 +221,10 @@ final class StorePurchases {
 				provider.providerCode());
 		SyncResult result = transactions.execute(s -> apply(userId, provider, providerId, customer, trigger,
 				webhookEventId, event));
-		log.info("store purchases synced provider={} trigger={} purchases={} unmapped={} otherEnvironment={} changed={}",
-				provider.providerCode(), trigger, result.purchases().size(), result.unmapped(),
-				result.otherEnvironment().size(), result.changed());
+		log.info("store purchases synced provider={} trigger={} purchases={} consumables={} unmapped={} "
+				+ "otherEnvironment={} changed={} unconfirmedRefunds={}", provider.providerCode(), trigger,
+				result.purchases().size(), result.consumables().size(), result.unmapped(),
+				result.otherEnvironment().size(), result.changed(), result.unconfirmedRefunds());
 		return result;
 	}
 
@@ -199,6 +268,7 @@ final class StorePurchases {
 		List<Object[]> stale = jdbc.query("""
 				SELECT id, purchase_status FROM store_purchases
 				WHERE user_id = ? AND provider_id = ? AND purchase_status NOT IN ('EXPIRED', 'REVOKED', 'REFUNDED')
+				  AND purchase_type = 'SUBSCRIPTION'
 				FOR UPDATE""", (rs, i) -> new Object[] { rs.getObject(1, UUID.class), rs.getString(2) }, userId,
 				providerId);
 		for (Object[] row : stale) {
@@ -219,7 +289,12 @@ final class StorePurchases {
 			outbox.publish("user_subscription", changedSubscription == null ? userId.toString()
 					: changedSubscription.toString(), BillingEvents.SUBSCRIPTION_CHANGED, payload);
 		}
-		return new SyncResult(List.copyOf(out), unmapped, Set.copyOf(otherEnvironment), anyChange);
+		// one-time purchases (credit packs): never subscriptions, never the subscription outbox event
+		StoreConsumables.Result packs = consumables.apply(userId, provider, providerId, customer, now, trigger,
+				webhookEventId, event);
+		otherEnvironment.addAll(packs.otherEnvironment());
+		return new SyncResult(List.copyOf(out), packs.consumables(), unmapped + packs.unmapped(),
+				Set.copyOf(otherEnvironment), anyChange, packs.unconfirmedRefunds());
 	}
 
 	private Synced upsertPurchase(UUID userId, UUID providerId, Mapping mapping, StoreSubscription sub,

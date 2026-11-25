@@ -29,7 +29,7 @@ import com.qalsmartkeyboard.platform.geo.CountryResolution.Confidence;
  * and allow the purchase UI, else nothing is offered.</li>
  * <li><b>Each route by priority</b> is offered when: enabled; provider {@code is_active} and {@code ACTIVE} (rule 1); an
  * adapter is registered for the environment (rule 2); the provider type fits the policy's purchase flow (store
- * providers need {@code STORE_BILLING}; gateways need {@code LOCAL_GATEWAY_IN_APP} or {@code EXTERNAL_WEB_CHECKOUT} and
+ * providers need {@code STORE_BILLING} and a store build, {@code GOOGLE_PLAY} or {@code APPLE_APP_STORE}; gateways need {@code LOCAL_GATEWAY_IN_APP} or {@code EXTERNAL_WEB_CHECKOUT} and
  * {@code external_payment_allowed}); and, for gateways, at least one account method passes rules 3-5 for the market,
  * environment, currency and amount. Recurring (rule 7) is not offered by this layer (MANUAL_RENEW only).</li>
  * </ol>
@@ -58,9 +58,11 @@ final class ProviderRouting {
 	 * @param purchaseFlow      the policy's flow, {@code NONE} when denied
 	 * @param purchaseUiAllowed whether any purchase UI may be shown
 	 * @param denial            why nothing may be offered (null when allowed)
+	 * @param policyFlow        the governing policy's own {@code purchase_flow} whatever its approval (null when there is
+	 *                          no policy): the kind of flow the scope is meant to have (store listing, notices)
 	 */
 	record Decision(String marketCountry, String routeScope, String purchaseFlow, boolean purchaseUiAllowed,
-			String denial, List<ProviderOption> options, List<RouteEvaluation> evaluations) {
+			String denial, List<ProviderOption> options, List<RouteEvaluation> evaluations, String policyFlow) {
 
 		boolean globalDefault() {
 			return GLOBAL.equals(routeScope);
@@ -116,12 +118,13 @@ final class ProviderRouting {
 		List<ProviderOption> options = new ArrayList<>();
 		if (denial != null) {
 			routes.forEach(r -> evaluations.add(new RouteEvaluation(r.providerCode(), r.priority(), false, denial)));
-			return new Decision(market, scope, "NONE", false, denial, List.of(), List.copyOf(evaluations));
+			return new Decision(market, scope, "NONE", false, denial, List.of(), List.copyOf(evaluations),
+					policy.map(Policy::purchaseFlow).orElse(null));
 		}
 		Policy p = policy.orElseThrow();
 		Set<String> seenMethods = new LinkedHashSet<>();
 		for (Route r : routes) {
-			String reason = routeDenial(r, p);
+			String reason = routeDenial(r, p, q.channel());
 			List<MethodOption> methods = List.of();
 			if (reason == null && isGateway(r.providerType())) {
 				methods = new ArrayList<>();
@@ -144,7 +147,7 @@ final class ProviderRouting {
 			}
 		}
 		return new Decision(market, scope, p.purchaseFlow(), true, null, List.copyOf(options),
-				List.copyOf(evaluations));
+				List.copyOf(evaluations), p.purchaseFlow());
 	}
 
 	private String policyDenial(Optional<Policy> policy) {
@@ -166,7 +169,7 @@ final class ProviderRouting {
 		return null;
 	}
 
-	private String routeDenial(Route r, Policy p) {
+	private String routeDenial(Route r, Policy p, Channel channel) {
 		if (!r.enabled()) {
 			return "ROUTE_DISABLED";
 		}
@@ -177,6 +180,11 @@ final class ProviderRouting {
 			return "NO_ADAPTER";
 		}
 		if ("APP_STORE".equals(r.providerType())) {
+			if (!channel.storeDistribution()) {
+				// a sideloaded APK (or the web) has no store billing: never offer a store provider there, whatever the
+				// policy row says (Play Billing exists only for apps installed from Google Play)
+				return "NO_STORE_IN_CHANNEL";
+			}
 			return "STORE_BILLING".equals(p.purchaseFlow()) ? null : "FLOW_MISMATCH";
 		}
 		boolean gatewayFlow = "LOCAL_GATEWAY_IN_APP".equals(p.purchaseFlow())

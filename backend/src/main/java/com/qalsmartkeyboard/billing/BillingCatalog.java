@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +23,9 @@ import com.qalsmartkeyboard.billing.BillingDtos.PriceDto;
 import com.qalsmartkeyboard.billing.BillingDtos.ProductDto;
 import com.qalsmartkeyboard.billing.ProviderRouting.Decision;
 import com.qalsmartkeyboard.billing.ProviderRouting.MethodOption;
+import com.qalsmartkeyboard.billing.spi.PaymentEnvironment;
 import com.qalsmartkeyboard.platform.geo.CountryResolution;
+import com.qalsmartkeyboard.platform.geo.CountryResolution.Confidence;
 
 /**
  * Sellable products with their active prices for a market and sales channel, and the {@code BillingOptions} document
@@ -30,6 +33,16 @@ import com.qalsmartkeyboard.platform.geo.CountryResolution;
  * now are listed, and only of the product families the market offers ({@code billing_market_offerings}, T8.10: the
  * market's own row, else the {@code ZZ} default, else off). Order pricing reads the same list, so a family a market
  * does not offer can neither be shown nor ordered.
+ *
+ * <p><b>Store flows</b> (T8.10 store packs): where the market/channel policy is {@code STORE_BILLING} the catalogue
+ * lists the credit packs sellable through the store ({@code fn_billing_store_pack_sellable}: ACTIVE pack, the market
+ * offers AI credits, an ACTIVE store mapping of this server's environment on a STORE_MANAGED price row of the market or
+ * of {@code ZZ}); each price carries {@code storeProductId} (the Play / RevenueCat product identifier) and the suggested
+ * RevenueCat offering and package, and its {@code listPrice} is a placeholder (renewal {@code STORE_MANAGED}): the store
+ * sets and charges the price, the app shows the store's formatted price. Store-billed plans keep coming from the
+ * RevenueCat offering in the app (unchanged). Such packs are never ordered: store purchases are reported to
+ * {@code POST /billing/store-purchases}. A build without store billing ({@code DIRECT_DOWNLOAD}, {@code WEB}) in a
+ * store-billing market gets {@code purchaseUiAllowed = false} and the {@link #NO_STORE_IN_BUILD} notice.
  */
 final class BillingCatalog {
 
@@ -40,14 +53,66 @@ final class BillingCatalog {
 			String renewalModel) {
 	}
 
+	/** {@code BillingOptions.notice} of a build without store billing in a store-billing market. */
+	static final String NO_STORE_IN_BUILD = "Purchases are not available in this version of the app. Install the app "
+			+ "from Google Play to buy plans or AI credits.";
+
 	private final JdbcTemplate jdbc;
 	private final ProviderRouting routing;
+	private final PaymentEnvironment environment;
 	private final Clock clock;
 
-	BillingCatalog(JdbcTemplate jdbc, ProviderRouting routing, Clock clock) {
+	BillingCatalog(JdbcTemplate jdbc, ProviderRouting routing, PaymentEnvironment environment, Clock clock) {
 		this.jdbc = jdbc;
 		this.routing = routing;
+		this.environment = environment;
 		this.clock = clock;
+	}
+
+	/**
+	 * {@code GET /billing/products}: the gateway price book of the market and channel, or, where the scope's policy is
+	 * meant for store billing, the store-sellable credit packs (whatever the policy's approval, as for gateway prices).
+	 */
+	List<ProductDto> listed(String marketCountry, String salesChannel) {
+		Channel channel = Channel.ofSalesChannel(salesChannel).orElseThrow();
+		Decision d = routing.decide(new ProviderRouting.Query(marketCountry, Confidence.HIGH, channel, null, null));
+		if ("STORE_BILLING".equals(d.policyFlow())) {
+			return channel.storeDistribution() ? storePacks(marketCountry, salesChannel, null) : List.of();
+		}
+		return products(marketCountry, salesChannel);
+	}
+
+	/**
+	 * Credit packs sellable through the store in {@code market} for {@code salesChannel}, one price each (the market's
+	 * own store row, else the {@code ZZ} one), with the store identifiers of the mapping.
+	 *
+	 * @param providerCode only mappings of this store provider, or null for any store provider
+	 */
+	List<ProductDto> storePacks(String market, String salesChannel, String providerCode) {
+		List<ProductDto> out = new ArrayList<>(jdbc.query("""
+				SELECT DISTINCT ON (bp.id) bp.product_code, bp.display_name, bp.description, bp.credit_units,
+				       bp.credit_validity_days, pr.amount_minor, pr.currency_code, c.minor_unit_exponent, pr.tax_behavior,
+				       pr.billing_period, pr.renewal_model, m.external_product_id, m.external_offer_id,
+				       m.metadata->>'revenueCatOffering', m.metadata->>'revenueCatPackage'
+				FROM billing_products bp
+				JOIN billing_prices pr ON pr.billing_product_id = bp.id
+				JOIN billing_currencies c ON c.currency_code = pr.currency_code
+				JOIN external_product_mappings m ON m.billing_price_id = pr.id
+				JOIN payment_providers p ON p.id = m.provider_id AND p.provider_type = 'APP_STORE'
+				WHERE bp.product_type = 'AI_CREDIT_PACK' AND pr.renewal_model = 'STORE_MANAGED'
+				  AND pr.billing_period = 'ONE_TIME' AND pr.sales_channel = ? AND pr.market_country_code IN (?, 'ZZ')
+				  AND m.is_active AND m.environment = ? AND (CAST(? AS TEXT) IS NULL OR p.provider_code = ?)
+				  AND fn_billing_store_pack_sellable(bp.id, ?, ?, ?)
+				ORDER BY bp.id, (pr.market_country_code = ?) DESC, m.created_at, m.id""",
+				(rs, i) -> new ProductDto(rs.getString(1), "AI_CREDIT_PACK", rs.getString(2), rs.getString(3), null,
+						rs.getBigDecimal(4).longValue(), (Integer) rs.getObject(5),
+						List.of(new PriceDto(rs.getString(10), rs.getString(11),
+								MoneyDto.of(rs.getLong(6), rs.getString(7), rs.getInt(8)), rs.getString(9), null,
+								rs.getString(12), rs.getString(13), rs.getString(14), rs.getString(15)))),
+				salesChannel, market, environment.name(), providerCode, providerCode, market, salesChannel,
+				environment.name(), market));
+		out.sort(Comparator.comparing(ProductDto::creditUnits).thenComparing(ProductDto::productCode));
+		return out;
 	}
 
 	List<PriceRow> prices(String marketCountry, String salesChannel) {
@@ -103,14 +168,23 @@ final class BillingCatalog {
 				resolution.confidence().name(), d.globalDefault());
 		boolean gatewayFlow = "LOCAL_GATEWAY_IN_APP".equals(d.purchaseFlow())
 				|| "EXTERNAL_WEB_CHECKOUT".equals(d.purchaseFlow());
+		boolean storeFlow = "STORE_BILLING".equals(d.purchaseFlow());
 		List<PaymentMethodOptionDto> methods = d.purchaseUiAllowed() ? methodDtos(d.methods(), null) : List.of();
-		List<ProductDto> products = d.purchaseUiAllowed() && gatewayFlow && !methods.isEmpty()
-				? products(d.marketCountry(), channel.salesChannel())
-				: List.of();
+		List<ProductDto> products = List.of();
+		if (d.purchaseUiAllowed() && gatewayFlow && !methods.isEmpty()) {
+			products = products(d.marketCountry(), channel.salesChannel());
+		}
+		else if (d.purchaseUiAllowed() && storeFlow && !methods.isEmpty()) {
+			// store-billed credit packs of the routed store provider (plans come from the store offering in the app)
+			products = storePacks(d.marketCountry(), channel.salesChannel(), methods.get(0).providerCode());
+		}
 		boolean allowed = d.purchaseUiAllowed() && !methods.isEmpty();
+		String notice = !allowed && !channel.storeDistribution() && "STORE_BILLING".equals(d.policyFlow())
+				? NO_STORE_IN_BUILD
+				: null;
 		return new BillingOptionsDto(d.marketCountry(), market, channel.platform(), channel.distribution(),
 				allowed ? d.purchaseFlow() : "NONE", allowed, allowed ? products : List.of(),
-				allowed ? methods : List.of(), null, now);
+				allowed ? methods : List.of(), notice, now);
 	}
 
 	/** Public method options in priority order; the first is the default. Exponent from the method's currency. */

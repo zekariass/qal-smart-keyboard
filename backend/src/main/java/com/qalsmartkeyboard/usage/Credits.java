@@ -26,6 +26,15 @@ public interface Credits {
 	CreditLot grant(UUID userId, BigDecimal units, CreditSource source, String sourceRef, Instant expiresAt);
 
 	/**
+	 * Creates the PURCHASE lot of a verified store purchase (a store-billed credit pack, T8.10): the lot points at the
+	 * {@code store_purchases} row instead of a payment order (V32: a PURCHASE lot is backed by exactly one of the two).
+	 * Idempotent by the store purchase: the lot id is derived from (user, PURCHASE, {@code "store:" + storePurchaseId}),
+	 * so a replay returns the existing lot with {@code created == false}; other units or expiry for the same purchase is
+	 * an {@link IllegalArgumentException}.
+	 */
+	CreditLot grantStorePurchase(UUID userId, BigDecimal units, UUID storePurchaseId, Instant expiresAt);
+
+	/**
 	 * Credit usable at {@code at}: lots with no expiry or {@code expiresAt > at}. Reads the lots, so a lot that expired
 	 * but is not yet swept does not count.
 	 */
@@ -39,6 +48,14 @@ public interface Credits {
 	 * @return the credits taken back (0 when nothing remained or the lot is unknown for the user)
 	 */
 	BigDecimal reverse(UUID userId, CreditSource source, String sourceRef);
+
+	/**
+	 * {@link #reverse} for the lot of a store purchase ({@link #grantStorePurchase}): the unused remainder is taken back
+	 * with one REVERSAL row, consumed credits stay consumed, never negative, idempotent.
+	 *
+	 * @return the credits taken back (0 for a replay, an unknown lot or a fully used one)
+	 */
+	BigDecimal reverseStorePurchase(UUID userId, UUID storePurchaseId);
 
 	/**
 	 * Corrects a lot by {@code delta} (positive up to the lot's {@code initial_units}, negative down to 0) with an

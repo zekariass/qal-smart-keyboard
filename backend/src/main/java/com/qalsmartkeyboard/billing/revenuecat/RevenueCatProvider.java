@@ -35,6 +35,7 @@ import com.qalsmartkeyboard.billing.spi.PaymentProviderException;
 import com.qalsmartkeyboard.billing.spi.PaymentProviderException.Kind;
 import com.qalsmartkeyboard.billing.spi.StoreBillingProvider;
 import com.qalsmartkeyboard.billing.spi.StoreCustomer;
+import com.qalsmartkeyboard.billing.spi.StoreNonSubscription;
 import com.qalsmartkeyboard.billing.spi.StoreNotification;
 import com.qalsmartkeyboard.billing.spi.StoreNotificationRequest;
 import com.qalsmartkeyboard.billing.spi.StoreSubscription;
@@ -61,7 +62,14 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code grace_period_expires_date}, {@code unsubscribe_detected_at}, {@code billing_issues_detected_at},
  * {@code refunded_at}, {@code auto_resume_date}, {@code is_sandbox}, {@code store}, {@code store_transaction_id}
  * (string or number), {@code period_type}, {@code ownership_type}, {@code product_plan_identifier} (Play base plan, when
- * present). Non-subscription purchases are not read (no plan is sold that way).</li>
+ * present). Each {@code subscriber.non_subscriptions.<product>[]} entry (one-time purchases: the credit-pack
+ * consumables, T8.10) becomes a {@link StoreNonSubscription}: {@code id}, {@code store_transaction_id} (string or number;
+ * for Play the order id {@code GPA.xxxx}, the same value webhooks carry as {@code transaction_id}), {@code purchase_date},
+ * {@code store}, {@code is_sandbox} and, when RevenueCat reports one, {@code refunded_at} (the v1 docs show only
+ * {@code id}, {@code is_sandbox}, {@code purchase_date} and {@code store}; the other fields are read when present, and
+ * an entry without {@code store_transaction_id} is never granted by the core).</li>
+ * <li>Webhook events name their store transactions in {@code transaction_id} / {@code original_transaction_id}
+ * ({@code NON_RENEWING_PURCHASE}, and {@code CANCELLATION} for a refunded one-time purchase).</li>
  * </ul>
  * Logs carry outcomes, HTTP statuses and codes only: never keys, header values, bodies or user attributes.
  */
@@ -208,8 +216,12 @@ public final class RevenueCatProvider implements StoreBillingProvider {
 		if (product == null) {
 			product = text(event.path("product_id"));
 		}
+		Set<String> transactions = new LinkedHashSet<>();
+		addText(transactions, event.path("transaction_id"));
+		addText(transactions, event.path("original_transaction_id"));
 		return new StoreNotification(truncate(id, 255), truncate(type.toUpperCase(Locale.ROOT), 120),
-				List.copyOf(users), product, environment, eventTime, redacted, "TEST".equalsIgnoreCase(type));
+				List.copyOf(users), product, environment, eventTime, redacted, "TEST".equalsIgnoreCase(type),
+				List.copyOf(transactions));
 	}
 
 	// ------------------------------------------------------------------------------------------------ REST
@@ -264,11 +276,30 @@ public final class RevenueCatProvider implements StoreBillingProvider {
 						text(s.path("ownership_type"))));
 			}
 		}
+		List<StoreNonSubscription> oneTime = new ArrayList<>();
+		JsonNode non = subscriber.path("non_subscriptions");
+		if (non.isObject()) {
+			for (Map.Entry<String, JsonNode> e : non.properties()) {
+				if (!e.getValue().isArray()) {
+					continue;
+				}
+				for (JsonNode t : e.getValue()) {
+					if (!t.isObject()) {
+						continue;
+					}
+					oneTime.add(new StoreNonSubscription(truncate(e.getKey(), 255), truncate(text(t.path("id")), 255),
+							truncate(text(t.path("store_transaction_id")), 255), lower(text(t.path("store"))),
+							t.path("is_sandbox").asBoolean(false) ? PaymentEnvironment.SANDBOX
+									: PaymentEnvironment.PRODUCTION,
+							instant(t.path("purchase_date")), instant(t.path("refunded_at"))));
+				}
+			}
+		}
 		String management = text(subscriber.path("management_url"));
 		if (management != null && !management.startsWith("https://")) {
 			management = null;
 		}
-		return new StoreCustomer(appUserId, management, subscriptions);
+		return new StoreCustomer(appUserId, management, subscriptions, oneTime);
 	}
 
 	private static JsonNode read(ClientHttpResponse response) throws IOException {

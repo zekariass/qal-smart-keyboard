@@ -25,7 +25,8 @@ public interface StoreBillingProvider {
 	StoreNotification parseNotification(StoreNotificationRequest request);
 
 	/**
-	 * Reads the customer's current store subscriptions server to server: the only input a grant may come from.
+	 * Reads the customer's store subscriptions and one-time purchases server to server: the only input a grant may come
+	 * from.
 	 *
 	 * @param appUserId our user id as the provider knows it
 	 * @throws PaymentProviderException when the provider cannot be reached ({@code UNAVAILABLE}), refuses our

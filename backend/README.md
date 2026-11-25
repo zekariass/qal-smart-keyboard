@@ -1347,9 +1347,10 @@ git-ignored dev secrets file and `QAL_LIVE_SANDBOX=1`,
 `AI_CREDIT_PACK`, 365-day validity, seeded **DRAFT**. Ethiopian prices (owner decision 2026-11-24): 49 / 199 / 499 ETB
 (`amount_minor` 4900 / 19900 / 49900), `ONE_TIME` + renewal `NONE`, tax INCLUSIVE (VAT still OI-10), for
 `ANDROID_DIRECT` and `ANDROID_GOOGLE_PLAY`. The SD guide prices (GBP 0.99 / 3.99 / 9.99) exist only as **inactive**
-`ZZ`/`ANDROID_GOOGLE_PLAY` reference rows: store-billed packs (RevenueCat consumables) are not implemented, so
-store-billing markets get 403 `BILLING_POLICY_DENIED` on `POST /billing/orders` exactly as for plans. Packs need no
-policy or route rows of their own: the ET market/channel policies and ArifPay/Chapa routes are per channel, not product.
+`ZZ`/`ANDROID_GOOGLE_PLAY` reference rows; outside Ethiopia packs are Play consumables through RevenueCat (V32, next
+section), and store-billing markets get 403 `BILLING_POLICY_DENIED` on `POST /billing/orders` exactly as for plans. Packs
+need no policy or route rows of their own: the ET market/channel policies and ArifPay/Chapa routes are per channel, not
+product.
 
 **Purchase.** `POST /api/v1/billing/orders` `{"productCode":"CREDITS_500","billingPeriod":"ONE_TIME","marketCountry":"ET",
 "salesChannel":"ANDROID_DIRECT"}` → `orderType: AI_CREDIT_TOPUP` (renewal `NONE`; an omitted/`MANUAL_RENEW` preference is
@@ -1375,7 +1376,8 @@ token), guests included, `no-store`.
 
 **QUOTA_EXCEEDED.** Unchanged order of consumption (allowance first, then credits). `upgradeOptions` lists a
 `CREDIT_PACK` (and a `PLAN`) only when it is ACTIVE with an active price in a market whose offerings include it
-(`fn_billing_offering_enabled`; the user's `market_country_code` when known); `creditBalance` is always present.
+(`fn_billing_offering_enabled`; the user's `market_country_code` when known), or, for a pack, when it is sellable through
+the store in the user's market (else `ZZ`; `fn_billing_store_pack_sellable`, V32); `creditBalance` is always present.
 
 **Market offerings.** `billing_market_offerings (market_country_code, offering SUBSCRIPTIONS | AI_CREDITS, is_enabled,
 revision)`: a market's own row, else the `ZZ` row (the default for every country), else **off**. Seeded: `ZZ`
@@ -1411,6 +1413,94 @@ switches): `PATCH /admin/v1/billing/products/CREDITS_500 {"productStatus":"ACTIV
 repeats, 8 concurrent verifications, late success on EXPIRED/CANCELLED, allowance-then-credits consumption and refund
 reversal, order refusals, the offering matrix incl. ZZ fallback and the QUOTA_EXCEEDED hint, admin permissions,
 validation, versioning and audit, `/me/credits` paging and ownership).
+
+## Billing: store-billed credit packs outside Ethiopia (T8.10, RevenueCat consumables)
+
+Owner rule (2026-11-25): all billing outside Ethiopia uses Google Play billing through RevenueCat; Ethiopia keeps
+ArifPay/Chapa (Play billing is not available there). Plans already worked that way (ADR 0046); V32 adds the packs.
+
+**Schema (V32).** A pack bought in the store is a `store_purchases` row with `purchase_type = CONSUMABLE` (subscriptions
+are `SUBSCRIPTION`, the default), `billing_product_id` (the pack), `store_transaction_id` (Play order id `GPA.…`, unique
+per provider: **the idempotency key**), its status (PENDING = verified but not grantable now, ACTIVE = granted, REFUNDED,
+EXPIRED = verified after the credits would have expired) and its append-only `store_purchase_events`. The lot points at
+it: `ai_credit_lots.store_purchase_id` (unique). `ck_credit_lot_purchase_order` is replaced by
+`ck_credit_lot_purchase_backing`: a PURCHASE lot has exactly one of `payment_order_id` / `store_purchase_id`, other lots
+never a store purchase. Lot ids stay deterministic (`Credits.grantStorePurchase`: user | PURCHASE | `store:<store purchase
+id>`). Store ids as for plans (V26): inactive STORE_MANAGED `ZZ`/`ANDROID_GOOGLE_PLAY` price rows (0 USD, the store sets
+the price) with inactive REVENUECAT mappings `credits_100` / `credits_500` / `credits_1500` (SANDBOX and PRODUCTION; no base
+plan; metadata `revenueCatOffering: credits`, `revenueCatPackage` = the product id). `fn_billing_store_pack_sellable`
+(ACTIVE pack + market offering + ACTIVE mapping) is shared by the catalogue and the QUOTA_EXCEEDED hint. Nothing is
+switched on: `ZZ` AI_CREDITS stays off and the `ZZ` Play policy REVIEW_REQUIRED.
+
+**Catalogue.** Where the market/channel policy is `STORE_BILLING`, `GET /billing/options` (approved policy) and
+`GET /billing/products` list the store-sellable packs: one `ONE_TIME` price, `renewalModel: STORE_MANAGED`,
+`storeProductId` (`credits_500`), `storeOfferingId` / `storePackageId` (RevenueCat), a placeholder `listPrice` (show the
+store's formatted price). Store plans keep coming from the RevenueCat offering in the app. `POST /billing/orders` in a
+store market stays 403 `BILLING_POLICY_DENIED`.
+
+**Purchase (verify, then grant).** The app buys `credits_500` with the RevenueCat SDK (App User ID = `userId`), then
+`POST /api/v1/billing/store-purchases` `{"provider":"REVENUECAT","productId":"credits_500","transactionId":"GPA.…",
+"distributionChannel":"GOOGLE_PLAY"}` (the A1 `GOOGLE_PLAY` shape works too; `transactionId` optional = the latest of the
+product). The server reads `GET /v1/subscribers/{userId}` and applies every `non_subscriptions` transaction of a mapped pack
+(`StoreConsumables`, inside the ADR 0046 sync: same transaction, same per-user advisory lock). A transaction is granted
+when it is of the honoured environment, has a store transaction id, maps through an ACTIVE mapping to an ACTIVE pack whose
+market (the mapping's price row, `ZZ`) offers AI credits and whose `STORE_BILLING` policy for the channel is approved with
+RevenueCat offered: one lot of the pack's units (snapshotted on first verification), expiring at the store's purchase
+time + validity, plus `GRANTED` event and an `audit_events` row (actor PROVIDER, `BILLING_STORE_CREDIT_PACK_GRANT`).
+Otherwise it is kept PENDING with `metadata.blockedReason` (`NOT_SELLABLE`, `MAPPING_INACTIVE`, `POLICY_DENIED`),
+re-checked on every later sync, and the report answers 422 `PRODUCT_NOT_AVAILABLE` or 403 `BILLING_POLICY_DENIED`.
+Unknown / not listed / another account's transaction: 422 `STORE_PURCHASE_INVALID`. `distributionChannel`
+`DIRECT_DOWNLOAD`/`WEB`: 403 before RevenueCat is called. Guests: 403 `GUEST_NOT_ALLOWED`.
+
+**Idempotency.** Client report, `NON_RENEWING_PURCHASE` webhook (which grants alone, e.g. when the app was closed: the
+webhook names `app_user_id`, the server re-reads that customer), duplicate deliveries (deduped by event id), other events
+about the same transaction, and concurrent calls all converge on the one row keyed by (provider, store transaction id):
+the per-user advisory lock serialises them, `INSERT … ON CONFLICT DO NOTHING` + the unique keys catch two users racing for
+one transaction (only the first verified owner is ever granted, e.g. after a RevenueCat transfer), the lot's unique
+`store_purchase_id` and deterministic primary key stop a second lot.
+
+**Refunds.** A `CANCELLATION` webhook naming the transaction (`transaction_id`) is applied only when RevenueCat confirms it:
+the transaction is no longer in `non_subscriptions`, or it carries `refunded_at` (also seen by any later sync). Then the
+purchase becomes REFUNDED and `Credits.reverseStorePurchase` takes back the **unused** remainder (one REVERSAL row; consumed
+credits stay consumed; never negative; replays reverse 0), with an event and an audit row
+(`BILLING_STORE_CREDIT_PACK_REFUND`, reversed credits, `cancel_reason`). A cancellation the API contradicts reverses
+nothing: the webhook fails with `REFUND_NOT_CONFIRMED` and the outbox retries it (DEAD after the retry limit: check
+manually). A refunded purchase is never granted again. Subscription refunds are unchanged (ADR 0046).
+
+**Direct download.** Play Billing exists only for apps installed from Google Play. `ProviderRouting` never offers a store
+provider to a `DIRECT_DOWNLOAD` / `WEB` build (`NO_STORE_IN_CHANNEL`), whatever the policy says; in a store-billing market
+`/billing/options` answers `purchaseUiAllowed: false`, `purchaseFlow: NONE` and the notice "Purchases are not available in
+this version of the app. Install the app from Google Play to buy plans or AI credits." The V25 `ZZ/ANDROID/DIRECT_DOWNLOAD`
+policy (STORE_BILLING, REVIEW_REQUIRED, no purchase UI) is left as it is: never approve it.
+
+**RevenueCat payload assumptions** (v1 docs show only `id`, `is_sandbox`, `purchase_date`, `store` for
+`non_subscriptions`): entries also carry `store_transaction_id` (the SDK's `Transaction` model reads it; for Play the order
+id, the same value webhooks send as `transaction_id`); an entry without it is logged and never granted. A refunded
+consumable is removed from `non_subscriptions` or carries `refunded_at`; both are handled. Products are configured in
+RevenueCat as **consumables** so the SDK consumes them (they can be bought again).
+
+**Store-billed credit packs: go-live** (besides ADR 0046's RevenueCat checklist; OI-PAY-7 merchant account first):
+1. Play Console: in-app products (consumable) `credits_100`, `credits_500`, `credits_1500` with their prices.
+2. RevenueCat: the same product identifiers (type consumable), an offering `credits` with packages of the same names (or
+   change the mappings' `revenueCatOffering` / `revenueCatPackage` metadata), webhook to
+   `/api/v1/billing/store-notifications/REVENUECAT` with `REVENUECAT_WEBHOOK_AUTH` (and the optional signing secret).
+3. Data (FINANCE / reviewer):
+   ```sql
+   UPDATE external_product_mappings SET is_active = TRUE
+    WHERE environment = 'PRODUCTION' AND external_product_id IN ('credits_100', 'credits_500', 'credits_1500')
+      AND provider_id = (SELECT id FROM payment_providers WHERE provider_code = 'REVENUECAT');
+   ```
+   packs ACTIVE (`PATCH /admin/v1/billing/products/CREDITS_500 {"productStatus":"ACTIVE"}`, same for 100/1500); offering
+   `PUT /admin/v1/billing/market-offerings/ZZ` with `AI_CREDITS` enabled (a country can opt out with its own row); the
+   `ZZ/ANDROID/GOOGLE_PLAY` policy APPROVED with `purchase_ui_allowed` (named reviewer, ADR 0046 step 5).
+4. Verify with a license tester: options list the packs, a purchase grants one lot, a refund from Play Console reverses it.
+
+**Tests.** `StoreCreditPacksIT` (listing and store ids, order refusal, report → verified grant → `/me/credits`, every
+repeat order of report/webhook/replay, webhook-only grant, 8 concurrent reports + a webhook → one lot, refunds confirmed by
+the API only and reversing only unused credits, refusals incl. another account / transfer / environment / pending until the
+gate opens / direct-download / guest, direct-download options notice, QUOTA_EXCEEDED hint, ledger invariant),
+`RevenueCatProviderTest` (non_subscriptions and event transaction ids), `ProviderRoutingTest` (no store provider for a
+sideloaded build); `BillingChapaRevenueCatIT` covers the unchanged subscription flow.
 
 ## Contract tests
 
