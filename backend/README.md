@@ -722,7 +722,7 @@ models); every server feature is re-checked on each call.
   -> boolean), `policyVersion`, `ver` (1), `iat`, `exp` = iat + `qal.entitlements.token.ttl` (24h, at most 24h) but never later than the winning source's end +
   `qal.entitlements.renewal-lag` (no lag for a GRACE_PERIOD source; ADR 0007 D27),
   `offlineGraceUntil` = exp + `offline-grace` (72h, at most 72h), `jti`. No personal data, allowances or usage.
-- **Offline gates:** `qal.entitlements.token.offline-features` (default `ON_DEVICE_AI_MODELS`, `PREMIUM_THEMES`). Only gated features
+- **Offline gates:** `qal.entitlements.token.offline-features` (default `ON_DEVICE_AI_MODELS`, `PREMIUM_THEMES`, `STICKER_MAKER`, `CARD_MAKER`, `IMAGE_ANNOTATOR`; the creative-tool gates work offline, T8.7). Only gated features
   with unit `NONE` are written; metered (server AI) or unknown codes are left out with a warning.
 - **Rate limit:** `GET /me/entitlements/token` 60 per hour per user (`platform.ratelimit` policy `entitlements.token.user`), 429
   `RATE_LIMITED` with `Retry-After`/`RateLimit-*`.
