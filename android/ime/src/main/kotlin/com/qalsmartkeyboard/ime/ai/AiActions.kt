@@ -69,9 +69,9 @@ fun interface AiCall {
 
 /**
  * What a request is metered as: one value per contract `FeatureCode` the keyboard uses. [TONE] is `TONE_ADJUST`
- * ("make professional", a rewrite with a tone), [REPLY] `SMART_REPLY`, [EMAIL] `DRAFT_DOCUMENT` (ADR 0027).
+ * ("make professional", a rewrite with a tone), [REPLY] `SMART_REPLY`, [EMAIL] `DRAFT_DOCUMENT` (ADR 0027), [CHAT] `AI_CHAT` (T8.5).
  */
-enum class AiTaskKind { TRANSLATE, GRAMMAR, REWRITE, TONE, EXPLAIN, SUMMARIZE, REPLY, EMAIL, FORMAT }
+enum class AiTaskKind { TRANSLATE, GRAMMAR, REWRITE, TONE, EXPLAIN, SUMMARIZE, REPLY, EMAIL, FORMAT, CHAT }
 
 /** Contract `targetLength` (SUMMARIZE) and `DraftRequest.length`. */
 enum class AiLength { SHORT, MEDIUM, LONG }
@@ -190,6 +190,16 @@ sealed interface AiTask {
         override fun toString() = "Email($spec)"
     }
 
+    /**
+     * `POST /ai/chat` (T8.5, ADR 0048): one turn of the writing-assistant chat. The server keeps no conversation: [messages]
+     * is the window the client resends (oldest first, the last one a user turn, [ChatWindow] keeps it within the limits).
+     * [language] is the language of the reply (null: the language of the last user message); [fieldText] is the host field's
+     * text, attached only by the user's tap on "Use text in field". Everything here is user text: [toString] prints none.
+     */
+    data class Chat(val messages: List<ChatTurn>, val language: String? = null, val fieldText: String? = null) : AiTask {
+        override fun toString() = "Chat(${messages.size} turns, $language)"
+    }
+
     val kind: AiTaskKind
         get() = when (this) {
             is Translate -> AiTaskKind.TRANSLATE
@@ -201,7 +211,18 @@ sealed interface AiTask {
             is Summarize -> AiTaskKind.SUMMARIZE
             is Reply -> AiTaskKind.REPLY
             is Email -> AiTaskKind.EMAIL
+            is Chat -> AiTaskKind.CHAT
         }
+}
+
+/** Who wrote a chat turn (contract `ChatMessage.role`; there is no system role). */
+enum class ChatRole { USER, ASSISTANT }
+
+/** One turn of a chat. [text] is user content or model output: never log or persist it. */
+class ChatTurn(val role: ChatRole, val text: String) {
+    override fun toString() = "ChatTurn($role)"
+    override fun equals(other: Any?) = other is ChatTurn && other.role == role && other.text == text
+    override fun hashCode() = role.hashCode() * 31 + text.hashCode()
 }
 
 /** [text] is user text: never log or persist a request. */
@@ -235,6 +256,8 @@ class AiResult(
     val subject: String? = null,
     /** E-mail: the bracketed items the user must fill in (`[date]`), as the server listed them. */
     val placeholders: List<String> = emptyList(),
+    /** Chat: the reply was cut off at the provider's output limit (`finishReason: LENGTH`); offer "Continue". */
+    val truncated: Boolean = false,
 ) {
     override fun toString() = "AiResult"
 }

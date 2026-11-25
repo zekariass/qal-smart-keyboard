@@ -4,10 +4,10 @@ import com.qalsmartkeyboard.ime.FieldTyping
 import com.qalsmartkeyboard.ime.TextSink
 
 /** Which AI panel replaces the key area (ADR 0031). */
-enum class AiScreen { CLOSED, ASSIST, EMAIL }
+enum class AiScreen { CLOSED, ASSIST, EMAIL, CHAT }
 
 /**
- * The AI panels that replace the key area (ADR 0031): AI Assist and Write Email. Holds one of them open at a time,
+ * The AI panels that replace the key area (ADR 0031): AI Assist, Write Email and the Ask AI chat (T8.5). Holds one of them open at a time,
  * creates each lazily on first use, and exposes the field the keys type into ([fieldTyping], used by the keyboard
  * controller's redirect). Free of Views; the service renders it.
  */
@@ -20,6 +20,9 @@ class AiWorkspace(
     keyboardLanguage: () -> String,
     translateDefault: () -> String,
     newKey: () -> String = AiRunner::uuid,
+    /** The Ask AI chat's hooks: AI is allowed in the focused field; the user turn that asks for the rest of a cut-off reply. */
+    chatFieldAllowed: () -> Boolean = { true },
+    chatContinueText: () -> String = { "Continue" },
     private val onChanged: () -> Unit = {},
 ) {
     var screen: AiScreen = AiScreen.CLOSED
@@ -33,8 +36,16 @@ class AiWorkspace(
         AiEmailController(actions, editor, clipboard, prefs, post, newKey) { onChanged() }
     }
 
+    val chat: ChatController by lazy {
+        ChatController(
+            actions, editor, clipboard, post, keyboardLanguage, chatFieldAllowed, chatContinueText, newKey,
+            refresh = { actions.refresh() },
+        ) { onChanged() }
+    }
+
     private var assistUsed = false
     private var emailUsed = false
+    private var chatUsed = false
 
     val isOpen: Boolean get() = screen != AiScreen.CLOSED
 
@@ -63,9 +74,21 @@ class AiWorkspace(
         onChanged()
     }
 
+    /** Opens the Ask AI chat (T8.5) in place of the keys. Nothing is read or sent by opening it. */
+    fun openChat() {
+        if (screen == AiScreen.CHAT) return
+        if (!chat.allowed) return
+        closeOther()
+        screen = AiScreen.CHAT
+        chatUsed = true
+        chat.open()
+        onChanged()
+    }
+
     private fun closeOther() {
         if (screen == AiScreen.ASSIST) assist.close()
         if (screen == AiScreen.EMAIL) email.close()
+        if (screen == AiScreen.CHAT) chat.close()
     }
 
     /** Back to the keyboard: every running call is cancelled and every text is dropped. */
@@ -80,6 +103,7 @@ class AiWorkspace(
     fun discard() {
         if (assistUsed) assist.close()
         if (emailUsed) email.close()
+        if (chatUsed) chat.close()
         screen = AiScreen.CLOSED
     }
 
@@ -88,6 +112,7 @@ class AiWorkspace(
         get() = when (screen) {
             AiScreen.ASSIST -> assist.typingField
             AiScreen.EMAIL -> email.typingField
+            AiScreen.CHAT -> chat.typingField
             AiScreen.CLOSED -> null
         }
 
@@ -101,7 +126,7 @@ class AiWorkspace(
         get() = when (screen) {
             AiScreen.ASSIST -> true
             AiScreen.EMAIL -> email.typing?.multiline ?: true
-            AiScreen.CLOSED -> false
+            AiScreen.CHAT, AiScreen.CLOSED -> false
         }
 
     /** Ends typing: the panel is back. The caller commits the open composition first (it goes into the field). */
@@ -109,6 +134,7 @@ class AiWorkspace(
         when (screen) {
             AiScreen.ASSIST -> assist.endTyping()
             AiScreen.EMAIL -> email.endTyping()
+            AiScreen.CHAT -> chat.endTyping()
             AiScreen.CLOSED -> Unit
         }
     }
@@ -117,6 +143,9 @@ class AiWorkspace(
         override val sink: TextSink get() = typingField?.sink ?: NoSink
         override val newlineOnEnter: Boolean get() = typingMultiline
         override fun done() = endTyping()
+
+        // Enter in the chat's message sends it (the panel shows the answer); the other fields just end the typing.
+        override fun submit() = if (screen == AiScreen.CHAT) chat.onEnter() else done()
     }
 
     /** For `KeyboardController.fieldTyping`: non-null while the keys type into a panel field. */
@@ -136,6 +165,12 @@ class AiWorkspace(
                 email.typing != null -> email.endTyping()
                 email.step == AiEmailStep.Working -> email.cancel()
                 email.step != AiEmailStep.Compose -> email.backToCompose()
+                else -> close()
+            }
+            AiScreen.CHAT -> when {
+                chat.typing -> chat.endTyping()
+                chat.languagePickerOpen -> chat.toggleLanguagePicker()
+                chat.busy -> chat.cancel()
                 else -> close()
             }
         }

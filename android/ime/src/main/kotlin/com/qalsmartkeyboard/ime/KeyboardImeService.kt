@@ -41,6 +41,8 @@ import com.qalsmartkeyboard.ime.ai.AiLanguagePrefs
 import com.qalsmartkeyboard.ime.ai.AiLanguages
 import com.qalsmartkeyboard.ime.ai.AiLink
 import com.qalsmartkeyboard.ime.ai.AiPanelView
+import com.qalsmartkeyboard.ime.ai.AiScreen
+import com.qalsmartkeyboard.ime.ai.ChatPanelView
 import com.qalsmartkeyboard.ime.ai.AiWorkspace
 import com.qalsmartkeyboard.ime.ai.SystemAiClipboard
 import com.qalsmartkeyboard.ime.ai.AiToolbarController
@@ -524,6 +526,7 @@ class KeyboardImeService : InputMethodService() {
         }
         override fun openAssist(action: AiAssistAction?) = openAiPanel(email = false, action = action)
         override fun openEmail() = openAiPanel(email = true)
+        override fun openChat() = openAiPanel(email = false, chat = true)
     }
 
     /** The field looks like an e-mail body (a mail app's compose field): Write Email is the AI tools' first tile. */
@@ -584,6 +587,7 @@ class KeyboardImeService : InputMethodService() {
     // open, never on the keyboard's start-up path.
     private var aiWorkspace: AiWorkspace? = null
     private var aiPanelView: AiPanelView? = null
+    private var chatPanelView: ChatPanelView? = null
     private var aiFieldBar: AiFieldBar? = null
     private var aiPanelDirty = false
     private var aiShownLanguage: String? = null
@@ -706,6 +710,9 @@ class KeyboardImeService : InputMethodService() {
             keyboardLanguage = { controller.language },
             // AI Assist's Translate goes where the translate panel's direction points (one source of truth, ADR 0037).
             translateDefault = { translate?.destination?.language ?: AiLanguages.defaultTarget(controller.language) },
+            // Ask AI (T8.5): the chat opens and reads the field only where AI is allowed (never in password or raw-key fields).
+            chatFieldAllowed = { controller.profile.allowsAi },
+            chatContinueText = { ui.getString(R.string.chat_continue_message) },
             onChanged = {
                 aiPanelDirty = true
                 refreshViews()
@@ -761,15 +768,31 @@ class KeyboardImeService : InputMethodService() {
             it.theme = resolvedTheme.theme
         }
         col.addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        // The Ask AI chat (T8.5) shares the AI panels' height and the typing strip above the keys.
+        val chat = ChatPanelView(ui).also {
+            it.controller = ws.chat
+            it.visibility = View.GONE
+            it.heightProvider = { aiPanelHeightPx(keys) }
+            it.onLink = ::openCompanion
+            it.onBack = { handleAiBack() }
+            it.onClose = { closeAiPanels() }
+            it.onApplied = ::onAiApplied
+            it.haptics = { controller.prefs.hapticsEnabled }
+            it.beforeEdit = { controller.commitComposition() }
+            it.clipboard = SystemAiClipboard(ui).forEditor()
+            it.theme = resolvedTheme.theme
+        }
+        col.addView(chat, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         aiFieldBar = strip
         aiPanelView = panel
+        chatPanelView = chat
     }
 
     /**
      * An AI tools tile (Assist, Email, or Reply / Explain / Summarise in Assist): the panel takes the key area; voice, emoji
      * and the quick actions' panel close first.
      */
-    private fun openAiPanel(email: Boolean, action: AiAssistAction? = null) {
+    private fun openAiPanel(email: Boolean, action: AiAssistAction? = null, chat: Boolean = false) {
         val ws = workspace() ?: return
         voice.cancel()
         tools.close()
@@ -778,8 +801,20 @@ class KeyboardImeService : InputMethodService() {
         aiToolbar?.close()
         aiToolbar?.onToolbarOpened() // the plan state behind the Premium marks (throttled, sends no text)
         ensureAiPanelViews(ws)
-        if (email) ws.openEmail() else ws.openAssist(action)
+        if (chat) ws.openChat() else if (email) ws.openEmail() else ws.openAssist(action)
         aiPanelDirty = true
+        refreshViews()
+    }
+
+    /** The panels' Back (a chat's header arrow): typing → panel, a running call cancels, else the panel closes. */
+    private fun handleAiBack() {
+        val ws = aiWorkspace ?: return
+        if (ws.typing) controller.commitComposition()
+        ws.back()
+        if (!ws.isOpen) {
+            aiPanelView?.reset()
+            controller.onCompositionAbandoned()
+        }
         refreshViews()
     }
 
@@ -1166,6 +1201,7 @@ class KeyboardImeService : InputMethodService() {
         val space = View(ui).also { headroom = it }
         // A new input view: the AI panel views (if any) belonged to the old one and are created again on the next open.
         aiPanelView = null
+        chatPanelView = null
         aiFieldBar = null
         aiWorkspace?.discard()
         val column = KeyboardColumn(ui, space, (POPUP_HEADROOM_DP * d).toInt()) { k.backgroundFill }.also { this.column = it }.apply {
@@ -1420,6 +1456,7 @@ class KeyboardImeService : InputMethodService() {
         // keys are back and the field strip takes the bar's place (like Word Art).
         val ws = aiWorkspace
         val aiPanelShown = ws?.showsPanel == true && aiPanelView != null
+        val chatShown = aiPanelShown && ws?.screen == AiScreen.CHAT
         val aiTyping = ws?.typing == true && aiFieldBar != null
         strip?.let {
             it.visibility = View.VISIBLE
@@ -1545,13 +1582,19 @@ class KeyboardImeService : InputMethodService() {
             }
         }
         aiPanelView?.let {
+            val shown = aiPanelShown && !chatShown
             val was = it.visibility == View.VISIBLE
-            it.visibility = if (aiPanelShown) View.VISIBLE else View.GONE
-            if (aiPanelShown && (aiPanelDirty || !was)) {
-                aiPanelDirty = false
+            it.visibility = if (shown) View.VISIBLE else View.GONE
+            if (shown && (aiPanelDirty || !was)) {
                 it.render()
             }
         }
+        chatPanelView?.let {
+            val was = it.visibility == View.VISIBLE
+            it.visibility = if (chatShown) View.VISIBLE else View.GONE
+            if (chatShown && (aiPanelDirty || !was)) it.render()
+        }
+        if (aiPanelShown) aiPanelDirty = false
         // The Detect source of the translation direction follows the keyboard language.
         if (aiShownLanguage != controller.language) {
             aiShownLanguage = controller.language

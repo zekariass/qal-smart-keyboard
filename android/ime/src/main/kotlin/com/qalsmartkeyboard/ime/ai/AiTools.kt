@@ -34,7 +34,8 @@ enum class AiQuickAction(val task: AiTask) {
  * - [REPLY], [EXPLAIN] and [SUMMARIZE] open AI Assist on that action (ADR 0031): they read a received or selected text
  *   (the selection, or a copied message pasted on a tap) and their result is inserted, not swapped in (`/ai/replies`,
  *   `/ai/transform`);
- * - [EMAIL] opens Write Email (`/ai/drafts`), [ASSIST] opens AI Assist as it was left.
+ * - [EMAIL] opens Write Email (`/ai/drafts`), [ASSIST] opens AI Assist as it was left;
+ * - [CHAT] ("Ask AI", T8.5) opens the in-keyboard writing-assistant chat (`/ai/chat`).
  */
 enum class AiTool(val icon: ToolIcon, val quick: AiQuickAction? = null, val assist: AiAssistAction? = null) {
     TRANSLATE(ToolIcon.TRANSLATE),
@@ -59,6 +60,7 @@ enum class AiTool(val icon: ToolIcon, val quick: AiQuickAction? = null, val assi
     CONFIDENT(ToolIcon.CONFIDENT, quick = AiQuickAction.CONFIDENT),
     FUNNY(ToolIcon.FUNNY, quick = AiQuickAction.FUNNY),
     PERSUASIVE(ToolIcon.PERSUASIVE, quick = AiQuickAction.PERSUASIVE),
+    CHAT(ToolIcon.CHAT),
     ASSIST(ToolIcon.ASSIST),
     ;
 
@@ -72,7 +74,8 @@ enum class AiTool(val icon: ToolIcon, val quick: AiQuickAction? = null, val assi
     fun lockedBy(a: AiAvailability): Boolean = when (this) {
         TRANSLATE -> a.locks(AiTaskKind.TRANSLATE)
         EMAIL -> a.locks(AiTaskKind.EMAIL)
-        ASSIST -> AiTaskKind.entries.filter { it != AiTaskKind.EMAIL }.all { a.locks(it) }
+        CHAT -> a.locks(AiTaskKind.CHAT)
+        ASSIST -> AiTaskKind.entries.filter { it != AiTaskKind.EMAIL && it != AiTaskKind.CHAT }.all { a.locks(it) }
         else -> a.locks(quick?.task?.kind ?: assist!!.kind)
     }
 
@@ -83,6 +86,7 @@ enum class AiTool(val icon: ToolIcon, val quick: AiQuickAction? = null, val assi
         when {
             this == TRANSLATE -> host.openTranslate()
             this == EMAIL -> host.openEmail()
+            this == CHAT -> host.openChat()
             this == ASSIST -> host.openAssist(null)
             q != null -> host.runQuick(q)
             action != null -> host.openAssist(action)
@@ -104,6 +108,9 @@ interface AiToolHost {
     fun openAssist(action: AiAssistAction?)
 
     fun openEmail()
+
+    /** Opens the Ask AI chat in place of the keys (T8.5). */
+    fun openChat()
 }
 
 object AiToolSet {
