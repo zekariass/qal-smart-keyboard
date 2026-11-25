@@ -189,6 +189,43 @@ class BillingClientTest {
         assertEquals("ACTIVE", res.status)
     }
 
+    @Test fun storeCreditPacksCarryTheStoreIdentifiers() = runBlocking {
+        val pack = """{"productCode":"CREDITS_100","productType":"AI_CREDIT_PACK","displayName":"100 AI credits","creditUnits":100,"creditValidityDays":365,
+            "prices":[{"billingPeriod":"ONE_TIME","renewalModel":"STORE_MANAGED","listPrice":{"amountMinor":1,"currency":"USD","exponent":2},
+            "storeProductId":"credits_100","storeOfferingId":"credits","storePackageId":"credits_100_pkg"}]}"""
+        server.enqueue(json(200, OPTIONS.replace("\"products\":[", "\"products\":[$pack,")))
+        val price = billing.options().products.first { it.productType == "AI_CREDIT_PACK" }.prices.single()
+        assertEquals("STORE_MANAGED", price.renewalModel)
+        assertEquals("credits_100", price.storeProductId)
+        assertEquals("credits", price.storeOfferingId)
+        assertEquals("credits_100_pkg", price.storePackageId)
+        server.enqueue(json(200, OPTIONS))
+        assertNull(billing.options().products.single().prices.first().storeOfferingId)
+    }
+
+    @Test fun aCreditPackReportCarriesTheTransactionIdAndTheChannelAndParsesTheGrant() = runBlocking {
+        server.enqueue(json(200, """{"storePurchaseId":"$SUB_ID","status":"ACTIVE","environment":"SANDBOX","purchaseType":"CONSUMABLE","productCode":"CREDITS_100",
+            "transactionId":"GPA.1234-5678","creditUnits":100,"creditsExpireAt":"2027-11-24T09:46:40Z","creditLotId":"$SUB_ID"}"""))
+        val res = billing.reportStorePurchase(UUID.randomUUID(), "credits_100", "tok", "com.qalsmartkeyboard.app", transactionId = "GPA.1234-5678")
+        val body = Json.parseToJsonElement(server.takeRequest().body.readUtf8()) as JsonObject
+        assertEquals(JsonPrimitive("GPA.1234-5678"), body["transactionId"])
+        assertEquals(JsonPrimitive("GOOGLE_PLAY"), body["distributionChannel"])
+        assertEquals(JsonPrimitive("credits_100"), body["productId"])
+        assertEquals("CONSUMABLE", res.purchaseType)
+        assertEquals("CREDITS_100", res.productCode)
+        assertEquals("GPA.1234-5678", res.transactionId)
+        assertEquals(100L, res.creditUnits)
+        assertEquals(SUB_ID, res.creditLotId)
+        assertEquals(java.time.Instant.parse("2027-11-24T09:46:40Z").toEpochMilli(), res.creditsExpireAtMs)
+        // A subscription report sends no transaction id; a pending consumable has no lot yet.
+        server.enqueue(json(200, """{"storePurchaseId":"$SUB_ID","status":"PENDING","environment":"SANDBOX","purchaseType":"CONSUMABLE"}"""))
+        val pending = billing.reportStorePurchase(UUID.randomUUID(), "premium_monthly", "tok", "pkg")
+        val sub = Json.parseToJsonElement(server.takeRequest().body.readUtf8()) as JsonObject
+        assertNull(sub["transactionId"])
+        assertEquals("PENDING", pending.status)
+        assertNull(pending.creditLotId)
+    }
+
     @Test fun aBuildWithoutAChannelCannotAskForOptions() = runBlocking {
         try {
             client(null).options()

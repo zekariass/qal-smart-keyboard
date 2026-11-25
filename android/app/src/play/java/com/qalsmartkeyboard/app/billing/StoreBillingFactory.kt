@@ -20,10 +20,14 @@ class RevenueCatStoreBilling(private val rc: RevenueCatStore, private val packag
     override suspend fun offers(appUserId: String): List<StoreOffer> =
         rc.offers(appUserId).map { StoreOffer(it.id, it.productId, it.period, it.title, it.price) }
 
-    override suspend fun purchase(host: PurchaseHost, appUserId: String, offerId: String): StorePurchaseOutcome =
-        when (val r = rc.purchase(host.activity(), appUserId, offerId)) {
-            is RcOutcome.Purchased -> StorePurchaseOutcome.Purchased(r.productId, r.purchaseToken, packageName)
+    override suspend fun offering(appUserId: String, offeringId: String): List<StoreOffer> =
+        rc.offering(appUserId, offeringId).map { StoreOffer(it.id, it.productId, it.period, it.title, it.price) }
+
+    override suspend fun purchase(host: PurchaseHost, appUserId: String, offerId: String, offeringId: String?): StorePurchaseOutcome =
+        when (val r = rc.purchase(host.activity(), appUserId, offerId, offeringId)) {
+            is RcOutcome.Purchased -> StorePurchaseOutcome.Purchased(r.productId, r.purchaseToken, packageName, r.transactionId)
             RcOutcome.Pending -> StorePurchaseOutcome.Pending
+            RcOutcome.AlreadyOwned -> StorePurchaseOutcome.AlreadyOwned
             RcOutcome.Cancelled -> StorePurchaseOutcome.Cancelled
             is RcOutcome.Failed -> StorePurchaseOutcome.Failed(r.code)
         }

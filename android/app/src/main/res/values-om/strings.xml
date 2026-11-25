@@ -554,8 +554,9 @@
     <string name="pay_error_body">Gama keenyaan rakkoon uumame. Yeroo muraasaan booda irra deebi\'ii yaali.</string>
     <string name="pay_retry">Irra deebi\'ii yaali</string>
     <string name="pay_unavailable_title">Paakeejiiwwan ammaaf asitti hin argaman</string>
+    <string name="pay_unavailable_store_title">Gosa kana keessatti bituun hin danda\'amu</string>
     <string name="pay_unavailable_body">Gosa appii kanaan naannoo kee keessatti paakeejiiwwan bituun ammaaf hin danda\'amu. Paakeejiin kee amma qabdu fi wanti bilbila kee irra jiru hundi hojjechuu itti fufu.</string>
-    <string name="pay_unavailable_store_body">Gosti appii kanaa naannoo kee keessatti paakeejiiwwan bituu hin danda\'u. Galmaa\'uuf Qal Smart Keyboard Google Play irraa buufadhu.</string>
+    <string name="pay_unavailable_store_body">Gosti appii kanaa paakeejii yookaan kireedii AI bituu hin danda\'u. Bituuf Qal Smart Keyboard Google Play irraa buufadhu.</string>
     <string name="pay_msg_offline">Walqunnamtiin hin jiru. Interneetii kee mirkaneessii irra deebi\'ii yaali.</string>
     <string name="pay_msg_server">Rakkoon uumame. Yeroo muraasaan booda irra deebi\'ii yaali.</string>
     <string name="pay_msg_needs_account">Paakeejii bituuf herreegaan seeni.</string>
@@ -571,6 +572,7 @@
     <string name="pay_still_title">Ammallee mirkaneessaa jira. Si beeksifna</string>
     <string name="pay_still_body">Kaffaltiin kee ammaaf hin mirkanoofne. Yoo kaffalte, akkuma mirkanaa\'een paakeejiin kee ni banama.</string>
     <string name="pay_store_still_body">Google Play bittaa kee qaba. Akkuma nuti mirkaneessineen paakeejiin kee ni banama.</string>
+    <string name="pay_store_credits_still_body">Google Play bittaa kee qaba. Akkuma nuti mirkaneessineen kireediin kee asitti mul\'ata, fuula kana yoo dhiistellee.</string>
     <string name="pay_refresh">Haaromsi</string>
     <string name="pay_reopen">Fuula kaffaltii irra deebi\'ii bani</string>
     <string name="pay_not_completed_title">Kaffaltiin hin xumuramne</string>
@@ -609,6 +611,7 @@
     <string name="pay_pack_terms_short">Al tokko bitachuu · maallaqni ji\'aan hin baasu</string>
     <string name="pay_pack_buy">Gatii %1$s bitadhaa</string>
     <string name="pay_credits_terms">Kireediin al tokko kaffalama. Homtuu hin haaromfamu, ofumaan homtuu hin baafamu. Kireediin duraan xumuramu duraan fayyadama.</string>
+    <string name="pay_credits_terms_store">Google Play gatii agarsiifame al tokko kaffalcha. Homtuu hin haaromfamu, ofumaan homtuu hin baafamu. Kireediin duraan xumuramu duraan fayyadama.</string>
     <string name="pay_credits_guest_note">Kireedii bituuf herregni barbaachisa, kanaaf kireediin keessan bilbila kamiyyuu irratti kan keessan ta\'ee ni turaa.</string>
     <string name="pay_credits_history">Seenaa kireedii</string>
     <string name="pay_credits_paid_title">Kireediin dabalameera</string>
@@ -636,4 +639,10 @@
         <item quantity="other">guyyaa %1$d tajaajila</item>
     </plurals>
     <string name="plans_account_summary">Paakeejii kee, gatiiwwan fi kaffaltii</string>
+    <!-- ADR 0049: dictation follow-ups and insert language. DRAFT (N9). -->
+    <string name="settings_voice_follow_ups">Sagalee barreessuun booda \'Seerluga sirreessi\' / \'Hiiki\' dhiheessi</string>
+    <string name="settings_voice_insert_in">Sagalee itti barreessu</string>
+    <string name="settings_voice_insert_as_spoken">Akka dubbatametti</string>
+    <string name="settings_voice_insert_as_spoken_hint">Waan dubbattan sirriitti barreessi, hiikaa malee</string>
+    <string name="settings_voice_insert_body">Sagaleen barreeffamuu isaa dura gara afaan kanaatti hiikama. Hiikuun yoo hin danda\'amne, waan dubbattan akka dubbatametti barreeffama.</string>
 </resources>

@@ -88,7 +88,14 @@ data class CreditPack(
     val credits: Long,
     val validityDays: Int?,
     val price: Money,
+    /** The market's formatted price; in a store market the **store's** formatted price (null: not known, a guest). */
     val displayPrice: String?,
+    /** Store billing: the store (Play / RevenueCat) product id the server maps this pack to. */
+    val storeProductId: String? = null,
+    /** Store billing: the RevenueCat offering holding the pack's package (`credits`). */
+    val storeOfferingId: String? = null,
+    /** Store billing: the RevenueCat package identifier the app resolved in that offering (the store returned it). */
+    val storePackageId: String? = null,
 ) {
     val key: String get() = "$productCode/$PERIOD"
 
@@ -184,6 +191,8 @@ data class CheckoutState(
     val finalStatus: String? = null,
     /** A store purchase waits for the server to confirm it. */
     val store: Boolean = false,
+    /** The store purchase is a credit pack (T8.10), not a plan. */
+    val credits: Boolean = false,
 )
 
 data class PlansState(
@@ -197,7 +206,7 @@ data class PlansState(
     /** Payment options in the server's order: the default first. */
     val methods: List<PaymentMethod> = emptyList(),
     val storeOffers: List<StoreOffer> = emptyList(),
-    /** The credit packs this market sells (empty: no credits section). Gateway flow only. */
+    /** The credit packs this market sells (empty: no credits section); in the store flow only those the store returned. */
     val packs: List<CreditPack> = emptyList(),
     /** The balance, or null while unknown (not loaded, or the call failed). */
     val credits: CreditsInfo? = null,
@@ -212,6 +221,14 @@ data class PlansState(
     val notice: String? = null,
 ) {
     val selected: PlanOffer? get() = offers.firstOrNull { it.key == selectedOffer }
+
+    /**
+     * Only AI credits are for sale (no plan chooser): a gateway market that lists credit packs but no plans, or a
+     * signed-in store buyer whose current store offering has no plans.
+     */
+    val creditsOnly: Boolean
+        get() = phase == PlansPhase.READY && packs.isNotEmpty() &&
+            if (storeFlow) buyer == BuyerKind.REGISTERED && storeOffers.isEmpty() else offers.isEmpty()
     val canBuy: Boolean get() = phase == PlansPhase.READY && buyer == BuyerKind.REGISTERED && checkout.step == CheckoutStep.IDLE
 }
 
@@ -243,6 +260,8 @@ class PlansModel(
     private val store: StoreBilling = StoreBilling.Unavailable,
     private val locale: () -> String? = { null },
     private val packageName: String = "",
+    /** Credit-pack purchases the store charged but the backend has not confirmed (shared across screens, memory only). */
+    private val outbox: StoreCreditOutbox = StoreCreditOutbox(),
     private val pause: suspend (Long) -> Unit = { delay(it) },
     private val now: () -> Long = System::currentTimeMillis,
     private val newKey: () -> UUID = UUID::randomUUID,
@@ -261,6 +280,13 @@ class PlansModel(
     private var unreported: StorePurchaseOutcome.Purchased? = null
     private var storeReportKey: UUID? = null
     private var storeOfferShown: StoreOffer? = null
+
+    /** The credit-pack purchase being confirmed (store flow), and the lots the account held before it. */
+    private class CreditAttempt(val packCode: String, val baseline: Set<String>?, val unreported: UnreportedCredit?)
+    private var attempt: CreditAttempt? = null
+
+    /** The ids of the credit lots the last balance read showed. */
+    private var knownLots: Set<String>? = null
 
     // ---------------------------------------------------------------- loading
 
@@ -283,7 +309,9 @@ class PlansModel(
         val current = loadCurrent(who)
         val credits = loadCredits()
         if (!opts.purchaseUiAllowed || opts.paymentMethods.isEmpty() || !(opts.gatewayFlow || opts.storeFlow)) {
-            _state.update { it.copy(phase = PlansPhase.NOT_AVAILABLE, unavailable = UnavailableReason.MARKET, current = current, credits = credits, offers = emptyList(), packs = emptyList(), methods = emptyList(), notice = opts.notice) }
+            // A server notice on a closed market is the "no store in this build" answer (the direct APK in a store market).
+            val reason = if (opts.notice != null && !store.available) UnavailableReason.STORE_NOT_IN_BUILD else UnavailableReason.MARKET
+            _state.update { it.copy(phase = PlansPhase.NOT_AVAILABLE, unavailable = reason, current = current, credits = credits, offers = emptyList(), packs = emptyList(), methods = emptyList(), storeOffers = emptyList(), notice = opts.notice) }
             resumePending()
             return
         }
@@ -314,6 +342,7 @@ class PlansModel(
             }
         }
         resumePending()
+        resumeCredits()
     }
 
     private suspend fun loadStore(who: BuyerKind, current: CurrentPlanInfo?, opts: BillingOptions, credits: CreditsInfo?) {
@@ -325,31 +354,48 @@ class PlansModel(
             return
         }
         val uid = userId()
-        val offers = if (who == BuyerKind.REGISTERED && uid != null) {
-            try {
-                store.offers(uid)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                emptyList()
-            }
-        } else {
-            emptyList()
-        }
+        val registered = who == BuyerKind.REGISTERED && uid != null
+        // Store plans come from the RevenueCat offering; the server lists only the credit packs of a store market.
+        val offers = if (registered) guarded { store.offers(uid!!) } ?: emptyList() else emptyList()
+        val serverPacks = packsOf(opts).filter { it.storeProductId != null }
+        // Never the server's placeholder price: a pack shows the store's price, and is hidden when the store has none.
+        val packs = if (registered) storePacksOf(uid!!, serverPacks) else serverPacks.map { it.copy(displayPrice = null) }
         _state.update { s ->
             s.copy(
-                phase = if (who == BuyerKind.REGISTERED && offers.isEmpty()) PlansPhase.ERROR else PlansPhase.READY,
+                phase = if (registered && offers.isEmpty() && packs.isEmpty()) PlansPhase.ERROR else PlansPhase.READY,
                 storeFlow = true,
                 unavailable = null,
                 current = current,
                 credits = credits,
                 offers = emptyList(),
-                packs = emptyList(), // store-billed packs are not available yet (the server answers BILLING_POLICY_DENIED)
+                packs = packs,
                 methods = emptyList(),
                 storeOffers = offers,
                 selectedOffer = s.selectedOffer?.takeIf { k -> offers.any { it.id == k } } ?: offers.firstOrNull()?.id,
                 notice = opts.notice,
             )
+        }
+    }
+
+    private suspend fun <T> guarded(block: suspend () -> T): T? = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+
+    /** The server's store packs the store actually sells (matched by product id), with the store's formatted price. */
+    private suspend fun storePacksOf(uid: String, serverPacks: List<CreditPack>): List<CreditPack> {
+        val offerings = serverPacks.map { it.storeOfferingId ?: DEFAULT_CREDITS_OFFERING }.distinct().associateWith { id ->
+            guarded { store.offering(uid, id) } ?: emptyList()
+        }
+        return serverPacks.mapNotNull { p ->
+            val offeringId = p.storeOfferingId ?: DEFAULT_CREDITS_OFFERING
+            val list = offerings[offeringId].orEmpty()
+            val match = list.firstOrNull { it.productId == p.storeProductId && (p.storePackageId == null || it.id == p.storePackageId) }
+                ?: list.firstOrNull { it.productId == p.storeProductId }
+            match?.let { p.copy(displayPrice = it.price, storeOfferingId = offeringId, storePackageId = it.id) }
         }
     }
 
@@ -390,7 +436,7 @@ class PlansModel(
 
     /** The balance (guests have one too), or the last known one when the call fails. */
     private suspend fun loadCredits(): CreditsInfo? = try {
-        CreditsInfo.of(billing.credits())
+        billing.credits().also { s -> knownLots = s.lots.map { it.lotId }.toSet() }.let { CreditsInfo.of(it) }
     } catch (e: ApiError) {
         _state.value.credits
     }
@@ -399,7 +445,10 @@ class PlansModel(
         o.products.filter { it.productType == "AI_CREDIT_PACK" }.mapNotNull { p ->
             val price = p.prices.firstOrNull { it.billingPeriod == CreditPack.PERIOD } ?: return@mapNotNull null
             val credits = p.creditUnits ?: return@mapNotNull null
-            CreditPack(p.productCode, p.displayName, p.description, credits, p.creditValidityDays, price.listPrice, price.displayPrice)
+            CreditPack(
+                p.productCode, p.displayName, p.description, credits, p.creditValidityDays, price.listPrice, price.displayPrice,
+                price.storeProductId, price.storeOfferingId, price.storePackageId,
+            )
         }.sortedBy { it.credits }
 
     private fun offersOf(o: BillingOptions): List<PlanOffer> =
@@ -547,6 +596,10 @@ class PlansModel(
     /** Polls again after "still confirming" or "not completed" (the user's refresh). */
     suspend fun refreshCheckout() {
         val s = _state.value.checkout
+        if (s.store && s.credits) {
+            refreshCredits()
+            return
+        }
         if (s.store) {
             reportStore()
             return
@@ -743,7 +796,173 @@ class PlansModel(
             StorePurchaseOutcome.Pending ->
                 _state.update { it.copy(checkout = CheckoutState(CheckoutStep.STILL_CONFIRMING, store = true)) }
             StorePurchaseOutcome.Cancelled -> _state.update { it.copy(checkout = CheckoutState()) }
-            is StorePurchaseOutcome.Failed -> _state.update { it.copy(checkout = CheckoutState(), message = PlansMessage.STORE_FAILED) }
+            StorePurchaseOutcome.AlreadyOwned, is StorePurchaseOutcome.Failed ->
+                _state.update { it.copy(checkout = CheckoutState(), message = PlansMessage.STORE_FAILED) }
+        }
+    }
+
+    // ---------------------------------------------------------------- store credit packs (T8.10)
+
+    /**
+     * Buys the credit pack [productCode] through the store (RevenueCat, `play` flavour only): the store sheet, then the
+     * report of the store transaction to the backend, which verifies it with RevenueCat and grants one credit lot. Only
+     * the server's answer (or the balance it then shows) adds credits. A report that fails or comes back pending is
+     * repeated within a bounded window ([CREDIT_SETTLE_MS]) and again on the next Plans open ([outbox]); RevenueCat's
+     * webhook grants it on its own as a safety net.
+     */
+    suspend fun buyPackFromStore(host: PurchaseHost, productCode: String) {
+        val s = _state.value
+        if (s.phase != PlansPhase.READY || !s.storeFlow || s.checkout.step != CheckoutStep.IDLE) return
+        val uid = userId()
+        if (buyer() != BuyerKind.REGISTERED || uid == null) {
+            _state.update { it.copy(message = PlansMessage.NEEDS_ACCOUNT) }
+            return
+        }
+        val pack = s.packs.firstOrNull { it.productCode == productCode } ?: return
+        val packageId = pack.storePackageId ?: return
+        _state.update { it.copy(checkout = CheckoutState(CheckoutStep.STARTING, store = true, credits = true), buyingPack = productCode, message = null) }
+        // The lots held before the purchase: a lot that appears afterwards (the webhook granted it) is this purchase's.
+        val baseline = try {
+            billing.credits().lots.map { it.lotId }.toSet()
+        } catch (e: ApiError) {
+            knownLots
+        }
+        val outcome = try {
+            store.purchase(host, uid, packageId, pack.storeOfferingId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            StorePurchaseOutcome.Failed("EXCEPTION")
+        }
+        when (outcome) {
+            is StorePurchaseOutcome.Purchased -> {
+                val item = UnreportedCredit(productCode, outcome, newKey(), uid)
+                outbox.add(item)
+                attempt = CreditAttempt(productCode, baseline, item)
+                settleCredits(CREDIT_SETTLE_MS)
+            }
+            // Play is still processing it, or an earlier purchase of the pack was not confirmed: it lands by itself.
+            StorePurchaseOutcome.Pending, StorePurchaseOutcome.AlreadyOwned -> {
+                attempt = CreditAttempt(productCode, baseline, null)
+                _state.update { it.copy(buyingPack = null, checkout = CheckoutState(CheckoutStep.STILL_CONFIRMING, store = true, credits = true)) }
+            }
+            StorePurchaseOutcome.Cancelled -> _state.update { it.copy(buyingPack = null, checkout = CheckoutState()) }
+            is StorePurchaseOutcome.Failed -> _state.update { it.copy(buyingPack = null, checkout = CheckoutState(), message = PlansMessage.STORE_FAILED) }
+        }
+    }
+
+    /**
+     * Reports the attempt's purchase and reads the balance on each step of [schedule] until the server grants the
+     * credits (its answer carries the lot, or a new lot shows in the balance), then shows the receipt; when the window
+     * ends the purchase stays "still confirming" (and in the [outbox]).
+     */
+    private suspend fun settleCredits(schedule: LongArray) {
+        val a = attempt ?: return
+        _state.update { it.copy(checkout = CheckoutState(CheckoutStep.CONFIRMING, store = true, credits = true)) }
+        var failure: PlansMessage? = null
+        for (wait in schedule) {
+            if (wait > 0) pause(wait)
+            if (_state.value.checkout.step != CheckoutStep.CONFIRMING) return // left meanwhile
+            val item = a.unreported
+            if (item != null) {
+                try {
+                    val p = item.purchase
+                    val r = billing.reportStorePurchase(item.reportKey, p.productId, p.purchaseToken, p.packageName.ifEmpty { packageName }, p.transactionId)
+                    failure = null
+                    if (r.creditLotId != null) {
+                        grantedCredits(a, r.creditLotId, r.creditUnits, r.creditsExpireAtMs, null)
+                        return
+                    }
+                    if (r.status in DEAD_STORE) {
+                        outbox.remove(item)
+                        attempt = null
+                        _state.update { it.copy(buyingPack = null, checkout = CheckoutState(), message = PlansMessage.STORE_FAILED) }
+                        return
+                    }
+                } catch (e: ApiError) {
+                    when {
+                        e is ApiError.SignedOut -> {
+                            _state.update { it.copy(checkout = CheckoutState(), phase = PlansPhase.SIGNED_OUT) }
+                            return
+                        }
+                        e.code == "GUEST_NOT_ALLOWED" -> {
+                            _state.update { it.copy(buyingPack = null, checkout = CheckoutState(), message = PlansMessage.NEEDS_ACCOUNT) }
+                            return
+                        }
+                        e is ApiError.Network || e is ApiError.Timeout -> failure = PlansMessage.OFFLINE
+                        // The server keeps a verified purchase it may not grant yet (market not open, RevenueCat not caught up).
+                        e.code in KEPT_BY_SERVER -> failure = null
+                        else -> failure = PlansMessage.SERVER
+                    }
+                }
+            }
+            val base = a.baseline
+            if (base != null) {
+                val summary = try {
+                    billing.credits()
+                } catch (e: ApiError) {
+                    null
+                }
+                val lot = summary?.lots?.firstOrNull { it.lotId !in base }
+                if (lot != null) {
+                    grantedCredits(a, lot.lotId, null, lot.expiresAtMs, summary)
+                    return
+                }
+            }
+        }
+        _state.update { it.copy(buyingPack = null, checkout = CheckoutState(CheckoutStep.STILL_CONFIRMING, store = true, credits = true), message = failure) }
+    }
+
+    private suspend fun grantedCredits(a: CreditAttempt, lotId: String?, units: Long?, expiresMs: Long?, known: CreditSummary?) {
+        a.unreported?.let { outbox.remove(it) }
+        attempt = null
+        withContext(Dispatchers.IO) { runCatching { refresher.planChanged() } }
+        val summary = known ?: try {
+            billing.credits()
+        } catch (e: ApiError) {
+            null
+        }
+        summary?.let { s -> knownLots = s.lots.map { it.lotId }.toSet() }
+        val lot = summary?.lots?.firstOrNull { it.lotId == lotId }
+        val pack = _state.value.packs.firstOrNull { it.productCode == a.packCode }
+        val credits = units ?: pack?.credits ?: lot?.originalUnits?.toLong()
+        val validUntil = expiresMs ?: lot?.expiresAtMs ?: pack?.validityDays?.let { now() + it * DAY_MS }
+        val info = summary?.let { CreditsInfo.of(it) } ?: _state.value.credits
+        _state.update {
+            it.copy(
+                credits = info,
+                buyingPack = null,
+                message = null,
+                checkout = CheckoutState(
+                    CheckoutStep.PAID,
+                    store = true,
+                    credits = true,
+                    receipt = Receipt(null, pack?.name, CreditPack.PERIOD, null, pack?.displayPrice, now(), validUntil, credits = credits),
+                ),
+            )
+        }
+    }
+
+    /** The "Refresh" of a still-confirming credit purchase: one more report (when it was not accepted yet) and balance read. */
+    private suspend fun refreshCredits() {
+        val a = attempt ?: outbox.all().firstOrNull { it.userId == userId() }?.let { CreditAttempt(it.packCode, null, it) }?.also { attempt = it }
+        if (a == null) {
+            // Nothing of ours to confirm (e.g. the store was still processing it): read the balance again.
+            _state.update { it.copy(checkout = CheckoutState()) }
+            load()
+            return
+        }
+        settleCredits(longArrayOf(0))
+    }
+
+    /** The plans screen opened again: credit purchases the backend has not confirmed yet are reported once more. */
+    private suspend fun resumeCredits() {
+        val s = _state.value
+        if (!s.storeFlow || s.phase != PlansPhase.READY || s.buyer != BuyerKind.REGISTERED || s.checkout.step != CheckoutStep.IDLE) return
+        val uid = userId()
+        for (item in outbox.all().filter { it.userId == uid }) {
+            attempt = CreditAttempt(item.packCode, null, item)
+            settleCredits(longArrayOf(0))
         }
     }
 
@@ -789,6 +1008,8 @@ class PlansModel(
         orderKey = null
         attemptKey = null
         unreported = null
+        attempt = null
+        outbox.clear()
         store.signedOut()
         _state.value = PlansState(phase = PlansPhase.SIGNED_OUT)
     }
@@ -829,5 +1050,20 @@ class PlansModel(
         val FAILED_ATTEMPT = setOf("FAILED", "CANCELLED", "EXPIRED")
         val LIVE_SUBSCRIPTION = setOf("ACTIVE", "GRACE_PERIOD", "PENDING")
         val LIVE_STORE = setOf("ACTIVE", "IN_GRACE_PERIOD")
+
+        /** The RevenueCat offering that holds the credit packs, when the server names none. */
+        const val DEFAULT_CREDITS_OFFERING = "credits"
+
+        /**
+         * Waits before each report and balance read after a credit-pack purchase (ms): about 50 s in all, then the
+         * purchase stays "still confirming" and is reported again on the next open.
+         */
+        val CREDIT_SETTLE_MS = longArrayOf(0, 3_000, 5_000, 8_000, 12_000, 20_000)
+
+        /** A store purchase that ended without a grant (refunded, revoked, expired before it was granted). */
+        val DEAD_STORE = setOf("REFUNDED", "REVOKED", "EXPIRED", "CANCELLED")
+
+        /** Answers meaning "verified, kept, granted later": the market is not open yet, or the store has not listed it yet. */
+        val KEPT_BY_SERVER = setOf("BILLING_POLICY_DENIED", "PRODUCT_NOT_AVAILABLE", "STORE_PURCHASE_INVALID")
     }
 }

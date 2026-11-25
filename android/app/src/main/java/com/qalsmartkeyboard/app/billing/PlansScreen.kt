@@ -124,7 +124,7 @@ fun PlansRoute(
             selectOffer = vm::selectOffer,
             selectMethod = vm::selectMethod,
             buy = vm::buy,
-            buyPack = vm::buyPack,
+            buyPack = { code -> if (state.storeFlow) activity?.let { a -> vm.buyPackFromStore({ a }, code) } else vm.buyPack(code) },
             openHistory = vm::openHistory,
             loadMoreHistory = vm::loadMoreHistory,
             closeHistory = vm::closeHistory,
@@ -156,8 +156,7 @@ fun PlansScreen(state: PlansState, actions: PlansActions, modifier: Modifier = M
         CreditHistoryScreen(state.history, actions, modifier)
         return
     }
-    val creditsOnly = state.phase == PlansPhase.READY && state.offers.isEmpty() && state.packs.isNotEmpty() && !state.storeFlow
-    SettingsScaffold(title = stringResource(if (creditsOnly) R.string.pay_credits_title else R.string.plans_title), onBack = actions.back, modifier = modifier) {
+    SettingsScaffold(title = stringResource(if (state.creditsOnly) R.string.pay_credits_title else R.string.plans_title), onBack = actions.back, modifier = modifier) {
         when (state.checkout.step) {
             CheckoutStep.CONFIRMING -> Confirming()
             CheckoutStep.STILL_CONFIRMING -> StillConfirming(state, actions)
@@ -181,12 +180,14 @@ fun PlansScreen(state: PlansState, actions: PlansActions, modifier: Modifier = M
                 PlansPhase.NOT_AVAILABLE -> {
                     CurrentPlan(state)
                     state.credits?.let { CreditBalance(it) }
+                    val noStore = state.unavailable == UnavailableReason.STORE_NOT_IN_BUILD
                     Notice(
-                        stringResource(R.string.pay_unavailable_title),
-                        stringResource(if (state.unavailable == UnavailableReason.STORE_NOT_IN_BUILD) R.string.pay_unavailable_store_body else R.string.pay_unavailable_body),
+                        stringResource(if (noStore) R.string.pay_unavailable_store_title else R.string.pay_unavailable_title),
+                        stringResource(if (noStore) R.string.pay_unavailable_store_body else R.string.pay_unavailable_body),
                         null, null,
                     )
-                    state.notice?.let { SettingsNote(it) }
+                    // The server's own notice says the same as the localised "no store in this build" page.
+                    if (!noStore) state.notice?.let { SettingsNote(it) }
                 }
                 PlansPhase.READY -> Ready(state, actions, focusCredits)
             }
@@ -240,23 +241,25 @@ private fun CurrentPlan(state: PlansState) {
 
 @Composable
 private fun ColumnScope.Ready(state: PlansState, actions: PlansActions, focusCredits: Boolean) {
-    val plansOffered = state.storeFlow || state.offers.isNotEmpty()
-    if (plansOffered || state.current?.isFree == false) CurrentPlan(state)
+    val creditsOnly = state.creditsOnly
+    if (!creditsOnly || state.current?.isFree == false) CurrentPlan(state)
     state.notice?.let { SettingsNote(it) }
     if (state.storeFlow) {
-        SettingsHeader(stringResource(R.string.pay_choose_header))
-        Column(Modifier.selectableGroup()) {
-            state.storeOffers.forEach { o ->
-                ChoiceRow(
-                    title = periodName(o.period) ?: o.title,
-                    summary = if (periodName(o.period) != null) o.title else null,
-                    trailing = o.price,
-                    selected = o.id == state.selectedOffer,
-                    onSelect = { actions.selectOffer(o.id) },
-                )
+        if (state.storeOffers.isNotEmpty()) {
+            SettingsHeader(stringResource(R.string.pay_choose_header))
+            Column(Modifier.selectableGroup()) {
+                state.storeOffers.forEach { o ->
+                    ChoiceRow(
+                        title = periodName(o.period) ?: o.title,
+                        summary = if (periodName(o.period) != null) o.title else null,
+                        trailing = o.price,
+                        selected = o.id == state.selectedOffer,
+                        onSelect = { actions.selectOffer(o.id) },
+                    )
+                }
             }
+            SettingsNote(stringResource(R.string.pay_terms_store))
         }
-        SettingsNote(stringResource(R.string.pay_terms_store))
     } else {
         if (state.offers.isNotEmpty()) SettingsHeader(stringResource(R.string.pay_choose_header))
         state.offers.groupBy { it.productCode }.values.forEach { group ->
@@ -296,7 +299,7 @@ private fun ColumnScope.Ready(state: PlansState, actions: PlansActions, focusCre
         if (state.offers.isNotEmpty()) SettingsNote(stringResource(R.string.pay_terms))
     }
     state.message?.let { Message(it, actions) }
-    if (state.offers.isEmpty() && !state.storeFlow) {
+    if (creditsOnly) {
         // Credits only: no plan to pay for; the packs below carry their own buttons.
         CreditsSection(state, actions, focusCredits)
         return
@@ -359,7 +362,8 @@ private fun ColumnScope.CreditsSection(state: PlansState, actions: PlansActions,
     state.credits?.let { CreditBalance(it) }
     val starting = state.checkout.step == CheckoutStep.STARTING
     state.packs.forEach { p ->
-        val price = p.displayPrice ?: MoneyFormat.format(p.price)
+        // A store market never shows the server's placeholder price: the store's own, or none (a guest has not met the store).
+        val price = p.displayPrice ?: if (state.storeFlow) null else MoneyFormat.format(p.price)
         val buying = starting && state.buyingPack == p.productCode
         val terms = p.validityDays?.let {
             stringResource(R.string.pay_pack_terms, pluralStringResource(R.plurals.pay_valid_days, it, it))
@@ -381,17 +385,17 @@ private fun ColumnScope.CreditsSection(state: PlansState, actions: PlansActions,
                             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                             Spacer(Modifier.width(12.dp))
                         }
-                        Text(if (state.buyer == BuyerKind.REGISTERED) stringResource(R.string.pay_pack_buy, price) else stringResource(R.string.pay_sign_in_to_buy))
+                        Text(if (state.buyer == BuyerKind.REGISTERED && price != null) stringResource(R.string.pay_pack_buy, price) else stringResource(R.string.pay_sign_in_to_buy))
                     }
                 }
             },
-            trailingContent = { Text(price, style = MaterialTheme.typography.titleMedium) },
+            trailingContent = price?.let { { Text(it, style = MaterialTheme.typography.titleMedium) } },
             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.testTag("pack_${p.productCode}"),
         )
     }
     if (state.buyer != BuyerKind.REGISTERED) SettingsNote(stringResource(R.string.pay_credits_guest_note))
-    SettingsNote(stringResource(R.string.pay_credits_terms))
+    SettingsNote(stringResource(if (state.storeFlow) R.string.pay_credits_terms_store else R.string.pay_credits_terms))
     TextButton(
         onClick = actions.openHistory,
         modifier = Modifier.padding(horizontal = 8.dp).heightIn(min = 48.dp).testTag("credit_history_open"),
@@ -558,9 +562,16 @@ private fun Confirming() {
 private fun StillConfirming(state: PlansState, actions: PlansActions) {
     StatusPage(
         stringResource(R.string.pay_still_title),
-        stringResource(if (state.checkout.store) R.string.pay_store_still_body else R.string.pay_still_body),
+        stringResource(
+            when {
+                state.checkout.store && state.checkout.credits -> R.string.pay_store_credits_still_body
+                state.checkout.store -> R.string.pay_store_still_body
+                else -> R.string.pay_still_body
+            },
+        ),
         R.drawable.ic_settings_info,
     ) {
+        state.message?.let { Message(it, actions) }
         Button(onClick = actions.refresh, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pay_refresh)) }
         if (!state.checkout.store) {
             OutlinedButton(onClick = actions.reopen, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pay_reopen)) }

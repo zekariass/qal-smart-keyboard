@@ -171,6 +171,16 @@ data class KeyboardSettings(
     /** Voice typing: the one-time "your phone's speech service turns voice into text" note was shown. Device-local. */
     val voiceNoticeShown: Boolean = false,
     /**
+     * Voice typing (ADR 0049 D6): offer "Fix grammar" / "Translate" in the suggestion strip after a dictation. On by
+     * default; only meaningful while [voiceTypingEnabled]. Device-local, not synced.
+     */
+    val voiceFollowUps: Boolean = true,
+    /**
+     * Voice typing (ADR 0049 D4): the translation-catalogue language dictation is inserted in (a catalogue code: lowercase primary
+     * tag of 2-3 letters, optional subtags, e.g. `en`, `fil`, `zh-CN`), or null to insert it as spoken. Not restricted to the keyboard languages. Device-local.
+     */
+    val voiceInsertLanguage: String? = null,
+    /**
      * AI translation (ADR 0031): the preferred destination language (a translation language of the catalogue, ADR 0040:
      * am, ti, om, en, ar or any other the server offers), or null for the automatic default (English for am/ti/om text,
      * Amharic for English text). Device-local, not synced.
@@ -297,6 +307,8 @@ data class KeyboardSettings(
             recentEmoji = recentEmoji.filter { emojiToken(it) }.distinct().take(EMOJI_RECENT_MAX),
             emojiTones = emojiTones.filter { (k, v) -> emojiToken(k) && emojiToken(v) }.entries.take(EMOJI_TONES_MAX).associate { it.key to it.value },
             voiceLanguages = voiceLanguages.filter { (k, v) -> LanguageRules.isKnown(k) && LANGUAGE_TAG.matches(v) },
+            // ADR 0049 D4: a catalogue language code (lowercase primary tag of 2-3 letters, optional subtags such as zh-CN), else as spoken.
+            voiceInsertLanguage = voiceInsertLanguage?.takeIf { INSERT_LANGUAGE.matches(it) },
             // ADR 0040: translation languages are not typing languages; any well-formed tag the catalogue may offer is kept.
             aiPreferredTarget = aiPreferredTarget?.takeIf { LANGUAGE_TAG.matches(it) },
             aiTranslatePairs = aiTranslatePairs.filter { (k, v) -> LANGUAGE_TAG.matches(k) && DESTINATION_ID.matches(v) },
@@ -329,6 +341,7 @@ data class KeyboardSettings(
         const val SENDER_NAME_MAX = 120
 
         /** A BCP-47 language tag as speech services report them (`am-ET`, `en-US`, `cmn-Hans-CN`, `es-419`). */
+        private val INSERT_LANGUAGE = Regex("[a-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}")
         private val LANGUAGE_TAG = Regex("[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,4}")
 
         /** First run: am, ti, om, en enabled in this order (A1.4's default), then Arabic switched off (opt-in, ADR 0034). */

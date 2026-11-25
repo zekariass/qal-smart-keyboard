@@ -18,9 +18,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.qalsmartkeyboard.app.R
@@ -104,12 +106,69 @@ fun PreferencesPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: Se
     }
 }
 
-/** "Voice typing" (ADR 0029): the microphone in the keyboard bar, and where the audio goes. */
+/**
+ * "Voice typing" (ADR 0029): the microphone in the keyboard bar, and where the audio goes. ADR 0049 D6: the follow-up
+ * switch and the "Insert dictation in" language; both only mean something while voice typing is on, so they are dimmed
+ * (and do nothing) when it is off. [onOpenInsertLanguage] opens the picker page.
+ */
 @Composable
-fun VoiceTypingPage(settings: KeyboardSettings, onBack: () -> Unit, onUpdate: SettingsUpdate, modifier: Modifier = Modifier) {
+fun VoiceTypingPage(
+    settings: KeyboardSettings,
+    onBack: () -> Unit,
+    onUpdate: SettingsUpdate,
+    modifier: Modifier = Modifier,
+    onOpenInsertLanguage: () -> Unit = {},
+) {
     SettingsScaffold(stringResource(R.string.settings_voice_typing), onBack, modifier) {
-        SettingsSwitchRow(stringResource(R.string.settings_voice_typing_switch), settings.voiceTypingEnabled, { on -> onUpdate { it.copy(voiceTypingEnabled = on) } })
+        val on = settings.voiceTypingEnabled
+        SettingsSwitchRow(stringResource(R.string.settings_voice_typing_switch), on, { v -> onUpdate { it.copy(voiceTypingEnabled = v) } })
         SettingsNote(stringResource(R.string.settings_voice_typing_body))
+        Column(Modifier.alpha(if (on) 1f else DIMMED)) {
+            SettingsSwitchRow(
+                stringResource(R.string.settings_voice_follow_ups),
+                settings.voiceFollowUps,
+                { v -> onUpdate { it.copy(voiceFollowUps = v) } },
+                enabled = on,
+            )
+            SettingsRow(
+                stringResource(R.string.settings_voice_insert_in),
+                onClick = { if (on) onOpenInsertLanguage() },
+                summary = voiceInsertSummary(settings),
+                modifier = if (on) Modifier else Modifier.semantics { disabled() },
+            )
+        }
+    }
+}
+
+private const val DIMMED = 0.38f
+
+/** The chosen "Insert dictation in" language, or "As spoken", for the Voice typing row. */
+@Composable
+internal fun voiceInsertSummary(settings: KeyboardSettings): String =
+    settings.voiceInsertLanguage?.let { languageName(it) } ?: stringResource(R.string.settings_voice_insert_as_spoken)
+
+/**
+ * "Insert dictation in" (ADR 0049 D4): the language a dictation is translated into before it is typed. The same
+ * searchable catalogue list as [TranslationPage]; "As spoken" (no translation) is the first row.
+ */
+@Composable
+fun VoiceInsertLanguagePage(
+    settings: KeyboardSettings,
+    onBack: () -> Unit,
+    onUpdate: SettingsUpdate,
+    modifier: Modifier = Modifier,
+    catalog: TranslationCatalog = TranslationCatalog.BUNDLED,
+) {
+    SettingsScaffold(stringResource(R.string.settings_voice_insert_in), onBack, modifier) {
+        SettingsNote(stringResource(R.string.settings_voice_insert_body))
+        if (!catalog.fromServer) SettingsNote(stringResource(R.string.settings_translate_offline_note))
+        TranslationLanguageChoice(
+            catalog = catalog,
+            chosen = settings.voiceInsertLanguage,
+            autoTitle = stringResource(R.string.settings_voice_insert_as_spoken),
+            autoHint = stringResource(R.string.settings_voice_insert_as_spoken_hint),
+            onChoose = { code -> onUpdate { it.copy(voiceInsertLanguage = code) } },
+        )
     }
 }
 
@@ -127,44 +186,59 @@ fun TranslationPage(
     modifier: Modifier = Modifier,
     catalog: TranslationCatalog = TranslationCatalog.BUNDLED,
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
     SettingsScaffold(stringResource(R.string.settings_translate_title), onBack, modifier) {
         SettingsNote(stringResource(R.string.settings_translate_body))
         if (!catalog.fromServer) SettingsNote(stringResource(R.string.settings_translate_offline_note))
-        val searchLabel = stringResource(R.string.settings_translate_search)
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it.take(40) },
-            singleLine = true,
-            label = { Text(searchLabel) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        TranslationLanguageChoice(
+            catalog = catalog,
+            chosen = settings.aiPreferredTarget,
+            autoTitle = stringResource(R.string.settings_translate_auto),
+            autoHint = stringResource(R.string.settings_translate_auto_hint),
+            onChoose = { code -> onUpdate { it.copy(aiPreferredTarget = code) } },
         )
-        val chosen = settings.aiPreferredTarget
-        val languages = TranslationLanguageSearch.order(catalog.destinations, listOfNotNull(chosen))
-        val names = languages.associate { it.code to languageName(it.code) }
-        val shown = languages.filter { TranslationLanguageSearch.matches(query, it, names.getValue(it.code)) }
-        Column(Modifier.selectableGroup()) {
-            if (query.isBlank()) {
-                SettingsRadioRow(
-                    stringResource(R.string.settings_translate_auto),
-                    selected = chosen == null,
-                    onSelect = { onUpdate { it.copy(aiPreferredTarget = null) } },
-                    summary = stringResource(R.string.settings_translate_auto_hint),
-                )
-            }
-            shown.forEach { language ->
-                val code = language.code
-                val native = if (code in LanguageRules.KNOWN) nativeLanguageName(code) else language.nativeName
-                val uiName = names.getValue(code)
-                SettingsRadioRow(
-                    native,
-                    selected = chosen == code,
-                    onSelect = { onUpdate { it.copy(aiPreferredTarget = code) } },
-                    summary = uiName.takeIf { !it.equals(native, ignoreCase = true) },
-                )
-            }
-            if (shown.isEmpty()) SettingsNote(stringResource(R.string.settings_translate_none_found))
+    }
+}
+
+/**
+ * The searchable single choice over the translation catalogue shared by the "Translate into" and the "Insert dictation
+ * in" pages: a first row for "no choice" ([autoTitle], reported as null), then the languages.
+ */
+@Composable
+private fun TranslationLanguageChoice(
+    catalog: TranslationCatalog,
+    chosen: String?,
+    autoTitle: String,
+    autoHint: String,
+    onChoose: (String?) -> Unit,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    val searchLabel = stringResource(R.string.settings_translate_search)
+    OutlinedTextField(
+        value = query,
+        onValueChange = { query = it.take(40) },
+        singleLine = true,
+        label = { Text(searchLabel) },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    )
+    val languages = TranslationLanguageSearch.order(catalog.destinations, listOfNotNull(chosen))
+    val names = languages.associate { it.code to languageName(it.code) }
+    val shown = languages.filter { TranslationLanguageSearch.matches(query, it, names.getValue(it.code)) }
+    Column(Modifier.selectableGroup()) {
+        if (query.isBlank()) {
+            SettingsRadioRow(autoTitle, selected = chosen == null, onSelect = { onChoose(null) }, summary = autoHint)
         }
+        shown.forEach { language ->
+            val code = language.code
+            val native = if (code in LanguageRules.KNOWN) nativeLanguageName(code) else language.nativeName
+            val uiName = names.getValue(code)
+            SettingsRadioRow(
+                native,
+                selected = chosen == code,
+                onSelect = { onChoose(code) },
+                summary = uiName.takeIf { !it.equals(native, ignoreCase = true) },
+            )
+        }
+        if (shown.isEmpty()) SettingsNote(stringResource(R.string.settings_translate_none_found))
     }
 }
 
