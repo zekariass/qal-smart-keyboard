@@ -371,6 +371,37 @@ class DrawPhase2UiTest {
         assertEquals(1, c.session.objects.size)
     }
 
+    @Test fun aServiceLikeRefreshThatClosesTheControllerWhileTheTextFieldChangesDoesNotLoop() {
+        // As the service does it: every change refreshes the panel and the views, and leaving the panel closes the controller
+        // from inside that refresh. Closing clears the typed text; that must not announce a change (it crashed the sticker maker).
+        val store = DrawingStore(File(dir, "loop"))
+        var calls = 0
+        lateinit var panel: DrawPanelView
+        lateinit var ctl: DrawController
+        ctl = DrawController(
+            store, PngDrawingExporter(), { FakeImageShare() },
+            onChanged = {
+                calls++
+                check(calls < 100) { "re-entered without end" }
+                panel.refresh()
+                ctl.close()
+            },
+        )
+        panel = DrawPanelView(ctx).apply {
+            heightProvider = { (320 * d).toInt() }
+            controller = ctl
+            render()
+            layoutAt(widthPx, (320 * d).toInt())
+        }
+        ctl.selectTextTool()
+        ctl.beginText(10f, 10f)
+        ctl.textField.set("typing while the service closes us")
+        ctl.openGallery()
+        ctl.closeGallery()
+        assertTrue("a few notifications, not a storm: $calls", calls < 20)
+        assertFalse(ctl.typing)
+    }
+
     // ---- the typing strip --------------------------------------------------------------------------------------------
 
     @Test fun theTypingStripEditsTheDrawingsTextField() {
