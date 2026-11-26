@@ -126,6 +126,7 @@ class DrawController(
     /** Pen, highlighter or eraser: ink with that tool (the pen keeps its brush). */
     fun selectTool(t: DrawTool) {
         tool = t
+        if (options == DrawOptions.BRUSHES) options = DrawOptions.COLOURS // a pick closes the list of brushes
         toInk()
         touched()
     }
@@ -322,6 +323,13 @@ class DrawController(
         textField.clear()
         typing = true
         onChanged()
+    }
+
+    /** A tap on the text [id] with the text tool: that text is selected and typing starts for it. */
+    fun editText(id: Int) {
+        if (session.find(id) !is TextObject) return
+        session.select(id)
+        editSelectedText()
     }
 
     /** Edit: typing starts for the selected text, with its text in the field. */

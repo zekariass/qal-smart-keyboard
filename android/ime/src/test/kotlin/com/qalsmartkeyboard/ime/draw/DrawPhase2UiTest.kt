@@ -111,6 +111,23 @@ class DrawPhase2UiTest {
         assertEquals("a drag is not a tap", 1, taps.size)
     }
 
+    @Test fun aTapOnAnExistingTextWithTheTextToolAsksToEditItNotToPlaceANewOne() {
+        val v = canvas()
+        val t = v.session.addObject(TextObject(0, "Hello", 50f, 50f, TextSize.LARGE))!!
+        v.input = DrawInput.TEXT
+        val edits = ArrayList<Int>()
+        val taps = ArrayList<Pair<Float, Float>>()
+        v.onTextEdit = { edits += it }
+        v.onTextTap = { x, y -> taps += x to y }
+        v.dispatchTouchEvent(ev(MotionEvent.ACTION_DOWN, 60f * d, 60f * d))
+        v.dispatchTouchEvent(ev(MotionEvent.ACTION_UP, 60f * d, 60f * d))
+        assertEquals(listOf(t.id), edits)
+        assertTrue(taps.isEmpty())
+        v.dispatchTouchEvent(ev(MotionEvent.ACTION_DOWN, 300f * d, 250f * d))
+        v.dispatchTouchEvent(ev(MotionEvent.ACTION_UP, 300f * d, 250f * d))
+        assertEquals("empty canvas places a new text", 1, taps.size)
+    }
+
     @Test fun theSelectToolPicksAnObjectDragsItAndATapOnNothingDeselects() {
         val v = canvas()
         val placed = v.session.addObject(ShapeObject(0, ShapeKind.RECTANGLE, 50f, 50f, 150f, 150f, filled = true))!!

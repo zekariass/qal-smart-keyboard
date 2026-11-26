@@ -207,6 +207,39 @@ class DrawPhase2ControllerTest {
         assertTrue(t.y <= c.session.height)
     }
 
+    @Test fun tappingAnExistingTextWithTheTextToolEditsItInsteadOfPlacingANewOne() {
+        c.selectTextTool()
+        c.beginText(10f, 10f)
+        c.textField.set("original")
+        c.endTyping()
+        val id = c.session.objects.single().id
+        c.session.select(null)
+        c.editText(id)
+        assertTrue(c.typing)
+        assertEquals("original", c.textField.text)
+        c.textField.set("changed")
+        c.endTyping()
+        assertEquals(1, c.session.objects.size)
+        assertEquals("changed", (c.session.objects.single() as TextObject).text)
+        c.selectShape(ShapeKind.LINE)
+        c.placeShape(0f, 0f, 30f, 30f)
+        c.editText(c.session.objects.last().id)
+        assertFalse("only a text can be typed", c.typing)
+    }
+
+    @Test fun pickingTheHighlighterOrTheEraserClosesTheBrushList() {
+        c.toggleBrushes()
+        assertEquals(DrawOptions.BRUSHES, c.options)
+        c.selectTool(DrawTool.HIGHLIGHTER)
+        assertEquals(DrawOptions.COLOURS, c.options)
+        c.toggleBrushes()
+        c.selectTool(DrawTool.ERASER)
+        assertEquals(DrawOptions.COLOURS, c.options)
+        c.togglePaper()
+        c.selectTool(DrawTool.PEN)
+        assertEquals("the paper row stays", DrawOptions.PAPER, c.options)
+    }
+
     @Test fun backEndsTheTypingAndPlacesTheText() {
         assertFalse(c.back())
         c.selectTextTool()

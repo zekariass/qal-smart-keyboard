@@ -93,6 +93,7 @@ class DrawPanelView(context: Context) : UtilityPanelView(context) {
         canvasView.onStrokeAdded = { controller?.strokeAdded() }
         canvasView.onShapeDrawn = { x1, y1, x2, y2 -> controller?.placeShape(x1, y1, x2, y2) }
         canvasView.onTextTap = { x, y -> controller?.beginText(x, y) }
+        canvasView.onTextEdit = { id -> controller?.editText(id) }
         canvasView.onObjectTapped = { id -> controller?.selectAt(id) }
         canvasView.onObjectMoved = { dx, dy -> controller?.moveSelected(dx, dy) }
     }

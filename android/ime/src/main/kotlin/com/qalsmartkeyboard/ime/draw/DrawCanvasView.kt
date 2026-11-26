@@ -74,6 +74,9 @@ class DrawCanvasView(context: Context) : View(context) {
     /** A tap at (x, y) in drawing units with the text tool. */
     var onTextTap: (Float, Float) -> Unit = { _, _ -> }
 
+    /** A tap with the text tool landed on the text with this id: it is edited, not covered by a new one. */
+    var onTextEdit: (Int) -> Unit = {}
+
     /** The object picked by a tap with the select tool (null: nothing there). */
     var onObjectTapped: (Int?) -> Unit = {}
 
@@ -369,7 +372,10 @@ class DrawCanvasView(context: Context) : View(context) {
         invalidate()
         when (input) {
             DrawInput.SHAPE -> onShapeDrawn(sx, sy, if (moved) ex else sx, if (moved) ey else sy)
-            DrawInput.TEXT -> if (!moved) onTextTap(sx, sy)
+            DrawInput.TEXT -> if (!moved) {
+                val hit = session.objectAt(sx, sy, SLOP_DP * d / scale, objectRenderer)
+                if (hit is TextObject) onTextEdit(hit.id) else onTextTap(sx, sy)
+            }
             DrawInput.SELECT -> {
                 if (dragged >= 0) {
                     if (session.selectedId != dragged) onObjectTapped(dragged)
