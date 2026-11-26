@@ -237,8 +237,8 @@ class StrokeRenderer {
 
         /** Marker ink is 70% opaque. */
         const val MARKER_ALPHA = 0xB3
-        const val PENCIL_ALPHA = 0xA0
-        const val PENCIL_GRAIN_ALPHA = 0xC8
+        const val PENCIL_ALPHA = 0x70
+        const val PENCIL_GRAIN_ALPHA = 0xA0
         const val PATTERN_STEP = 32f
         private const val PATTERN_LINE = 0x40808080
         private const val PATTERN_DOT = 0x80808080.toInt()

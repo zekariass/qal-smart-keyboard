@@ -68,7 +68,7 @@ class DrawingStore(
         val exists = target.isFile
         if (!exists && count() >= MAX_DRAWINGS) return StoreResult.Full
         val before = if (exists) target.lastModified() else 0L
-        val created = d.meta[META_CREATED]?.toLongOrNull() ?: (if (exists) before else clock())
+        val created = d.meta[META_CREATED]?.toLongOrNull() ?: (if (exists) createdAtOf(target, before) else clock())
         val stamped = d.copy(meta = d.meta + (META_CREATED to created.toString()))
         return if (writeFile(useId, DrawingCodec.encode(stamped), null)) StoreResult.Saved(useId) else StoreResult.Failed
     }
