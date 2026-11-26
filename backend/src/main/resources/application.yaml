@@ -101,6 +101,16 @@ qal:
   # Off by default (every admin operation answers 404).
   admin:
     enabled: ${QAL_ADMIN_ENABLED:false}
+  # Creative-asset cloud backup (T8.15, ADR 0050): opt-in (CREATIVE_BACKUP consent), encrypted with the user's data key,
+  # free for signed-in users. enabled=false answers 404 on every /me/creative-backup operation (stored items are kept;
+  # consent withdrawal and account deletion still delete them). Caps in bytes of item content before encryption.
+  creative-backup:
+    enabled: ${QAL_CREATIVE_BACKUP_ENABLED:true}
+    max-item-bytes: ${QAL_CREATIVE_BACKUP_MAX_ITEM_BYTES:2097152}
+    max-items-per-kind: ${QAL_CREATIVE_BACKUP_MAX_ITEMS_PER_KIND:100}
+    max-total-bytes: ${QAL_CREATIVE_BACKUP_MAX_TOTAL_BYTES:33554432}
+    rate-limit: ${QAL_CREATIVE_BACKUP_RATE_LIMIT:600}
+    rate-limit-period: ${QAL_CREATIVE_BACKUP_RATE_LIMIT_PERIOD:1h}
   # Account deletion (B6.2, ADR 0015): cancellable grace period (SD 19.4: 14 days) and the executor's db-scheduler task.
   privacy:
     deletion:
