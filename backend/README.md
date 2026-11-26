@@ -368,7 +368,8 @@ guests included. Code in `com.qalsmartkeyboard.privacy`.
   `consentCode`; `hasConsent` is the boolean form. `ConsentType.gatedFeatures()` is the single list of which features each
   consent gates (AI_PROCESSING: server AI; SAVE_AI_HISTORY: history writes and `historyEnabled`; SAVE_AUDIO_HISTORY: audio
   history; DICTIONARY_SYNC: user dictionary sync; PERSONAL_STYLE: learned style hints; FEEDBACK_TEXT: feedback comment and
-  content; COMMUNITY_CONTRIBUTION: community submissions; PAYMENT_MANDATE: mandates; ANALYTICS; MARKETING).
+  content; COMMUNITY_CONTRIBUTION: community submissions; PAYMENT_MANDATE: mandates; ANALYTICS; MARKETING; CREATIVE_BACKUP: the
+  creative backup, ADR 0050).
 - **Withdrawal.** Publishes `ConsentChanged` in the same transaction. Preferences listens and switches `historyEnabled` off
   (a revisioned write) when `SAVE_AI_HISTORY` is withdrawn; existing history is kept (contract: "stops new history writes and
   offers deletion"), so no purge event is published. Billing (later) cancels mandates on `PAYMENT_MANDATE` the same way.
@@ -1310,6 +1311,40 @@ consent link; the rating and reason codes stay) in the withdrawal's transaction,
 (`AiFeedback.onConsentChanged`, ADR 0007 D41); `ai_feedback` rows are purged 13 months after `created_at`
 (`ai-feedback` retention rule, `AiRetention`).
 Proof: `AiFeedbackHistoryIT` (PG18, 15 tests, contract-validated, DB scan of every table, log scrub of comment and history text).
+
+## Creative backup (T8.15, ADR 0050)
+
+Opt-in encrypted cloud backup of on-device creative assets (Draw & Sketch drawings, kind `DRAWING`). Module
+`personalization` (`CreativeBackupController`, `CreativeBackupService`, `CreativeBackupLifecycle`), contract tag
+`CreativeBackup`, table `creative_backup_items` (V34). Free for every signed-in user, not metered (feature `DRAW_SKETCH`).
+
+- **Endpoints** (all `no-store`): `GET /me/creative-backup/items` (`listCreativeBackupItems`: metadata only, ordered by item
+  id, `kind`, `cursor`, `limit` 1-100 default 50), `GET|PUT|DELETE /me/creative-backup/items/{itemId}`
+  (`getCreativeBackupItem`, `putCreativeBackupItem`, `deleteCreativeBackupItem`), `DELETE /me/creative-backup`
+  (`clearCreativeBackup`), `GET /me/creative-backup/summary` (`getCreativeBackupSummary`: usage per kind, the caps,
+  `consentGranted`). `itemId` is the app's id, `^[A-Za-z0-9_-]{1,64}$`, unique per user.
+- **PUT body** (JSON, read by hand, never logged): `{kind, updatedAt, expectedRevision?, content}`; `content` is standard
+  base64 of the opaque bytes the app produced. 201 on create, 200 on replace or an identical repeat (same kind,
+  `updatedAt` and content: nothing changes, the stored revision is returned). The server assigns `revision` (1, then +1).
+  `expectedRevision` makes it a compare-and-set (`0` = must not exist); a mismatch is 409 `REVISION_CONFLICT` with
+  `currentRevision`. Without it the last writer wins.
+- **Gates**, in order: `qal.creative-backup.enabled` (off: 404 `NOT_FOUND` everywhere), rate limit `creative-backup.user`
+  (429), registered account (403 `GUEST_NOT_ALLOWED`), and for list/get/put a granted `CREATIVE_BACKUP` consent (403
+  `CONSENT_REQUIRED`; off by default). Deleting and the summary work without the consent.
+- **Encryption:** content sealed with `UserDataEncryption` (`creative_backup_items / content_ciphertext / <row id>`); the
+  plaintext columns are listing metadata only (kind, size, revision, the app's `updatedAt`, server times). Server-side
+  envelope encryption, not end-to-end: the server decrypts for the owner's download and the data export.
+- **Withdrawal** of `CREATIVE_BACKUP` deletes every item of the user in the withdrawal's transaction (`ConsentChanged`);
+  account deletion deletes the rows after the crypto-shred; the data export has a `creativeBackup` section with metadata and
+  `contentBase64`. Guests cannot back up, so guest merge has nothing to move.
+- **Configuration** `qal.creative-backup.*`: `enabled` (`QAL_CREATIVE_BACKUP_ENABLED`, true), `max-item-bytes` (2 MiB, 413
+  `BACKUP_ITEM_TOO_LARGE` with `maxItemBytes`; at most 8 MiB), `max-items-per-kind` (100) and `max-total-bytes` (32 MiB, so a
+  full backup fits the 64 MiB export archive as base64), both 409 `BACKUP_QUOTA_EXCEEDED` with `quota`
+  (`ITEMS_PER_KIND` | `TOTAL_BYTES`) and `limit`; `rate-limit` (600) per `rate-limit-period` (1h). Env names
+  `QAL_CREATIVE_BACKUP_*`.
+- Proof: `CreativeBackupIT` (PG18, contract-validated: consent off by default, guests, byte-exact round trip, CAS, idempotent
+  PUT, caps, validation, withdrawal, crypto-shred and purge, DB scan and TRACE log scrub, rate limit, DB guards),
+  `CreativeBackupDisabledIT`, `CreativeBackupPropertiesTest`, and the new rows in `DataExportIT` and `DeletionIT`.
 
 ## Crash reporting: Sentry (ADR 0024, ADR 0007 D47)
 
