@@ -27,21 +27,32 @@ sealed interface DecodeResult {
  * int   magic 'QDRW'        short version      short flags (0)
  * float width, height       int   background ARGB      byte pattern
  * short metaCount, then metaCount x (UTF key, UTF value)
- * int   strokeCount, then per stroke: byte tool, int ARGB, float width, int pointCount, then per point: float x, float y, byte pressure
+ * int   strokeCount, then per stroke: byte tool, [version 2: byte brush,] int ARGB, float width, int pointCount, then per point: float x, float y, byte pressure
  * short blockCount, then per block: short id, int length, bytes     (unknown blocks are skipped)
+ *   block 1 = objects (version 2): short count, then per object: byte type, int length, bytes (unknown types are skipped)
+ *     type 0 text:  float x, y, boxWidth; byte size; byte flags (bit 0 bold); int ARGB; UTF text
+ *     type 1 shape: byte kind; byte flags (bit 0 filled); int ARGB; float width; float x1, y1, x2, y2
  * ```
  *
- * Phase 2 (text, shapes) and the AI phase add new blocks or bump the version; a reader of an older version rejects a newer
- * file as [DecodeResult.Unsupported] rather than guessing, and skips unknown blocks of its own version. Nothing is logged.
+ * Version 1 (T8.4) had no brush byte and no blocks; this reader still loads it unchanged (every stroke is a plain pen stroke,
+ * there are no objects), and the writer always writes the current version. A reader rejects a newer file as
+ * [DecodeResult.Unsupported] rather than guessing, and skips unknown blocks and unknown object types of its own version.
+ * Nothing is logged.
  */
 object DrawingCodec {
-    const val VERSION = 1
+    const val VERSION = 2
+
+    /** The oldest version this reader still loads. */
+    const val OLDEST_VERSION = 1
     private const val MAGIC = 0x51445257
     const val MAX_STROKES = 50_000
     const val MAX_POINTS = 2_000_000
     private const val MAX_SIDE = 20_000f
     private const val MAX_META = 64
     private const val POINT_BYTES = 9
+    private const val BLOCK_OBJECTS = 1
+    private const val OBJ_TEXT = 0
+    private const val OBJ_SHAPE = 1
 
     fun encode(d: Drawing): ByteArray {
         val bytes = ByteArrayOutputStream(256 + d.strokes.sumOf { it.points.size } * POINT_BYTES)
@@ -62,6 +73,7 @@ object DrawingCodec {
             o.writeInt(d.strokes.size)
             for (s in d.strokes) {
                 o.writeByte(s.tool.code)
+                o.writeByte(if (s.tool == DrawTool.PEN) s.brush.code else Brush.PEN.code)
                 o.writeInt(s.colour)
                 o.writeFloat(s.widthDp)
                 o.writeInt(s.points.size)
@@ -71,9 +83,55 @@ object DrawingCodec {
                     o.writeByte((p.pressure.coerceIn(0f, 1f) * 255f).roundToInt())
                 }
             }
-            o.writeShort(0) // no extension blocks in version 1
+            val objects = d.objects.take(DrawSession.MAX_OBJECTS)
+            if (objects.isEmpty()) {
+                o.writeShort(0)
+            } else {
+                val block = ByteArrayOutputStream()
+                DataOutputStream(block).use { b ->
+                    b.writeShort(objects.size)
+                    for (obj in objects) {
+                        val payload = ByteArrayOutputStream()
+                        val type = DataOutputStream(payload).use { p -> writeObject(p, obj) }
+                        b.writeByte(type)
+                        b.writeInt(payload.size())
+                        payload.writeTo(b)
+                    }
+                }
+                o.writeShort(1)
+                o.writeShort(BLOCK_OBJECTS)
+                o.writeInt(block.size())
+                block.writeTo(o)
+            }
         }
         return bytes.toByteArray()
+    }
+
+    /** Writes the payload of [obj]; returns its type byte. */
+    private fun writeObject(o: DataOutputStream, obj: DrawObject): Int {
+        when (obj) {
+            is TextObject -> {
+                o.writeFloat(obj.x)
+                o.writeFloat(obj.y)
+                o.writeFloat(obj.boxWidth)
+                o.writeByte(obj.size.code)
+                o.writeByte(if (obj.bold) 1 else 0)
+                o.writeInt(obj.colour)
+                o.writeUTF(obj.text.take(TextObject.MAX_CHARS))
+                return OBJ_TEXT
+            }
+            is ShapeObject -> {
+                o.writeByte(obj.kind.code)
+                o.writeByte(if (obj.filled) 1 else 0)
+                o.writeInt(obj.colour)
+                o.writeFloat(obj.widthDp)
+                o.writeFloat(obj.x1)
+                o.writeFloat(obj.y1)
+                o.writeFloat(obj.x2)
+                o.writeFloat(obj.y2)
+                return OBJ_SHAPE
+            }
+        }
     }
 
     fun decode(data: ByteArray): DecodeResult {
@@ -82,7 +140,7 @@ object DrawingCodec {
             if (i.readInt() != MAGIC) return DecodeResult.Corrupt
             val version = i.readUnsignedShort()
             if (version > VERSION) return DecodeResult.Unsupported(version)
-            if (version < 1) return DecodeResult.Corrupt
+            if (version < OLDEST_VERSION) return DecodeResult.Corrupt
             i.readUnsignedShort() // flags
             val w = i.readFloat()
             val h = i.readFloat()
@@ -99,6 +157,7 @@ object DrawingCodec {
             var totalPoints = 0
             repeat(strokeCount) {
                 val tool = DrawTool.fromCode(i.readUnsignedByte()) ?: return DecodeResult.Corrupt
+                val brush = if (version >= 2) (Brush.fromCode(i.readUnsignedByte()) ?: return DecodeResult.Corrupt) else Brush.PEN
                 val colour = i.readInt()
                 val width = i.readFloat()
                 if (!width.isFinite() || width <= 0f || width > 1000f) return DecodeResult.Corrupt
@@ -112,16 +171,23 @@ object DrawingCodec {
                     if (!x.isFinite() || !y.isFinite() || abs(x) > 1e6f || abs(y) > 1e6f) return DecodeResult.Corrupt
                     pts += Pt(x, y, i.readUnsignedByte() / 255f)
                 }
-                strokes += Stroke(pts, colour, width, tool)
+                strokes += Stroke(pts, colour, width, tool, brush)
             }
+            var objects: List<DrawObject> = emptyList()
             val blocks = i.readUnsignedShort()
             repeat(blocks) {
-                i.readUnsignedShort()
+                val id = i.readUnsignedShort()
                 val len = i.readInt()
                 if (len < 0 || len > i.available()) return DecodeResult.Corrupt
-                i.skipBytes(len)
+                if (id == BLOCK_OBJECTS && version >= 2) {
+                    val raw = ByteArray(len)
+                    i.readFully(raw)
+                    objects = readObjects(DataInputStream(ByteArrayInputStream(raw))) ?: return DecodeResult.Corrupt
+                } else {
+                    i.skipBytes(len)
+                }
             }
-            return DecodeResult.Ok(Drawing(w, h, DrawBackground(bg, pattern), strokes, meta))
+            return DecodeResult.Ok(Drawing(w, h, DrawBackground(bg, pattern), strokes, meta, objects))
         } catch (e: IOException) {
             return DecodeResult.Corrupt
         } catch (e: RuntimeException) {
@@ -129,6 +195,50 @@ object DrawingCodec {
         }
     }
 
+    /** The objects of the block, or null when it is damaged. */
+    private fun readObjects(i: DataInputStream): List<DrawObject>? {
+        val count = i.readUnsignedShort()
+        if (count > DrawSession.MAX_OBJECTS) return null
+        val out = ArrayList<DrawObject>(count)
+        repeat(count) {
+            val type = i.readUnsignedByte()
+            val len = i.readInt()
+            if (len < 0 || len > i.available()) return null
+            val raw = ByteArray(len)
+            i.readFully(raw)
+            val p = DataInputStream(ByteArrayInputStream(raw))
+            when (type) {
+                OBJ_TEXT -> {
+                    val x = p.readFloat()
+                    val y = p.readFloat()
+                    val box = p.readFloat()
+                    val size = TextSize.fromCode(p.readUnsignedByte()) ?: return null
+                    val bold = (p.readUnsignedByte() and 1) != 0
+                    val colour = p.readInt()
+                    val text = p.readUTF().take(TextObject.MAX_CHARS)
+                    if (!okCoord(x) || !okCoord(y) || !box.isFinite() || box < 1f || box > MAX_SIDE) return null
+                    out += TextObject(0, text, x, y, size, colour, bold, box)
+                }
+                OBJ_SHAPE -> {
+                    val kind = ShapeKind.fromCode(p.readUnsignedByte()) ?: return null
+                    val filled = (p.readUnsignedByte() and 1) != 0
+                    val colour = p.readInt()
+                    val width = p.readFloat()
+                    val x1 = p.readFloat()
+                    val y1 = p.readFloat()
+                    val x2 = p.readFloat()
+                    val y2 = p.readFloat()
+                    if (!width.isFinite() || width <= 0f || width > 1000f) return null
+                    if (!okCoord(x1) || !okCoord(y1) || !okCoord(x2) || !okCoord(y2)) return null
+                    out += ShapeObject(0, kind, x1, y1, x2, y2, colour, width, filled)
+                }
+                else -> Unit // a type this build does not know: skipped
+            }
+        }
+        return out
+    }
+
+    private fun okCoord(v: Float) = v.isFinite() && abs(v) <= 1e6f
     private fun okSide(v: Float) = v.isFinite() && v >= 1f && v <= MAX_SIDE
     private const val MAX_META_TEXT = 4000
 }
