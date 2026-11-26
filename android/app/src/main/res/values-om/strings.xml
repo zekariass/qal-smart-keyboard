@@ -855,4 +855,11 @@
     <string name="studio_annot_mine_empty">Suuraaleen isin olkaa\'attan asitti mul\'atu.</string>
     <string name="studio_annot_item_desc">Suuraa olkaa\'ame, %1$s</string>
     <string name="studio_annot_delete_title">Suuraa kana haqdaa?</string>
+    <!-- Your drawings in the Creative studio (T8.15). DRAFT (N9). -->
+    <string name="studio_drawings_mine">Suuraalee keessan</string>
+    <string name="studio_drawings_mine_empty">Suuraaleen meeshaa suuraa kiiboordii keessatti olkaa\'attan asitti mul\'atu. Jijjiiruuf kiiboordii keessaa Galariidhaan banaa.</string>
+    <string name="studio_drawing_item_desc">Suuraa olkaa\'ame, %1$s</string>
+    <string name="studio_drawing_delete_title">Suuraa kana haqdaa?</string>
+    <string name="drawing_share_title">Suuraa qoodi</string>
+    <string name="drawing_share_failed">Suuraan qoodamuu hin dandeenye.</string>
 </resources>

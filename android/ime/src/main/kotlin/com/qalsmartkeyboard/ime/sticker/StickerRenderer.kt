@@ -11,6 +11,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import com.qalsmartkeyboard.ime.draw.Drawing
+import com.qalsmartkeyboard.ime.draw.ObjectRenderer
 import com.qalsmartkeyboard.ime.draw.StrokeRenderer
 import java.io.File
 import java.io.IOException
@@ -29,7 +30,10 @@ import kotlin.math.sin
  * Only system fonts are used (the emoji font draws emoji, a bold system face the text; Amharic and Tigrinya use the
  * system's Ethiopic font): no third-party image or font is bundled (N10).
  */
-class StickerRenderer(private val strokes: StrokeRenderer = StrokeRenderer()) {
+class StickerRenderer(
+    private val strokes: StrokeRenderer = StrokeRenderer(),
+    private val objects: ObjectRenderer = ObjectRenderer(),
+) {
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val text = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.DEFAULT_BOLD }
     private val emojiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
@@ -162,7 +166,7 @@ class StickerRenderer(private val strokes: StrokeRenderer = StrokeRenderer()) {
 
     private fun drawDrawing(canvas: Canvas, s: DrawingStickerSpec, size: Float) {
         val d: Drawing = s.drawing
-        val content = d.contentBounds()
+        val content = d.contentBounds(objects)
         val margin = 8f
         val l = max(0f, (content?.left ?: 0f) - margin)
         val t = max(0f, (content?.top ?: 0f) - margin)
@@ -184,6 +188,7 @@ class StickerRenderer(private val strokes: StrokeRenderer = StrokeRenderer()) {
         canvas.scale(scale, scale)
         canvas.translate(-l, -t)
         strokes.drawStrokes(canvas, d.strokes)
+        objects.drawObjects(canvas, d.objects) // text and shapes go over the ink; the eraser never touched them
         canvas.restoreToCount(layer)
     }
 }

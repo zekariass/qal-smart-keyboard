@@ -57,6 +57,8 @@ import com.qalsmartkeyboard.app.creative.cards.CardMakerViewModel
 import com.qalsmartkeyboard.app.creative.cards.CardOutcome
 import com.qalsmartkeyboard.app.creative.cards.CardShare
 import com.qalsmartkeyboard.app.creative.cards.SavedCard
+import com.qalsmartkeyboard.app.creative.draw.DrawingsViewModel
+import com.qalsmartkeyboard.app.creative.draw.SavedDrawingItem
 import com.qalsmartkeyboard.app.settings.SettingsScaffold
 import java.io.File
 import java.text.DateFormat
@@ -116,9 +118,11 @@ fun CreativeStudioRoute(onBack: () -> Unit, onUnlock: () -> Unit, modifier: Modi
     BackHandler(onBack = onBack)
     val cards = activityViewModel(CardMakerViewModel.create)
     val annotations = activityViewModel(AnnotatorViewModel.create)
+    val drawings = activityViewModel(DrawingsViewModel.create)
     CreativeStudioScreen(
         cards = cards,
         annotations = annotations,
+        drawings = drawings,
         onOpenTool = { studio.openTool = it.id },
         onCardOpened = { studio.openTool = "cards" },
         onBack = onBack,
@@ -127,8 +131,9 @@ fun CreativeStudioRoute(onBack: () -> Unit, onUnlock: () -> Unit, modifier: Modi
 }
 
 /**
- * The hub: the tool cards, then "Your cards" and "Your annotated pictures" (the personal gallery, T8.7; the full gallery
- * follows in T8.15). An annotated picture is flattened, so it is shared or deleted, not edited.
+ * The hub: the tool cards, then "Your cards", "Your annotated pictures" and "Your drawings" (the personal gallery, T8.7).
+ * An annotated picture is flattened, so it is shared or deleted, not edited. A drawing is the keyboard's Draw gallery (T8.15):
+ * it is shared as a PNG or deleted here, and edited in the keyboard's Draw panel.
  */
 @Composable
 internal fun CreativeStudioScreen(
@@ -139,15 +144,18 @@ internal fun CreativeStudioScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     annotations: AnnotatorViewModel? = null,
+    drawings: DrawingsViewModel? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var confirmDelete by remember { mutableStateOf<SavedCard?>(null) }
     var confirmDeletePicture by remember { mutableStateOf<SavedAnnotation?>(null) }
+    var confirmDeleteDrawing by remember { mutableStateOf<SavedDrawingItem?>(null) }
     LaunchedEffect(Unit) {
         cards.refreshGallery()
         annotations?.refreshGallery()
+        drawings?.refreshGallery()
     }
     val openFailed = stringResource(R.string.studio_card_open_failed)
     val shareFailed = stringResource(R.string.card_share_failed)
@@ -207,6 +215,31 @@ internal fun CreativeStudioScreen(
                         )
                     }
                 }
+                if (drawings != null) {
+                    val drawingShareTitle = stringResource(R.string.drawing_share_title)
+                    val drawingShareFailed = stringResource(R.string.drawing_share_failed)
+                    Text(
+                        stringResource(R.string.studio_drawings_mine),
+                        style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp).semantics { heading() },
+                    )
+                    if (drawings.gallery.isEmpty()) {
+                        Text(stringResource(R.string.studio_drawings_mine_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    for (item in drawings.gallery) {
+                        SavedItemRow(
+                            item.modifiedMillis, item.image, R.string.studio_drawing_item_desc,
+                            onEdit = null,
+                            onShare = {
+                                scope.launch {
+                                    val r = drawings.stageSaved(item)
+                                    if (r !is CardOutcome.Shareable || !CardShare.share(context, r.file, r.format, drawingShareTitle)) snackbar.showSnackbar(drawingShareFailed)
+                                }
+                            },
+                            onDelete = { confirmDeleteDrawing = item },
+                        )
+                    }
+                }
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
@@ -231,6 +264,17 @@ internal fun CreativeStudioScreen(
                 TextButton(onClick = { confirmDeletePicture = null; scope.launch { annotations?.delete(item.id) } }) { Text(stringResource(R.string.pv_delete_item)) }
             },
             dismissButton = { TextButton(onClick = { confirmDeletePicture = null }) { Text(stringResource(R.string.pd_cancel)) } },
+        )
+    }
+    confirmDeleteDrawing?.let { item ->
+        AlertDialog(
+            onDismissRequest = { confirmDeleteDrawing = null },
+            title = { Text(stringResource(R.string.studio_drawing_delete_title)) },
+            text = { Text(stringResource(R.string.studio_delete_body)) },
+            confirmButton = {
+                TextButton(onClick = { confirmDeleteDrawing = null; scope.launch { drawings?.delete(item.id) } }) { Text(stringResource(R.string.pv_delete_item)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeleteDrawing = null }) { Text(stringResource(R.string.pd_cancel)) } },
         )
     }
 }

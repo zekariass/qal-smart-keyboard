@@ -30,6 +30,9 @@ enum class ToolIcon {
 
     // T8.4 Draw & Sketch: the tile and the panel's own controls.
     DRAW, PEN, HIGHLIGHTER, ERASER, UNDO, REDO, TRASH, PAPER, SAVE, IMAGE_INSERT, SHARE, GALLERY, PLUS,
+
+    // T8.15 Draw phase 2: shapes, text, select / move, fill.
+    SHAPES, TEXT, SELECT, FILL,
     LOCK, CHECK, GRAMMAR, REWRITE,
 
     /** T8.7 the sticker maker: a sticker with a peeled corner and a smile. */
@@ -593,6 +596,24 @@ object ToolIcons {
             },
         )
         ToolIcon.PLUS -> Glyph(Path().apply { poly(12f, 5f, 12f, 19f); poly(5f, 12f, 19f, 12f) })
+        // A square and a circle: the shapes.
+        ToolIcon.SHAPES -> Glyph(
+            Path().apply {
+                rect(3.5f, 9f, 13f, 19.5f, 1.5f)
+                circle(16f, 8f, 4.5f)
+            },
+        )
+        // A "T": the text tool.
+        ToolIcon.TEXT -> Glyph(Path().apply { poly(5f, 6f, 19f, 6f); poly(12f, 6f, 12f, 19f); poly(8.5f, 19f, 15.5f, 19f) })
+        // A pointer arrow: select and move.
+        ToolIcon.SELECT -> Glyph(
+            Path().apply { poly(6f, 3.5f, 6f, 18f, 9.8f, 14.2f, 12.8f, 20.5f, 15.2f, 19.4f, 12.3f, 13.3f, 17.5f, 13.3f, close = true) },
+        )
+        // A square with hatching: a filled shape.
+        ToolIcon.FILL -> Glyph(
+            Path().apply { rect(4.5f, 4.5f, 19.5f, 19.5f, 2f) },
+            Path().apply { poly(8f, 16f, 16f, 8f); poly(8f, 11.5f, 11.5f, 8f); poly(12.5f, 16f, 16f, 12.5f) },
+        )
         ToolIcon.LOCK -> Glyph(
             Path().apply {
                 moveTo(8f, 10.5f)

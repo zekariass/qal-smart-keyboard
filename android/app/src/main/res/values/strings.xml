@@ -863,4 +863,11 @@
     <string name="studio_annot_mine_empty">Pictures you save appear here.</string>
     <string name="studio_annot_item_desc">Saved picture, %1$s</string>
     <string name="studio_annot_delete_title">Delete this picture?</string>
+    <!-- Your drawings in the Creative studio (T8.15). -->
+    <string name="studio_drawings_mine">Your drawings</string>
+    <string name="studio_drawings_mine_empty">Drawings you save in the keyboard\'s Draw tool appear here. To change one, open it from Gallery in the keyboard.</string>
+    <string name="studio_drawing_item_desc">Saved drawing, %1$s</string>
+    <string name="studio_drawing_delete_title">Delete this drawing?</string>
+    <string name="drawing_share_title">Share drawing</string>
+    <string name="drawing_share_failed">The drawing could not be shared.</string>
 </resources>

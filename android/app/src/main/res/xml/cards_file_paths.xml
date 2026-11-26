@@ -8,4 +8,8 @@
          never the draft). The gallery (noBackupFilesDir/annotations/) and the draft are never exposed. Excluded from
          backups and device transfer like card_share/. -->
     <files-path name="annotate_share" path="annotate_share/" />
+    <!-- T8.15: a saved drawing's PNG copy being shared from the Creative studio (a copy of the keyboard's exported image;
+         the editable drawings in drawings/ and the keyboard's own png/ folder are never exposed by this provider). Excluded
+         from backups and device transfer like the other share folders. -->
+    <files-path name="drawing_share" path="drawing_share/" />
 </paths>

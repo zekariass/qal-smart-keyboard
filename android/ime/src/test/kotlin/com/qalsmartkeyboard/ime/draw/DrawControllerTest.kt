@@ -64,12 +64,18 @@ class DrawControllerTest {
         assertEquals(listOf(a, b), store.list().map { it.id })
     }
 
-    @Test fun listIsCappedAtTheNewestN() {
-        repeat(DrawingStore.MAX_LISTED + 7) { store.save(null, Drawing(10f, 10f)) }
+    @Test fun theGalleryHoldsAtMostTheCapAndRefusesANewDrawingBeyondIt() {
+        val ids = (0 until DrawingStore.MAX_DRAWINGS).map { store.save(null, Drawing(10f, 10f))!! }
+        assertEquals(DrawingStore.MAX_DRAWINGS, store.count())
+        assertTrue(store.full)
+        assertEquals(StoreResult.Full, store.trySave(null, Drawing(10f, 10f)))
+        assertNull(store.save(null, Drawing(10f, 10f)))
+        assertNull("a duplicate is a new drawing too", store.duplicate(ids[0]))
+        assertEquals("saving over an existing drawing still works", ids[3], store.save(ids[3], Drawing(11f, 11f)))
+        assertEquals(DrawingStore.MAX_DRAWINGS, store.count())
         assertEquals(DrawingStore.MAX_LISTED, store.list().size)
-        assertEquals(DrawingStore.MAX_LISTED + 7, store.count())
         assertEquals(3, store.list(3).size)
-        assertEquals("draw%04d".format(DrawingStore.MAX_LISTED + 6), store.list().first().id)
+        assertEquals("the newest is first", ids[3], store.list().first().id)
     }
 
     @Test fun duplicateDeleteAndBadIds() {

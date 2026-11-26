@@ -281,11 +281,11 @@ class DrawUiTest {
     @Test fun canvasControlsAre48dpWithSpokenNamesInBothPaletteModes() {
         val r = rig()
         assertAccessible(r.panel, "canvas")
-        // 7 tools + 10 colours + 4 widths + 4 actions
-        assertEquals(25, r.panel.controls.size)
+        // 9 tools + 10 colours + 4 widths + 4 actions
+        assertEquals(27, r.panel.controls.size)
         r.panel.tap(ctx.getString(R.string.draw_paper))
         assertAccessible(r.panel, "paper")
-        assertEquals(7 + DrawBackground.PRESETS.size + 4 + 4, r.panel.controls.size)
+        assertEquals(9 + DrawBackground.PRESETS.size + 4 + 4, r.panel.controls.size)
         assertNotNull(r.panel.control(ctx.getString(R.string.draw_colours)))
     }
 
@@ -312,6 +312,7 @@ class DrawUiTest {
         assertEquals(InkDefaults.PALETTE[2], c.colour)
         r.panel.tap(ctx.getString(R.string.draw_width_thick))
         assertEquals(2, c.widthIndex)
+        r.panel.tap(ctx.getString(R.string.draw_brushes))
         r.panel.tap(ctx.getString(R.string.draw_tool_highlighter))
         assertEquals(DrawTool.HIGHLIGHTER, c.tool)
         r.panel.tap(ctx.getString(R.string.draw_paper))
@@ -360,20 +361,21 @@ class DrawUiTest {
 
     @Test fun galleryListsOpensDuplicatesAndDeletesThroughThePanel() {
         val r = rig()
-        repeat(DrawingStore.MAX_LISTED + 5) { r.store.save(null, Drawing(60f, 40f, strokes = listOf(Stroke(listOf(Pt(5f, 5f), Pt(40f, 30f)), 0, 3f)))) }
+        val total = 2 * DrawController.GALLERY_PAGE + 4
+        repeat(total) { r.store.save(null, Drawing(60f, 40f, strokes = listOf(Stroke(listOf(Pt(5f, 5f), Pt(40f, 30f)), 0, 3f)))) }
         r.panel.tap(ctx.getString(R.string.draw_gallery))
-        assertEquals(DrawingStore.MAX_LISTED, r.controller.gallery.size)
-        assertEquals("thumbnails are rendered for every shown drawing", DrawingStore.MAX_LISTED, r.panel.thumbnailCount)
+        assertEquals(total, r.controller.gallery.size)
+        assertEquals("one page of thumbnails is rendered", DrawController.GALLERY_PAGE, r.panel.thumbnailCount)
         val first = r.controller.gallery.first().id
-        r.panel.controls.first { it.contentDescription == ctx.getString(R.string.draw_gallery_item, 1, DrawingStore.MAX_LISTED) }.performClick()
+        r.panel.controls.first { it.contentDescription == ctx.getString(R.string.draw_gallery_item, 1, total) }.performClick()
         r.panel.relayout()
         assertEquals(first, r.controller.selectedId)
         r.panel.tap(ctx.getString(R.string.draw_gallery_duplicate))
-        assertEquals(DrawingStore.MAX_LISTED + 6, r.store.count())
+        assertEquals(total + 1, r.store.count())
         r.panel.tap(ctx.getString(R.string.draw_gallery_delete))
-        assertEquals("delete asks first", DrawingStore.MAX_LISTED + 6, r.store.count())
+        assertEquals("delete asks first", total + 1, r.store.count())
         r.panel.tap(ctx.getString(R.string.draw_gallery_delete_confirm))
-        assertEquals(DrawingStore.MAX_LISTED + 5, r.store.count())
+        assertEquals(total, r.store.count())
         r.controller.select(r.controller.gallery.first().id)
         r.panel.relayout()
         r.panel.tap(ctx.getString(R.string.draw_gallery_edit))
