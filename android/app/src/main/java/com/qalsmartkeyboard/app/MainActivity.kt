@@ -74,6 +74,7 @@ import com.qalsmartkeyboard.data.SettingsRepository
 import com.qalsmartkeyboard.app.themes.ThemesHost
 import com.qalsmartkeyboard.app.themes.rememberPremiumThemeAccess
 import com.qalsmartkeyboard.app.creative.CreativeStudioRoute
+import com.qalsmartkeyboard.app.creative.backup.BackupAccount
 import com.qalsmartkeyboard.app.wordart.WordArtHost
 import com.qalsmartkeyboard.app.voice.rememberDictation
 import com.qalsmartkeyboard.app.email.EmailWriterModel
@@ -403,6 +404,12 @@ class MainActivity : ComponentActivity() {
                         creativeOpen && !showFlow -> CreativeStudioRoute(
                             onBack = { creativeOpen = false },
                             onUnlock = { plansFromKeyboard = false; showPlans = true },
+                            account = when (accountStatus) {
+                                AccountStatus.Registered -> BackupAccount.REGISTERED
+                                AccountStatus.Guest -> BackupAccount.GUEST
+                                is AccountStatus.SignedOut -> BackupAccount.SIGNED_OUT
+                            },
+                            onSignIn = { signIn.reset(); showSignIn = true },
                         )
                         emailOpen && !showFlow -> {
                             val closeEmail = {
