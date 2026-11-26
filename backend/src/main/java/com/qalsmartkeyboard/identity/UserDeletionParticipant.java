@@ -31,6 +31,8 @@ public interface UserDeletionParticipant {
 	int DEVICES = 100;
 	int PREFERENCES = 200;
 	int PRIVACY = 300;
+	/** Personalization tables with a participant of their own (the creative backup, ADR 0050). */
+	int PERSONALIZATION = 350;
 	int LANGUAGES = 400;
 	int USAGE = 500;
 	int GLOSSARIES = 600;

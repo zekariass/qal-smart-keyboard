@@ -1249,7 +1249,7 @@ There MUST NOT be synchronous disk or network access on the key path. Pack loadi
 | Audio | Dictation, conversation | Memory / temporary object | Deleted after processing; ≤ 24 h lifecycle backstop |
 | Account and preferences | Profile, settings, consents | PostgreSQL | Life of account + 30 days |
 | Financial records | Orders, transactions, receipts | PostgreSQL | As required by tax law (assume 10 years until confirmed) |
-| User-created media | Sketches, stickers, GIFs, cards, annotated images | **Device only** (app-private gallery) | Until the user deletes them |
+| User-created media | Sketches, stickers, GIFs, cards, annotated images | **Device only** (app-private gallery); drawings optionally in `creative_backup_items` (encrypted, opt-in `CREATIVE_BACKUP` consent, ADR 0050) | Until the user deletes them; the backup also goes on consent withdrawal and account deletion |
 | OCR source images | Photos/screenshots scanned for text | Transient in memory; server OCR is not persisted | Duration of the scan only |
 | Audit events | Admin and security actions | PostgreSQL | 2 years (security), 7 years (financial admin actions) |
 | Webhook payloads | Redacted provider events | PostgreSQL | 18 months |
@@ -1324,7 +1324,7 @@ The full schema is in `Ethiopian_AI_Keyboard_Database_Design_v2_0.sql` (Flyway `
 | Usage and credits | ai_credit_accounts, ai_credit_lots, ai_credit_transactions, usage_counters, usage_events |
 | Configuration | feature_flags, user_feature_overrides, app_configurations |
 | Admin and operations | admin_roles, user_admin_roles, audit_events, outbox_events |
-| User creative assets | **None** — sketches, stickers, GIFs, cards and annotated images live only on the device (§6.6, R-8); an optional later sync uses `user_data_keys`-encrypted rows like history |
+| User creative assets | creative_backup_items — the opt-in encrypted backup of drawings (T8.15, ADR 0050: `user_data_keys`-encrypted rows like history, `CREATIVE_BACKUP` consent, deleted on withdrawal); everything else stays on the device only (§6.6, R-8) |
 
 ### 20.3 Migration policy
 

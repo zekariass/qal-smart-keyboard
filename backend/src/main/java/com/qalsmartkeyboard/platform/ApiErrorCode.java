@@ -80,6 +80,8 @@ public enum ApiErrorCode {
 	PUBLICATION_CONFLICT(HttpStatus.CONFLICT, "Publication state conflict"),
 	SYNC_CURSOR_EXPIRED(HttpStatus.GONE, "Sync cursor expired"),
 	APPROVAL_REQUIRED(HttpStatus.FORBIDDEN, "A second admin must approve this action"),
+	BACKUP_ITEM_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "Backup item is too large"),
+	BACKUP_QUOTA_EXCEEDED(HttpStatus.CONFLICT, "Backup storage limit reached"),
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
 
 	private final HttpStatus defaultStatus;

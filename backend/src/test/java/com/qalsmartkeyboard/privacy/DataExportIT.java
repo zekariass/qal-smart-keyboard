@@ -134,6 +134,8 @@ class DataExportIT {
 	static final String GLOSSARY_TERM = "Meskel Dembel";
 	static final String OTHER = "Bystander Secret Walnut";
 	static final String HASH = "a".repeat(64);
+	static final byte[] DRAWING_A = { (byte) 0x89, 'P', 'N', 'G', 0, 1, 2, (byte) 0xff };
+	static final byte[] DRAWING_B = "Kestrel sketch".getBytes(StandardCharsets.UTF_8);
 
 	@Autowired
 	MockMvc mvc;
@@ -305,6 +307,16 @@ class DataExportIT {
 						+ "expires_at = now() - interval '1 day' WHERE id = ?", id);
 			}
 		}
+		// creative backup (ADR 0050): two drawings, the client's opaque bytes sealed with the user's key
+		for (Object[] d : new Object[][] { { "drawing-b", DRAWING_B }, { "drawing-a", DRAWING_A } }) {
+			UUID id = UUID.randomUUID();
+			byte[] content = (byte[]) d[1];
+			jdbc.update("""
+					INSERT INTO creative_backup_items (id, user_id, client_item_id, item_kind, revision, content_ciphertext,
+					       key_version, size_bytes, client_updated_at) VALUES (?, ?, ?, 'DRAWING', 2, ?, 1, ?, ?)""", id, u,
+					d[0], encryption.encrypt(u, ctx("creative_backup_items", "content_ciphertext", id), content).ciphertext(),
+					content.length, Timestamp.from(Instant.parse("2026-11-20T08:30:00Z")));
+		}
 		// dictionary: two words and a deleted one (a tombstone), and a term suggestion
 		for (Object[] w : new Object[][] { { WORD_A, null }, { WORD_B, null }, { WORD_GONE, Timestamp.from(Instant.now()) } }) {
 			UUID id = UUID.randomUUID();
@@ -407,7 +419,8 @@ class DataExportIT {
 			Map.entry("creditAccounts", 1), Map.entry("creditLots", 1), Map.entry("creditTransactions", 1),
 			Map.entry("subscriptions", 1), Map.entry("featureOverrides", 1), Map.entry("aiRequests", 2),
 			Map.entry("aiFeedback", 1), Map.entry("paymentOrders", 1), Map.entry("storePurchases", 1),
-			Map.entry("voiceJobs", 1), Map.entry("realtimeSessions", 1), Map.entry("organizationMemberships", 1));
+			Map.entry("voiceJobs", 1), Map.entry("realtimeSessions", 1), Map.entry("organizationMemberships", 1),
+			Map.entry("creativeBackup", 2));
 
 	static JsonNode row(JsonNode archive, String section, int index) {
 		return archive.get("data").get(section).get(index);
@@ -532,6 +545,19 @@ class DataExportIT {
 		assertThat(row(archive, "realtimeSessions", 0).get("languageA").asString()).isEqualTo("am");
 		assertThat(row(archive, "organizationMemberships", 0).get("organization").asString()).isEqualTo("Selam Org");
 		assertThat(row(archive, "exportRequests", 0).get("id").asString()).isEqualTo(id.toString());
+		// the creative backup: metadata plus the content decrypted (base64 of the uploaded bytes), ordered by item id
+		JsonNode drawing = row(archive, "creativeBackup", 0);
+		assertThat(drawing.get("itemId").asString()).isEqualTo("drawing-a");
+		assertThat(drawing.get("kind").asString()).isEqualTo("DRAWING");
+		assertThat(drawing.get("revision").longValue()).isEqualTo(2L);
+		assertThat(drawing.get("sizeBytes").intValue()).isEqualTo(DRAWING_A.length);
+		assertThat(Instant.parse(drawing.get("updatedAt").asString())).isEqualTo(Instant.parse("2026-11-20T08:30:00Z"));
+		assertThat(drawing.has("createdAt")).isTrue();
+		assertThat(drawing.has("storedAt")).isTrue();
+		assertThat(drawing.has("id")).isFalse();
+		assertThat(java.util.Base64.getDecoder().decode(drawing.get("contentBase64").asString())).isEqualTo(DRAWING_A);
+		assertThat(java.util.Base64.getDecoder().decode(row(archive, "creativeBackup", 1).get("contentBase64").asString()))
+				.isEqualTo(DRAWING_B);
 
 		// ---- exclusions: nobody else's data, no secrets, nothing binary
 		String text = archive.toString();
@@ -549,7 +575,8 @@ class DataExportIT {
 				"user_consents", "user_history_items", "data_export_requests", "user_deletion_requests",
 				"user_dictionary_entries", "term_suggestions", "glossaries", "usage_counters", "usage_events",
 				"ai_credit_accounts", "user_feature_overrides", "user_subscriptions", "ai_requests", "ai_feedback",
-				"payment_orders", "store_purchases", "voice_jobs", "realtime_sessions", "organization_members");
+				"payment_orders", "store_purchases", "voice_jobs", "realtime_sessions", "organization_members",
+				"creative_backup_items");
 		Set<String> excluded = Set.of(
 				// credentials and secrets
 				"user_password_credentials", "password_reset_tokens", "otp_challenges", "email_challenges",

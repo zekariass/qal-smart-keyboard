@@ -331,7 +331,7 @@ class DeletionIT {
 			"user_dictionary_sync_state", "user_dictionary_applied_changes", "user_history_items", "data_export_requests",
 			"glossaries", "usage_counters", "usage_reservations",
 			"user_feature_overrides", "ai_feedback", "organization_members", "user_admin_roles", "voice_jobs",
-			"ai_request_fingerprints", "ai_replay_cache");
+			"ai_request_fingerprints", "ai_replay_cache", "creative_backup_items");
 
 	/**
 	 * Data in every per-user table and every encrypted column: through the API where a writer exists (consents, the
@@ -406,6 +406,15 @@ class DeletionIT {
 		sealed.add(input);
 		sealed.add(output);
 		jdbc.update("INSERT INTO data_export_requests (user_id) VALUES (?)", u);
+		// a creative backup item (ADR 0050): the client's opaque bytes, sealed with the user's key
+		UUID drawing = UUID.randomUUID();
+		Sealed strokes = seal(u, "creative_backup_items", "content_ciphertext", drawing, "{\"strokes\":[1,2,3]}");
+		jdbc.update("""
+				INSERT INTO creative_backup_items (id, user_id, client_item_id, item_kind, revision, content_ciphertext,
+				                                   key_version, size_bytes, client_updated_at)
+				VALUES (?, ?, 'drawing-1', 'DRAWING', 1, ?, 1, 19, now())
+				""", drawing, u, strokes.ciphertext());
+		sealed.add(strokes);
 		// AI feedback with an encrypted comment, bound to a FEEDBACK_TEXT consent row of the user
 		UUID feedbackConsent = UUID.randomUUID();
 		jdbc.update("""

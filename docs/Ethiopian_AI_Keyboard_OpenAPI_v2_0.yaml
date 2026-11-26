@@ -61,6 +61,8 @@ tags:
     description: Explicit, user-initiated text AI actions.
   - name: History
     description: Opt-in encrypted AI history.
+  - name: CreativeBackup
+    description: Opt-in encrypted cloud backup of on-device creative assets (Draw & Sketch drawings), consent-gated.
   - name: Speech
     description: Speech-to-text, speech translation and text-to-speech.
   - name: Realtime
@@ -1936,6 +1938,162 @@ paths:
         '204': { description: Deleted. }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Creative backup
+  /api/v1/me/creative-backup/items:
+    get:
+      tags: [CreativeBackup]
+      operationId: listCreativeBackupItems
+      summary: List backed-up creative items (metadata only)
+      description: |
+        Feature `DRAW_SKETCH` (free, ungated; ADR 0050). Opt-in encrypted cloud backup of on-device creative assets
+        (Draw & Sketch drawings). Metadata only, never content; ordered by `itemId`, cursor-paginated. Requires a
+        registered account (403 `GUEST_NOT_ALLOWED`) and a granted `CREATIVE_BACKUP` consent (403 `CONSENT_REQUIRED`,
+        extension member `consentCode`); the consent is off by default. Every operation of this tag answers 404
+        `NOT_FOUND` when the server has switched the backup off, and all of them share one per-user rate limit
+        (429 `RATE_LIMITED`). Not metered.
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/CreativeBackupItemKind' }
+        - $ref: '#/components/parameters/Cursor'
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, format: int32, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: One page of item metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreativeBackupItemPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/me/creative-backup/items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/CreativeBackupItemId'
+    get:
+      tags: [CreativeBackup]
+      operationId: getCreativeBackupItem
+      summary: Download one backed-up item with its content
+      description: |
+        Decrypted server-side for the owner and returned over TLS (`content` is standard base64 of the bytes that were
+        uploaded, byte-exact). `Cache-Control: no-store`. Same gates as `listCreativeBackupItems`. An unknown id, or
+        another user's, is 404.
+      responses:
+        '200':
+          description: The item.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreativeBackupItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    put:
+      tags: [CreativeBackup]
+      operationId: putCreativeBackupItem
+      summary: Create or replace one backed-up item
+      description: |
+        The body carries an opaque blob the app produced (`content`, standard base64) plus its `kind` and the app's
+        last-modified time `updatedAt`. The server seals the content with the user's data key (server-side envelope
+        encryption, crypto-shredded on account deletion; not end-to-end) and stores no plaintext of it.
+
+        **Revisions and concurrency (last writer wins).** The server assigns `revision`: 1 on create, +1 on every
+        change. Without `expectedRevision` the PUT overwrites whatever is stored. With it, the PUT is a compare-and-set:
+        `expectedRevision` must equal the stored revision (`0` = the item must not exist yet), otherwise 409
+        `REVISION_CONFLICT` with `currentRevision` (0 when the item does not exist); read the item, decide, retry.
+        **Idempotent:** a PUT whose `kind`, `updatedAt` and content equal the stored item changes nothing and answers
+        200 with the stored revision, whatever `expectedRevision` says, so a retry is always safe. The `kind` of an
+        existing item cannot change (400 `VALIDATION_FAILED`, error code `KIND_IMMUTABLE`).
+
+        **Limits** (server configuration; read them from `getCreativeBackupSummary`): content larger than
+        `maxItemBytes` (default 2 MiB, decoded) is 413 `BACKUP_ITEM_TOO_LARGE`; one item more than `maxItemsPerKind`
+        (default 100) or a total above `maxTotalBytes` (default 32 MiB) is 409 `BACKUP_QUOTA_EXCEEDED` (`quota`,
+        `limit`). Same gates as `listCreativeBackupItems`; the consent is checked again when the item is stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreativeBackupItemPut' }
+      responses:
+        '200':
+          description: Replaced, or unchanged (an identical repeat).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreativeBackupItemMetadata' }
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreativeBackupItemMetadata' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/BackupItemTooLarge' }
+        '415':
+          description: The body is not `application/json` (`UNSUPPORTED_MEDIA_TYPE`).
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [CreativeBackup]
+      operationId: deleteCreativeBackupItem
+      summary: Delete one backed-up item
+      description: |
+        Works without the `CREATIVE_BACKUP` consent (a person can always erase what is stored). Registered accounts
+        only. An unknown id, or another user's, is 404.
+      responses:
+        '204': { description: Deleted. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/me/creative-backup:
+    delete:
+      tags: [CreativeBackup]
+      operationId: clearCreativeBackup
+      summary: Delete every backed-up item
+      description: |
+        Deletes all of the caller's backed-up items, every kind. Idempotent. Works without the consent. Withdrawing the
+        `CREATIVE_BACKUP` consent (`PUT /me/consents/CREATIVE_BACKUP` with `isGranted: false`) does the same on the
+        server in the withdrawal's own transaction; a later re-grant brings nothing back.
+      responses:
+        '204': { description: All backed-up items deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/me/creative-backup/summary:
+    get:
+      tags: [CreativeBackup]
+      operationId: getCreativeBackupSummary
+      summary: Backup usage against the limits, and whether the consent is granted
+      description: |
+        Counts and bytes used per kind and in total, the server's limits, and `consentGranted` (the current
+        `CREATIVE_BACKUP` decision). Works without the consent, so the app can show the limits before asking.
+        Registered accounts only. 404 when the server has switched the backup off (the app hides the feature).
+      responses:
+        '200':
+          description: Usage summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreativeBackupSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   # ---------------------------------------------------------------- Speech
   /api/v1/speech/upload-sessions:
@@ -4233,6 +4391,12 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    CreativeBackupItemId:
+      name: itemId
+      in: path
+      required: true
+      description: The app's id of a backed-up item (a UUID fits); unique per user.
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,64}$' }
     JobId:
       name: jobId
       in: path
@@ -4368,7 +4532,7 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
       description: |
-        State conflict (`IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS`, `REVISION_CONFLICT`, `ORDER_NOT_PAYABLE`, `STORE_PURCHASE_ALREADY_LINKED`, `EMAIL_ALREADY_REGISTERED`, ...).
+        State conflict (`IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS`, `REVISION_CONFLICT`, `ORDER_NOT_PAYABLE`, `STORE_PURCHASE_ALREADY_LINKED`, `EMAIL_ALREADY_REGISTERED`, `BACKUP_QUOTA_EXCEEDED`, ...).
         A `REVISION_CONFLICT` Problem carries the extension member `currentRevision` (integer):
         re-read the document, merge, and retry with that revision.
       headers:
@@ -4413,6 +4577,22 @@ components:
             correlationId: 0b6f2d1e-5c4a-4f3e-9d8c-7b6a5f4e3d2c
             detail: The pack licence is not on the commercial-use allow-list
             reason: LICENSE_NOT_COMMERCIAL
+    BackupItemTooLarge:
+      description: |
+        The item content (decoded) is larger than the server's `maxItemBytes`, or the request body is larger than its
+        base64 could be (`BACKUP_ITEM_TOO_LARGE`). The extension member `maxItemBytes` (integer) is the limit.
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/X-Correlation-Id' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://api.example.com/problems/backup-item-too-large
+            title: Backup item is too large
+            status: 413
+            code: BACKUP_ITEM_TOO_LARGE
+            correlationId: 2c4e6a8b-1d3f-4a5b-9c7d-8e0f1a2b3c4d
+            maxItemBytes: 2097152
     TooManyRequests:
       description: |
         `RATE_LIMITED` (short-term abuse/rate limit; honour `Retry-After`) or `QUOTA_EXCEEDED`
@@ -4652,7 +4832,10 @@ components:
         `creditBalance` and `upgradeOptions` on 429 `QUOTA_EXCEEDED`, `attemptsRemaining` (integer)
         on 401 `OTP_INVALID` for a wrong code of a known challenge, `reason` on 413/422 `PACK_REJECTED`
         (admin pack publishing), `challengeId`, `expiresAt`, `resendAvailableAt` and `codeLength` on 403
-        `EMAIL_NOT_VERIFIED` (the verification challenge whose code was e-mailed).
+        `EMAIL_NOT_VERIFIED` (the verification challenge whose code was e-mailed), `maxItemBytes`
+        (integer) on 413 `BACKUP_ITEM_TOO_LARGE`, and `quota` (`ITEMS_PER_KIND` or `TOTAL_BYTES`) with
+        `limit` (integer) on 409 `BACKUP_QUOTA_EXCEEDED` (the creative backup's storage limit; delete items
+        to make room).
         `GUEST_SESSION_INVALID` (401, `WWW-Authenticate: Bearer error="invalid_token"`) means the
         guest bearer token's account was merged, upgraded, ended or suspended: discard the guest
         session (do not refresh it) and sign in or create a new guest session.
@@ -4682,7 +4865,8 @@ components:
             ORDER_EXPIRED, PAYMENT_VERIFICATION_FAILED, MANDATE_NOT_SUPPORTED,
             STORE_PURCHASE_INVALID, STORE_PURCHASE_ALREADY_LINKED, SUBSCRIPTION_NOT_RENEWABLE,
             SEAT_UNAVAILABLE, API_KEY_INVALID, API_SCOPE_MISSING, WEBHOOK_SIGNATURE_INVALID,
-            APP_VERSION_UNSUPPORTED, PACK_REJECTED, PUBLICATION_CONFLICT, SYNC_CURSOR_EXPIRED, APPROVAL_REQUIRED, INTERNAL_ERROR.
+            APP_VERSION_UNSUPPORTED, PACK_REJECTED, PUBLICATION_CONFLICT, SYNC_CURSOR_EXPIRED, APPROVAL_REQUIRED,
+            BACKUP_ITEM_TOO_LARGE, BACKUP_QUOTA_EXCEEDED, INTERNAL_ERROR.
           pattern: '^[A-Z][A-Z0-9_]*$'
         correlationId: { type: string, maxLength: 100 }
         errors:
@@ -5064,6 +5248,7 @@ components:
         - PAYMENT_MANDATE
         - ANALYTICS
         - MARKETING
+        - CREATIVE_BACKUP
     Consent:
       type: object
       required: [id, consentCode, consentVersion, isGranted, recordedAt]
@@ -6066,6 +6251,79 @@ components:
       required: [favorite]
       properties:
         favorite: { type: boolean }
+
+    # ------------------------------------------------------------ creative backup (T8.15, ADR 0050)
+    CreativeBackupItemKind:
+      type: string
+      description: What the item is. Only `DRAWING` (Draw & Sketch) so far; more kinds are added with their tools.
+      enum: [DRAWING]
+    CreativeBackupItemPut:
+      type: object
+      description: "The body of `putCreativeBackupItem`. Never logged."
+      required: [kind, updatedAt, content]
+      properties:
+        kind: { $ref: '#/components/schemas/CreativeBackupItemKind' }
+        updatedAt: { type: string, format: date-time, description: "The app's last-modified time of the item (stored as given, microsecond precision; the server does not compare it with its clock)." }
+        expectedRevision: { type: integer, format: int64, minimum: 0, description: "Optional compare-and-set: the revision last read, 0 for an item that must not exist yet. Omit to overwrite (last writer wins)." }
+        content:
+          type: string
+          contentEncoding: base64
+          minLength: 4
+          description: "Standard base64 (RFC 4648 section 4, with padding, no line breaks) of the opaque item bytes the app produced, at most `maxItemBytes` once decoded. Stored encrypted only."
+    CreativeBackupItemMetadata:
+      type: object
+      description: Listing metadata of one item; never content.
+      required: [itemId, kind, revision, sizeBytes, updatedAt, createdAt, storedAt]
+      properties:
+        itemId: { type: string, pattern: '^[A-Za-z0-9_-]{1,64}$', description: The app's id of the item (unique per user). }
+        kind: { $ref: '#/components/schemas/CreativeBackupItemKind' }
+        revision: { type: integer, format: int64, minimum: 1, description: "Server-assigned; 1 on create, +1 on every change." }
+        sizeBytes: { type: integer, format: int64, minimum: 1, description: Size of the content in bytes (decoded). }
+        updatedAt: { type: string, format: date-time, description: "The app's last-modified time from the latest PUT." }
+        createdAt: { type: string, format: date-time, description: When the server first stored the item. }
+        storedAt: { type: string, format: date-time, description: When the server stored the current revision. }
+    CreativeBackupItem:
+      type: object
+      description: One item with its content, decrypted for the owner.
+      required: [itemId, kind, revision, sizeBytes, updatedAt, createdAt, storedAt, content]
+      properties:
+        itemId: { type: string, pattern: '^[A-Za-z0-9_-]{1,64}$' }
+        kind: { $ref: '#/components/schemas/CreativeBackupItemKind' }
+        revision: { type: integer, format: int64, minimum: 1 }
+        sizeBytes: { type: integer, format: int64, minimum: 1 }
+        updatedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        storedAt: { type: string, format: date-time }
+        content: { type: string, contentEncoding: base64, description: Standard base64 of exactly the bytes last uploaded. }
+    CreativeBackupItemPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CreativeBackupItemMetadata' }
+        nextCursor: { $ref: '#/components/schemas/NextCursor' }
+    CreativeBackupKindUsage:
+      type: object
+      required: [kind, itemCount, totalBytes]
+      properties:
+        kind: { $ref: '#/components/schemas/CreativeBackupItemKind' }
+        itemCount: { type: integer, format: int32, minimum: 0 }
+        totalBytes: { type: integer, format: int64, minimum: 0 }
+    CreativeBackupSummary:
+      type: object
+      required: [consentGranted, itemCount, totalBytes, maxItemBytes, maxItemsPerKind, maxTotalBytes, kinds]
+      properties:
+        consentGranted: { type: boolean, description: "Whether the latest `CREATIVE_BACKUP` decision is a grant." }
+        itemCount: { type: integer, format: int32, minimum: 0 }
+        totalBytes: { type: integer, format: int64, minimum: 0, description: Content bytes stored over all kinds. }
+        maxItemBytes: { type: integer, format: int64, minimum: 1, description: Largest content of one item (decoded bytes). }
+        maxItemsPerKind: { type: integer, format: int32, minimum: 1 }
+        maxTotalBytes: { type: integer, format: int64, minimum: 1, description: Content bytes allowed over all kinds. }
+        kinds:
+          type: array
+          description: One entry per known kind, zeros included.
+          items: { $ref: '#/components/schemas/CreativeBackupKindUsage' }
 
     # ------------------------------------------------------------ speech
     AudioContentType:

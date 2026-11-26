@@ -29,6 +29,8 @@ public interface UserExportParticipant {
 	int DEVICES = 200;
 	int PREFERENCES = 300;
 	int PRIVACY = 400;
+	/** Personalization tables with a participant of their own (the creative backup, ADR 0050). */
+	int PERSONALIZATION = 450;
 	int LANGUAGES = 500;
 	int GLOSSARIES = 600;
 	int USAGE = 700;
