@@ -84,8 +84,11 @@ contract; this ADR fixes the server rules.
 10. **Privacy lifecycle.** Account deletion: `CreativeBackupLifecycle` (personalization, new order `PERSONALIZATION`) deletes
     the rows after the shred (added to ADR 0015's table). Data export: section `creativeBackup` (data class "User-created
     media (opt-in backup)"), one row per item with its metadata and `contentBase64`, decrypted like history's text (ADR
-    0022 #9). Guest merge: nothing to move (guests cannot back up). Retention: no time limit (SD 19.2 "until the user
-    deletes them" for creative media); items go with withdrawal, deletion or account deletion.
+    0022 #9). Guest merge: nothing to move (guests cannot back up); but `PrivacyGuestMerge` appends a guest's later
+    withdrawal of `CREATIVE_BACKUP` to the account without a `ConsentChanged` event, so the same participant (merge order
+    `PERSONALIZATION`, after privacy) deletes the account's items when its merged decision is not a grant. Retention: no
+    time limit (SD 19.2 "until the user deletes them" for creative media); items go with withdrawal, deletion or account
+    deletion.
 
 ## Consequences
 - V34 is forward-only: it replaces the `user_consents` code CHECK (same name) and adds one table (108 tables).
@@ -99,4 +102,7 @@ contract; this ADR fixes the server rules.
 2. Dormant accounts: a backup of an account nobody signs in to stays until the account is deleted (no inactivity rule exists
    for any data class yet).
 3. Rate limiting is per instance in memory (platform limitation, README "Rate limiting").
-4. Thumbnails for a restore picker would need either a second encrypted column or a client-side download of each item.
+4. The guest-merge gap above is general: a merged withdrawal of `SAVE_AI_HISTORY` or `FEEDBACK_TEXT` does not reach the
+   preferences and feedback listeners either. Publishing `ConsentChanged` from the merge would close it for every
+   purpose; that is a privacy-module change outside this step.
+5. Thumbnails for a restore picker would need either a second encrypted column or a client-side download of each item.

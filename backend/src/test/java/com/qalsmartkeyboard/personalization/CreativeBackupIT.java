@@ -538,6 +538,23 @@ class CreativeBackupIT {
 		assertThat(offenders).isEmpty();
 	}
 
+	@Test
+	void aGuestsLaterWithdrawalMergedIntoTheAccountDeletesTheBackup() throws Exception {
+		UUID kept = backupUser();
+		putItem(kept, "a", bytes(10, 1)).andExpect(status().isCreated());
+		UUID withdrawn = backupUser();
+		putItem(withdrawn, "a", bytes(10, 1)).andExpect(status().isCreated());
+		UUID guest = user("GUEST");
+		// what PrivacyGuestMerge appends for a guest's withdrawal that is later than the account's grant: no event
+		jdbc.update("INSERT INTO user_consents (user_id, consent_code, consent_version, is_granted, recorded_at) "
+				+ "VALUES (?, 'CREATIVE_BACKUP', '1', FALSE, clock_timestamp())", withdrawn);
+
+		transactions.executeWithoutResult(s -> lifecycle.mergeGuest(guest, withdrawn, Instant.now()));
+		transactions.executeWithoutResult(s -> lifecycle.mergeGuest(guest, kept, Instant.now()));
+		assertThat(rows(withdrawn)).isZero();
+		assertThat(rows(kept)).isOne(); // the account's grant stands: nothing changes
+	}
+
 	// ======================================================================================= rate limit and guards
 
 	@Test

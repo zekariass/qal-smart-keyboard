@@ -13,9 +13,12 @@ import org.springframework.stereotype.Component;
 
 import com.qalsmartkeyboard.identity.ExportRows;
 import com.qalsmartkeyboard.identity.ExportWriter;
+import com.qalsmartkeyboard.identity.GuestMergeParticipant;
 import com.qalsmartkeyboard.identity.UserDeletionParticipant;
 import com.qalsmartkeyboard.identity.UserExportParticipant;
 import com.qalsmartkeyboard.platform.crypto.UserDataEncryption;
+import com.qalsmartkeyboard.privacy.ConsentGate;
+import com.qalsmartkeyboard.privacy.ConsentType;
 
 /**
  * The creative backup's part of the privacy lifecycle (ADR 0050, following ADR 0015 and ADR 0022):
@@ -24,22 +27,44 @@ import com.qalsmartkeyboard.platform.crypto.UserDataEncryption;
  * already unreadable when this runs: the executor crypto-shreds the user's data keys first (ADR 0005).</li>
  * <li><b>Data export</b> ({@link UserExportParticipant}): section {@code creativeBackup}, one row per item with its
  * metadata and the decrypted content as standard base64 ({@code contentBase64}), like history's decrypted text.</li>
- * <li><b>Guest merge</b> needs no participant: guests cannot back up (403 {@code GUEST_NOT_ALLOWED}), so a guest has no
- * rows to move.</li>
+ * <li><b>Guest merge</b> ({@link GuestMergeParticipant}): guests cannot back up (403 {@code GUEST_NOT_ALLOWED}), so
+ * there are no rows to move. But the privacy participant (which runs first) appends a guest's <em>later withdrawal</em>
+ * of {@code CREATIVE_BACKUP} to the account without a {@code ConsentChanged} event; when the account's latest decision
+ * is then not a grant, its items are deleted here, so a withdrawal always erases the backup.</li>
  * </ul>
  * Logs carry ids and counts only.
  */
 @Component
-class CreativeBackupLifecycle implements UserDeletionParticipant, UserExportParticipant {
+class CreativeBackupLifecycle implements UserDeletionParticipant, UserExportParticipant, GuestMergeParticipant {
 
 	private static final Logger log = LoggerFactory.getLogger(CreativeBackupLifecycle.class);
 
 	private final JdbcClient jdbc;
 	private final UserDataEncryption encryption;
+	private final ConsentGate consents;
 
-	CreativeBackupLifecycle(JdbcClient jdbc, UserDataEncryption encryption) {
+	CreativeBackupLifecycle(JdbcClient jdbc, UserDataEncryption encryption, ConsentGate consents) {
 		this.jdbc = jdbc;
 		this.encryption = encryption;
+		this.consents = consents;
+	}
+
+	@Override
+	public int mergeOrder() {
+		return GuestMergeParticipant.PERSONALIZATION;
+	}
+
+	@Override
+	public void mergeGuest(UUID guestUserId, UUID targetUserId, Instant now) {
+		CreativeBackupService.lock(jdbc, targetUserId);
+		if (!consents.hasConsent(targetUserId, ConsentType.CREATIVE_BACKUP)) {
+			int deleted = jdbc.sql("DELETE FROM creative_backup_items WHERE user_id = :user").param("user", targetUserId)
+					.update();
+			if (deleted > 0) {
+				log.info("Guest merge {} -> {}: {} creative backup items deleted (the merged consent is not a grant)",
+						guestUserId, targetUserId, deleted);
+			}
+		}
 	}
 
 	@Override

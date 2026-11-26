@@ -293,6 +293,11 @@ class CreativeBackupService {
 	// ------------------------------------------------------------------------------------------------ helpers
 
 	private void lock(UUID userId) {
+		lock(jdbc, userId);
+	}
+
+	/** The per-user write lock of the backup (transaction-scoped); every writer of the table takes it. */
+	static void lock(JdbcClient jdbc, UUID userId) {
 		jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").param("k", "qal.creative_backup:" + userId)
 				.query((rs, n) -> 1).list();
 	}

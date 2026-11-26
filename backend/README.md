@@ -1336,7 +1336,8 @@ Opt-in encrypted cloud backup of on-device creative assets (Draw & Sketch drawin
   envelope encryption, not end-to-end: the server decrypts for the owner's download and the data export.
 - **Withdrawal** of `CREATIVE_BACKUP` deletes every item of the user in the withdrawal's transaction (`ConsentChanged`);
   account deletion deletes the rows after the crypto-shred; the data export has a `creativeBackup` section with metadata and
-  `contentBase64`. Guests cannot back up, so guest merge has nothing to move.
+  `contentBase64`. Guests cannot back up, so guest merge moves nothing; it deletes the account's items when the merged
+  `CREATIVE_BACKUP` decision (a guest's later withdrawal) is not a grant.
 - **Configuration** `qal.creative-backup.*`: `enabled` (`QAL_CREATIVE_BACKUP_ENABLED`, true), `max-item-bytes` (2 MiB, 413
   `BACKUP_ITEM_TOO_LARGE` with `maxItemBytes`; at most 8 MiB), `max-items-per-kind` (100) and `max-total-bytes` (32 MiB, so a
   full backup fits the 64 MiB export archive as base64), both 409 `BACKUP_QUOTA_EXCEEDED` with `quota`

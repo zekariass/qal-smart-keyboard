@@ -29,6 +29,8 @@ public interface GuestMergeParticipant {
 	int DEVICES = 100;
 	int PREFERENCES = 200;
 	int PRIVACY = 300;
+	/** Runs after {@link #PRIVACY} so it sees the consent decisions that were just merged (ADR 0050). */
+	int PERSONALIZATION = 350;
 	int LANGUAGES = 400;
 	int USAGE = 500;
 	int GLOSSARIES = 600;
