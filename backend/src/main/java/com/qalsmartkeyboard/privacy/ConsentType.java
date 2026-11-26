@@ -38,7 +38,12 @@ public enum ConsentType {
 	/** SD 21: product analytics are off unless granted. */
 	ANALYTICS(true, "PRODUCT_ANALYTICS"),
 	/** Marketing messages. */
-	MARKETING(true, "MARKETING_MESSAGES");
+	MARKETING(true, "MARKETING_MESSAGES"),
+	/**
+	 * T8.15 (ADR 0050): the opt-in encrypted cloud backup of creative assets (Draw &amp; Sketch drawings). Withdrawal
+	 * deletes every backed-up item (personalization reacts to {@link ConsentChanged}).
+	 */
+	CREATIVE_BACKUP(true, "CREATIVE_ASSET_BACKUP");
 
 	private final boolean revocable;
 	private final Set<String> features;
