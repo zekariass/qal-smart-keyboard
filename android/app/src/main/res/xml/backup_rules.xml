@@ -10,6 +10,11 @@
     <exclude domain="file" path="card_share" />
     <!-- T8.7: the same for a flattened annotated picture being shared. -->
     <exclude domain="file" path="annotate_share" />
+    <!-- T8.15: a saved drawing being shared from the Creative studio. -->
+    <exclude domain="file" path="drawing_share" />
+    <!-- T8.15 (R-8): the Draw gallery (editable drawings and their PNGs, filesDir/drawings/) stays on the device: it is not
+         part of Auto Backup. Any backup of it is the separate opt-in, encrypted one, never this. -->
+    <exclude domain="file" path="drawings" />
     <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>

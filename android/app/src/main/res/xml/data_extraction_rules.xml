@@ -10,6 +10,9 @@
     <cloud-backup>
         <exclude domain="file" path="card_share" />
         <exclude domain="file" path="annotate_share" />
+        <exclude domain="file" path="drawing_share" />
+        <!-- T8.15 (R-8): the Draw gallery (filesDir/drawings/) is never part of Auto Backup; see backup_rules.xml. -->
+        <exclude domain="file" path="drawings" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
@@ -18,5 +21,7 @@
     <device-transfer>
         <exclude domain="file" path="card_share" />
         <exclude domain="file" path="annotate_share" />
+        <exclude domain="file" path="drawing_share" />
+        <exclude domain="file" path="drawings" />
     </device-transfer>
 </data-extraction-rules>

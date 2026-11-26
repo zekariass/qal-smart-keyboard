@@ -20,6 +20,14 @@ import com.qalsmartkeyboard.app.creative.cards.CardTemplates
 import com.qalsmartkeyboard.app.creative.cards.ExportFormat
 import com.qalsmartkeyboard.app.creative.cards.FileCardStore
 import com.qalsmartkeyboard.app.creative.cards.SaveResult
+import com.qalsmartkeyboard.app.creative.draw.DrawingsViewModel
+import com.qalsmartkeyboard.ime.draw.Drawing
+import com.qalsmartkeyboard.ime.draw.DrawingStore
+import com.qalsmartkeyboard.ime.draw.Pt
+import com.qalsmartkeyboard.ime.draw.ShapeKind
+import com.qalsmartkeyboard.ime.draw.ShapeObject
+import com.qalsmartkeyboard.ime.draw.Stroke
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Files
 import org.junit.After
@@ -50,6 +58,7 @@ class CreativeStudioTest {
     private lateinit var dir: File
     private lateinit var vm: CardMakerViewModel
     private lateinit var annotations: AnnotatorViewModel
+    private lateinit var drawings: DrawingsViewModel
     private val resolve: (Int) -> String = { "x" }
 
     @Before fun setUp() {
@@ -60,6 +69,7 @@ class CreativeStudioTest {
             store = FileAnnotationStore(File(dir, "annotations")),
             drafts = AnnotationDraftStore(File(dir, "annotator/draft.json")),
         )
+        drawings = DrawingsViewModel(app, store = DrawingStore(File(dir, "drawings")))
         // The manifest's card FileProvider, registered the way the merged manifest declares it (also checks the paths file).
         val info = ProviderInfo().apply {
             authority = CardShare.authority(app)
@@ -79,7 +89,7 @@ class CreativeStudioTest {
         (vm.store.save(null, CardTemplates.find(template)!!.newDoc(resolve), PNG, null) as SaveResult.Saved).id
 
     private fun showHub(onBack: () -> Unit = {}, onOpened: () -> Unit = {}) = compose.setContent {
-        CreativeStudioScreen(cards = vm, onOpenTool = {}, onCardOpened = onOpened, onBack = onBack, annotations = annotations)
+        CreativeStudioScreen(cards = vm, onOpenTool = {}, onCardOpened = onOpened, onBack = onBack, annotations = annotations, drawings = drawings)
     }
 
     // ---- The registry -----------------------------------------------------------------------------------------------
@@ -130,14 +140,14 @@ class CreativeStudioTest {
             }
             names
         }
-        assertEquals(listOf("card_share/", "annotate_share/"), paths)
+        assertEquals(listOf("card_share/", "annotate_share/", "drawing_share/"), paths)
         for (rules in listOf(R.xml.backup_rules, R.xml.data_extraction_rules)) {
             val excluded = ArrayList<String>()
             val p = app.resources.getXml(rules)
             while (p.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
                 if (p.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && p.name == "exclude") excluded += p.getAttributeValue(null, "path")
             }
-            assertTrue("$rules: $excluded", excluded.contains("annotate_share") && excluded.contains("card_share"))
+            assertTrue("$rules: $excluded", excluded.contains("annotate_share") && excluded.contains("card_share") && excluded.contains("drawing_share"))
         }
     }
 
@@ -161,6 +171,111 @@ class CreativeStudioTest {
     }
 
     private fun count(t: String) = compose.onAllNodesWithText(t).fetchSemanticsNodes().size
+
+    // ---- Your drawings (T8.15) -------------------------------------------------------------------------------------
+
+    private val emptyText = "Drawings you save in the keyboard's Draw tool appear here. To change one, open it from Gallery in the keyboard."
+
+    private fun saveDrawing(): String = drawings.store.save(
+        null,
+        Drawing(
+            120f, 80f,
+            strokes = listOf(Stroke(listOf(Pt(5f, 5f), Pt(90f, 60f)), 0xFF000000.toInt(), 4f)),
+            objects = listOf(ShapeObject(0, ShapeKind.RECTANGLE, 10f, 10f, 80f, 50f)),
+        ),
+    )!!
+
+    @Test fun theDrawingsSectionSaysDrawingsAreEditedInTheKeyboardWhenEmpty() {
+        showHub()
+        compose.onNodeWithText("Your drawings").performScrollTo().assertExists()
+        compose.onNodeWithText(emptyText).performScrollTo().assertExists()
+    }
+
+    @Test fun savedDrawingsAreListedWithShareAndDeleteButNoEdit() {
+        saveDrawing()
+        saveDrawing()
+        showHub()
+        compose.waitUntil(5_000) { count("Delete") == 2 }
+        assertEquals(2, count("Share"))
+        assertEquals("drawings are edited in the keyboard", 0, count("Edit"))
+        assertEquals(0, count(emptyText))
+        // Each row has its picture: an exported PNG that exists (made again here when the keyboard's copy is missing).
+        runBlocking { drawings.refreshGallery() }
+        assertEquals(2, drawings.gallery.size)
+        assertTrue(drawings.gallery.all { it.image.isFile && it.image.length() > 0 })
+    }
+
+    @Test fun deletingADrawingAsksFirstThenRemovesItFromTheSharedStore() {
+        val id = saveDrawing()
+        showHub()
+        compose.waitUntil(5_000) { count("Delete") == 1 }
+        compose.onNodeWithText("Delete").performScrollTo().performClick()
+        compose.onNodeWithText("Delete this drawing?").assertExists()
+        assertEquals(1, drawings.store.count())
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(1, drawings.store.count())
+        compose.onNodeWithText("Delete").performClick()
+        compose.onAllNodesWithText("Delete")[1].performClick()
+        compose.waitUntil(5_000) { drawings.store.count() == 0 }
+        assertFalse(drawings.store.pngFile(id).exists())
+    }
+
+    @Test fun aMissingImageIsRenderedFromTheEditableDrawing() {
+        val id = saveDrawing()
+        assertFalse(drawings.store.pngFile(id).exists())
+        runBlocking { drawings.refreshGallery() }
+        assertTrue(drawings.store.pngFile(id).isFile)
+        assertEquals(id, drawings.gallery.single().id)
+    }
+
+    @Test fun sharingADrawingStagesACopyOfItsPngInTheDrawingShareDirectory() {
+        saveDrawing()
+        runBlocking { drawings.refreshGallery() }
+        val item = drawings.gallery.single()
+        val outcome = runBlocking { drawings.stageSaved(item) }
+        val shareable = outcome as com.qalsmartkeyboard.app.creative.cards.CardOutcome.Shareable
+        assertEquals(File(app.filesDir, DrawingsViewModel.SHARE_DIR), shareable.file.parentFile)
+        assertFalse("a copy, never the gallery's own file", shareable.file == item.image)
+        assertTrue(shareable.file.name.endsWith(".png"))
+        assertEquals(item.image.readBytes().toList(), shareable.file.readBytes().toList())
+        // The staged copy is swept when it is stale, like the cards'.
+        val now = System.currentTimeMillis()
+        shareable.file.setLastModified(now - CardShare.STALE_MILLIS - 60_000)
+        CardShare.sweep(app, listOf(DrawingsViewModel.SHARE_DIR), now = now)
+        assertFalse(shareable.file.exists())
+    }
+
+    @Test fun theDrawGalleryIsExcludedFromAutoBackupAndDeviceTransfer() {
+        val p = app.resources.getXml(R.xml.data_extraction_rules)
+        var section = ""
+        val perSection = HashMap<String, MutableList<String>>()
+        while (p.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+            if (p.eventType != org.xmlpull.v1.XmlPullParser.START_TAG) continue
+            if (p.name == "cloud-backup" || p.name == "device-transfer") section = p.name
+            if (p.name == "exclude") perSection.getOrPut(section) { ArrayList() } += p.getAttributeValue(null, "domain") + ":" + p.getAttributeValue(null, "path")
+        }
+        assertTrue(perSection["cloud-backup"]!!.contains("file:drawings"))
+        assertTrue(perSection["device-transfer"]!!.contains("file:drawings"))
+        // The older rules file (Android 11 and below) names it too.
+        val old = ArrayList<String>()
+        val q = app.resources.getXml(R.xml.backup_rules)
+        while (q.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+            if (q.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && q.name == "exclude") old += q.getAttributeValue(null, "domain") + ":" + q.getAttributeValue(null, "path")
+        }
+        assertTrue(old.toString(), old.contains("file:drawings"))
+    }
+
+    @Test fun theDefaultDrawingsStoreIsTheKeyboardsOwnDirectory() {
+        // One package, one store, one file format: the hub reads what the keyboard's panel saved.
+        val real = DrawingsViewModel(app)
+        val id = DrawingStore(File(app.filesDir, "drawings")).save(null, Drawing(50f, 50f, objects = listOf(ShapeObject(0, ShapeKind.LINE, 0f, 0f, 20f, 20f))))!!
+        try {
+            runBlocking { real.refreshGallery() }
+            assertTrue(real.gallery.any { it.id == id })
+        } finally {
+            real.store.delete(id)
+        }
+    }
 
     @Test fun editingASavedCardOpensItInTheEditor() {
         val id = saveCard("thanks")
