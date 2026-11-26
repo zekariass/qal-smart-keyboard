@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -57,6 +58,11 @@ import com.qalsmartkeyboard.app.creative.cards.CardMakerViewModel
 import com.qalsmartkeyboard.app.creative.cards.CardOutcome
 import com.qalsmartkeyboard.app.creative.cards.CardShare
 import com.qalsmartkeyboard.app.creative.cards.SavedCard
+import com.qalsmartkeyboard.app.creative.backup.BackupAccount
+import com.qalsmartkeyboard.app.creative.backup.BackupActions
+import com.qalsmartkeyboard.app.creative.backup.BackupResult
+import com.qalsmartkeyboard.app.creative.backup.CloudBackupCard
+import com.qalsmartkeyboard.app.creative.backup.CreativeBackupViewModel
 import com.qalsmartkeyboard.app.creative.draw.DrawingsViewModel
 import com.qalsmartkeyboard.app.creative.draw.SavedDrawingItem
 import com.qalsmartkeyboard.app.settings.SettingsScaffold
@@ -107,7 +113,15 @@ class CreativeStudioViewModel : ViewModel() {
  * activity owns it); the studio is shown again, with the draft, when the user comes back.
  */
 @Composable
-fun CreativeStudioRoute(onBack: () -> Unit, onUnlock: () -> Unit, modifier: Modifier = Modifier) {
+fun CreativeStudioRoute(
+    onBack: () -> Unit,
+    onUnlock: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Who is signed in, for the cloud backup card (T8.15 S3). */
+    account: BackupAccount = BackupAccount.SIGNED_OUT,
+    /** Opens the sign-in screen; the studio is shown again afterwards. */
+    onSignIn: () -> Unit = {},
+) {
     val studio = activityViewModel { CreativeStudioViewModel() }
     val tool = CreativeTools.find(studio.openTool)
     if (tool != null) {
@@ -119,10 +133,14 @@ fun CreativeStudioRoute(onBack: () -> Unit, onUnlock: () -> Unit, modifier: Modi
     val cards = activityViewModel(CardMakerViewModel.create)
     val annotations = activityViewModel(AnnotatorViewModel.create)
     val drawings = activityViewModel(DrawingsViewModel.create)
+    val backup = activityViewModel(CreativeBackupViewModel.create)
     CreativeStudioScreen(
         cards = cards,
         annotations = annotations,
         drawings = drawings,
+        backup = backup,
+        account = account,
+        onSignIn = onSignIn,
         onOpenTool = { studio.openTool = it.id },
         onCardOpened = { studio.openTool = "cards" },
         onBack = onBack,
@@ -145,6 +163,10 @@ internal fun CreativeStudioScreen(
     modifier: Modifier = Modifier,
     annotations: AnnotatorViewModel? = null,
     drawings: DrawingsViewModel? = null,
+    /** The opt-in cloud backup of the drawings (T8.15 S3): its card sits above "Your drawings". */
+    backup: CreativeBackupViewModel? = null,
+    account: BackupAccount = BackupAccount.SIGNED_OUT,
+    onSignIn: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -156,6 +178,15 @@ internal fun CreativeStudioScreen(
         cards.refreshGallery()
         annotations?.refreshGallery()
         drawings?.refreshGallery()
+    }
+    if (backup != null) {
+        val backupState by backup.model.state.collectAsState()
+        // The usage and the consent are read again whenever the studio opens or the account changes.
+        LaunchedEffect(account) { backup.refresh(account) }
+        // A restore wrote drawings: the gallery below shows them.
+        LaunchedEffect(backupState.result) {
+            if ((backupState.result as? BackupResult.Restored)?.report?.restored?.let { it > 0 } == true) drawings?.refreshGallery()
+        }
     }
     val openFailed = stringResource(R.string.studio_card_open_failed)
     val shareFailed = stringResource(R.string.card_share_failed)
@@ -214,6 +245,23 @@ internal fun CreativeStudioScreen(
                             onDelete = { confirmDeletePicture = item },
                         )
                     }
+                }
+                if (backup != null) {
+                    val backupState by backup.model.state.collectAsState()
+                    CloudBackupCard(
+                        backupState,
+                        BackupActions(
+                            onSignIn = onSignIn,
+                            onTurnOn = backup::turnOn,
+                            onTurnOff = backup::turnOff,
+                            onBackUp = backup::backUp,
+                            onRestore = backup::restore,
+                            onDeleteCloud = backup::deleteCloud,
+                            onRetry = { backup.refresh(account) },
+                            onDismiss = backup::dismissResult,
+                        ),
+                        Modifier.padding(top = 8.dp),
+                    )
                 }
                 if (drawings != null) {
                     val drawingShareTitle = stringResource(R.string.drawing_share_title)

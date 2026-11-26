@@ -96,7 +96,7 @@ class ConsentsModelTest {
 
     @Test fun theCatalogCoversEveryContractCodeAndOnlyTermsAndPrivacyAreRequired() {
         val codes = ConsentCatalog.all.map { it.code }
-        assertEquals(12, codes.size)
+        assertEquals(13, codes.size)
         assertEquals(codes.size, codes.toSet().size)
         assertEquals(setOf("TERMS_ACCEPTANCE", "PRIVACY_NOTICE"), ConsentCatalog.all.filter { it.kind == ConsentKind.REQUIRED }.map { it.code }.toSet())
         assertEquals(ConsentCatalog.notRevocable, ConsentCatalog.all.filter { it.kind == ConsentKind.REQUIRED }.map { it.code }.toSet())
