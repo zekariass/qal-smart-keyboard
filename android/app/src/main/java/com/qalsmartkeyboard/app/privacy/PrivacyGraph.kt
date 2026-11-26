@@ -3,6 +3,7 @@ package com.qalsmartkeyboard.app.privacy
 import android.content.Context
 import com.qalsmartkeyboard.api.ApiError
 import com.qalsmartkeyboard.app.auth.AuthGraph
+import com.qalsmartkeyboard.app.creative.backup.CreativeBackupGraph
 import com.qalsmartkeyboard.app.sync.SyncGraph
 import com.qalsmartkeyboard.sync.SyncHttp
 import kotlinx.coroutines.Dispatchers
@@ -11,7 +12,7 @@ import kotlinx.coroutines.withContext
 /**
  * Process-wide wiring of the privacy screens (A2.6): the API calls over the shared client, the two
  * device-local values (the history flag the keyboard toolbar reads, the id of the last export) and
- * the local wipe. The values are plain `SharedPreferences` (a boolean and an id: no secret, no
+ * the local wipe (and the creative backup's record of what was uploaded). The values are plain `SharedPreferences` (a boolean and an id: no secret, no
  * personal text); they are cleared on sign-out and on a deletion request.
  */
 class PrivacyGraph private constructor(private val context: Context) {
@@ -35,6 +36,8 @@ class PrivacyGraph private constructor(private val context: Context) {
     /** The local part of a consent withdrawal: stop the keyboard asking for history to be saved. */
     val effects: ConsentEffects = object : ConsentEffects {
         override suspend fun withdrawn(code: String) {
+            // T8.15: the server deleted every cloud copy of the drawings with the withdrawal; forget what this device uploaded.
+            if (code == ConsentCatalog.CREATIVE_BACKUP) CreativeBackupGraph.forgetRecord(context)
             if (code != ConsentCatalog.SAVE_AI_HISTORY) return
             historyFlag.enabled = false
             // Keep the server preference consistent (best effort: without the consent nothing is saved anyway).
@@ -50,6 +53,7 @@ class PrivacyGraph private constructor(private val context: Context) {
         override suspend fun afterDeletionRequested(signOut: Boolean) {
             historyFlag.enabled = false
             exportMemory.lastId = null
+            CreativeBackupGraph.forgetRecord(context)
             if (signOut) auth.repository.signOut() // best-effort /auth/logout, then tokens and account kind are deleted
             withContext(Dispatchers.IO) { SyncGraph.get(context).engine.accountChanged() }
         }
@@ -59,6 +63,8 @@ class PrivacyGraph private constructor(private val context: Context) {
     fun onSignedOut() {
         historyFlag.enabled = false
         exportMemory.lastId = null
+        // The cloud copy of the drawings stays on the server until the person deletes it; this device forgets what it uploaded.
+        CreativeBackupGraph.forgetRecord(context)
     }
 
     companion object {
